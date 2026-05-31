@@ -159,6 +159,19 @@ Requirements:
 - Support quick selection and deselection.
 - Respect hidden sensors or provide a clear equivalent toggle.
 
+## Acceptance Criteria For Phase 2
+
+- `Graph > Graph Inputs...` opens a dense graph-input selection dialog.
+- The dialog uses the same selected-sensor state as the sensor-tree checkboxes.
+- Checking or unchecking a sensor in the dialog updates the graph input state immediately.
+- Existing selected graph sensors are preserved when the dialog opens.
+- The dialog supports search/filtering.
+- The dialog can include or exclude hidden sensors through a visible checkbox.
+- The dialog shows current values, units, and sensor types while choosing inputs.
+- `Clear All` clears graph inputs only; it does not hide sensors or reset min/max values.
+- `Select Visible` selects the currently visible filtered rows as graph inputs.
+- The main `Graph` menu includes a direct `Clear Graph Inputs` command.
+
 ## Future Phases
 
 Phase 3: add a small graph-local dropdown in the graph panel.

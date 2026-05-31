@@ -722,7 +722,14 @@ public sealed partial class MainForm : Form
         strokeThickness3ptMenuItem.Text = "3 pt";
         strokeThickness4ptMenuItem.Text = "4 pt";
 
+        ToolStripMenuItem graphInputsMenuItem = new("Graph &Inputs...");
+        graphInputsMenuItem.Click += delegate { ShowGraphInputsForm(); };
+        ToolStripMenuItem clearGraphInputsMenuItem = new("&Clear Graph Inputs");
+        clearGraphInputsMenuItem.Click += delegate { ClearGraphInputs(); };
+
         MoveMenuItem(graphMenuItem.DropDownItems, plotMenuItem);
+        graphMenuItem.DropDownItems.Add(graphInputsMenuItem);
+        graphMenuItem.DropDownItems.Add(clearGraphInputsMenuItem);
         MoveMenuItem(graphMenuItem.DropDownItems, resetPlotMenuItem);
         graphMenuItem.DropDownItems.Add(new ToolStripSeparator());
         MoveMenuItem(graphMenuItem.DropDownItems, sensorValuesTimeWindowMenuItem);
@@ -734,6 +741,43 @@ public sealed partial class MainForm : Form
     {
         item.Owner?.Items.Remove(item);
         target.Add(item);
+    }
+
+    private void ShowGraphInputsForm()
+    {
+        using GraphInputsForm form = new(GetAllSensorNodes(), delegate
+        {
+            PlotSelectionChanged(this, EventArgs.Empty);
+            treeView.Invalidate();
+        });
+        Theme.Current.Apply(form);
+        form.ShowDialog(this);
+    }
+
+    private void ClearGraphInputs()
+    {
+        foreach (SensorNode sensorNode in GetAllSensorNodes())
+            sensorNode.Plot = false;
+
+        PlotSelectionChanged(this, EventArgs.Empty);
+        treeView.Invalidate();
+    }
+
+    private IEnumerable<SensorNode> GetAllSensorNodes()
+    {
+        static IEnumerable<SensorNode> Traverse(Node node)
+        {
+            if (node is SensorNode sensorNode)
+                yield return sensorNode;
+
+            foreach (Node child in node.Nodes)
+            {
+                foreach (SensorNode childSensorNode in Traverse(child))
+                    yield return childSensorNode;
+            }
+        }
+
+        return Traverse(_root).ToList();
     }
 
     private void ApplySensorTreeLayout()
