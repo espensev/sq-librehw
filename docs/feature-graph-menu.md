@@ -193,3 +193,11 @@ Phase 4: improve long-window graph rendering while preserving spikes, such as mi
 - Exact sensor values remain visible.
 - Polling, logging, remote web server, and API behavior are unchanged.
 - No graph data smoothing, averaging, downsampling, or rounding changes are introduced.
+
+## Implementation Notes (post-delivery)
+
+These notes reconcile the spec text above with what actually shipped (commits `7b0e079`, `1f4225c`, `bb432e1`).
+
+- **Phases 1 and 2 shipped together.** The `Graph` menu therefore interleaves the Phase 2 commands; its real order is: `Show Graph`, `Graph Inputs...`, `Clear Graph Inputs`, `Reset Graph View`, separator, `Time Window`, `Graph Location`, `Stroke Thickness`. This is a superset of the Phase 1 target diagram, not a regression.
+- **Compact Mode is a new local feature, not a pre-existing one.** Upstream LibreHardwareMonitor has no compact mode. The "preserve compact mode / compact mode is unchanged" language in *Goals*, *Items That Stay Outside Graph*, and *Acceptance Criteria* describes the intended behavior of this fork's new toggle, which has no upstream baseline to compare against. It is opt-in and defaults to off, so the dense, fully-auditable table remains the default. When enabled it intentionally hides the Min/Max columns and gridlines for density; the `Show Min` / `Show Max` menu items are disabled while compact is active so their checkmarks cannot misrepresent the actual column state.
+- **Other local additions delivered in the same commits are documented in [`local-ui-customizations.md`](local-ui-customizations.md)** — multi-select hide/unhide, plot grid density, plot time-axis presets, the `Sensor.cs` averaging-accumulator fix, modernization changes, and the "Sev IQ" relabel. Those are outside this spec's scope but are recorded there for traceability.

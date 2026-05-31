@@ -256,6 +256,10 @@ public sealed partial class MainForm : Form
         _showMax = new UserOption("maxMenuItem", true, maxMenuItem, _settings);
         _showMax.Changed += delegate { ApplySensorTreeLayout(); };
 
+        // Apply once now that all column options (and compact mode) are wired, so the initial
+        // layout does not depend on the eager Changed callback of whichever option subscribed last.
+        ApplySensorTreeLayout();
+
         _ = new UserOption("startMinMenuItem", false, startMinMenuItem, _settings);
         _minimizeToTray = new UserOption("minTrayMenuItem", true, minTrayMenuItem, _settings);
         _minimizeToTray.Changed += delegate { _systemTray.IsMainIconEnabled = _minimizeToTray.Value; };
@@ -750,7 +754,6 @@ public sealed partial class MainForm : Form
             PlotSelectionChanged(this, EventArgs.Empty);
             treeView.Invalidate();
         });
-        Theme.Current.Apply(form);
         form.ShowDialog(this);
     }
 
@@ -802,6 +805,11 @@ public sealed partial class MainForm : Form
             treeView.Columns[1].IsVisible = _showValue.Value;
             treeView.Columns[2].IsVisible = !compact && _showMin.Value;
             treeView.Columns[3].IsVisible = !compact && _showMax.Value;
+
+            // Compact mode force-hides Min/Max regardless of the Show Min/Show Max toggles;
+            // disable those items so their checkmark cannot misrepresent the actual column state.
+            minMenuItem.Enabled = !compact;
+            maxMenuItem.Enabled = !compact;
 
             if (compact)
             {

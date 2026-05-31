@@ -23,6 +23,7 @@ namespace LibreHardwareMonitor.Windows.Forms.UI;
 public class PlotPanel : UserControl
 {
     private const double FineGridMajorDivisions = 20;
+    private const int DefaultGridDensity = 3;
 
     private readonly PersistentSettings _settings;
     private readonly UnitManager _unitManager;
@@ -165,7 +166,7 @@ public class PlotPanel : UserControl
             gridDensityMenuItem.DropDownItems.Add(mi);
         menu.Items.Add(gridDensityMenuItem);
 
-        _gridDensity = new UserRadioGroup("plotGridDensity", 3, gridDensityMenuItems, _settings);
+        _gridDensity = new UserRadioGroup("plotGridDensity", DefaultGridDensity, gridDensityMenuItems, _settings);
         _gridDensity.Changed += (sender, e) =>
         {
             ApplyGridDensity();
@@ -399,7 +400,7 @@ public class PlotPanel : UserControl
 
     private void ApplyGridDensity()
     {
-        int density = _gridDensity?.Value ?? 2;
+        int density = _gridDensity?.Value ?? DefaultGridDensity;
 
         ApplyAxisGrid(_timeAxis, density, true);
 
@@ -410,23 +411,45 @@ public class PlotPanel : UserControl
 
     private static void ApplyAxisGrid(Axis axis, int density, bool enabled)
     {
-        axis.MajorStep = double.NaN;
-        axis.MinorStep = double.NaN;
-        axis.MajorGridlineThickness = 1;
-        axis.MinorGridlineThickness = density == 3 ? 0.5 : 1;
+        // ApplyGridDensity runs on every plot refresh. Assign only when a value actually
+        // changes: re-assigning identical MajorStep/MinorStep each frame forces OxyPlot to
+        // re-tick and makes the gridlines "pop" during live updates.
+        if (axis.MajorGridlineThickness != 1)
+            axis.MajorGridlineThickness = 1;
+
+        double minorThickness = density == 3 ? 0.5 : 1;
+        if (axis.MinorGridlineThickness != minorThickness)
+            axis.MinorGridlineThickness = minorThickness;
 
         if (!enabled || density == 0)
         {
-            axis.MajorGridlineStyle = LineStyle.None;
-            axis.MinorGridlineStyle = LineStyle.None;
+            SetGridlineStyle(axis, LineStyle.None, LineStyle.None);
+            ResetAxisSteps(axis);
             return;
         }
 
-        axis.MajorGridlineStyle = LineStyle.Solid;
-        axis.MinorGridlineStyle = density >= 2 ? LineStyle.Solid : LineStyle.None;
+        SetGridlineStyle(axis, LineStyle.Solid, density >= 2 ? LineStyle.Solid : LineStyle.None);
 
         if (density == 3)
             ApplyFineAxisSteps(axis);
+        else
+            ResetAxisSteps(axis);
+    }
+
+    private static void SetGridlineStyle(Axis axis, LineStyle major, LineStyle minor)
+    {
+        if (axis.MajorGridlineStyle != major)
+            axis.MajorGridlineStyle = major;
+        if (axis.MinorGridlineStyle != minor)
+            axis.MinorGridlineStyle = minor;
+    }
+
+    private static void ResetAxisSteps(Axis axis)
+    {
+        if (!double.IsNaN(axis.MajorStep))
+            axis.MajorStep = double.NaN;
+        if (!double.IsNaN(axis.MinorStep))
+            axis.MinorStep = double.NaN;
     }
 
     private static void ApplyFineAxisSteps(Axis axis)
@@ -441,8 +464,14 @@ public class PlotPanel : UserControl
         if (double.IsNaN(majorStep) || majorStep <= 0)
             return;
 
-        axis.MajorStep = majorStep;
-        axis.MinorStep = majorStep / 4;
+        // The nice-step is piecewise-constant across a band of ranges, so within a band these
+        // assignments are no-ops and the grid only changes at genuine band crossings.
+        if (axis.MajorStep != majorStep)
+            axis.MajorStep = majorStep;
+
+        double minorStep = majorStep / 4;
+        if (axis.MinorStep != minorStep)
+            axis.MinorStep = minorStep;
     }
 
     private static double GetNiceAxisStep(double range, double targetDivisions)

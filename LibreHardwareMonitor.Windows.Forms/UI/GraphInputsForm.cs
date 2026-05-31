@@ -21,6 +21,7 @@ public sealed class GraphInputsForm : Form
     private readonly CheckBox _showHiddenCheckBox = new();
     private readonly DataGridView _grid = new();
     private readonly Timer _refreshTimer = new();
+    private bool _suspendInputsChanged;
 
     public GraphInputsForm(IEnumerable<SensorNode> sensorNodes, Action inputsChanged)
     {
@@ -143,22 +144,10 @@ public sealed class GraphInputsForm : Form
         });
 
         Button clearAllButton = CreateButton("Clear All", 560);
-        clearAllButton.Click += delegate
-        {
-            CommitCurrentEdit();
-            foreach (GraphInputRow row in _rows)
-                row.On = false;
-            RefreshRows();
-        };
+        clearAllButton.Click += delegate { SetRows(_rows, false); };
 
         Button selectVisibleButton = CreateButton("Select Visible", 640);
-        selectVisibleButton.Click += delegate
-        {
-            CommitCurrentEdit();
-            foreach (GraphInputRow row in CurrentRows())
-                row.On = true;
-            RefreshRows();
-        };
+        selectVisibleButton.Click += delegate { SetRows(CurrentRows(), true); };
 
         Button applyButton = CreateButton("Apply", 750);
         applyButton.Click += delegate
@@ -235,6 +224,30 @@ public sealed class GraphInputsForm : Form
 
     private void InputsChanged()
     {
+        if (_suspendInputsChanged)
+            return;
+
+        _inputsChanged?.Invoke();
+    }
+
+    private void SetRows(IEnumerable<GraphInputRow> rows, bool on)
+    {
+        CommitCurrentEdit();
+
+        // Apply the bulk change without firing the (expensive) graph recompute per row, then
+        // notify exactly once. Avoids the O(N^2) PlotSelectionChanged fan-out of toggling each row.
+        _suspendInputsChanged = true;
+        try
+        {
+            foreach (GraphInputRow row in rows.ToList())
+                row.On = on;
+        }
+        finally
+        {
+            _suspendInputsChanged = false;
+        }
+
+        RefreshRows();
         _inputsChanged?.Invoke();
     }
 
@@ -245,7 +258,9 @@ public sealed class GraphInputsForm : Form
 
     private void RefreshRows()
     {
-        foreach (GraphInputRow row in _rows)
+        // The dialog is modal, so Plot only changes from within it; only the rows currently
+        // bound to the grid are visible, so refreshing the filtered-out rows every tick is waste.
+        foreach (GraphInputRow row in CurrentRows())
             row.Refresh();
 
         _grid.Refresh();
@@ -383,16 +398,31 @@ public sealed class GraphInputsForm : Form
                 return;
             }
 
-            int separator = value.LastIndexOf(' ');
-            if (separator <= 0 || separator == value.Length - 1)
+            value = value.Trim();
+
+            // Treat the trailing run of non-numeric characters as the unit (e.g. "61.5 °C" -> "°C",
+            // "100Mbps" -> "Mbps"). Stop at the first digit/sign so a culture that uses a space as a
+            // group separator (e.g. "1 234.5") is never mistaken for a value+unit pair.
+            int unitStart = value.Length;
+            while (unitStart > 0)
+            {
+                char c = value[unitStart - 1];
+                if (char.IsDigit(c) || c == '.' || c == ',' || c == '-' || c == '+')
+                    break;
+
+                unitStart--;
+            }
+
+            string unitCandidate = value.Substring(unitStart).Trim();
+            if (unitStart == 0 || unitCandidate.Length == 0)
             {
                 currentValue = value;
                 unit = string.Empty;
                 return;
             }
 
-            currentValue = value.Substring(0, separator);
-            unit = value.Substring(separator + 1);
+            currentValue = value.Substring(0, unitStart).Trim();
+            unit = unitCandidate;
         }
 
         private void OnPropertyChanged(string propertyName)
