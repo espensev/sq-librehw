@@ -19,6 +19,9 @@ public static class Program
         if (!AllRequiredFilesAvailable())
             Environment.Exit(0);
 
+#if NETCOREAPP
+        Application.SetHighDpiMode(HighDpiMode.SystemAware);
+#endif
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         using (MainForm form = new MainForm())

@@ -12,6 +12,7 @@
     <ApplicationManifest>Resources\app.manifest</ApplicationManifest>
     <StartupObject>LibreHardwareMonitor.Windows.Forms.Program</StartupObject>
     <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode Condition="'$(TargetFramework)' != 'net472'">SystemAware</ApplicationHighDpiMode>
     <OutputPath>..\bin\$(Configuration)\</OutputPath>
 	  <LangVersion>latest</LangVersion>
     <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
@@ -33,11 +34,6 @@
     <PackageReference Include="System.Resources.Extensions" Version="10.0.8" />
     <PackageReference Include="System.Text.Json" Version="10.0.8" />
     <PackageReference Include="TaskScheduler" Version="2.12.2" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="System.Configuration.Install" />
-    <Reference Include="System.Web" />
   </ItemGroup>
 
   <ItemGroup>

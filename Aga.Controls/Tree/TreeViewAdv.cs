@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Drawing;
+#if NETFRAMEWORK
 using System.Security.Permissions;
+#endif
 using System.Threading;
 using System.Windows.Forms;
 using System.Collections;
@@ -555,7 +557,9 @@ namespace Aga.Controls.Tree
 
 		protected override CreateParams CreateParams
 		{
+#if NETFRAMEWORK
 			[SecurityPermission(SecurityAction.LinkDemand, Flags = SecurityPermissionFlag.UnmanagedCode)]
+#endif
 			get
 			{
 				CreateParams res = base.CreateParams;

@@ -19,7 +19,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Windows.Forms.UI;
 
@@ -255,7 +254,7 @@ public class HttpServer
     //{"result":"ok"}
     private void HandleSensorRequest(HttpListenerRequest request, Dictionary<string, object> result)
     {
-        IDictionary<string, string> dict = ToDictionary(HttpUtility.ParseQueryString(request.Url.Query));
+        IDictionary<string, string> dict = ToDictionary(request.QueryString);
 
         if (dict.ContainsKey("action"))
         {

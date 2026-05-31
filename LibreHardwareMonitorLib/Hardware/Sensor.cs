@@ -155,7 +155,11 @@ internal class Sensor : ISensor
         {
             _valuesTimeWindow = value;
             if (value == TimeSpan.Zero)
+            {
                 _values.Clear();
+                _sum = 0;
+                _count = 0;
+            }
         }
     }
 
@@ -172,6 +176,8 @@ internal class Sensor : ISensor
     public void ClearValues()
     {
         _values.Clear();
+        _sum = 0;
+        _count = 0;
     }
 
     public void Accept(IVisitor visitor)
@@ -257,7 +263,11 @@ internal class Sensor : ISensor
         }
 
         if (_values.Count > 0)
+        {
             AppendValue(float.NaN, DateTime.UtcNow);
+            _sum = 0;
+            _count = 0;
+        }
 
         //remove the value string from the settings to reduce memory usage
         _settings.Remove(name);

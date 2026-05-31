@@ -52,6 +52,10 @@ public sealed partial class MainForm : Form
     private readonly UserRadioGroup _sensorValuesTimeWindow;
     private readonly PersistentSettings _settings;
     private readonly UserOption _showGadget;
+    private readonly UserOption _showValue;
+    private readonly UserOption _showMin;
+    private readonly UserOption _showMax;
+    private readonly UserOption _compactMode;
     private readonly StartupManager _startupManager = new();
     private readonly SystemTray _systemTray;
     private readonly UnitManager _unitManager;
@@ -66,6 +70,13 @@ public sealed partial class MainForm : Form
     private UserOption _showPlot;
     private UserRadioGroup _strokeThickness;
     private double _plotStrokeThickness = 2;
+    private bool _compactLayoutActive;
+    private bool _updatingSensorTreeLayout;
+    private GridLineStyle _standardGridLineStyle;
+    private int _standardRowHeight;
+    private int _standardValueColumnWidth;
+    private int _standardMinColumnWidth;
+    private int _standardMaxColumnWidth;
 
     public MainForm()
     {
@@ -154,7 +165,21 @@ public sealed partial class MainForm : Form
             _gadget.HideShowCommand += HideShowClick;
         }
 
+        _standardRowHeight = treeView.RowHeight;
+        _standardGridLineStyle = treeView.GridLineStyle;
+        _standardValueColumnWidth = treeView.Columns[1].Width;
+        _standardMinColumnWidth = treeView.Columns[2].Width;
+        _standardMaxColumnWidth = treeView.Columns[3].Width;
+
+        InitializeGraphMenu();
+
+        ToolStripMenuItem compactModeMenuItem = new("Compact Mode");
+        viewMenuItem.DropDownItems.Insert(4, compactModeMenuItem);
+        _compactMode = new UserOption("compactMode", false, compactModeMenuItem, _settings);
+        _compactMode.Changed += delegate { ApplySensorTreeLayout(); };
+
         treeView.ShowNodeToolTips = true;
+        treeView.SelectionMode = TreeSelectionMode.Multi;
         NodeToolTipProvider tooltipProvider = new();
         nodeTextBoxText.ToolTipProvider = tooltipProvider;
         nodeTextBoxValue.ToolTipProvider = tooltipProvider;
@@ -222,14 +247,14 @@ public sealed partial class MainForm : Form
         UserOption showHiddenSensors = new("hiddenMenuItem", false, hiddenMenuItem, _settings);
         showHiddenSensors.Changed += delegate { treeModel.ForceVisible = showHiddenSensors.Value; };
 
-        UserOption showValue = new("valueMenuItem", true, valueMenuItem, _settings);
-        showValue.Changed += delegate { treeView.Columns[1].IsVisible = showValue.Value; };
+        _showValue = new UserOption("valueMenuItem", true, valueMenuItem, _settings);
+        _showValue.Changed += delegate { ApplySensorTreeLayout(); };
 
-        UserOption showMin = new("minMenuItem", false, minMenuItem, _settings);
-        showMin.Changed += delegate { treeView.Columns[2].IsVisible = showMin.Value; };
+        _showMin = new UserOption("minMenuItem", false, minMenuItem, _settings);
+        _showMin.Changed += delegate { ApplySensorTreeLayout(); };
 
-        UserOption showMax = new("maxMenuItem", true, maxMenuItem, _settings);
-        showMax.Changed += delegate { treeView.Columns[3].IsVisible = showMax.Value; };
+        _showMax = new UserOption("maxMenuItem", true, maxMenuItem, _settings);
+        _showMax.Changed += delegate { ApplySensorTreeLayout(); };
 
         _ = new UserOption("startMinMenuItem", false, startMinMenuItem, _settings);
         _minimizeToTray = new UserOption("minTrayMenuItem", true, minTrayMenuItem, _settings);
@@ -662,6 +687,103 @@ public sealed partial class MainForm : Form
         splitContainer.SplitterMoved += delegate { _settings.SetValue("splitContainer.SplitterDistance", splitContainer.SplitterDistance); };
     }
 
+    private void InitializeGraphMenu()
+    {
+        ToolStripMenuItem graphMenuItem = new("&Graph") { Name = "graphMenuItem" };
+        int optionsMenuIndex = mainMenu.Items.IndexOf(optionsMenuItem);
+        mainMenu.Items.Insert(optionsMenuIndex >= 0 ? optionsMenuIndex : mainMenu.Items.Count, graphMenuItem);
+
+        plotMenuItem.Text = "&Show Graph";
+        resetPlotMenuItem.Text = "&Reset Graph View";
+        sensorValuesTimeWindowMenuItem.Text = "&Time Window";
+        plotLocationMenuItem.Text = "Graph &Location";
+        strokeThicknessMenuItem.Text = "&Stroke Thickness";
+
+        plotWindowMenuItem.Text = "Separate Window";
+        plotBottomMenuItem.Text = "Bottom";
+        plotRightMenuItem.Text = "Right";
+        plotLocationMenuItem.DropDownItems.Clear();
+        plotLocationMenuItem.DropDownItems.AddRange(new ToolStripItem[] { plotRightMenuItem, plotBottomMenuItem, plotWindowMenuItem });
+
+        timeWindow30sMenuItem.Text = "30 seconds";
+        timeWindow1minMenuItem.Text = "1 minute";
+        timeWindow2minMenuItem.Text = "2 minutes";
+        timeWindow5minMenuItem.Text = "5 minutes";
+        timeWindow10minMenuItem.Text = "10 minutes";
+        timeWindow30minMenuItem.Text = "30 minutes";
+        timeWindow1hMenuItem.Text = "1 hour";
+        timeWindow2hMenuItem.Text = "2 hours";
+        timeWindow6hMenuItem.Text = "6 hours";
+        timeWindow12hMenuItem.Text = "12 hours";
+        timeWindow24hMenuItem.Text = "24 hours";
+
+        strokeThickness1ptMenuItem.Text = "1 pt";
+        strokeThickness2ptMenuItem.Text = "2 pt";
+        strokeThickness3ptMenuItem.Text = "3 pt";
+        strokeThickness4ptMenuItem.Text = "4 pt";
+
+        MoveMenuItem(graphMenuItem.DropDownItems, plotMenuItem);
+        MoveMenuItem(graphMenuItem.DropDownItems, resetPlotMenuItem);
+        graphMenuItem.DropDownItems.Add(new ToolStripSeparator());
+        MoveMenuItem(graphMenuItem.DropDownItems, sensorValuesTimeWindowMenuItem);
+        MoveMenuItem(graphMenuItem.DropDownItems, plotLocationMenuItem);
+        MoveMenuItem(graphMenuItem.DropDownItems, strokeThicknessMenuItem);
+    }
+
+    private static void MoveMenuItem(ToolStripItemCollection target, ToolStripItem item)
+    {
+        item.Owner?.Items.Remove(item);
+        target.Add(item);
+    }
+
+    private void ApplySensorTreeLayout()
+    {
+        if (_showValue == null || _showMin == null || _showMax == null || treeView.Columns.Count < 4)
+            return;
+
+        bool compact = _compactMode?.Value == true;
+
+        if (compact && !_compactLayoutActive)
+        {
+            _standardRowHeight = treeView.RowHeight;
+            _standardGridLineStyle = treeView.GridLineStyle;
+            _standardValueColumnWidth = treeView.Columns[1].Width;
+            _standardMinColumnWidth = treeView.Columns[2].Width;
+            _standardMaxColumnWidth = treeView.Columns[3].Width;
+        }
+
+        _updatingSensorTreeLayout = true;
+        try
+        {
+            treeView.Columns[1].IsVisible = _showValue.Value;
+            treeView.Columns[2].IsVisible = !compact && _showMin.Value;
+            treeView.Columns[3].IsVisible = !compact && _showMax.Value;
+
+            if (compact)
+            {
+                treeView.RowHeight = Math.Max(treeView.Font.Height, 16);
+                treeView.GridLineStyle = GridLineStyle.None;
+                treeView.Columns[1].Width = Math.Min(_standardValueColumnWidth, 78);
+            }
+            else
+            {
+                treeView.RowHeight = _standardRowHeight;
+                treeView.GridLineStyle = _standardGridLineStyle;
+                treeView.Columns[1].Width = _standardValueColumnWidth;
+                treeView.Columns[2].Width = _standardMinColumnWidth;
+                treeView.Columns[3].Width = _standardMaxColumnWidth;
+            }
+        }
+        finally
+        {
+            _updatingSensorTreeLayout = false;
+        }
+
+        _compactLayoutActive = compact;
+        TreeView_SizeChanged(treeView, EventArgs.Empty);
+        treeView.Invalidate();
+    }
+
     private void InitializePlotForm()
     {
         _plotForm = new Form { FormBorderStyle = FormBorderStyle.SizableToolWindow, ShowInTaskbar = false, StartPosition = FormStartPosition.Manual };
@@ -966,6 +1088,13 @@ public sealed partial class MainForm : Form
         _settings.SetValue("authenticationUserName", Server.UserName);
         _settings.SetValue("authenticationPassword", Server.Password);
 
+        if (_compactLayoutActive)
+        {
+            _settings.SetValue("treeView.Columns." + treeView.Columns[1].Header + ".Width", _standardValueColumnWidth);
+            _settings.SetValue("treeView.Columns." + treeView.Columns[2].Header + ".Width", _standardMinColumnWidth);
+            _settings.SetValue("treeView.Columns." + treeView.Columns[3].Header + ".Width", _standardMaxColumnWidth);
+        }
+
         string fileName = Path.ChangeExtension(Application.ExecutablePath, ".config");
 
         try
@@ -1065,6 +1194,36 @@ public sealed partial class MainForm : Form
         _ = new AboutBox().ShowDialog();
     }
 
+    private List<SensorNode> GetSelectedSensorNodes(TreeNodeAdv clickedNode)
+    {
+        List<SensorNode> nodes = treeView.SelectedNodes
+                                         .Select(node => node.Tag as SensorNode)
+                                         .Where(node => node?.Sensor != null)
+                                         .Distinct()
+                                         .ToList();
+
+        if (clickedNode?.Tag is SensorNode clickedSensorNode && clickedSensorNode.Sensor != null && !nodes.Contains(clickedSensorNode))
+            nodes.Add(clickedSensorNode);
+
+        return nodes;
+    }
+
+    private void SetSensorNodesVisible(IEnumerable<SensorNode> sensorNodes, bool visible)
+    {
+        List<SensorNode> nodes = sensorNodes.Distinct().ToList();
+
+        treeView.BeginUpdate();
+        try
+        {
+            foreach (SensorNode node in nodes)
+                node.IsVisible = visible;
+        }
+        finally
+        {
+            treeView.EndUpdate();
+        }
+    }
+
     private void TreeView_Click(object sender, EventArgs e)
     {
         if (!(e is MouseEventArgs m) || (m.Button != MouseButtons.Left && m.Button != MouseButtons.Right))
@@ -1080,37 +1239,51 @@ public sealed partial class MainForm : Form
             return;
         }
 
-        treeView.SelectedNode = info.Node;
+        if (info.Node == null || !info.Node.IsSelected)
+            treeView.SelectedNode = info.Node;
+
         if (info.Node != null)
         {
             if (info.Node.Tag is SensorNode node && node.Sensor != null)
             {
+                List<SensorNode> selectedSensorNodes = GetSelectedSensorNodes(info.Node);
+                bool multipleSensorsSelected = selectedSensorNodes.Count > 1;
+
                 treeContextMenu.Items.Clear();
-                if (node.Sensor.Parameters.Count > 0)
+                if (!multipleSensorsSelected && node.Sensor.Parameters.Count > 0)
                 {
                     ToolStripItem item = new ToolStripMenuItem("Parameters...");
                     item.Click += delegate { ShowParameterForm(node.Sensor); };
                     treeContextMenu.Items.Add(item);
                 }
 
-                if (nodeTextBoxText.EditEnabled)
+                if (!multipleSensorsSelected && nodeTextBoxText.EditEnabled)
                 {
                     ToolStripItem item = new ToolStripMenuItem("Rename");
                     item.Click += delegate { nodeTextBoxText.BeginEdit(); };
                     treeContextMenu.Items.Add(item);
                 }
 
-                if (node.IsVisible)
+                if (selectedSensorNodes.Any(selectedNode => selectedNode.IsVisible))
                 {
-                    ToolStripItem item = new ToolStripMenuItem("Hide");
-                    item.Click += delegate { node.IsVisible = false; };
+                    string text = multipleSensorsSelected ? $"Hide Selected Sensors ({selectedSensorNodes.Count})" : "Hide";
+                    ToolStripItem item = new ToolStripMenuItem(text);
+                    item.Click += delegate { SetSensorNodesVisible(selectedSensorNodes, false); };
                     treeContextMenu.Items.Add(item);
                 }
-                else
+
+                if (selectedSensorNodes.Any(selectedNode => !selectedNode.IsVisible))
                 {
-                    ToolStripItem item = new ToolStripMenuItem("Unhide");
-                    item.Click += delegate { node.IsVisible = true; };
+                    string text = multipleSensorsSelected ? $"Unhide Selected Sensors ({selectedSensorNodes.Count})" : "Unhide";
+                    ToolStripItem item = new ToolStripMenuItem(text);
+                    item.Click += delegate { SetSensorNodesVisible(selectedSensorNodes, true); };
                     treeContextMenu.Items.Add(item);
+                }
+
+                if (multipleSensorsSelected)
+                {
+                    treeContextMenu.Show(treeView, new Point(m.X, m.Y));
+                    return;
                 }
 
                 treeContextMenu.Items.Add(new ToolStripSeparator());
@@ -1409,6 +1582,9 @@ public sealed partial class MainForm : Form
 
     private void TreeView_ColumnWidthChanged(TreeColumn column)
     {
+        if (_updatingSensorTreeLayout)
+            return;
+
         int index = treeView.Columns.IndexOf(column);
         int columnsWidth = 0;
         foreach (TreeColumn treeColumn in treeView.Columns)

@@ -22,6 +22,8 @@ namespace LibreHardwareMonitor.Windows.Forms.UI;
 
 public class PlotPanel : UserControl
 {
+    private const double FineGridMajorDivisions = 20;
+
     private readonly PersistentSettings _settings;
     private readonly UnitManager _unitManager;
     private readonly PlotView _plot;
@@ -33,6 +35,7 @@ public class PlotPanel : UserControl
     private UserOption _showAxesLabels;
     private UserOption _timeAxisEnableZoom;
     private UserOption _yAxesEnableZoom;
+    private UserRadioGroup _gridDensity;
     private DateTime _now;
     private float _dpiX;
     private float _dpiY;
@@ -101,6 +104,8 @@ public class PlotPanel : UserControl
         {
             annotation.Color = Theme.Current.PlotBorderColor.ToOxyColor();
         }
+
+        ApplyGridDensity();
     }
 
     public void SetCurrentSettings()
@@ -147,10 +152,33 @@ public class PlotPanel : UserControl
         };
         menu.Items.Add(showAxesLabelsMenuItem);
 
+        ToolStripMenuItem gridDensityMenuItem = new ToolStripMenuItem("Grid Density");
+        ToolStripMenuItem[] gridDensityMenuItems =
+        {
+            new ToolStripMenuItem("Off"),
+            new ToolStripMenuItem("Major"),
+            new ToolStripMenuItem("Normal"),
+            new ToolStripMenuItem("Fine")
+        };
+
+        foreach (ToolStripItem mi in gridDensityMenuItems)
+            gridDensityMenuItem.DropDownItems.Add(mi);
+        menu.Items.Add(gridDensityMenuItem);
+
+        _gridDensity = new UserRadioGroup("plotGridDensity", 3, gridDensityMenuItems, _settings);
+        _gridDensity.Changed += (sender, e) =>
+        {
+            ApplyGridDensity();
+            InvalidatePlot();
+        };
+
         ToolStripMenuItem timeAxisMenuItem = new ToolStripMenuItem("Time Axis");
         ToolStripMenuItem[] timeAxisMenuItems =
         { new ToolStripMenuItem("Enable Zoom"),
             new ToolStripMenuItem("Auto", null, (s, e) => { TimeAxisZoom(0, double.NaN); }),
+            new ToolStripMenuItem("30 sec", null, (s, e) => { TimeAxisZoom(0, 30); }),
+            new ToolStripMenuItem("1 min", null, (s, e) => { TimeAxisZoom(0, 60); }),
+            new ToolStripMenuItem("2 min", null, (s, e) => { TimeAxisZoom(0, 2 * 60); }),
             new ToolStripMenuItem("5 min", null, (s, e) => { TimeAxisZoom(0, 5 * 60); }),
             new ToolStripMenuItem("10 min", null, (s, e) => { TimeAxisZoom(0, 10 * 60); }),
             new ToolStripMenuItem("20 min", null, (s, e) => { TimeAxisZoom(0, 20 * 60); }),
@@ -369,6 +397,85 @@ public class PlotPanel : UserControl
         InvalidatePlot();
     }
 
+    private void ApplyGridDensity()
+    {
+        int density = _gridDensity?.Value ?? 2;
+
+        ApplyAxisGrid(_timeAxis, density, true);
+
+        bool showValueGrid = _stackedAxes?.Value == true;
+        foreach (LinearAxis axis in _axes.Values)
+            ApplyAxisGrid(axis, density, showValueGrid);
+    }
+
+    private static void ApplyAxisGrid(Axis axis, int density, bool enabled)
+    {
+        axis.MajorStep = double.NaN;
+        axis.MinorStep = double.NaN;
+        axis.MajorGridlineThickness = 1;
+        axis.MinorGridlineThickness = density == 3 ? 0.5 : 1;
+
+        if (!enabled || density == 0)
+        {
+            axis.MajorGridlineStyle = LineStyle.None;
+            axis.MinorGridlineStyle = LineStyle.None;
+            return;
+        }
+
+        axis.MajorGridlineStyle = LineStyle.Solid;
+        axis.MinorGridlineStyle = density >= 2 ? LineStyle.Solid : LineStyle.None;
+
+        if (density == 3)
+            ApplyFineAxisSteps(axis);
+    }
+
+    private static void ApplyFineAxisSteps(Axis axis)
+    {
+        double minimum = !double.IsNaN(axis.ActualMinimum) ? axis.ActualMinimum : axis.Minimum;
+        double maximum = !double.IsNaN(axis.ActualMaximum) ? axis.ActualMaximum : axis.Maximum;
+        double range = Math.Abs(maximum - minimum);
+        if (double.IsNaN(range) || double.IsInfinity(range) || range <= 0)
+            return;
+
+        double majorStep = GetNiceAxisStep(range, FineGridMajorDivisions);
+        if (double.IsNaN(majorStep) || majorStep <= 0)
+            return;
+
+        axis.MajorStep = majorStep;
+        axis.MinorStep = majorStep / 4;
+    }
+
+    private static double GetNiceAxisStep(double range, double targetDivisions)
+    {
+        if (double.IsNaN(range) || double.IsInfinity(range) || range <= 0 || targetDivisions <= 0)
+            return double.NaN;
+
+        double rawStep = range / targetDivisions;
+        double magnitude = Math.Pow(10, Math.Floor(Math.Log10(rawStep)));
+        double bestStep = double.NaN;
+        double bestScore = double.PositiveInfinity;
+        double[] niceFactors = { 1, 2, 2.5, 5, 10 };
+
+        for (int powerOffset = -1; powerOffset <= 1; powerOffset++)
+        {
+            double power = magnitude * Math.Pow(10, powerOffset);
+            foreach (double factor in niceFactors)
+            {
+                double step = factor * power;
+                double divisions = range / step;
+                double score = Math.Abs(divisions - targetDivisions);
+
+                if (score < bestScore || (Math.Abs(score - bestScore) < double.Epsilon && step < bestStep))
+                {
+                    bestStep = step;
+                    bestScore = score;
+                }
+            }
+        }
+
+        return bestStep;
+    }
+
     private void UpdateAxesPosition()
     {
         if (_stackedAxes.Value)
@@ -383,8 +490,6 @@ public class PlotPanel : UserControl
                 start += delta;
                 axis.EndPosition = start;
                 axis.PositionTier = 0;
-                axis.MajorGridlineStyle = LineStyle.Solid;
-                axis.MinorGridlineStyle = LineStyle.Solid;
                 LineAnnotation annotation = _annotations[pair.Key];
                 annotation.Y = axis.ActualMinimum;
                 if (!_model.Annotations.Contains(annotation)) 
@@ -412,18 +517,19 @@ public class PlotPanel : UserControl
                     axis.EndPosition = 0;
                     axis.PositionTier = 0;
                 }
-                axis.MajorGridlineStyle = LineStyle.None;
-                axis.MinorGridlineStyle = LineStyle.None;
                 LineAnnotation annotation = _annotations[pair.Key];
                 if (_model.Annotations.Contains(annotation)) 
                     _model.Annotations.Remove(_annotations[pair.Key]);
             }
         }
+
+        ApplyGridDensity();
     }
 
     public void InvalidatePlot()
     {
         _now = DateTime.UtcNow;
+        ApplyGridDensity();
 
         if (_axes != null)
         {

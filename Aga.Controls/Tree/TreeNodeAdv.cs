@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Runtime.Serialization;
+#if NETFRAMEWORK
 using System.Security.Permissions;
+#endif
 
 namespace Aga.Controls.Tree
 {
@@ -425,13 +427,17 @@ namespace Aga.Controls.Tree
 
 		}
 
+#if NETFRAMEWORK
 		[SecurityPermission(SecurityAction.Demand, SerializationFormatter = true)]
+#endif
 		public void GetObjectData(SerializationInfo info, StreamingContext context)
 		{
 			info.AddValue("IsExpanded", IsExpanded);
 			info.AddValue("NodesCount", Nodes.Count);
+#pragma warning disable SYSLIB0050
 			if ((Tag != null) && Tag.GetType().IsSerializable)
 				info.AddValue("Tag", Tag, Tag.GetType());
+#pragma warning restore SYSLIB0050
 
 			for (int i = 0; i < Nodes.Count; i++)
 				info.AddValue("Child" + i, Nodes[i], typeof(TreeNodeAdv));
