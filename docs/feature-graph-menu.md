@@ -25,7 +25,8 @@ The features exist, but the organization makes graphing feel secondary and harde
 - Use `Graph` terminology in new user-facing labels.
 - Move existing graph-specific commands into the new menu.
 - Preserve existing settings and selected graph sensors.
-- Preserve the dense sensor tree, compact mode, gridlines, exact values, units, and min/max columns.
+- Preserve the default dense sensor tree, gridlines, exact values, units, and min/max columns.
+- Keep this fork's Compact Mode opt-in and outside the `Graph` menu.
 - Keep graph behavior unchanged unless the user changes a graph option.
 
 ## Non-Goals
@@ -174,9 +175,14 @@ Requirements:
 
 ## Future Phases
 
-Phase 3: add a small graph-local dropdown in the graph panel.
+Phase 3: add graph-local controls in the graph panel. Draft spec:
+[`feature-graph-panel-controls.md`](feature-graph-panel-controls.md).
 
-Phase 4: improve long-window graph rendering while preserving spikes, such as min/max/latest envelope rendering. Do not add average-only visual compression that can hide excursions.
+Phase 4: improve long-window graph rendering while preserving spikes, such as min/max/latest envelope rendering. Do not add average-only visual compression that can hide excursions. Draft spec:
+[`feature-long-window-graph-rendering.md`](feature-long-window-graph-rendering.md).
+
+New graph feature: add local clock-time labels for the graph T axis as the default label mode, while keeping elapsed labels available. Spec:
+[`feature-real-time-axis.md`](feature-real-time-axis.md).
 
 ## Acceptance Criteria For Phase 1
 
@@ -188,16 +194,23 @@ Phase 4: improve long-window graph rendering while preserving spikes, such as mi
 - `Graph > Stroke Thickness` uses the existing graph stroke setting.
 - Existing selected graph sensors are preserved.
 - Existing settings are preserved.
-- Compact mode is unchanged.
-- Sensor table density is unchanged.
+- Compact Mode remains opt-in, stays in `View`, and is not controlled by the `Graph` menu.
+- Default sensor table density is unchanged.
 - Exact sensor values remain visible.
 - Polling, logging, remote web server, and API behavior are unchanged.
 - No graph data smoothing, averaging, downsampling, or rounding changes are introduced.
 
 ## Implementation Notes (post-delivery)
 
-These notes reconcile the spec text above with what actually shipped (commits `7b0e079`, `1f4225c`, `bb432e1`).
+These notes reconcile the spec text above with what actually shipped (commits `7b0e079`, `1f4225c`, `bb432e1`, `dc424c5`).
 
 - **Phases 1 and 2 shipped together.** The `Graph` menu therefore interleaves the Phase 2 commands; its real order is: `Show Graph`, `Graph Inputs...`, `Clear Graph Inputs`, `Reset Graph View`, separator, `Time Window`, `Graph Location`, `Stroke Thickness`. This is a superset of the Phase 1 target diagram, not a regression.
-- **Compact Mode is a new local feature, not a pre-existing one.** Upstream LibreHardwareMonitor has no compact mode. The "preserve compact mode / compact mode is unchanged" language in *Goals*, *Items That Stay Outside Graph*, and *Acceptance Criteria* describes the intended behavior of this fork's new toggle, which has no upstream baseline to compare against. It is opt-in and defaults to off, so the dense, fully-auditable table remains the default. When enabled it intentionally hides the Min/Max columns and gridlines for density; the `Show Min` / `Show Max` menu items are disabled while compact is active so their checkmarks cannot misrepresent the actual column state.
-- **Other local additions delivered in the same commits are documented in [`local-ui-customizations.md`](local-ui-customizations.md)** — multi-select hide/unhide, plot grid density, plot time-axis presets, the `Sensor.cs` averaging-accumulator fix, modernization changes, and the "Sev IQ" relabel. Those are outside this spec's scope but are recorded there for traceability.
+- **Compact Mode is a new local feature, not a pre-existing upstream behavior.** It is opt-in and defaults to off, so the dense, fully-auditable table remains the default. The `Graph` menu does not move or control Compact Mode. When enabled it intentionally hides the Min/Max columns and gridlines for density; the `Show Min` / `Show Max` menu items are disabled while compact is active so their checkmarks cannot misrepresent the actual column state.
+- **Other local additions delivered in the same implementation series are documented in [`local-ui-customizations.md`](local-ui-customizations.md)** — multi-select hide/unhide, plot grid density, plot time-axis presets, the `Sensor.cs` averaging-accumulator fix, modernization changes, and the "Sev IQ" relabel. Those are outside this spec's scope but are recorded there for traceability.
+
+## Verification Log
+
+| Date | Build/run evidence | Result | Notes |
+|---|---|---|---|
+| 2026-06-06 | `dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64 -p:OutDir="$env:TEMP\sq-librehw-verify\net10\"` | Pass | 0 warnings, 0 errors. Normal release output path was locked by a running `Libre Hardware Monitor` process. |
+| 2026-06-06 | `dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64 -p:OutDir="$env:TEMP\sq-librehw-verify\net472\"` | Pass | 0 warnings, 0 errors. |

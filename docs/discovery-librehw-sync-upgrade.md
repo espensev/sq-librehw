@@ -2,8 +2,8 @@
 
 **Goal:** Evaluate this copied LibreHardwareMonitor checkout as the new local home, set up sync against the upstream repository, and identify .NET/package upgrade options.
 **Date:** 2026-05-20
-**Status:** complete; upstream sync applied
-**Recommended next:** Decide whether the preserved `amd.png` deletion should be reapplied to `LibreHardwareMonitor.Windows.Forms/Resources/amd.png`, then address the remaining .NET 10 build warnings.
+**Status:** complete; upstream sync applied; local modernization notes updated 2026-06-06
+**Recommended next:** Decide whether the preserved `amd.png` deletion should be reapplied to `LibreHardwareMonitor.Windows.Forms/Resources/amd.png`, then keep the `net10.0-windows` and `net472` app builds clean while feature specs move forward.
 
 ---
 
@@ -36,16 +36,16 @@
 
 ### Q2: What project structure and target frameworks are currently used?
 
-**Answer:** The current local solution has three projects: the WinForms app, `LibreHardwareMonitorLib`, and `Aga.Controls`. This is not an old .NET-only checkout: the app already targets `net472` and `net10.0-windows`; the library targets `net472`, `netstandard2.0`, `net8.0`, `net9.0`, and `net10.0`; `Aga.Controls` remains `net472`.
+**Answer:** The current local solution has three projects: the WinForms app, `LibreHardwareMonitorLib`, and `Aga.Controls`. This is not an old .NET-only checkout: the app targets `net472` and `net10.0-windows`; the library targets `net472`, `netstandard2.0`, `net8.0`, `net9.0`, and `net10.0`; `Aga.Controls` now targets `net472` and `net10.0-windows` after local modernization.
 
 **Evidence:**
 - `LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj:4` - `<TargetFrameworks>net472;net10.0-windows</TargetFrameworks>`.
 - `LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj:3` - `<TargetFrameworks>net472;netstandard2.0;net8.0;net9.0;net10.0</TargetFrameworks>`.
-- `Aga.Controls/Aga.Controls.csproj:8` - `<TargetFramework>net472</TargetFramework>`.
+- `Aga.Controls/Aga.Controls.csproj` - `<TargetFrameworks>net472;net10.0-windows</TargetFrameworks>`.
 - `dotnet --info` reported SDK `10.0.300`, runtimes `8.0.27` and `10.0.8`, and no `global.json`.
 
 **Implications:**
-- The main modernization issue is not adding .NET 10; it is reducing legacy compatibility drag from `net472`, `netstandard2.0`, and the `Aga.Controls` WinForms/.NET Framework dependency.
+- The main modernization issue is not adding .NET 10; it is deciding how much legacy compatibility to keep across `net472`, `netstandard2.0`, and older WinForms assumptions.
 
 ### Q3: How far is the local branch behind upstream, and what does upstream change?
 
@@ -86,18 +86,21 @@
 
 ### Q5: What build/test baseline exists locally?
 
-**Answer:** The synced local solution builds successfully in Debug x64 on SDK `10.0.300`. No C# test projects were found. The build emits compatibility warnings around `Aga.Controls` being `net472`, unresolved Framework-only references during `net10.0-windows`, and WinForms high-DPI manifest configuration.
+**Answer:** The synced local solution initially built successfully in Debug x64 on SDK `10.0.300` with modernization warnings. Subsequent local work cleared those warnings by multi-targeting `Aga.Controls`, removing the Framework-only web/install references from the modern app target, and moving high-DPI configuration into project/runtime setup. No C# test projects were found.
 
 **Evidence:**
 - Post-sync `dotnet build LibreHardwareMonitor.sln -c Debug -p:Platform=x64` completed with `Build succeeded`, `0 Error(s)`, and `5 Warning(s)`.
-- Build warnings included:
+- The initial build warnings included:
   - `NU1702` for `Aga.Controls` resolved as `.NETFramework,Version=v4.7.2` for the `net10.0-windows` app target.
   - `MSB3245` for `System.Configuration.Install` and `System.Web` in the `net10.0-windows` app target.
   - `WFO0003` for high DPI settings in `LibreHardwareMonitor.Windows.Forms\Resources\app.manifest`.
+- On 2026-06-06, `dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64 -p:OutDir="$env:TEMP\sq-librehw-verify\net10\"` completed with `Build succeeded`, `0 Warning(s)`, and `0 Error(s)`.
+- On 2026-06-06, `dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64 -p:OutDir="$env:TEMP\sq-librehw-verify\net472\"` completed with `Build succeeded`, `0 Warning(s)`, and `0 Error(s)`.
+- The normal `net10.0-windows` release build without redirected `OutDir` was blocked by a running `Libre Hardware Monitor` process locking `bin\Release\net10.0-windows\LibreHardwareMonitorLib.dll`; this was an environment lock, not a compile failure.
 - `rg --files -g "*Test*" -g "*Tests*" -g "*.csproj"` found only the three production `.csproj` files.
 
 **Implications:**
-- The current copy is usable as a build base, but warnings point to real modernization targets if the local goal is a cleaner .NET 10-first fork.
+- The current copy is usable as a clean build base. Build remains the main automated regression gate until a C# test project exists.
 
 ### Q6: What sync setup was applied?
 
@@ -123,7 +126,7 @@
 
 - The pre-existing local deletion of `LibreHardwareMonitor/Resources/amd.png` is preserved in stash rather than applied to the synced tree.
 - Upstream renamed the app folder to `LibreHardwareMonitor.Windows.Forms`, so local path-based scripts need updates.
-- `Aga.Controls` is still `net472`, which keeps the app's `net10.0-windows` build in compatibility mode for that project reference.
+- `Aga.Controls` now multi-targets `net472` and `net10.0-windows`, but it still carries legacy WinForms code paths and conditional behavior.
 - No automated C# test project exists in this checkout; build is the main regression gate currently available.
 
 ### Risks
@@ -133,7 +136,7 @@
 | Reapplying the old `amd.png` deletion to the wrong path | Medium | Low | The upstream path is now `LibreHardwareMonitor.Windows.Forms/Resources/amd.png`. |
 | Local scripts/integrations break after the upstream project rename | High | Medium | The app project path changes from `LibreHardwareMonitor\...` to `LibreHardwareMonitor.Windows.Forms\...`. |
 | Removing `net472` too early breaks legacy consumers or app packaging | Medium | High | Upstream still intentionally ships `net472`. |
-| Modern .NET warnings hide real runtime gaps | Medium | Medium | `System.Web`/`System.Configuration.Install` warnings are Framework-era references during `net10.0-windows`. |
+| Modern .NET compatibility assumptions regress | Medium | Medium | Keep both app target builds clean and watch conditional `NETFRAMEWORK` paths during future changes. |
 
 ### Open Questions
 
@@ -147,5 +150,5 @@
 This does not need a multi-agent campaign. Upstream sync is complete. The practical next step is:
 
 1. Decide whether to drop the preserved `amd.png` deletion stash or reapply it to `LibreHardwareMonitor.Windows.Forms/Resources/amd.png`.
-2. Fix the remaining `net10.0-windows` build warnings.
+2. Keep the `net10.0-windows` and `net472` app builds clean during feature work.
 3. Decide whether the local fork should stay upstream-compatible or become a .NET 10-first app/library fork with legacy targets removed.

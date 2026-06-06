@@ -9,7 +9,8 @@
     <Copyright>LibreHardwareMonitor</Copyright>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
-    <ApplicationManifest>Resources\app.manifest</ApplicationManifest>
+    <ApplicationManifest Condition="'$(TargetFramework)' == 'net472'">Resources\app.net472.manifest</ApplicationManifest>
+    <ApplicationManifest Condition="'$(TargetFramework)' != 'net472'">Resources\app.manifest</ApplicationManifest>
     <StartupObject>LibreHardwareMonitor.Windows.Forms.Program</StartupObject>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationHighDpiMode Condition="'$(TargetFramework)' != 'net472'">SystemAware</ApplicationHighDpiMode>
@@ -79,6 +80,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\**" />
+    <None Include="Resources\app.net472.manifest" />
     <None Include="Resources\app.manifest" />
     <None Include="Resources\icon.ico" />
   </ItemGroup>

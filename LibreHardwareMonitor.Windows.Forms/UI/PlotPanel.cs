@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Globalization;
 using System.Linq;
 using System.Windows.Forms;
 using LibreHardwareMonitor.Hardware;
@@ -24,6 +25,8 @@ public class PlotPanel : UserControl
 {
     private const double FineGridMajorDivisions = 20;
     private const int DefaultGridDensity = 3;
+    private const int TimeAxisLabelModeLocalTime = 0;
+    private const int TimeAxisLabelModeElapsed = 1;
 
     private readonly PersistentSettings _settings;
     private readonly UnitManager _unitManager;
@@ -37,6 +40,7 @@ public class PlotPanel : UserControl
     private UserOption _timeAxisEnableZoom;
     private UserOption _yAxesEnableZoom;
     private UserRadioGroup _gridDensity;
+    private UserRadioGroup _timeAxisLabelMode;
     private DateTime _now;
     private float _dpiX;
     private float _dpiY;
@@ -49,6 +53,7 @@ public class PlotPanel : UserControl
     {
         _settings = settings;
         _unitManager = unitManager;
+        _now = DateTime.UtcNow;
 
         SetDpi();
         _model = CreatePlotModel();
@@ -197,6 +202,25 @@ public class PlotPanel : UserControl
             timeAxisMenuItem.DropDownItems.Add(mi);
         menu.Items.Add(timeAxisMenuItem);
 
+        ToolStripMenuItem timeAxisLabelModeMenuItem = new ToolStripMenuItem("Label Mode");
+        ToolStripMenuItem[] timeAxisLabelModeMenuItems =
+        {
+            new ToolStripMenuItem("Local Time"),
+            new ToolStripMenuItem("Elapsed")
+        };
+
+        foreach (ToolStripItem mi in timeAxisLabelModeMenuItems)
+            timeAxisLabelModeMenuItem.DropDownItems.Add(mi);
+        timeAxisMenuItem.DropDownItems.Add(new ToolStripSeparator());
+        timeAxisMenuItem.DropDownItems.Add(timeAxisLabelModeMenuItem);
+
+        _timeAxisLabelMode = new UserRadioGroup("plotTimeAxisLabelMode", TimeAxisLabelModeLocalTime, timeAxisLabelModeMenuItems, _settings);
+        _timeAxisLabelMode.Changed += (sender, e) =>
+        {
+            ApplyTimeAxisLabelMode();
+            InvalidatePlot();
+        };
+
         _timeAxisEnableZoom = new UserOption("timeAxisEnableZoom", true, timeAxisMenuItems[0], _settings);
         _timeAxisEnableZoom.Changed += (sender, e) =>
         {
@@ -315,6 +339,72 @@ public class PlotPanel : UserControl
         model.IsLegendVisible = false;
 
         return model;
+    }
+
+    private void ApplyTimeAxisLabelMode()
+    {
+        if (_timeAxisLabelMode?.Value == TimeAxisLabelModeElapsed)
+        {
+            _timeAxis.LabelFormatter = null;
+            _timeAxis.StringFormat = "h:mm";
+            return;
+        }
+
+        _timeAxis.LabelFormatter = FormatLocalTimeAxisLabel;
+    }
+
+    private string FormatLocalTimeAxisLabel(double secondsFromNow)
+    {
+        if (double.IsNaN(secondsFromNow) || double.IsInfinity(secondsFromNow))
+            return string.Empty;
+
+        DateTime anchor = _now == default ? DateTime.UtcNow : _now;
+        DateTime labelTime;
+        try
+        {
+            labelTime = anchor.AddSeconds(-secondsFromNow).ToLocalTime();
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return string.Empty;
+        }
+
+        double range = GetVisibleTimeAxisRange();
+        if (range <= 2 * 60)
+            return labelTime.ToString("HH:mm:ss", CultureInfo.CurrentCulture);
+
+        if (VisibleTimeAxisCrossesLocalDate())
+            return labelTime.ToString("M/d HH:mm", CultureInfo.CurrentCulture);
+
+        return labelTime.ToString("HH:mm", CultureInfo.CurrentCulture);
+    }
+
+    private double GetVisibleTimeAxisRange()
+    {
+        double minimum = !double.IsNaN(_timeAxis.ActualMinimum) ? _timeAxis.ActualMinimum : _timeAxis.Minimum;
+        double maximum = !double.IsNaN(_timeAxis.ActualMaximum) ? _timeAxis.ActualMaximum : _timeAxis.Maximum;
+        double range = Math.Abs(maximum - minimum);
+        return double.IsNaN(range) || double.IsInfinity(range) ? 0 : range;
+    }
+
+    private bool VisibleTimeAxisCrossesLocalDate()
+    {
+        double minimum = !double.IsNaN(_timeAxis.ActualMinimum) ? _timeAxis.ActualMinimum : _timeAxis.Minimum;
+        double maximum = !double.IsNaN(_timeAxis.ActualMaximum) ? _timeAxis.ActualMaximum : _timeAxis.Maximum;
+        if (double.IsNaN(minimum) || double.IsNaN(maximum) || double.IsInfinity(minimum) || double.IsInfinity(maximum))
+            return false;
+
+        DateTime anchor = _now == default ? DateTime.UtcNow : _now;
+        try
+        {
+            DateTime first = anchor.AddSeconds(-minimum).ToLocalTime();
+            DateTime second = anchor.AddSeconds(-maximum).ToLocalTime();
+            return first.Date != second.Date;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
     }
 
     private void SetDpi()

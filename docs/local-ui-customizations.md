@@ -2,7 +2,7 @@
 
 This fork ("Sev IQ") carries local changes on top of upstream LibreHardwareMonitor that are
 **not** covered by [`feature-graph-menu.md`](feature-graph-menu.md). They were delivered in the
-same commits (`7b0e079`, `1f4225c`, `bb432e1`) and are recorded here for traceability so future
+same commits (`7b0e079`, `1f4225c`, `bb432e1`, `dc424c5`) and are recorded here for traceability so future
 upstream merges and reviewers know they are intentional.
 
 ## Sensor tree
@@ -26,6 +26,9 @@ upstream merges and reviewers know they are intentional.
   downsample anything. Steps are recomputed per refresh but only re-assigned when they actually
   change, so the grid does not "pop" between frames.
 - **Time-axis presets**: added `30 sec`, `1 min`, `2 min` to the plot's right-click Time Axis menu.
+- **Time-axis label mode**: `Time Axis > Label Mode > Local Time / Elapsed` in the plot
+  right-click menu. Local Time is the default and maps the existing relative X values back to local
+  wall-clock labels; Elapsed preserves the prior label behavior.
 
 ## Library (`LibreHardwareMonitorLib`)
 
@@ -39,8 +42,10 @@ upstream merges and reviewers know they are intentional.
 ## Modernization (traceable to `discovery-librehw-sync-upgrade.md`)
 
 - **High DPI**: `Program.cs` `Application.SetHighDpiMode(SystemAware)` (under `NETCOREAPP`),
-  `ApplicationHighDpiMode=SystemAware` in the csproj for non-`net472`, and removal of the legacy
-  `dpiAware` block from `app.manifest`. Clears the WFO0003 warning.
+  `ApplicationHighDpiMode=SystemAware` in the csproj for non-`net472`, and a separate
+  `Resources/app.net472.manifest` with the legacy `dpiAware` block for the .NET Framework target.
+  The modern `app.manifest` stays free of manifest DPI settings so the `net10.0-windows` build
+  remains warning-free while `net472` stays system-DPI aware.
 - **`System.Web` removal**: `HttpServer.cs` now uses `request.QueryString` instead of
   `HttpUtility.ParseQueryString`, and the `System.Web` / `System.Configuration.Install` references
   are dropped. Behavior-preserving for the sensor API; clears the MSB3245 warning.
@@ -55,3 +60,8 @@ upstream merges and reviewers know they are intentional.
 
 - **Window title and tray tooltip** changed from `Libre Hardware Monitor` to
   `Libre Hardware Monitor - Sev IQ` (`MainForm.Designer.cs`, `SystemTray.cs`).
+
+## Verification
+
+- 2026-06-06: `net10.0-windows` and `net472` Release x64 app builds passed with 0 warnings and 0 errors using redirected temp `OutDir` paths. The ordinary `net10.0-windows` release output path was locked by a running `Libre Hardware Monitor` process, so it was not used for the compile check.
+- 2026-06-06: Re-verified at the **normal** output path after closing the running app — `net10.0-windows` and `net472` (Release x64) both built with 0 warnings / 0 errors. Confirms the per-target manifest split (`app.manifest` vs `app.net472.manifest`) embeds cleanly on both frameworks (no `WFO0003`), and `requireAdministrator` remains in both manifests so hardware access is preserved on each target.
