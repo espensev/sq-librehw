@@ -16,6 +16,7 @@ public sealed class GraphInputsForm : Form
 {
     private readonly Action _inputsChanged;
     private readonly BindingSource _bindingSource = new();
+    private readonly BindingList<GraphInputRow> _visibleRows = new();
     private readonly List<GraphInputRow> _rows;
     private readonly TextBox _searchTextBox = new();
     private readonly CheckBox _showHiddenCheckBox = new();
@@ -85,6 +86,7 @@ public sealed class GraphInputsForm : Form
         _grid.BorderStyle = BorderStyle.FixedSingle;
         _grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
         _grid.DataSource = _bindingSource;
+        _bindingSource.DataSource = _visibleRows;
         _grid.EditMode = DataGridViewEditMode.EditOnEnter;
         _grid.Location = new Point(12, 44);
         _grid.MultiSelect = false;
@@ -281,7 +283,16 @@ public sealed class GraphInputsForm : Form
                 row.Unit.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
-        _bindingSource.DataSource = new BindingList<GraphInputRow>(rows.ToList());
+        // Reuse one BindingList and repopulate it in place. Assigning a fresh BindingList per
+        // keystroke/toggle would leave the previous list subscribed to every row's PropertyChanged
+        // (BindingList hooks INotifyPropertyChanged items and is never unhooked on a DataSource swap).
+        // Clear() unhooks the old items and Add() rehooks, so the subscriptions stay balanced.
+        _visibleRows.RaiseListChangedEvents = false;
+        _visibleRows.Clear();
+        foreach (GraphInputRow row in rows)
+            _visibleRows.Add(row);
+        _visibleRows.RaiseListChangedEvents = true;
+        _visibleRows.ResetBindings();
     }
 
     private sealed class GraphInputRow : INotifyPropertyChanged

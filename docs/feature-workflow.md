@@ -81,6 +81,7 @@ Existing docs:
 - `feature-real-time-axis.md` is the implemented spec for local clock-time labels on the graph T axis.
 - `feature-webserver-json-stream.md` is the implemented spec for NaN/Infinity-safe remote web server JSON endpoints.
 - `feature-unique-gpu-sensor-ids.md` is the implemented spec for unique NVIDIA GPU sensor identifiers (12VHPWR voltage collision) and the CSV logger one-column guard.
+- `feature-graph-ui-review-fixes.md` is the implemented spec for five review-sweep fixes (column-width persistence, BindingList leak, plot recompute coalescing, time-axis label resolution, axis-step tie-break).
 - `local-ui-customizations.md` records additional local changes that shipped with the same work.
 
 ## 6. Implementation Rules

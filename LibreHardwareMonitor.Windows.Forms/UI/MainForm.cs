@@ -72,6 +72,7 @@ public sealed partial class MainForm : Form
     private double _plotStrokeThickness = 2;
     private bool _compactLayoutActive;
     private bool _updatingSensorTreeLayout;
+    private bool _suspendPlotSelectionChanged;
     private GridLineStyle _standardGridLineStyle;
     private int _standardRowHeight;
     private int _standardValueColumnWidth;
@@ -749,12 +750,33 @@ public sealed partial class MainForm : Form
 
     private void ShowGraphInputsForm()
     {
-        using GraphInputsForm form = new(GetAllSensorNodes(), delegate
+        // The dialog drives many SensorNode.Plot changes and each one raises PlotSelectionChanged.
+        // Suppress those per-node events for the dialog's lifetime and let its callback below trigger
+        // exactly one recompute per user action (it temporarily lifts the suppression to do the work).
+        _suspendPlotSelectionChanged = true;
+        try
         {
-            PlotSelectionChanged(this, EventArgs.Empty);
-            treeView.Invalidate();
-        });
-        form.ShowDialog(this);
+            using GraphInputsForm form = new(GetAllSensorNodes(), delegate
+            {
+                bool previous = _suspendPlotSelectionChanged;
+                _suspendPlotSelectionChanged = false;
+                try
+                {
+                    PlotSelectionChanged(this, EventArgs.Empty);
+                }
+                finally
+                {
+                    _suspendPlotSelectionChanged = previous;
+                }
+
+                treeView.Invalidate();
+            });
+            form.ShowDialog(this);
+        }
+        finally
+        {
+            _suspendPlotSelectionChanged = false;
+        }
     }
 
     private void ClearGraphInputs()
@@ -821,9 +843,17 @@ public sealed partial class MainForm : Form
             {
                 treeView.RowHeight = _standardRowHeight;
                 treeView.GridLineStyle = _standardGridLineStyle;
-                treeView.Columns[1].Width = _standardValueColumnWidth;
-                treeView.Columns[2].Width = _standardMinColumnWidth;
-                treeView.Columns[3].Width = _standardMaxColumnWidth;
+
+                // Restore the saved column widths only when actually leaving compact mode
+                // (_compactLayoutActive still holds the previous state here; it is updated below).
+                // Re-applying them on every Show Value/Min/Max toggle would clobber widths the user
+                // dragged in normal mode, since _standard* is only refreshed when entering compact mode.
+                if (_compactLayoutActive)
+                {
+                    treeView.Columns[1].Width = _standardValueColumnWidth;
+                    treeView.Columns[2].Width = _standardMinColumnWidth;
+                    treeView.Columns[3].Width = _standardMaxColumnWidth;
+                }
             }
         }
         finally
@@ -1036,6 +1066,12 @@ public sealed partial class MainForm : Form
 
     private void PlotSelectionChanged(object sender, EventArgs e)
     {
+        // While the Graph Inputs dialog is open it batches changes and triggers exactly one recompute
+        // per user action (see ShowGraphInputsForm); suppress the per-node Plot events it generates so
+        // a single toggle or bulk Select/Clear does not fan out into N full recomputes.
+        if (_suspendPlotSelectionChanged)
+            return;
+
         List<ISensor> selected = new();
         IDictionary<ISensor, Color> colors = new Dictionary<ISensor, Color>();
         int colorIndex = 0;

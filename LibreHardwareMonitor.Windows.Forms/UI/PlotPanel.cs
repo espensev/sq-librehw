@@ -370,7 +370,14 @@ public class PlotPanel : UserControl
         }
 
         double range = GetVisibleTimeAxisRange();
-        if (range <= 2 * 60)
+
+        // Use second resolution when gridlines are spaced under a minute apart; otherwise adjacent
+        // labels repeat the same HH:mm (the Fine grid default targets ~20 divisions, which is
+        // sub-minute at common zooms). ActualMajorStep is the rendered tick spacing in seconds.
+        double majorStep = _timeAxis.ActualMajorStep;
+        bool subMinuteSteps = !double.IsNaN(majorStep) && majorStep > 0 && majorStep < 60;
+
+        if (range <= 2 * 60 || subMinuteSteps)
             return labelTime.ToString("HH:mm:ss", CultureInfo.CurrentCulture);
 
         if (VisibleTimeAxisCrossesLocalDate())
@@ -574,6 +581,7 @@ public class PlotPanel : UserControl
         double bestStep = double.NaN;
         double bestScore = double.PositiveInfinity;
         double[] niceFactors = { 1, 2, 2.5, 5, 10 };
+        const double scoreTolerance = 1e-9;
 
         for (int powerOffset = -1; powerOffset <= 1; powerOffset++)
         {
@@ -584,7 +592,11 @@ public class PlotPanel : UserControl
                 double divisions = range / step;
                 double score = Math.Abs(divisions - targetDivisions);
 
-                if (score < bestScore || (Math.Abs(score - bestScore) < double.Epsilon && step < bestStep))
+                // Prefer the smaller step on a genuine near-tie. The previous condition used
+                // double.Epsilon (smallest denormal) as the tolerance, so that branch was dead;
+                // a real tolerance is needed for it to fire. First iteration still initialises
+                // because score < (+Infinity - tolerance) is true.
+                if (score < bestScore - scoreTolerance || (Math.Abs(score - bestScore) <= scoreTolerance && step < bestStep))
                 {
                     bestStep = step;
                     bestScore = score;
