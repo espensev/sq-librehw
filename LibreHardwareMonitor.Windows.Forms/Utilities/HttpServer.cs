@@ -283,9 +283,11 @@ public class HttpServer
                     case "Set":
                         throw new ArgumentNullException("No value provided");
                     case "Get":
-                        result["value"] = sNode.Sensor.Value;
-                        result["min"] = sNode.Sensor.Min;
-                        result["max"] = sNode.Sensor.Max;
+                        // Non-finite readings (NaN/Infinity) are mapped to null so System.Text.Json
+                        // does not throw; this path serves both GET and POST /Sensor requests.
+                        result["value"] = SanitizeFloat(sNode.Sensor.Value);
+                        result["min"] = SanitizeFloat(sNode.Sensor.Min);
+                        result["max"] = SanitizeFloat(sNode.Sensor.Max);
                         result["format"] = sNode.Format;
                         break;
                     default:
@@ -334,6 +336,28 @@ public class HttpServer
     }
 
     private async Task HandleContextAsync(HttpListenerContext context)
+    {
+        // Backstop: any unhandled error while handling a request must still close the response.
+        // Otherwise the client connection hangs until it times out — e.g. a JSON serialization
+        // failure on a non-finite sensor value (NaN/Infinity), which System.Text.Json rejects.
+        try
+        {
+            await DispatchRequestAsync(context);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"HTTP request handler error: {ex.Message}");
+            try { context.Response.StatusCode = 500; }
+            catch { }
+        }
+        finally
+        {
+            try { context.Response.Close(); }
+            catch { /* client closed connection before the content was sent */ }
+        }
+    }
+
+    private async Task DispatchRequestAsync(HttpListenerContext context)
     {
         HttpListenerRequest request = context.Request;
         bool authenticated = true;
@@ -431,16 +455,8 @@ public class HttpServer
 
             await SendResponseAsync(context.Response, responseString, "text/html");
         }
-
-        try
-        {
-            context.Response.Close();
-        }
-        catch
-        {
-            // client closed connection before the content was sent
-        }
     }
+
     private async Task ServeResourceFileAsync(HttpListenerResponse response, string name, string ext)
     {
         // resource names do not support the hyphen
@@ -806,9 +822,10 @@ public class HttpServer
                 jsonNode["Max"] = sensorNode.Max;
 
                 // Unformatted values for external systems to have consistent readings, e.g. Throughput will always be measured in B/s
-                jsonNode["RawMin"] = sensorNode.Sensor.Min;
-                jsonNode["RawValue"] = sensorNode.Sensor.Value;
-                jsonNode["RawMax"] = sensorNode.Sensor.Max;
+                // Non-finite readings (NaN/Infinity) are mapped to null: System.Text.Json rejects them and they mean "no reading".
+                jsonNode["RawMin"] = SanitizeFloat(sensorNode.Sensor.Min);
+                jsonNode["RawValue"] = SanitizeFloat(sensorNode.Sensor.Value);
+                jsonNode["RawMax"] = SanitizeFloat(sensorNode.Sensor.Max);
 
                 jsonNode["ImageURL"] = "images/transparent.png";
                 break;
@@ -833,6 +850,18 @@ public class HttpServer
         jsonNode["Children"] = children;
 
         return jsonNode;
+    }
+
+    // System.Text.Json throws on NaN / Infinity by default. Many sensors report a non-finite
+    // value when no reading is available (e.g. unwired motherboard voltages, idle GPU clocks),
+    // so map those to null ("no reading") to keep data.json and the Sensor API valid and
+    // responsive instead of throwing mid-serialization and hanging the client connection.
+    private static object SanitizeFloat(float? value)
+    {
+        if (value.HasValue && !float.IsNaN(value.Value) && !float.IsInfinity(value.Value))
+            return value.Value;
+
+        return null;
     }
 
     private static string GetContentType(string extension)

@@ -39,6 +39,20 @@ upstream merges and reviewers know they are intentional.
   come from the raw value and are unaffected. This is a shared-library change, so it applies to all
   consumers of `ISensor.Values` (e.g. the Prometheus HTTP endpoint), not just the WinForms graph.
 
+## Remote Web Server (JSON endpoints)
+
+- **Non-finite sensor handling** (`HttpServer.cs`, spec: [`feature-webserver-json-stream.md`](feature-webserver-json-stream.md)).
+  `GET /data.json` and `GET`/`POST /Sensor?action=Get` previously **hung the client** whenever any
+  sensor reported `NaN`/`Infinity` (97 such sensors on the maintainer's board): `System.Text.Json`
+  rejects non-finite floats by default, and the throw escaped a fire-and-forget handler so the
+  response was never closed. Fixed by mapping non-finite raw readings to JSON `null` at the source
+  (`SanitizeFloat` used in `GenerateJsonForNode` `RawMin/RawValue/RawMax` and in `HandleSensorRequest`'s
+  `Get` case), plus a handler-level backstop (`HandleContextAsync` wraps `DispatchRequestAsync` in
+  try/catch → `500` / finally → `response.Close()`). **API contract change:** non-finite readings now
+  serialize as `null` instead of crashing the response. `/metrics` was already NaN-safe and is
+  unchanged; the formatted `Value/Min/Max` strings are unchanged. The `GET /` web UI `404`
+  (`index.html` resource lookup) is a separate, untouched issue.
+
 ## Modernization (traceable to `discovery-librehw-sync-upgrade.md`)
 
 - **High DPI**: `Program.cs` `Application.SetHighDpiMode(SystemAware)` (under `NETCOREAPP`),
@@ -65,3 +79,4 @@ upstream merges and reviewers know they are intentional.
 
 - 2026-06-06: `net10.0-windows` and `net472` Release x64 app builds passed with 0 warnings and 0 errors using redirected temp `OutDir` paths. The ordinary `net10.0-windows` release output path was locked by a running `Libre Hardware Monitor` process, so it was not used for the compile check.
 - 2026-06-06: Re-verified at the **normal** output path after closing the running app — `net10.0-windows` and `net472` (Release x64) both built with 0 warnings / 0 errors. Confirms the per-target manifest split (`app.manifest` vs `app.net472.manifest`) embeds cleanly on both frameworks (no `WFO0003`), and `requireAdministrator` remains in both manifests so hardware access is preserved on each target.
+- 2026-06-07: Remote Web Server JSON NaN/Infinity fix verified end-to-end (see [`feature-webserver-json-stream.md`](feature-webserver-json-stream.md)). `net10.0-windows` + `net472` Release x64 built 0/0; after relaunch `GET /data.json` returned HTTP 200 valid JSON (533 sensors) instead of hanging, NaN sensors (NIC "Network Utilization") serialized as `RawValue: null`, `GET /Sensor?action=Get` on a NaN sensor returned `value:null` with no hang, and `GET /metrics` stayed HTTP 200. Server auto-starts via persisted `runWebServerMenuItem=true`.

@@ -79,6 +79,7 @@ Existing docs:
 - `feature-graph-panel-controls.md` is a draft spec for graph-local controls.
 - `feature-long-window-graph-rendering.md` is a draft spec for extreme-preserving long-window rendering.
 - `feature-real-time-axis.md` is the implemented spec for local clock-time labels on the graph T axis.
+- `feature-webserver-json-stream.md` is the implemented spec for NaN/Infinity-safe remote web server JSON endpoints.
 - `local-ui-customizations.md` records additional local changes that shipped with the same work.
 
 ## 6. Implementation Rules
