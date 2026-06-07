@@ -465,12 +465,16 @@ internal sealed class NvidiaGpu : GenericGpu
             {
                 _12VHPwrPinVoltageSensors =
                 [
-                    new Sensor("12VHPWR Pin 1", 0, SensorType.Voltage, this, settings),
-                    new Sensor("12VHPWR Pin 2", 1, SensorType.Voltage, this, settings),
-                    new Sensor("12VHPWR Pin 3", 2, SensorType.Voltage, this, settings),
-                    new Sensor("12VHPWR Pin 4", 3, SensorType.Voltage, this, settings),
-                    new Sensor("12VHPWR Pin 5", 4, SensorType.Voltage, this, settings),
-                    new Sensor("12VHPWR Pin 6", 5, SensorType.Voltage, this, settings),
+                    // Voltage indices start at 1: index 0 belongs to "GPU Core Voltage" (_coreVoltage above).
+                    // Starting the pins at 0 produced a duplicate /gpu-nvidia/<n>/voltage/0 identifier
+                    // (GPU Core Voltage vs 12VHPWR Pin 1) that collided across data.json, Prometheus,
+                    // CSV logging, and persisted plot state. The Current block already uses 1-6.
+                    new Sensor("12VHPWR Pin 1", 1, SensorType.Voltage, this, settings),
+                    new Sensor("12VHPWR Pin 2", 2, SensorType.Voltage, this, settings),
+                    new Sensor("12VHPWR Pin 3", 3, SensorType.Voltage, this, settings),
+                    new Sensor("12VHPWR Pin 4", 4, SensorType.Voltage, this, settings),
+                    new Sensor("12VHPWR Pin 5", 5, SensorType.Voltage, this, settings),
+                    new Sensor("12VHPWR Pin 6", 6, SensorType.Voltage, this, settings),
                 ];
                 _12VHPwrPinCurrentSensors =
                 [

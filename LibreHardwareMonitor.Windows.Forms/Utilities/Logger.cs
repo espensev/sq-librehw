@@ -66,7 +66,10 @@ public class Logger
         for (int i = 0; i < _sensors.Length; i++)
         {
             if (sensor.Identifier.ToString() == _identifiers[i])
+            {
                 _sensors[i] = sensor;
+                break; // one sensor maps to one column; stop so a duplicate identifier can't fan it into several
+            }
         }
     }
 
@@ -120,8 +123,13 @@ public class Logger
         SensorVisitor visitor = new SensorVisitor(sensor =>
         {
             for (int i = 0; i < _identifiers.Length; i++)
+            {
                 if (sensor.Identifier.ToString() == _identifiers[i])
+                {
                     _sensors[i] = sensor;
+                    break; // stop at the first column match so one sensor can't populate duplicate columns
+                }
+            }
         });
         visitor.VisitComputer(_computer);
         return true;

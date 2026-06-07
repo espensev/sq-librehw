@@ -80,6 +80,7 @@ Existing docs:
 - `feature-long-window-graph-rendering.md` is a draft spec for extreme-preserving long-window rendering.
 - `feature-real-time-axis.md` is the implemented spec for local clock-time labels on the graph T axis.
 - `feature-webserver-json-stream.md` is the implemented spec for NaN/Infinity-safe remote web server JSON endpoints.
+- `feature-unique-gpu-sensor-ids.md` is the implemented spec for unique NVIDIA GPU sensor identifiers (12VHPWR voltage collision) and the CSV logger one-column guard.
 - `local-ui-customizations.md` records additional local changes that shipped with the same work.
 
 ## 6. Implementation Rules
