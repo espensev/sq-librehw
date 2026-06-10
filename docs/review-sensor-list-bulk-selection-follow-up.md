@@ -1,10 +1,32 @@
 # Sensor List Bulk Selection: Post-Implementation Review and Follow-Up Plan
 
 **Project:** LibreHardwareMonitor Sev IQ local fork  
-**Status:** Review complete; implementation plan ready  
+**Status:** Implemented (Phases 1–3); dual-target build verified; manual QA pending  
 **Updated:** 2026-06-10  
 **Related spec:** `feature-sensor-list-bulk-selection.md`  
 **Purpose:** record the corrected review result and provide an implementation-ready plan for confirmed follow-up work.
+
+## 0. Implementation Status
+
+All P0–P3 items in §3 are implemented and both targets build clean (Release x64, `net10.0-windows` + `net472`, 0 warnings/0 errors). Notable as-built details:
+
+- The graph rebuild reads `GetAllSensorNodes()` via `RebuildPlotSelection`; `PlotSelectionChanged` is the lightweight request path. Suppression is `_plotEventSuspendDepth` + `_plotRebuildPending`, with the single rebuild performed in `RunBatchedPlotChange`'s `finally`.
+- `GraphInputsForm` is constructed with `MainForm.SetSensorNodesPlot` and routes all plot mutations through it; dialog-lifetime suppression is gone.
+- **Deviation from §3 P1 (context-menu targeting):** instead of tracking right-`MouseDown` `HitTest` results, an `InputsGrid : DataGridView` subclass records keyboard vs. mouse menu invocation from `WM_CONTEXTMENU` (`lParam == -1`), and `GridMenu_Opening` hit-tests the cursor for mouse-originated openings. This needs no cross-event flag that can go stale and preserves keyboard (Apps/Shift+F10) invocation; the row-under-cursor selection still happens in `Grid_CellMouseDown`.
+- **Color-assignment consequence:** automatic plot colors are assigned by ordinal position over the full model, so a user who has hidden sensors with "Show Hidden Sensors" off may see different default colors than before (hidden sensors now consume a palette slot). This is the intended result of making membership/colors independent of the display filter (§4.4); explicit per-sensor pen colors are unaffected.
+
+### 0.1 Adversarial Review Outcome
+
+A five-dimension multi-agent review (state/event model, Graph Inputs form, input handling, contract regressions, plan fidelity), each finding cross-checked by two refuters, ran against the working-tree diff. Findings acted on:
+
+- **Fixed (major):** the tree Space handler was modifier-insensitive, so **Alt+Space** (window system menu) was suppressed and, with the graph shown, plot-toggled. It now returns early for any modifier, leaving Alt/Ctrl/Shift+Space to the framework; only a plain Space is the toggle verb.
+- **Fixed (minor):** `_swallowNextSpaceKeyUp` could be stranded if a bulk-toggle KeyDown's paired KeyUp never reached the grid (focus change), silently eating one later single-row Space toggle. A single-row Space KeyDown now clears the flag.
+- **Fixed (minor):** bulk `SetRows` (notably **Clear All**, which passes every row) updated the model but `RefreshRows` only re-synced grid-bound rows, leaving filtered-out rows' `On` mirrors stale until the next 1 s tick. `SetRows` now refreshes every changed row.
+- **Fixed (minor):** the Graph Inputs context-menu hit test read the live cursor at `Opening` time; it now hit-tests the screen point captured from the `WM_CONTEXTMENU` `lParam`.
+- **Not reachable (refuted):** the "cross-thread race on the suspension fields during a modal Graph Inputs session" cannot occur — `HardwareAdded`/`HardwareRemoved` (and all plot events) originate on the UI thread; the background updater only runs `Accept`/`InvalidatePlot`. Threading is unchanged from upstream.
+- **Accepted tradeoffs (no change):** plain Space no longer contributes its character to Aga tree type-ahead search (Space is now a dedicated plot-toggle verb); the Graph Inputs **Apply** button is effectively a no-op because edits apply live through the routed setter (it still commits an in-progress cell edit). The `WM_CONTEXTMENU` `lParam == -1` keyboard sentinel and 16-bit coordinate extraction follow the established WinForms idiom.
+
+Both targets rebuilt clean after the fixes (Release x64, `net10.0-windows` + `net472`, 0/0).
 
 ## 1. Review Result
 

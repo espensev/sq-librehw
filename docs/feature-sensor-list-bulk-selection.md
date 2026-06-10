@@ -77,14 +77,14 @@ Failure/edge cases: empty selections cancel menus or no-op; mixed plot/tray/gadg
 | `net472` vs `net10.0-windows` | Plain WinForms/LINQ only; both targets built |
 | DPI/multi-monitor | Context menu positions derive from node bounds/click points in client coordinates, clamped to the tree's client area |
 | Existing settings/users | No settings schema change; single-select menu layout gains one graph group but keeps all existing items and semantics |
-| Plot recompute cost | Bulk plot and pen-color paths use `_suspendPlotSelectionChanged` + one `PlotSelectionChanged`; `ClearGraphInputs` fixed from N recomputes to 1. Visibility changes raise no plot-selection event. Tree Space while the graph is shown remains an unbatched follow-up. |
-| Hide/plot interaction | The implemented code leaves `Plot == true`, but recomputation currently reads filtered `treeView.AllNodes`, so actual graph membership can drift after hide/unhide. The follow-up plan adopts model-based recomputation so `Plot` and tree visibility remain independent. |
+| Plot recompute cost | Bulk plot and pen-color paths share `RunBatchedPlotChange`, which uses a suppression-depth counter + pending-rebuild flag so each user action recomputes once; `ClearGraphInputs` is one recompute. Visibility changes raise no plot-selection event. Tree Space while the graph is shown now routes through `TogglePlotForSelectedSensors` (one batched recompute), resolving the former unbatched follow-up. |
+| Hide/plot interaction | Resolved by the follow-up: `PlotSelectionChanged` rebuilds from `GetAllSensorNodes()` (the full model) via `RebuildPlotSelection`, never the filtered `treeView.AllNodes`. `Plot` is the sole source of graph membership and is independent of tree visibility and the "Show Hidden Sensors" filter. See `review-sensor-list-bulk-selection-follow-up.md`. |
 
 ## 7. Acceptance Criteria
 
 - [x] Multi-select right-click offers graph/pen-color/tray/gadget bulk actions with counts; ten sensors can be added to the gadget in one action.
 - [x] Ctrl+click selections survive small mouse drags; pressing an already-selected row does not collapse the selection.
-- [x] Space does nothing in the tree while the graph is hidden; with the graph shown, the pre-existing Aga selection-wide toggle remains functional.
+- [x] Space does nothing in the tree while the graph is hidden; with the graph shown it routes through `TogglePlotForSelectedSensors` (one batched recompute) instead of Aga's per-node toggle loop, matching the Graph menu action.
 - [x] Del hides the selected sensors; Apps/Shift+F10 opens the context menu at the selected node.
 - [x] Type-group right-click can hide/unhide or plot/unplot the whole group.
 - [x] Graph Inputs: Shift-select a range, press Space or right-click → one recompute toggles all selected rows.
@@ -110,7 +110,16 @@ Post-implementation review confirmed that the visible-graph Space path should be
 - `GraphInputsForm.cs`: `MultiSelect = true`, grid KeyDown/KeyUp Space batch + suppression, `CellMouseDown` right-click row selection, `ContextMenuStrip` built on `Opening`, disposed with the form.
 - `Aga.Controls/Tree/TreeViewAdv.cs`: `GetNodeBounds(TreeNodeAdv)` made public for keyboard menu placement.
 - F2 rename was already implemented inside Aga's `NodeTextBox.KeyDown`; this feature only advertises it.
-- `SetSensorNodesVisible` batches tree redraw with `BeginUpdate`/`EndUpdate`; it does not use `_suspendPlotSelectionChanged` because `SensorNode.IsVisible` neither changes `Plot` nor raises `PlotSelectionChanged`.
+- `SetSensorNodesVisible` batches tree redraw with `BeginUpdate`/`EndUpdate`; it does not affect plot batching because `SensorNode.IsVisible` neither changes `Plot` nor raises `PlotSelectionChanged`.
+
+Follow-up changes (see `review-sensor-list-bulk-selection-follow-up.md`):
+
+- `PlotSelectionChanged` is now a lightweight request path. While a batch scope is active it sets `_plotRebuildPending`; otherwise it calls `RebuildPlotSelection`, which enumerates `GetAllSensorNodes()` (the full model) rather than `treeView.AllNodes`. Graph membership, default color slots, and explicit pen colors are all read from the model, so tree visibility and "Show Hidden Sensors" never change graph output.
+- The boolean `_suspendPlotSelectionChanged` is replaced by `_plotEventSuspendDepth` (nesting counter) + `_plotRebuildPending`. `RunBatchedPlotChange` increments/decrements the depth and performs exactly one rebuild when the outermost scope exits, in a `finally` so a mutation that throws mid-batch still rebuilds from the changes already applied.
+- `ShowGraphInputsForm` no longer holds suppression for the dialog lifetime. It passes `SetSensorNodesPlot` to the dialog; `GraphInputsForm` routes every plot mutation (single checkbox edit and bulk action) through that setter, so each user action is one batched rebuild and unrelated sensor/hardware add-remove events still rebuild the graph while the dialog is open. `_inputsChanged`/`_suspendInputsChanged` removed.
+- `TreeView_KeyDown` handles only a plain Space (returns early for any modifier so Alt+Space opens the window system menu and Ctrl/Shift+Space extend selection); a plain Space always consumes the key (`Handled` + `SuppressKeyPress`) so Aga's `NodeCheckBox` never sees it, and with the graph shown it calls `TogglePlotForSelectedSensors`.
+- `GraphInputsForm` uses an `InputsGrid : DataGridView` subclass that records whether the context menu was opened from the keyboard (`WM_CONTEXTMENU` `lParam == -1`); `GridMenu_Opening` cancels a mouse-originated opening that does not hit a data cell, and uses a `_swallowNextSpaceKeyUp` handshake plus an `e.ColumnIndex < 0` guard in `Grid_CellMouseDown`.
+- Tree context menu: `AddTreeContextMenuSeparator` inserts a separator only between non-empty sections; `AddBulkMembershipMenuItems` extracts the tray/gadget add/remove loops (bulk tray adds keep `balloonTip = false`); `EnsureVisible` is called before reading node bounds for keyboard menu placement.
 
 ## 11. Verification Log
 
@@ -121,6 +130,11 @@ Post-implementation review confirmed that the visible-graph Space path should be
 | 2026-06-10 | `dotnet build ... -c Release -f net10.0-windows -p:Platform=x64` | pass | Recurrent CS0016 lock on `LibreHardwareMonitorLib\obj\...\LibreHardwareMonitorLib.xml` (external user-mapped section, pre-existing environment issue) cleared by deleting the obj XML before building |
 | 2026-06-10 | Launched rebuilt Release app (elevated), PID 96172 | pass | Responding after 12 s; CSV logging resumed (`LibreHardwareMonitorLog-2026-06-10-233.csv` actively appending) |
 | 2026-06-10 | Manual menu interaction QA (bulk items, Apps key, Del, Graph Inputs Space batch) | pending | Awaiting maintainer click-through; code paths compile-verified on both targets |
+| 2026-06-10 | Follow-up landed (model-based rebuild, nestable suppression, routed Graph Inputs, Space toggle, context-menu origin guard, cleanup); `dotnet build ... -c Release -f net10.0-windows -p:Platform=x64` | pass | 0 warnings, 0 errors (after stopping the running build artifact that held a file lock) |
+| 2026-06-10 | Follow-up build `dotnet build ... -c Release -f net472 -p:Platform=x64` | pass | 0 warnings, 0 errors |
+| 2026-06-10 | Relaunched rebuilt follow-up Release app, PID 38804 | pass | Responding after 12 s; CSV logging resumed (`LibreHardwareMonitorLog-2026-06-10-550.csv` actively appending) |
+| 2026-06-10 | Adversarial multi-agent review of the follow-up diff (5 dimensions, dual refuters) + fixes (Alt+Space modifier guard, swallow-flag strand reset, Clear All mirror sync, WM_CONTEXTMENU point capture); rebuilt Release x64 both targets | pass | 0 warnings, 0 errors after fixes; one major (Alt+Space) and three minor findings fixed, one race finding refuted, two tradeoffs accepted — see `review-sensor-list-bulk-selection-follow-up.md` §0.1 |
+| 2026-06-10 | Follow-up manual QA (hidden-sensor plot persistence, hide/unhide no-recompute, Show Hidden toggle color stability, plain tree Space toggle, Alt+Space system menu, Graph Inputs header/blank right-click guard, Clear All with active filter) | pending | Awaiting maintainer click-through; code paths compile-verified on both targets and adversarially code-reviewed |
 
 ## 12. Post-Implementation Review Correction
 

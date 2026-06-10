@@ -14,21 +14,23 @@ namespace LibreHardwareMonitor.Windows.Forms.UI;
 
 public sealed class GraphInputsForm : Form
 {
-    private readonly Action _inputsChanged;
+    private readonly Action<IEnumerable<SensorNode>, bool> _setPlot;
     private readonly BindingSource _bindingSource = new();
     private readonly BindingList<GraphInputRow> _visibleRows = new();
     private readonly List<GraphInputRow> _rows;
     private readonly TextBox _searchTextBox = new();
     private readonly CheckBox _showHiddenCheckBox = new();
-    private readonly DataGridView _grid = new();
+    private readonly InputsGrid _grid = new();
     private readonly ContextMenuStrip _gridMenu = new();
     private readonly Timer _refreshTimer = new();
-    private bool _suspendInputsChanged;
+    private bool _swallowNextSpaceKeyUp;
 
-    public GraphInputsForm(IEnumerable<SensorNode> sensorNodes, Action inputsChanged)
+    public GraphInputsForm(IEnumerable<SensorNode> sensorNodes, Action<IEnumerable<SensorNode>, bool> setPlot)
     {
-        _inputsChanged = inputsChanged;
-        _rows = sensorNodes.Select(node => new GraphInputRow(node, InputsChanged)).ToList();
+        // All plot mutations — single checkbox edits and bulk actions alike — go through this
+        // setter so the owner (MainForm) batches each user action into one graph rebuild.
+        _setPlot = setPlot;
+        _rows = sensorNodes.Select(node => new GraphInputRow(node, (sensorNode, plot) => setPlot(new[] { sensorNode }, plot))).ToList();
 
         InitializeComponent();
         ApplyTheme();
@@ -164,7 +166,6 @@ public sealed class GraphInputsForm : Form
         {
             CommitCurrentEdit();
             RefreshRows();
-            _inputsChanged?.Invoke();
         };
 
         Button closeButton = CreateButton("Close", 825);
@@ -227,25 +228,39 @@ public sealed class GraphInputsForm : Form
 
     private void Grid_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.KeyCode != Keys.Space || _grid.SelectedRows.Count <= 1)
+        if (e.KeyCode != Keys.Space)
             return;
+
+        // A single-row Space is handled normally by the checkbox cell; clear any flag stranded by
+        // an earlier bulk KeyDown whose KeyUp never reached the grid (e.g. focus changed between
+        // them), so this row's own KeyUp toggle is not silently eaten.
+        if (_grid.SelectedRows.Count <= 1)
+        {
+            _swallowNextSpaceKeyUp = false;
+            return;
+        }
 
         List<GraphInputRow> rows = SelectedGraphInputRows();
         SetRows(rows, !rows.All(row => row.On));
+        _swallowNextSpaceKeyUp = true;
         e.Handled = true;
     }
 
     private void Grid_KeyUp(object sender, KeyEventArgs e)
     {
-        // The checkbox cell toggles on Space key-up; swallow it so the bulk toggle from KeyDown
-        // is not followed by a stray single-cell flip of the current row.
-        if (e.KeyCode == Keys.Space && _grid.SelectedRows.Count > 1)
+        // The checkbox cell toggles on Space key-up; swallow it only when the paired KeyDown
+        // performed the bulk toggle, so a selection that changed between key-down and key-up
+        // cannot re-qualify and hand the current cell a stray single-cell flip.
+        if (e.KeyCode == Keys.Space && _swallowNextSpaceKeyUp)
+        {
+            _swallowNextSpaceKeyUp = false;
             e.Handled = true;
+        }
     }
 
     private void Grid_CellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
     {
-        if (e.Button != MouseButtons.Right || e.RowIndex < 0)
+        if (e.Button != MouseButtons.Right || e.RowIndex < 0 || e.ColumnIndex < 0)
             return;
 
         if (!_grid.Rows[e.RowIndex].Selected)
@@ -261,6 +276,20 @@ public sealed class GraphInputsForm : Form
     private void GridMenu_Opening(object sender, CancelEventArgs e)
     {
         _gridMenu.Items.Clear();
+
+        // A mouse-originated opening must come from a data cell: right-clicking the header or
+        // the blank area below the last row must not act on a selection that may be stale or
+        // scrolled off-screen. Keyboard invocation (Apps/Shift+F10) targets the selection as-is.
+        if (!_grid.ContextMenuFromKeyboard)
+        {
+            Point client = _grid.PointToClient(_grid.ContextMenuScreenPoint);
+            DataGridView.HitTestInfo hit = _grid.HitTest(client.X, client.Y);
+            if (hit.Type != DataGridViewHitTestType.Cell || hit.RowIndex < 0 || hit.ColumnIndex < 0)
+            {
+                e.Cancel = true;
+                return;
+            }
+        }
 
         List<GraphInputRow> rows = SelectedGraphInputRows();
         if (rows.Count == 0)
@@ -299,33 +328,21 @@ public sealed class GraphInputsForm : Form
         _grid.EndEdit();
     }
 
-    private void InputsChanged()
-    {
-        if (_suspendInputsChanged)
-            return;
-
-        _inputsChanged?.Invoke();
-    }
-
     private void SetRows(IEnumerable<GraphInputRow> rows, bool on)
     {
         CommitCurrentEdit();
 
-        // Apply the bulk change without firing the (expensive) graph recompute per row, then
-        // notify exactly once. Avoids the O(N^2) PlotSelectionChanged fan-out of toggling each row.
-        _suspendInputsChanged = true;
-        try
-        {
-            foreach (GraphInputRow row in rows.ToList())
-                row.On = on;
-        }
-        finally
-        {
-            _suspendInputsChanged = false;
-        }
+        // One bulk model change through the owner's batched setter -> one graph recompute.
+        List<GraphInputRow> changed = rows.ToList();
+        _setPlot(changed.Select(row => row.Node).ToList(), on);
+
+        // Sync the On mirror of every changed row from the model, including rows filtered out of
+        // the grid (Clear All passes all rows): RefreshRows only touches currently-bound rows, so
+        // a filtered-out row would otherwise show a stale checkmark until the next refresh tick.
+        foreach (GraphInputRow row in changed)
+            row.Refresh();
 
         RefreshRows();
-        _inputsChanged?.Invoke();
     }
 
     private IEnumerable<GraphInputRow> CurrentRows()
@@ -370,25 +387,59 @@ public sealed class GraphInputsForm : Form
         _visibleRows.ResetBindings();
     }
 
+    private sealed class InputsGrid : DataGridView
+    {
+        /// <summary>
+        /// True when the most recent context-menu request came from the keyboard (Apps/Shift+F10).
+        /// WM_CONTEXTMENU carries lParam == -1 for keyboard invocation and the packed cursor
+        /// position for mouse invocation; it arrives before ContextMenuStrip.Opening, so the flag
+        /// and point are always current when the Opening handler reads them.
+        /// </summary>
+        public bool ContextMenuFromKeyboard { get; private set; }
+
+        /// <summary>Screen coordinates the runtime associated with a mouse-originated menu request.</summary>
+        public Point ContextMenuScreenPoint { get; private set; }
+
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_CONTEXTMENU = 0x007B;
+            if (m.Msg == WM_CONTEXTMENU)
+            {
+                int lParam = unchecked((int)m.LParam.ToInt64());
+                ContextMenuFromKeyboard = lParam == -1;
+                if (!ContextMenuFromKeyboard)
+                {
+                    // GET_X_LPARAM / GET_Y_LPARAM: low and high words are signed 16-bit screen
+                    // coordinates. Snapshot them here rather than reading the live cursor at
+                    // Opening time, which a fast move could shift off the clicked cell.
+                    ContextMenuScreenPoint = new Point((short)(lParam & 0xFFFF), (short)((lParam >> 16) & 0xFFFF));
+                }
+            }
+
+            base.WndProc(ref m);
+        }
+    }
+
     private sealed class GraphInputRow : INotifyPropertyChanged
     {
-        private readonly SensorNode _node;
-        private readonly Action _changed;
+        private readonly Action<SensorNode, bool> _requestPlotChange;
         private bool _on;
         private bool _hidden;
         private string _currentValue;
         private string _unit;
 
-        public GraphInputRow(SensorNode node, Action changed)
+        public GraphInputRow(SensorNode node, Action<SensorNode, bool> requestPlotChange)
         {
-            _node = node;
-            _changed = changed;
+            Node = node;
+            _requestPlotChange = requestPlotChange;
             SensorPath = BuildSensorPath(node);
             Type = node.Sensor.SensorType.ToString();
             Refresh();
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
+
+        public SensorNode Node { get; }
 
         public bool On
         {
@@ -398,10 +449,10 @@ public sealed class GraphInputsForm : Form
                 if (_on == value)
                     return;
 
-                _on = value;
-                _node.Plot = value;
-                OnPropertyChanged(nameof(On));
-                _changed?.Invoke();
+                // The row never writes SensorNode.Plot directly: the change is routed through the
+                // owner's batched setter, then Refresh syncs the On mirror back from the model.
+                _requestPlotChange(Node, value);
+                Refresh();
             }
         }
 
@@ -450,15 +501,15 @@ public sealed class GraphInputsForm : Form
 
         public void Refresh()
         {
-            if (_on != _node.Plot)
+            if (_on != Node.Plot)
             {
-                _on = _node.Plot;
+                _on = Node.Plot;
                 OnPropertyChanged(nameof(On));
             }
 
-            Hidden = !_node.IsVisible;
+            Hidden = !Node.IsVisible;
 
-            SplitValueAndUnit(_node.Value, out string currentValue, out string unit);
+            SplitValueAndUnit(Node.Value, out string currentValue, out string unit);
             CurrentValue = currentValue;
             Unit = unit;
         }

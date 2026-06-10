@@ -72,7 +72,8 @@ public sealed partial class MainForm : Form
     private double _plotStrokeThickness = 2;
     private bool _compactLayoutActive;
     private bool _updatingSensorTreeLayout;
-    private bool _suspendPlotSelectionChanged;
+    private int _plotEventSuspendDepth;
+    private bool _plotRebuildPending;
     private GridLineStyle _standardGridLineStyle;
     private int _standardRowHeight;
     private int _standardValueColumnWidth;
@@ -753,33 +754,12 @@ public sealed partial class MainForm : Form
 
     private void ShowGraphInputsForm()
     {
-        // The dialog drives many SensorNode.Plot changes and each one raises PlotSelectionChanged.
-        // Suppress those per-node events for the dialog's lifetime and let its callback below trigger
-        // exactly one recompute per user action (it temporarily lifts the suppression to do the work).
-        _suspendPlotSelectionChanged = true;
-        try
-        {
-            using GraphInputsForm form = new(GetAllSensorNodes(), delegate
-            {
-                bool previous = _suspendPlotSelectionChanged;
-                _suspendPlotSelectionChanged = false;
-                try
-                {
-                    PlotSelectionChanged(this, EventArgs.Empty);
-                }
-                finally
-                {
-                    _suspendPlotSelectionChanged = previous;
-                }
-
-                treeView.Invalidate();
-            });
-            form.ShowDialog(this);
-        }
-        finally
-        {
-            _suspendPlotSelectionChanged = false;
-        }
+        // The dialog routes every plot mutation (single checkbox edit or bulk action) through
+        // SetSensorNodesPlot, so each user action batches into exactly one rebuild. No suppression
+        // is held while the dialog is open: unrelated plot events (sensor/hardware add/remove)
+        // keep rebuilding the graph normally.
+        using GraphInputsForm form = new(GetAllSensorNodes(), SetSensorNodesPlot);
+        form.ShowDialog(this);
     }
 
     private void ClearGraphInputs()
@@ -796,7 +776,7 @@ public sealed partial class MainForm : Form
         SetSensorNodesPlot(selectedSensorNodes, selectedSensorNodes.Any(node => !node.Plot));
     }
 
-    private IEnumerable<SensorNode> GetAllSensorNodes()
+    private List<SensorNode> GetAllSensorNodes()
     {
         static IEnumerable<SensorNode> Traverse(Node node)
         {
@@ -1074,33 +1054,43 @@ public sealed partial class MainForm : Form
 
     private void PlotSelectionChanged(object sender, EventArgs e)
     {
-        // While the Graph Inputs dialog is open it batches changes and triggers exactly one recompute
-        // per user action (see ShowGraphInputsForm); suppress the per-node Plot events it generates so
-        // a single toggle or bulk Select/Clear does not fan out into N full recomputes.
-        if (_suspendPlotSelectionChanged)
+        // While a batching scope is active (RunBatchedPlotChange), coalesce the per-node Plot and
+        // PenColor events into one pending rebuild performed when the outermost scope exits, so a
+        // bulk change does not fan out into N full recomputes.
+        if (_plotEventSuspendDepth > 0)
+        {
+            _plotRebuildPending = true;
             return;
+        }
+
+        RebuildPlotSelection();
+    }
+
+    private void RebuildPlotSelection()
+    {
+        // Graph membership is defined by SensorNode.Plot over the full sensor model, not the tree's
+        // filtered presentation: a hidden sensor keeps its plot membership and color slot, and the
+        // "Show Hidden Sensors" option cannot change graph output or automatic color assignment.
+        List<SensorNode> sensorNodes = GetAllSensorNodes();
 
         List<ISensor> selected = new();
         IDictionary<ISensor, Color> colors = new Dictionary<ISensor, Color>();
         int colorIndex = 0;
 
-        foreach (TreeNodeAdv node in treeView.AllNodes)
+        foreach (SensorNode sensorNode in sensorNodes)
         {
-            if (node.Tag is SensorNode sensorNode)
+            if (sensorNode.Plot)
             {
-                if (sensorNode.Plot)
+                if (!sensorNode.PenColor.HasValue)
                 {
-                    if (!sensorNode.PenColor.HasValue)
-                    {
-                        colors.Add(sensorNode.Sensor,
-                                   Theme.Current.PlotColorPalette[colorIndex % Theme.Current.PlotColorPalette.Length]);
-                    }
-
-                    selected.Add(sensorNode.Sensor);
+                    colors.Add(sensorNode.Sensor,
+                               Theme.Current.PlotColorPalette[colorIndex % Theme.Current.PlotColorPalette.Length]);
                 }
 
-                colorIndex++;
+                selected.Add(sensorNode.Sensor);
             }
+
+            colorIndex++;
         }
 
         // if a sensor is assigned a color that's already being used by another
@@ -1133,9 +1123,9 @@ public sealed partial class MainForm : Form
             }
         }
 
-        foreach (TreeNodeAdv node in treeView.AllNodes)
+        foreach (SensorNode sensorNode in sensorNodes)
         {
-            if (node.Tag is SensorNode sensorNode && sensorNode.Plot && sensorNode.PenColor.HasValue)
+            if (sensorNode.Plot && sensorNode.PenColor.HasValue)
                 colors.Add(sensorNode.Sensor, sensorNode.PenColor.Value);
         }
 
@@ -1335,8 +1325,10 @@ public sealed partial class MainForm : Form
         List<SensorNode> nodes = sensorNodes.Distinct().ToList();
 
         // The Plot and PenColor setters each raise PlotSelectionChanged; suspend the per-node
-        // events so a bulk change recomputes the plot once instead of once per sensor.
-        _suspendPlotSelectionChanged = true;
+        // events so a bulk change recomputes the plot once instead of once per sensor. The depth
+        // counter makes nested batches compose: only the outermost scope performs the rebuild,
+        // and a mutation that throws mid-batch still rebuilds from the changes already applied.
+        _plotEventSuspendDepth++;
         try
         {
             foreach (SensorNode node in nodes)
@@ -1344,11 +1336,56 @@ public sealed partial class MainForm : Form
         }
         finally
         {
-            _suspendPlotSelectionChanged = false;
+            _plotEventSuspendDepth--;
+            if (_plotEventSuspendDepth == 0 && _plotRebuildPending)
+            {
+                _plotRebuildPending = false;
+                RebuildPlotSelection();
+            }
         }
 
-        PlotSelectionChanged(this, EventArgs.Empty);
         treeView.Invalidate();
+    }
+
+    private void AddTreeContextMenuSeparator()
+    {
+        // Insert a separator only between two non-empty sections: never as the first item and
+        // never directly after another separator, even if a future section contributes no items.
+        if (treeContextMenu.Items.Count > 0 && treeContextMenu.Items[treeContextMenu.Items.Count - 1] is not ToolStripSeparator)
+            treeContextMenu.Items.Add(new ToolStripSeparator());
+    }
+
+    private void AddBulkMembershipMenuItems(string addText, string removeText, List<SensorNode> sensorNodes, Func<ISensor, bool> contains, Action<ISensor> add, Action<ISensor> remove)
+    {
+        // The add/remove items appear only when at least one selected sensor is missing/present,
+        // and the per-sensor membership check keeps mixed selections idempotent on click.
+        if (sensorNodes.Any(node => !contains(node.Sensor)))
+        {
+            ToolStripItem item = new ToolStripMenuItem(addText);
+            item.Click += delegate
+            {
+                foreach (SensorNode node in sensorNodes)
+                {
+                    if (!contains(node.Sensor))
+                        add(node.Sensor);
+                }
+            };
+            treeContextMenu.Items.Add(item);
+        }
+
+        if (sensorNodes.Any(node => contains(node.Sensor)))
+        {
+            ToolStripItem item = new ToolStripMenuItem(removeText);
+            item.Click += delegate
+            {
+                foreach (SensorNode node in sensorNodes)
+                {
+                    if (contains(node.Sensor))
+                        remove(node.Sensor);
+                }
+            };
+            treeContextMenu.Items.Add(item);
+        }
     }
 
     private void TreeView_Click(object sender, EventArgs e)
@@ -1375,265 +1412,221 @@ public sealed partial class MainForm : Form
 
     private void ShowNodeContextMenu(TreeNodeAdv viewNode, Point location)
     {
+        if (viewNode.Tag is SensorNode node && node.Sensor != null)
         {
-            if (viewNode.Tag is SensorNode node && node.Sensor != null)
+            List<SensorNode> selectedSensorNodes = GetSelectedSensorNodes(viewNode);
+            bool multipleSensorsSelected = selectedSensorNodes.Count > 1;
+            int count = selectedSensorNodes.Count;
+
+            treeContextMenu.Items.Clear();
+            if (!multipleSensorsSelected && node.Sensor.Parameters.Count > 0)
             {
-                List<SensorNode> selectedSensorNodes = GetSelectedSensorNodes(viewNode);
-                bool multipleSensorsSelected = selectedSensorNodes.Count > 1;
-                int count = selectedSensorNodes.Count;
+                ToolStripItem item = new ToolStripMenuItem("Parameters...");
+                item.Click += delegate { ShowParameterForm(node.Sensor); };
+                treeContextMenu.Items.Add(item);
+            }
 
-                treeContextMenu.Items.Clear();
-                if (!multipleSensorsSelected && node.Sensor.Parameters.Count > 0)
+            if (!multipleSensorsSelected && nodeTextBoxText.EditEnabled)
+            {
+                ToolStripItem item = new ToolStripMenuItem("Rename") { ShortcutKeyDisplayString = "F2" };
+                item.Click += delegate { nodeTextBoxText.BeginEdit(); };
+                treeContextMenu.Items.Add(item);
+            }
+
+            if (selectedSensorNodes.Any(selectedNode => selectedNode.IsVisible))
+            {
+                string text = multipleSensorsSelected ? $"Hide Selected Sensors ({count})" : "Hide";
+                ToolStripItem item = new ToolStripMenuItem(text) { ShortcutKeyDisplayString = "Del" };
+                item.Click += delegate { SetSensorNodesVisible(selectedSensorNodes, false); };
+                treeContextMenu.Items.Add(item);
+            }
+
+            if (selectedSensorNodes.Any(selectedNode => !selectedNode.IsVisible))
+            {
+                string text = multipleSensorsSelected ? $"Unhide Selected Sensors ({count})" : "Unhide";
+                ToolStripItem item = new ToolStripMenuItem(text);
+                item.Click += delegate { SetSensorNodesVisible(selectedSensorNodes, true); };
+                treeContextMenu.Items.Add(item);
+            }
+
+            AddTreeContextMenuSeparator();
+
+            if (selectedSensorNodes.Any(selectedNode => !selectedNode.Plot))
+            {
+                string text = multipleSensorsSelected ? $"Add Selected to Graph ({count})" : "Add to Graph";
+                ToolStripItem item = new ToolStripMenuItem(text);
+                item.Click += delegate { SetSensorNodesPlot(selectedSensorNodes, true); };
+                treeContextMenu.Items.Add(item);
+            }
+
+            if (selectedSensorNodes.Any(selectedNode => selectedNode.Plot))
+            {
+                string text = multipleSensorsSelected ? $"Remove Selected from Graph ({count})" : "Remove from Graph";
+                ToolStripItem item = new ToolStripMenuItem(text);
+                item.Click += delegate { SetSensorNodesPlot(selectedSensorNodes, false); };
+                treeContextMenu.Items.Add(item);
+            }
+
+            {
+                ToolStripItem item = new ToolStripMenuItem(multipleSensorsSelected ? $"Pen Color... ({count})" : "Pen Color...");
+                item.Click += delegate
                 {
-                    ToolStripItem item = new ToolStripMenuItem("Parameters...");
-                    item.Click += delegate { ShowParameterForm(node.Sensor); };
-                    treeContextMenu.Items.Add(item);
-                }
+                    ColorDialog dialog = new() { Color = node.PenColor.GetValueOrDefault() };
+                    if (dialog.ShowDialog() == DialogResult.OK)
+                        SetSensorNodesPenColor(selectedSensorNodes, dialog.Color);
+                };
 
-                if (!multipleSensorsSelected && nodeTextBoxText.EditEnabled)
-                {
-                    ToolStripItem item = new ToolStripMenuItem("Rename") { ShortcutKeyDisplayString = "F2" };
-                    item.Click += delegate { nodeTextBoxText.BeginEdit(); };
-                    treeContextMenu.Items.Add(item);
-                }
+                treeContextMenu.Items.Add(item);
+            }
 
-                if (selectedSensorNodes.Any(selectedNode => selectedNode.IsVisible))
-                {
-                    string text = multipleSensorsSelected ? $"Hide Selected Sensors ({count})" : "Hide";
-                    ToolStripItem item = new ToolStripMenuItem(text) { ShortcutKeyDisplayString = "Del" };
-                    item.Click += delegate { SetSensorNodesVisible(selectedSensorNodes, false); };
-                    treeContextMenu.Items.Add(item);
-                }
+            {
+                ToolStripItem item = new ToolStripMenuItem(multipleSensorsSelected ? $"Reset Pen Colors ({count})" : "Reset Pen Color");
+                item.Click += delegate { SetSensorNodesPenColor(selectedSensorNodes, null); };
+                treeContextMenu.Items.Add(item);
+            }
 
-                if (selectedSensorNodes.Any(selectedNode => !selectedNode.IsVisible))
-                {
-                    string text = multipleSensorsSelected ? $"Unhide Selected Sensors ({count})" : "Unhide";
-                    ToolStripItem item = new ToolStripMenuItem(text);
-                    item.Click += delegate { SetSensorNodesVisible(selectedSensorNodes, true); };
-                    treeContextMenu.Items.Add(item);
-                }
+            AddTreeContextMenuSeparator();
 
-                treeContextMenu.Items.Add(new ToolStripSeparator());
-
-                if (selectedSensorNodes.Any(selectedNode => !selectedNode.Plot))
-                {
-                    string text = multipleSensorsSelected ? $"Add Selected to Graph ({count})" : "Add to Graph";
-                    ToolStripItem item = new ToolStripMenuItem(text);
-                    item.Click += delegate { SetSensorNodesPlot(selectedSensorNodes, true); };
-                    treeContextMenu.Items.Add(item);
-                }
-
-                if (selectedSensorNodes.Any(selectedNode => selectedNode.Plot))
-                {
-                    string text = multipleSensorsSelected ? $"Remove Selected from Graph ({count})" : "Remove from Graph";
-                    ToolStripItem item = new ToolStripMenuItem(text);
-                    item.Click += delegate { SetSensorNodesPlot(selectedSensorNodes, false); };
-                    treeContextMenu.Items.Add(item);
-                }
-
-                {
-                    ToolStripItem item = new ToolStripMenuItem(multipleSensorsSelected ? $"Pen Color... ({count})" : "Pen Color...");
-                    item.Click += delegate
-                    {
-                        ColorDialog dialog = new() { Color = node.PenColor.GetValueOrDefault() };
-                        if (dialog.ShowDialog() == DialogResult.OK)
-                            SetSensorNodesPenColor(selectedSensorNodes, dialog.Color);
-                    };
-
-                    treeContextMenu.Items.Add(item);
-                }
-
-                {
-                    ToolStripItem item = new ToolStripMenuItem(multipleSensorsSelected ? $"Reset Pen Colors ({count})" : "Reset Pen Color");
-                    item.Click += delegate { SetSensorNodesPenColor(selectedSensorNodes, null); };
-                    treeContextMenu.Items.Add(item);
-                }
-
-                treeContextMenu.Items.Add(new ToolStripSeparator());
-
-                if (multipleSensorsSelected)
-                {
-                    if (selectedSensorNodes.Any(selectedNode => !_systemTray.Contains(selectedNode.Sensor)))
-                    {
-                        ToolStripItem item = new ToolStripMenuItem($"Show Selected in Tray ({count})");
-                        item.Click += delegate
-                        {
-                            foreach (SensorNode selectedNode in selectedSensorNodes)
-                            {
-                                if (!_systemTray.Contains(selectedNode.Sensor))
-                                    _systemTray.Add(selectedNode.Sensor, false);
-                            }
-                        };
-                        treeContextMenu.Items.Add(item);
-                    }
-
-                    if (selectedSensorNodes.Any(selectedNode => _systemTray.Contains(selectedNode.Sensor)))
-                    {
-                        ToolStripItem item = new ToolStripMenuItem($"Remove Selected from Tray ({count})");
-                        item.Click += delegate
-                        {
-                            foreach (SensorNode selectedNode in selectedSensorNodes)
-                            {
-                                if (_systemTray.Contains(selectedNode.Sensor))
-                                    _systemTray.Remove(selectedNode.Sensor);
-                            }
-                        };
-                        treeContextMenu.Items.Add(item);
-                    }
-
-                    if (_gadget != null)
-                    {
-                        if (selectedSensorNodes.Any(selectedNode => !_gadget.Contains(selectedNode.Sensor)))
-                        {
-                            ToolStripItem item = new ToolStripMenuItem($"Show Selected in Gadget ({count})");
-                            item.Click += delegate
-                            {
-                                foreach (SensorNode selectedNode in selectedSensorNodes)
-                                {
-                                    if (!_gadget.Contains(selectedNode.Sensor))
-                                        _gadget.Add(selectedNode.Sensor);
-                                }
-                            };
-                            treeContextMenu.Items.Add(item);
-                        }
-
-                        if (selectedSensorNodes.Any(selectedNode => _gadget.Contains(selectedNode.Sensor)))
-                        {
-                            ToolStripItem item = new ToolStripMenuItem($"Remove Selected from Gadget ({count})");
-                            item.Click += delegate
-                            {
-                                foreach (SensorNode selectedNode in selectedSensorNodes)
-                                {
-                                    if (_gadget.Contains(selectedNode.Sensor))
-                                        _gadget.Remove(selectedNode.Sensor);
-                                }
-                            };
-                            treeContextMenu.Items.Add(item);
-                        }
-                    }
-
-                    treeContextMenu.Show(treeView, location);
-                    return;
-                }
-
-                {
-                    ToolStripMenuItem item = new("Show in Tray") { Checked = _systemTray.Contains(node.Sensor) };
-                    item.Click += delegate
-                    {
-                        if (item.Checked)
-                            _systemTray.Remove(node.Sensor);
-                        else
-                            _systemTray.Add(node.Sensor, true);
-                    };
-
-                    treeContextMenu.Items.Add(item);
-                }
+            if (multipleSensorsSelected)
+            {
+                AddBulkMembershipMenuItems($"Show Selected in Tray ({count})",
+                                           $"Remove Selected from Tray ({count})",
+                                           selectedSensorNodes,
+                                           sensor => _systemTray.Contains(sensor),
+                                           sensor => _systemTray.Add(sensor, false),
+                                           sensor => _systemTray.Remove(sensor));
 
                 if (_gadget != null)
                 {
-                    ToolStripMenuItem item = new("Show in Gadget") { Checked = _gadget.Contains(node.Sensor) };
-                    item.Click += delegate
-                    {
-                        if (item.Checked)
-                        {
-                            _gadget.Remove(node.Sensor);
-                        }
-                        else
-                        {
-                            _gadget.Add(node.Sensor);
-                        }
-                    };
-
-                    treeContextMenu.Items.Add(item);
+                    AddBulkMembershipMenuItems($"Show Selected in Gadget ({count})",
+                                               $"Remove Selected from Gadget ({count})",
+                                               selectedSensorNodes,
+                                               sensor => _gadget.Contains(sensor),
+                                               sensor => _gadget.Add(sensor),
+                                               sensor => _gadget.Remove(sensor));
                 }
 
-                if (node.Sensor.Control != null)
+                treeContextMenu.Show(treeView, location);
+                return;
+            }
+
+            {
+                ToolStripMenuItem item = new("Show in Tray") { Checked = _systemTray.Contains(node.Sensor) };
+                item.Click += delegate
                 {
-                    treeContextMenu.Items.Add(new ToolStripSeparator());
-                    IControl control = node.Sensor.Control;
-                    ToolStripMenuItem controlItem = new("Control");
-                    ToolStripItem defaultItem = new ToolStripMenuItem("Default") { Checked = control.ControlMode == ControlMode.Default };
-                    controlItem.DropDownItems.Add(defaultItem);
-                    defaultItem.Click += delegate { control.SetDefault(); };
-                    ToolStripMenuItem manualItem = new("Manual");
-                    controlItem.DropDownItems.Add(manualItem);
-                    manualItem.Checked = control.ControlMode == ControlMode.Software;
-                    for (int i = 0; i <= 100; i += 5)
+                    if (item.Checked)
+                        _systemTray.Remove(node.Sensor);
+                    else
+                        _systemTray.Add(node.Sensor, true);
+                };
+
+                treeContextMenu.Items.Add(item);
+            }
+
+            if (_gadget != null)
+            {
+                ToolStripMenuItem item = new("Show in Gadget") { Checked = _gadget.Contains(node.Sensor) };
+                item.Click += delegate
+                {
+                    if (item.Checked)
                     {
-                        if (i <= control.MaxSoftwareValue &&
-                            i >= control.MinSoftwareValue)
-                        {
-                            ToolStripMenuItem item = new ToolStripRadioButtonMenuItem(i + " %");
-                            manualItem.DropDownItems.Add(item);
-                            item.Checked = control.ControlMode == ControlMode.Software && Math.Round(control.SoftwareValue) == i;
-                            int softwareValue = i;
-                            item.Click += delegate { control.SetSoftware(softwareValue); };
-                        }
+                        _gadget.Remove(node.Sensor);
                     }
+                    else
+                    {
+                        _gadget.Add(node.Sensor);
+                    }
+                };
 
-                    treeContextMenu.Items.Add(controlItem);
-                }
-
-                treeContextMenu.Show(treeView, location);
+                treeContextMenu.Items.Add(item);
             }
 
-            if (viewNode.Tag is HardwareNode hardwareNode && hardwareNode.Hardware != null)
+            if (node.Sensor.Control != null)
             {
-                treeContextMenu.Items.Clear();
-
-                if (nodeTextBoxText.EditEnabled)
+                AddTreeContextMenuSeparator();
+                IControl control = node.Sensor.Control;
+                ToolStripMenuItem controlItem = new("Control");
+                ToolStripItem defaultItem = new ToolStripMenuItem("Default") { Checked = control.ControlMode == ControlMode.Default };
+                controlItem.DropDownItems.Add(defaultItem);
+                defaultItem.Click += delegate { control.SetDefault(); };
+                ToolStripMenuItem manualItem = new("Manual");
+                controlItem.DropDownItems.Add(manualItem);
+                manualItem.Checked = control.ControlMode == ControlMode.Software;
+                for (int i = 0; i <= 100; i += 5)
                 {
-                    ToolStripItem item = new ToolStripMenuItem("Rename") { ShortcutKeyDisplayString = "F2" };
-                    item.Click += delegate { nodeTextBoxText.BeginEdit(); };
-                    treeContextMenu.Items.Add(item);
+                    if (i <= control.MaxSoftwareValue &&
+                        i >= control.MinSoftwareValue)
+                    {
+                        ToolStripMenuItem item = new ToolStripRadioButtonMenuItem(i + " %");
+                        manualItem.DropDownItems.Add(item);
+                        item.Checked = control.ControlMode == ControlMode.Software && Math.Round(control.SoftwareValue) == i;
+                        int softwareValue = i;
+                        item.Click += delegate { control.SetSoftware(softwareValue); };
+                    }
                 }
 
-                treeContextMenu.Show(treeView, location);
+                treeContextMenu.Items.Add(controlItem);
             }
 
-            if (viewNode.Tag is TypeNode typeNode)
+            treeContextMenu.Show(treeView, location);
+        }
+
+        if (viewNode.Tag is HardwareNode hardwareNode && hardwareNode.Hardware != null)
+        {
+            treeContextMenu.Items.Clear();
+
+            if (nodeTextBoxText.EditEnabled)
             {
-                List<SensorNode> groupSensorNodes = typeNode.Nodes.OfType<SensorNode>()
-                                                            .Where(groupNode => groupNode.Sensor != null)
-                                                            .ToList();
-                if (groupSensorNodes.Count == 0)
-                    return;
-
-                int count = groupSensorNodes.Count;
-                treeContextMenu.Items.Clear();
-
-                if (groupSensorNodes.Any(groupNode => groupNode.IsVisible))
-                {
-                    ToolStripItem item = new ToolStripMenuItem($"Hide All in Group ({count})");
-                    item.Click += delegate { SetSensorNodesVisible(groupSensorNodes, false); };
-                    treeContextMenu.Items.Add(item);
-                }
-
-                if (groupSensorNodes.Any(groupNode => !groupNode.IsVisible))
-                {
-                    ToolStripItem item = new ToolStripMenuItem($"Unhide All in Group ({count})");
-                    item.Click += delegate { SetSensorNodesVisible(groupSensorNodes, true); };
-                    treeContextMenu.Items.Add(item);
-                }
-
-                treeContextMenu.Items.Add(new ToolStripSeparator());
-
-                if (groupSensorNodes.Any(groupNode => !groupNode.Plot))
-                {
-                    ToolStripItem item = new ToolStripMenuItem($"Add Group to Graph ({count})");
-                    item.Click += delegate { SetSensorNodesPlot(groupSensorNodes, true); };
-                    treeContextMenu.Items.Add(item);
-                }
-
-                if (groupSensorNodes.Any(groupNode => groupNode.Plot))
-                {
-                    ToolStripItem item = new ToolStripMenuItem($"Remove Group from Graph ({count})");
-                    item.Click += delegate { SetSensorNodesPlot(groupSensorNodes, false); };
-                    treeContextMenu.Items.Add(item);
-                }
-
-                treeContextMenu.Show(treeView, location);
+                ToolStripItem item = new ToolStripMenuItem("Rename") { ShortcutKeyDisplayString = "F2" };
+                item.Click += delegate { nodeTextBoxText.BeginEdit(); };
+                treeContextMenu.Items.Add(item);
             }
+
+            treeContextMenu.Show(treeView, location);
+        }
+
+        if (viewNode.Tag is TypeNode typeNode)
+        {
+            List<SensorNode> groupSensorNodes = typeNode.Nodes.OfType<SensorNode>()
+                                                        .Where(groupNode => groupNode.Sensor != null)
+                                                        .ToList();
+            if (groupSensorNodes.Count == 0)
+                return;
+
+            int count = groupSensorNodes.Count;
+            treeContextMenu.Items.Clear();
+
+            if (groupSensorNodes.Any(groupNode => groupNode.IsVisible))
+            {
+                ToolStripItem item = new ToolStripMenuItem($"Hide All in Group ({count})");
+                item.Click += delegate { SetSensorNodesVisible(groupSensorNodes, false); };
+                treeContextMenu.Items.Add(item);
+            }
+
+            if (groupSensorNodes.Any(groupNode => !groupNode.IsVisible))
+            {
+                ToolStripItem item = new ToolStripMenuItem($"Unhide All in Group ({count})");
+                item.Click += delegate { SetSensorNodesVisible(groupSensorNodes, true); };
+                treeContextMenu.Items.Add(item);
+            }
+
+            AddTreeContextMenuSeparator();
+
+            if (groupSensorNodes.Any(groupNode => !groupNode.Plot))
+            {
+                ToolStripItem item = new ToolStripMenuItem($"Add Group to Graph ({count})");
+                item.Click += delegate { SetSensorNodesPlot(groupSensorNodes, true); };
+                treeContextMenu.Items.Add(item);
+            }
+
+            if (groupSensorNodes.Any(groupNode => groupNode.Plot))
+            {
+                ToolStripItem item = new ToolStripMenuItem($"Remove Group from Graph ({count})");
+                item.Click += delegate { SetSensorNodesPlot(groupSensorNodes, false); };
+                treeContextMenu.Items.Add(item);
+            }
+
+            treeContextMenu.Show(treeView, location);
         }
     }
 
@@ -1821,10 +1814,20 @@ public sealed partial class MainForm : Form
         switch (e.KeyCode)
         {
             case Keys.Space:
-                // The plot checkbox toggles Plot for the whole selection on Space even while the
-                // checkbox column is hidden (graph off); block the invisible state change.
-                if (!plotMenuItem.Checked)
-                    e.Handled = true;
+                // Only a plain Space is the plot-toggle verb. Leave Alt+Space (window system menu),
+                // Ctrl+Space and Shift+Space (selection) to the framework so they are neither
+                // suppressed nor mistaken for a toggle.
+                if (e.Modifiers != Keys.None)
+                    return;
+
+                // Plain Space is always consumed here so Aga's NodeCheckBox never sees it: with the
+                // graph hidden that blocks an invisible selection-wide Plot change, and with it shown
+                // the batched toggle below replaces N per-node toggles (and N recomputes) with one.
+                if (plotMenuItem.Checked)
+                    TogglePlotForSelectedSensors();
+
+                e.Handled = true;
+                e.SuppressKeyPress = true;
                 return;
             case Keys.Delete:
             {
@@ -1843,6 +1846,9 @@ public sealed partial class MainForm : Form
                 TreeNodeAdv selectedNode = treeView.SelectedNode;
                 if (selectedNode != null)
                 {
+                    // Scroll a selection that was navigated off-screen back into view first, so the
+                    // menu anchors to the actual row instead of clamped client-area coordinates.
+                    treeView.EnsureVisible(selectedNode);
                     Rectangle bounds = treeView.GetNodeBounds(selectedNode);
                     int x = Math.Max(0, Math.Min(bounds.Left, treeView.ClientSize.Width));
                     int y = Math.Max(0, Math.Min(bounds.Bottom, treeView.ClientSize.Height));
