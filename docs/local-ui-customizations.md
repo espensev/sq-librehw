@@ -12,10 +12,14 @@ upstream merges and reviewers know they are intentional.
   the Min/Max columns. The `Show Min` / `Show Max` items are disabled while compact is active so the
   checkmark cannot lie about visibility. On save, the pre-compact column widths are written back so
   the narrowed widths are not persisted.
-- **Multi-select hide/unhide** (`treeView.SelectionMode = TreeSelectionMode.Multi`,
-  `GetSelectedSensorNodes` / `SetSensorNodesVisible`). Right-clicking a multi-selection shows
-  `Hide Selected Sensors (N)` / `Unhide Selected Sensors (N)` and suppresses the single-sensor
-  actions (Parameters, Rename, Pen Color, etc.).
+- **Sensor-list bulk selection and keyboard access** (`treeView.SelectionMode =
+  TreeSelectionMode.Multi`; spec:
+  [`feature-sensor-list-bulk-selection.md`](feature-sensor-list-bulk-selection.md)). Multi-select
+  context menus provide hide/unhide, graph, pen-color, tray, and gadget actions; type rows provide
+  group visibility/plot actions; Del and Apps/Shift+F10 are supported; Graph Inputs supports
+  multi-row toggling. Visibility changes persist `/hidden` only: they do not clear `Plot` or raise
+  `PlotSelectionChanged`. Post-implementation corrections and ranked follow-ups are recorded in
+  [`review-sensor-list-bulk-selection-follow-up.md`](review-sensor-list-bulk-selection-follow-up.md).
 
 ## Plot panel
 

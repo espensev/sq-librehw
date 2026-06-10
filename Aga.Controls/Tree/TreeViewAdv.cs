@@ -930,7 +930,7 @@ namespace Aga.Controls.Tree
 			return node.RightBounds.Value;
 		}
 
-		internal Rectangle GetNodeBounds(TreeNodeAdv node)
+		public Rectangle GetNodeBounds(TreeNodeAdv node)
 		{
 			return GetNodeBounds(GetNodeControls(node));
 		}

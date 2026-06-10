@@ -21,6 +21,7 @@ public sealed class GraphInputsForm : Form
     private readonly TextBox _searchTextBox = new();
     private readonly CheckBox _showHiddenCheckBox = new();
     private readonly DataGridView _grid = new();
+    private readonly ContextMenuStrip _gridMenu = new();
     private readonly Timer _refreshTimer = new();
     private bool _suspendInputsChanged;
 
@@ -43,6 +44,7 @@ public sealed class GraphInputsForm : Form
         if (disposing)
         {
             _refreshTimer.Dispose();
+            _gridMenu.Dispose();
             _bindingSource.Dispose();
         }
 
@@ -89,7 +91,7 @@ public sealed class GraphInputsForm : Form
         _bindingSource.DataSource = _visibleRows;
         _grid.EditMode = DataGridViewEditMode.EditOnEnter;
         _grid.Location = new Point(12, 44);
-        _grid.MultiSelect = false;
+        _grid.MultiSelect = true;
         _grid.RowHeadersVisible = false;
         _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
         _grid.ShowCellErrors = false;
@@ -97,6 +99,12 @@ public sealed class GraphInputsForm : Form
         _grid.Size = new Size(876, 424);
         _grid.CurrentCellDirtyStateChanged += Grid_CurrentCellDirtyStateChanged;
         _grid.CellValueChanged += delegate { CommitCurrentEdit(); };
+        _grid.KeyDown += Grid_KeyDown;
+        _grid.KeyUp += Grid_KeyUp;
+        _grid.CellMouseDown += Grid_CellMouseDown;
+
+        _gridMenu.Opening += GridMenu_Opening;
+        _grid.ContextMenuStrip = _gridMenu;
 
         _grid.Columns.Add(new DataGridViewCheckBoxColumn
         {
@@ -215,6 +223,73 @@ public sealed class GraphInputsForm : Form
     {
         if (_grid.CurrentCell is DataGridViewCheckBoxCell)
             _grid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+    }
+
+    private void Grid_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Space || _grid.SelectedRows.Count <= 1)
+            return;
+
+        List<GraphInputRow> rows = SelectedGraphInputRows();
+        SetRows(rows, !rows.All(row => row.On));
+        e.Handled = true;
+    }
+
+    private void Grid_KeyUp(object sender, KeyEventArgs e)
+    {
+        // The checkbox cell toggles on Space key-up; swallow it so the bulk toggle from KeyDown
+        // is not followed by a stray single-cell flip of the current row.
+        if (e.KeyCode == Keys.Space && _grid.SelectedRows.Count > 1)
+            e.Handled = true;
+    }
+
+    private void Grid_CellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Right || e.RowIndex < 0)
+            return;
+
+        if (!_grid.Rows[e.RowIndex].Selected)
+        {
+            _grid.ClearSelection();
+            _grid.Rows[e.RowIndex].Selected = true;
+            // Move the current cell off the checkbox column so EditOnEnter cannot start a
+            // checkbox edit from a right-click.
+            _grid.CurrentCell = _grid.Rows[e.RowIndex].Cells[e.ColumnIndex > 0 ? e.ColumnIndex : 1];
+        }
+    }
+
+    private void GridMenu_Opening(object sender, CancelEventArgs e)
+    {
+        _gridMenu.Items.Clear();
+
+        List<GraphInputRow> rows = SelectedGraphInputRows();
+        if (rows.Count == 0)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        if (rows.Any(row => !row.On))
+        {
+            ToolStripItem item = new ToolStripMenuItem($"Plot Selected ({rows.Count})");
+            item.Click += delegate { SetRows(rows, true); };
+            _gridMenu.Items.Add(item);
+        }
+
+        if (rows.Any(row => row.On))
+        {
+            ToolStripItem item = new ToolStripMenuItem($"Unplot Selected ({rows.Count})");
+            item.Click += delegate { SetRows(rows, false); };
+            _gridMenu.Items.Add(item);
+        }
+    }
+
+    private List<GraphInputRow> SelectedGraphInputRows()
+    {
+        return _grid.SelectedRows.Cast<DataGridViewRow>()
+                    .Select(gridRow => gridRow.DataBoundItem as GraphInputRow)
+                    .Where(row => row != null)
+                    .ToList();
     }
 
     private void CommitCurrentEdit()
