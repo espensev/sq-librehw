@@ -726,6 +726,9 @@ public sealed partial class MainForm : Form
 
         plotMenuItem.Text = "&Show Graph";
         resetPlotMenuItem.Text = "&Reset Graph View";
+
+        // The graph-local options menu offers the same reset command as this menu item.
+        _plotPanel.ResetGraphView = () => resetPlotMenuItem_Click(this, EventArgs.Empty);
         sensorValuesTimeWindowMenuItem.Text = "&Time Window";
         plotLocationMenuItem.Text = "Graph &Location";
         strokeThicknessMenuItem.Text = "&Stroke Thickness";

@@ -1,8 +1,8 @@
 # Feature Spec: Graph Panel Controls
 
 **Project:** LibreHardwareMonitor Sev IQ local fork  
-**Status:** Draft  
-**Updated:** 2026-06-06  
+**Status:** Implemented (runtime/DPI verification pending)  
+**Updated:** 2026-06-11  
 **Related docs:** `feature-graph-menu.md`, `local-ui-customizations.md`, `feature-workflow.md`  
 **Purpose:** make graph-specific controls available from the graph panel itself, without changing graph data or table behavior.
 
@@ -105,20 +105,36 @@ The plot right-click context menu remains available. The main `Graph` menu remai
 | Keyboard/accessibility | Tab to the control and open it from the keyboard | Menu opens and tooltip/accessibility name identifies the control |
 | Regression check | Watch graph and sensor table while toggling options | Sensor values and graph inputs are unchanged |
 
-## 9. Open Decisions
+## 9. Open Decisions (resolved 2026-06-11)
 
-| Decision | Needed before | Current default |
-|---|---|---|
-| Overlay fallback | Implementation | Top-right overlay button; use a slim <= 28 px header only if overlay behavior is unreliable |
-| Include `Graph Inputs...` from the panel | Spec acceptance | No; keep input management in the main `Graph` menu unless explicitly requested |
-| Button glyph | Implementation | Use a standard options/drop-down glyph where available; avoid text unless it fits without clipping |
+| Decision | Resolution |
+|---|---|
+| Overlay fallback | Top-right overlay `Button` over the docked `PlotView` (added after the plot, brought to front); no header strip was needed. |
+| Include `Graph Inputs...` from the panel | Not included; input management stays in the main `Graph` menu, per the default. |
+| Button glyph | Gear glyph (`⚙`, U+2699) on a fixed DPI-scaled 24 px flat button with tooltip and accessible name `Graph options`; no clippable text. |
 
-## 10. Implementation Notes
+## 10. Implementation Notes (2026-06-11)
 
-Implementation should prefer opening or sharing the existing `PlotPanel` context-menu actions instead of duplicating state logic. If commands must be shared between `MainForm` and `PlotPanel`, introduce the smallest helper needed.
+Implemented entirely by sharing state, not duplicating it: the button shows the **same
+`ContextMenuStrip` instance** the plot right-click menu uses (`PlotPanel.CreateMenu`), so every
+option, checkmark, and persisted setting is identical by construction and stays in sync in both
+directions. Two integration details discovered during implementation:
+
+- The shared menu's `Opening` handler honors the right-drag suppression flag
+  (`_cancelContextMenu`); the button click clears it first so a preceding right-drag cannot eat a
+  deliberate open.
+- `Reset Graph View` lived only in `MainForm`; the shared menu now includes it via a
+  `PlotPanel.ResetGraphView` delegate that `MainForm` wires to the existing handler (the smallest
+  shared-command helper anticipated by this section). As a consequence the plot right-click menu
+  gains the same item, satisfying the same-command-semantics acceptance.
+- Pre-existing gap fixed in passing: `AutoscaleAllYAxes` only zoomed the axes and waited for the
+  next update tick (up to the full update interval); it now refreshes the plot immediately, which
+  the acceptance list requires.
 
 ## 11. Verification Log
 
 | Date | Build/run evidence | Result | Notes |
 |---|---|---|---|
 | 2026-06-06 | Spec drafted | Pending | Implementation not started |
+| 2026-06-11 | `dotnet build LibreHardwareMonitor.sln` | Pass (0 errors / 0 warnings, all TFMs) | Overlay button + shared menu + reset delegate + autoscale refresh |
+| 2026-06-11 | Runtime/DPI manual checks (§8: placements, state sync, input behavior, keyboard, 100/125/150 % DPI) | Pending | Verify after deploying the merged build |
