@@ -62,6 +62,7 @@ public class SensorGadget : Gadget
     private StringFormat _stringFormat;
     private StringFormat _trimStringFormat;
     private StringFormat _alignRightStringFormat;
+    private StringFormat _measureStringFormat;
     private Color _fontColor;
     private Color _backgroundColor;
 
@@ -77,6 +78,10 @@ public class SensorGadget : Gadget
         _stringFormat = new StringFormat { FormatFlags = StringFormatFlags.NoWrap };
         _trimStringFormat = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
         _alignRightStringFormat = new StringFormat { Alignment = StringAlignment.Far, FormatFlags = StringFormatFlags.NoWrap };
+
+        // StringFormat.GenericTypographic allocates a new native format handle on every access;
+        // the paint loop measures with it per sensor per tick, so hold one instance instead.
+        _measureStringFormat = StringFormat.GenericTypographic;
 
         if (File.Exists("gadget_background.png"))
         {
@@ -337,6 +342,9 @@ public class SensorGadget : Gadget
 
         _stringFormat.Dispose();
         _stringFormat = null;
+
+        _measureStringFormat.Dispose();
+        _measureStringFormat = null;
 
         _trimStringFormat.Dispose();
         _trimStringFormat = null;
@@ -1306,7 +1314,7 @@ public class SensorGadget : Gadget
     
                         g.DrawString(formatted, _smallFont, _textBrush, new RectangleF(-1, y - 1, w - _rightMargin + 3, 0), _alignRightStringFormat);
     
-                        remainingWidth = w - (int)Math.Floor(g.MeasureString(formatted, _smallFont, w, StringFormat.GenericTypographic).Width) - _rightMargin;
+                        remainingWidth = w - (int)Math.Floor(g.MeasureString(formatted, _smallFont, w, _measureStringFormat).Width) - _rightMargin;
                     }
                     else
                     {

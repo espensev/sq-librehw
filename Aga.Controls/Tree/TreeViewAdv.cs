@@ -41,6 +41,7 @@ namespace Aga.Controls.Tree
 
 		private Pen _linePen;
 		private Pen _markPen;
+		private int _horizontalGridLineRight;
 		private bool _suspendUpdate;
 		private bool _needFullUpdate;
 		private bool _fireSelectionEvent;
@@ -933,6 +934,20 @@ namespace Aga.Controls.Tree
 		public Rectangle GetNodeBounds(TreeNodeAdv node)
 		{
 			return GetNodeBounds(GetNodeControls(node));
+		}
+
+		/// <summary>
+		/// Node bounds translated into client coordinates (scroll offsets and the column header
+		/// applied, mirroring OnPaint's transform). GetNodeBounds returns unscrolled content
+		/// space, which is only valid for client-space use when the view is not scrolled.
+		/// </summary>
+		public Rectangle GetNodeBoundsInClient(TreeNodeAdv node)
+		{
+			Rectangle bounds = GetNodeBounds(node);
+			int firstRowY = _rowLayout.GetRowBounds(FirstVisibleRow).Y;
+			int headerY = UseColumns ? ColumnHeaderHeight : 0;
+			bounds.Offset(-OffsetX, headerY - firstRowY);
+			return bounds;
 		}
 
 		private Rectangle GetNodeBounds(IEnumerable<NodeControlInfo> nodeControls)

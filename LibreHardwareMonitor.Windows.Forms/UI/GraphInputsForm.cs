@@ -67,7 +67,8 @@ public sealed class GraphInputsForm : Form
         {
             AutoSize = true,
             Location = new Point(12, 15),
-            Text = "Search:"
+            // The label's mnemonic focuses the next control in tab order (the search box).
+            Text = "&Search:"
         };
 
         _searchTextBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -78,7 +79,7 @@ public sealed class GraphInputsForm : Form
         _showHiddenCheckBox.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         _showHiddenCheckBox.AutoSize = true;
         _showHiddenCheckBox.Location = new Point(705, 14);
-        _showHiddenCheckBox.Text = "Show hidden sensors";
+        _showHiddenCheckBox.Text = "Show &hidden sensors";
         _showHiddenCheckBox.CheckedChanged += delegate { RebuildFilter(); };
 
         _grid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -155,20 +156,20 @@ public sealed class GraphInputsForm : Form
             Width = 105
         });
 
-        Button clearAllButton = CreateButton("Clear All", 560);
+        Button clearAllButton = CreateButton("Clear &All", 560);
         clearAllButton.Click += delegate { SetRows(_rows, false); };
 
-        Button selectVisibleButton = CreateButton("Select Visible", 640);
+        Button selectVisibleButton = CreateButton("Select &Visible", 640);
         selectVisibleButton.Click += delegate { SetRows(CurrentRows(), true); };
 
-        Button applyButton = CreateButton("Apply", 750);
+        Button applyButton = CreateButton("A&pply", 750);
         applyButton.Click += delegate
         {
             CommitCurrentEdit();
             RefreshRows();
         };
 
-        Button closeButton = CreateButton("Close", 825);
+        Button closeButton = CreateButton("&Close", 825);
         closeButton.DialogResult = DialogResult.OK;
         closeButton.Click += delegate { Close(); };
 
@@ -231,6 +232,12 @@ public sealed class GraphInputsForm : Form
         if (e.KeyCode != Keys.Space)
             return;
 
+        // Only a plain Space is the bulk plot-toggle verb: Shift/Ctrl+Space are framework
+        // selection keys and Alt+Space is the system menu (WM_SYSKEYDOWN also lands here).
+        // Mirrors the guard in MainForm.TreeView_KeyDown.
+        if (e.Modifiers != Keys.None)
+            return;
+
         // A single-row Space is handled normally by the checkbox cell; clear any flag stranded by
         // an earlier bulk KeyDown whose KeyUp never reached the grid (e.g. focus changed between
         // them), so this row's own KeyUp toggle is not silently eaten.
@@ -244,6 +251,7 @@ public sealed class GraphInputsForm : Form
         SetRows(rows, !rows.All(row => row.On));
         _swallowNextSpaceKeyUp = true;
         e.Handled = true;
+        e.SuppressKeyPress = true;
     }
 
     private void Grid_KeyUp(object sender, KeyEventArgs e)
@@ -275,7 +283,13 @@ public sealed class GraphInputsForm : Form
 
     private void GridMenu_Opening(object sender, CancelEventArgs e)
     {
+        // Items are recreated per opening; Clear() removes without disposing, so dispose the
+        // previous set or every right-click strands finalizable components.
+        ToolStripItem[] oldItems = new ToolStripItem[_gridMenu.Items.Count];
+        _gridMenu.Items.CopyTo(oldItems, 0);
         _gridMenu.Items.Clear();
+        foreach (ToolStripItem oldItem in oldItems)
+            oldItem.Dispose();
 
         // A mouse-originated opening must come from a data cell: right-clicking the header or
         // the blank area below the last row must not act on a selection that may be stale or
@@ -354,14 +368,20 @@ public sealed class GraphInputsForm : Form
     {
         // The dialog is modal, so Plot only changes from within it; only the rows currently
         // bound to the grid are visible, so refreshing the filtered-out rows every tick is waste.
+        // No grid-wide repaint here: each row's PropertyChanged already invalidates exactly the
+        // rows whose displayed values changed, so unchanged ticks cost no paint at all.
         foreach (GraphInputRow row in CurrentRows())
             row.Refresh();
-
-        _grid.Refresh();
     }
 
     private void RebuildFilter()
     {
+        // Filtered-out rows keep the CurrentValue/Unit/Hidden mirrors from when they left the
+        // visible set (the per-tick refresh only touches bound rows), so sync every row before
+        // matching or a value/unit search would test stale data.
+        foreach (GraphInputRow row in _rows)
+            row.Refresh();
+
         string filter = _searchTextBox.Text.Trim();
         bool showHidden = _showHiddenCheckBox.Checked;
 

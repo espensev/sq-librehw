@@ -1836,7 +1836,13 @@ public sealed partial class MainForm : Form
     {
         _selectionDragging &= (e.Button & MouseButtons.Left) > 0;
         if (_selectionDragging)
-            treeView.SelectedNode = treeView.GetNodeAt(e.Location);
+        {
+            // Over empty area GetNodeAt returns null and assigning it would clear the whole
+            // selection mid-drag; keep the last hovered row selected instead.
+            TreeNodeAdv hit = treeView.GetNodeAt(e.Location);
+            if (hit != null)
+                treeView.SelectedNode = hit;
+        }
     }
 
     private void TreeView_MouseDown(object sender, MouseEventArgs e)
@@ -1904,7 +1910,7 @@ public sealed partial class MainForm : Form
                     // Scroll a selection that was navigated off-screen back into view first, so the
                     // menu anchors to the actual row instead of clamped client-area coordinates.
                     treeView.EnsureVisible(selectedNode);
-                    Rectangle bounds = treeView.GetNodeBounds(selectedNode);
+                    Rectangle bounds = treeView.GetNodeBoundsInClient(selectedNode);
                     int x = Math.Max(0, Math.Min(bounds.Left, treeView.ClientSize.Width));
                     int y = Math.Max(0, Math.Min(bounds.Bottom, treeView.ClientSize.Height));
                     ShowNodeContextMenu(selectedNode, new Point(x, y));

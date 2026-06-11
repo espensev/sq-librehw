@@ -181,17 +181,27 @@ public static class IconFactory
     [DllImport("user32", SetLastError = true)]
     static extern bool DestroyIcon(IntPtr handle);
 
+    // Icons from Icon.FromHandle do not own their HICON and need an explicit DestroyIcon;
+    // stream-created icons do own it, and destroying it again would race handle reuse.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Icon, object> NonOwningHandleIcons = new();
+
     public static Icon Create(Bitmap bitmap)
     {
         IntPtr hIcon = bitmap.GetHicon();
         Icon icon = Icon.FromHandle(hIcon);
+        NonOwningHandleIcons.Add(icon, null);
 
         return icon;
     }
 
     public static void Destroy(this Icon icon)
     {
-        DestroyIcon(icon.Handle);
+        if (NonOwningHandleIcons.TryGetValue(icon, out _))
+        {
+            NonOwningHandleIcons.Remove(icon);
+            DestroyIcon(icon.Handle);
+        }
+
         icon.Dispose();
     }
 }
