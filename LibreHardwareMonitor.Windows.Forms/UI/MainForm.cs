@@ -25,6 +25,7 @@ namespace LibreHardwareMonitor.Windows.Forms.UI;
 public sealed partial class MainForm : Form
 {
     private ToolStripMenuItem _autoThemeMenuItem;
+    private bool _closing;
     private readonly UserOption _autoStart;
     private readonly Computer _computer;
     private readonly SensorGadget _gadget;
@@ -244,6 +245,7 @@ public sealed partial class MainForm : Form
         }
 
         backgroundUpdater.DoWork += BackgroundUpdater_DoWork;
+        backgroundUpdater.RunWorkerCompleted += BackgroundUpdater_RunWorkerCompleted;
         timer.Enabled = true;
 
         UserOption showHiddenSensors = new("hiddenMenuItem", false, hiddenMenuItem, _settings);
@@ -571,7 +573,10 @@ public sealed partial class MainForm : Form
             Show();
         }
 
-        // Create a handle, otherwise calling Close() does not fire FormClosed
+        // Create a handle, otherwise calling Close() does not fire FormClosed. The hardware
+        // event marshaling (HardwareAdded/SensorAdded BeginInvoke) also requires the handle to
+        // exist even when starting minimized to tray, so do not rely on side effects for this.
+        _ = Handle;
 
         // Make sure the settings are saved when the user logs off
         Microsoft.Win32.SystemEvents.SessionEnded += delegate
@@ -610,8 +615,28 @@ public sealed partial class MainForm : Form
 
         if (_delayCount < 4)
             _delayCount++;
+    }
 
-        _plotPanel.InvalidatePlot();
+    private void BackgroundUpdater_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+    {
+        // Runs on the UI thread. All post-update redraws live here so they (a) never mutate
+        // UI/OxyPlot state from the worker thread and (b) only run when a tick actually
+        // produced fresh data, instead of unconditionally from Timer_Tick.
+        if (e.Error != null)
+            Debug.WriteLine("Background hardware update failed: " + e.Error);
+
+        // _closing covers the window between CloseApplication disposing the tray/timer and the
+        // form actually being disposed after Application.Run returns: a worker that was in
+        // flight at exit still posts its completion to the message queue.
+        if (_closing || IsDisposed)
+            return;
+
+        treeView.Invalidate();
+        _systemTray.Redraw();
+        _gadget?.Redraw();
+
+        if (_showPlot == null || _showPlot.Value)
+            _plotPanel.InvalidatePlot();
     }
 
     private void PowerModeChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs eventArgs)
@@ -888,6 +913,11 @@ public sealed partial class MainForm : Form
             }
 
             treeView.Invalidate();
+
+            // The per-tick refresh is gated on _showPlot, so the model froze while hidden;
+            // bring points and the time window current immediately on re-show.
+            if (_showPlot.Value)
+                _plotPanel.InvalidatePlot();
         };
 
         _strokeThickness = new UserRadioGroup("plotStroke", 1, new[] { strokeThickness1ptMenuItem, strokeThickness2ptMenuItem, strokeThickness3ptMenuItem, strokeThickness4ptMenuItem }, _settings);
@@ -1007,7 +1037,7 @@ public sealed partial class MainForm : Form
 
     private void SubHardwareAdded(IHardware hardware, Node node)
     {
-        HardwareNode hardwareNode = new(hardware, _settings, _unitManager);
+        HardwareNode hardwareNode = new(hardware, _settings, _unitManager, this);
         hardwareNode.PlotSelectionChanged += PlotSelectionChanged;
         InsertSorted(node.Nodes, hardwareNode);
         foreach (IHardware subHardware in hardware.SubHardware)
@@ -1016,12 +1046,40 @@ public sealed partial class MainForm : Form
 
     private void HardwareAdded(IHardware hardware)
     {
+        // Computer raises this from whatever thread detected the hardware (e.g. a
+        // NetworkChange thread-pool callback); the node tree and plot are UI-thread state.
+        if (IsHandleCreated && InvokeRequired)
+        {
+            // The handle can be destroyed between the check and the call during shutdown; an
+            // unhandled throw here would take down the process from a pool thread.
+            try
+            {
+                BeginInvoke((Action)(() => HardwareAdded(hardware)));
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+
+            return;
+        }
+
         SubHardwareAdded(hardware, _root);
         PlotSelectionChanged(this, null);
     }
 
     private void HardwareRemoved(IHardware hardware)
     {
+        if (IsHandleCreated && InvokeRequired)
+        {
+            try
+            {
+                BeginInvoke((Action)(() => HardwareRemoved(hardware)));
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+
+            return;
+        }
+
         List<HardwareNode> nodesToRemove = new();
         foreach (Node node in _root.Nodes)
         {
@@ -1150,10 +1208,6 @@ public sealed partial class MainForm : Form
 
     private void Timer_Tick(object sender, EventArgs e)
     {
-        treeView.Invalidate();
-        _systemTray.Redraw();
-        _gadget?.Redraw();
-
         if (!backgroundUpdater.IsBusy)
             backgroundUpdater.RunWorkerAsync();
     }
@@ -1253,6 +1307,7 @@ public sealed partial class MainForm : Form
 
     private void CloseApplication()
     {
+        _closing = true;
         FormClosed -= MainForm_FormClosed;
 
         Visible = false;

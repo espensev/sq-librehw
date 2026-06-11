@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Windows.Forms;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
@@ -18,6 +19,8 @@ public class SystemTray : IDisposable
     private readonly PersistentSettings _settings;
     private readonly UnitManager _unitManager;
     private readonly List<SensorNotifyIcon> _sensorList = new List<SensorNotifyIcon>();
+    private readonly SynchronizationContext _uiContext;
+    private readonly int _uiThreadId;
     private bool _mainIconEnabled;
     private readonly NotifyIconAdv _mainIcon;
 
@@ -26,6 +29,8 @@ public class SystemTray : IDisposable
         _computer = computer;
         _settings = settings;
         _unitManager = unitManager;
+        _uiContext = SynchronizationContext.Current;
+        _uiThreadId = Environment.CurrentManagedThreadId;
         computer.HardwareAdded += HardwareAdded;
         computer.HardwareRemoved += HardwareRemoved;
 
@@ -54,6 +59,18 @@ public class SystemTray : IDisposable
         _mainIcon.Text = "Libre Hardware Monitor - Sev IQ";
     }
 
+    // Hardware/sensor events fire on whatever thread detected the change (background updater,
+    // NetworkChange pool threads); _sensorList, settings, and the native tray icons are
+    // UI-thread state, so handler bodies hop threads here. Subscriptions stay method groups so
+    // the -= in HardwareRemoved keeps working.
+    private void RunOnUiThread(Action action)
+    {
+        if (_uiContext != null && Environment.CurrentManagedThreadId != _uiThreadId)
+            _uiContext.Post(_ => action(), null);
+        else
+            action();
+    }
+
     private void HardwareRemoved(IHardware hardware)
     {
         hardware.SensorAdded -= SensorAdded;
@@ -80,20 +97,27 @@ public class SystemTray : IDisposable
 
     private void SensorAdded(ISensor sensor)
     {
-        if (_settings.GetValue(new Identifier(sensor.Identifier, "tray").ToString(), false))
-            Add(sensor, false);
+        RunOnUiThread(() =>
+        {
+            if (_settings.GetValue(new Identifier(sensor.Identifier, "tray").ToString(), false))
+                Add(sensor, false);
+        });
     }
 
     private void SensorRemoved(ISensor sensor)
     {
-        if (Contains(sensor))
-            Remove(sensor, false);
+        RunOnUiThread(() =>
+        {
+            if (Contains(sensor))
+                Remove(sensor, false);
+        });
     }
 
     public void Dispose()
     {
         foreach (SensorNotifyIcon icon in _sensorList)
             icon.Dispose();
+        _sensorList.Clear();
         _mainIcon.Dispose();
     }
 

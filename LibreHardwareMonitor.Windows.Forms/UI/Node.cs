@@ -12,6 +12,12 @@ namespace LibreHardwareMonitor.Windows.Forms.UI;
 
 public class Node
 {
+    // Serializes structural tree mutations against readers that traverse the node tree off the
+    // UI thread (the HTTP server walks it from listener threads for data.json//metrics/Sensor).
+    // Mutations are rare (sensor/hardware add-remove), so one global lock is sufficient and the
+    // hold time per mutation is a few pointer writes.
+    public static readonly object SyncRoot = new();
+
     private Node _parent;
     private readonly NodeCollection _nodes;
     private string _text;
@@ -136,8 +142,11 @@ public class Node
             if (item._parent != _owner)
             {
                 item._parent?._nodes.Remove(item);
-                item._parent = _owner;
-                base.InsertItem(index, item);
+                lock (SyncRoot)
+                {
+                    item._parent = _owner;
+                    base.InsertItem(index, item);
+                }
 
                 TreeModel model = _owner.RootTreeModel();
                 model?.OnStructureChanged(_owner);
@@ -148,8 +157,11 @@ public class Node
         protected override void RemoveItem(int index)
         {
             Node item = this[index];
-            item._parent = null;
-            base.RemoveItem(index);
+            lock (SyncRoot)
+            {
+                item._parent = null;
+                base.RemoveItem(index);
+            }
 
             TreeModel model = _owner.RootTreeModel();
             model?.OnStructureChanged(_owner);

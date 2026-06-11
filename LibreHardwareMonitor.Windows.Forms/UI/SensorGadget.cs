@@ -54,6 +54,8 @@ public class SensorGadget : Gadget
     private readonly PersistentSettings _settings;
     private readonly UserOption _hardwareNames;
 
+    private readonly System.Threading.SynchronizationContext _uiContext;
+    private readonly int _uiThreadId;
     private Font _largeFont;
     private Font _smallFont;
     private Brush _textBrush;
@@ -67,6 +69,8 @@ public class SensorGadget : Gadget
     {
         _unitManager = unitManager;
         _settings = settings;
+        _uiContext = System.Threading.SynchronizationContext.Current;
+        _uiThreadId = Environment.CurrentManagedThreadId;
         computer.HardwareAdded += HardwareAdded;
         computer.HardwareRemoved += HardwareRemoved;
 
@@ -407,16 +411,33 @@ public class SensorGadget : Gadget
             HardwareAdded(subHardware);
     }
 
+    // Sensor events fire on the background updater / pool threads; the gadget's sensor map,
+    // settings, and layout are UI-thread state. Subscriptions stay method groups so the -= in
+    // HardwareRemoved keeps working.
+    private void RunOnUiThread(Action action)
+    {
+        if (_uiContext != null && Environment.CurrentManagedThreadId != _uiThreadId)
+            _uiContext.Post(_ => action(), null);
+        else
+            action();
+    }
+
     private void SensorAdded(ISensor sensor)
     {
-        if (_settings.GetValue(new Identifier(sensor.Identifier, "gadget").ToString(), false))
-            Add(sensor);
+        RunOnUiThread(() =>
+        {
+            if (_settings.GetValue(new Identifier(sensor.Identifier, "gadget").ToString(), false))
+                Add(sensor);
+        });
     }
 
     private void SensorRemoved(ISensor sensor)
     {
-        if (Contains(sensor))
-            Remove(sensor, false);
+        RunOnUiThread(() =>
+        {
+            if (Contains(sensor))
+                Remove(sensor, false);
+        });
     }
 
     public bool Contains(ISensor sensor)

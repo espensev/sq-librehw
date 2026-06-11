@@ -9,6 +9,7 @@ using LibreHardwareMonitor.Windows.Forms.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Windows.Forms;
 
 namespace LibreHardwareMonitor.Windows.Forms.UI;
 
@@ -16,16 +17,18 @@ public class HardwareNode : Node, IExpandPersistNode
 {
     private readonly PersistentSettings _settings;
     private readonly UnitManager _unitManager;
+    private readonly Control _uiMarshaller;
     private readonly List<TypeNode> _typeNodes = new List<TypeNode>();
     private readonly string _expandedIdentifier;
     private bool _expanded;
 
     public event EventHandler PlotSelectionChanged;
 
-    public HardwareNode(IHardware hardware, PersistentSettings settings, UnitManager unitManager)
+    public HardwareNode(IHardware hardware, PersistentSettings settings, UnitManager unitManager, Control uiMarshaller = null)
     {
         _settings = settings;
         _unitManager = unitManager;
+        _uiMarshaller = uiMarshaller;
         _expandedIdentifier = new Identifier(hardware.Identifier, "expanded").ToString();
         Hardware = hardware;
         Image = HardwareTypeImage.Instance.GetImage(hardware.HardwareType);
@@ -36,10 +39,37 @@ public class HardwareNode : Node, IExpandPersistNode
         foreach (ISensor sensor in hardware.Sensors)
             SensorAdded(sensor);
 
-        hardware.SensorAdded += SensorAdded;
-        hardware.SensorRemoved += SensorRemoved;
+        // Drivers activate/deactivate sensors inside hardware.Update(), which runs on the
+        // background updater thread, so these events must hop to the UI thread before they
+        // mutate the node tree (and, through it, TreeViewAdv and the plot model).
+        hardware.SensorAdded += sensor => RunOnUiThread(() => SensorAdded(sensor));
+        hardware.SensorRemoved += sensor => RunOnUiThread(() => SensorRemoved(sensor));
 
         _expanded = settings.GetValue(_expandedIdentifier, true);
+    }
+
+    private void RunOnUiThread(Action action)
+    {
+        Control marshaller = _uiMarshaller;
+        if (marshaller is { IsHandleCreated: true, IsDisposed: false } && marshaller.InvokeRequired)
+        {
+            try
+            {
+                marshaller.BeginInvoke(action);
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+            catch (InvalidOperationException)
+            {
+                // Handle destroyed between the guard and the call (shutdown race).
+                return;
+            }
+        }
+
+        action();
     }
 
 
