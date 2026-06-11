@@ -78,7 +78,10 @@ namespace Aga.Controls.Tree
             {
 				DrawColumnHeaders(e.Graphics);
 				y += ColumnHeaderHeight;
-                if (Columns.Count == 0 || e.ClipRectangle.Height <= y)
+				// Skip row drawing only when the invalid region lies entirely within the header
+				// band; testing Height instead of Bottom would also blank any short OS-driven
+				// partial repaint band located over the rows (e.g. under RDP).
+                if (Columns.Count == 0 || e.ClipRectangle.Bottom <= y)
                     return;
             }
 
@@ -88,6 +91,10 @@ namespace Aga.Controls.Tree
             e.Graphics.ResetTransform();
             e.Graphics.TranslateTransform(-OffsetX, y);
             Rectangle displayRect = DisplayRectangle;
+            // Horizontal grid lines end here; computed once instead of querying the native
+            // Graphics.ClipBounds per row (which, after DrawNode's ResetClip, is the GDI+
+            // infinite rectangle anyway).
+            _horizontalGridLineRight = OffsetX + Math.Max(ContentWidth, displayRect.Width);
             for (int row = FirstVisibleRow; row < RowCount; row++)
             {
                 Rectangle rowRect = _rowLayout.GetRowBounds(row);
@@ -136,7 +143,7 @@ namespace Aga.Controls.Tree
 			OnRowDraw(e, node, context, row, rowRect);
 
 			if ((GridLineStyle & GridLineStyle.Horizontal) == GridLineStyle.Horizontal) {
-				e.Graphics.DrawLine(CustomHorizontalLinePen, 0, rowRect.Bottom, e.Graphics.ClipBounds.Right, rowRect.Bottom);
+				e.Graphics.DrawLine(CustomHorizontalLinePen, 0, rowRect.Bottom, _horizontalGridLineRight, rowRect.Bottom);
       }
 
 			if (FullRowSelect)

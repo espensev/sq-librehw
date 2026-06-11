@@ -54,12 +54,15 @@ public class SensorGadget : Gadget
     private readonly PersistentSettings _settings;
     private readonly UserOption _hardwareNames;
 
+    private readonly System.Threading.SynchronizationContext _uiContext;
+    private readonly int _uiThreadId;
     private Font _largeFont;
     private Font _smallFont;
     private Brush _textBrush;
     private StringFormat _stringFormat;
     private StringFormat _trimStringFormat;
     private StringFormat _alignRightStringFormat;
+    private StringFormat _measureStringFormat;
     private Color _fontColor;
     private Color _backgroundColor;
 
@@ -67,12 +70,18 @@ public class SensorGadget : Gadget
     {
         _unitManager = unitManager;
         _settings = settings;
+        _uiContext = System.Threading.SynchronizationContext.Current;
+        _uiThreadId = Environment.CurrentManagedThreadId;
         computer.HardwareAdded += HardwareAdded;
         computer.HardwareRemoved += HardwareRemoved;
 
         _stringFormat = new StringFormat { FormatFlags = StringFormatFlags.NoWrap };
         _trimStringFormat = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
         _alignRightStringFormat = new StringFormat { Alignment = StringAlignment.Far, FormatFlags = StringFormatFlags.NoWrap };
+
+        // StringFormat.GenericTypographic allocates a new native format handle on every access;
+        // the paint loop measures with it per sensor per tick, so hold one instance instead.
+        _measureStringFormat = StringFormat.GenericTypographic;
 
         if (File.Exists("gadget_background.png"))
         {
@@ -334,6 +343,9 @@ public class SensorGadget : Gadget
         _stringFormat.Dispose();
         _stringFormat = null;
 
+        _measureStringFormat.Dispose();
+        _measureStringFormat = null;
+
         _trimStringFormat.Dispose();
         _trimStringFormat = null;
 
@@ -407,16 +419,33 @@ public class SensorGadget : Gadget
             HardwareAdded(subHardware);
     }
 
+    // Sensor events fire on the background updater / pool threads; the gadget's sensor map,
+    // settings, and layout are UI-thread state. Subscriptions stay method groups so the -= in
+    // HardwareRemoved keeps working.
+    private void RunOnUiThread(Action action)
+    {
+        if (_uiContext != null && Environment.CurrentManagedThreadId != _uiThreadId)
+            _uiContext.Post(_ => action(), null);
+        else
+            action();
+    }
+
     private void SensorAdded(ISensor sensor)
     {
-        if (_settings.GetValue(new Identifier(sensor.Identifier, "gadget").ToString(), false))
-            Add(sensor);
+        RunOnUiThread(() =>
+        {
+            if (_settings.GetValue(new Identifier(sensor.Identifier, "gadget").ToString(), false))
+                Add(sensor);
+        });
     }
 
     private void SensorRemoved(ISensor sensor)
     {
-        if (Contains(sensor))
-            Remove(sensor, false);
+        RunOnUiThread(() =>
+        {
+            if (Contains(sensor))
+                Remove(sensor, false);
+        });
     }
 
     public bool Contains(ISensor sensor)
@@ -1285,7 +1314,7 @@ public class SensorGadget : Gadget
     
                         g.DrawString(formatted, _smallFont, _textBrush, new RectangleF(-1, y - 1, w - _rightMargin + 3, 0), _alignRightStringFormat);
     
-                        remainingWidth = w - (int)Math.Floor(g.MeasureString(formatted, _smallFont, w, StringFormat.GenericTypographic).Width) - _rightMargin;
+                        remainingWidth = w - (int)Math.Floor(g.MeasureString(formatted, _smallFont, w, _measureStringFormat).Width) - _rightMargin;
                     }
                     else
                     {

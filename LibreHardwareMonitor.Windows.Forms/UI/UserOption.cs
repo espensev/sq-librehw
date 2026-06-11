@@ -54,7 +54,11 @@ public class UserOption
         add
         {
             _changed += value;
-            _changed?.Invoke(this, null);
+
+            // Initialize-on-subscribe: fire only the newly added handler, not every existing
+            // subscriber — re-firing earlier handlers on each subscription causes redundant
+            // (and order-sensitive) re-initialization passes.
+            value?.Invoke(this, null);
         }
         remove
         {

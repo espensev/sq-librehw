@@ -12,10 +12,14 @@ upstream merges and reviewers know they are intentional.
   the Min/Max columns. The `Show Min` / `Show Max` items are disabled while compact is active so the
   checkmark cannot lie about visibility. On save, the pre-compact column widths are written back so
   the narrowed widths are not persisted.
-- **Multi-select hide/unhide** (`treeView.SelectionMode = TreeSelectionMode.Multi`,
-  `GetSelectedSensorNodes` / `SetSensorNodesVisible`). Right-clicking a multi-selection shows
-  `Hide Selected Sensors (N)` / `Unhide Selected Sensors (N)` and suppresses the single-sensor
-  actions (Parameters, Rename, Pen Color, etc.).
+- **Sensor-list bulk selection and keyboard access** (`treeView.SelectionMode =
+  TreeSelectionMode.Multi`; spec:
+  [`feature-sensor-list-bulk-selection.md`](feature-sensor-list-bulk-selection.md)). Multi-select
+  context menus provide hide/unhide, graph, pen-color, tray, and gadget actions; type rows provide
+  group visibility/plot actions; Del and Apps/Shift+F10 are supported; Graph Inputs supports
+  multi-row toggling. Visibility changes persist `/hidden` only: they do not clear `Plot` or raise
+  `PlotSelectionChanged`. Post-implementation corrections and ranked follow-ups are recorded in
+  [`review-sensor-list-bulk-selection-follow-up.md`](review-sensor-list-bulk-selection-follow-up.md).
 
 ## Plot panel
 
@@ -94,5 +98,6 @@ upstream merges and reviewers know they are intentional.
 
 - 2026-06-06: `net10.0-windows` and `net472` Release x64 app builds passed with 0 warnings and 0 errors using redirected temp `OutDir` paths. The ordinary `net10.0-windows` release output path was locked by a running `Libre Hardware Monitor` process, so it was not used for the compile check.
 - 2026-06-06: Re-verified at the **normal** output path after closing the running app — `net10.0-windows` and `net472` (Release x64) both built with 0 warnings / 0 errors. Confirms the per-target manifest split (`app.manifest` vs `app.net472.manifest`) embeds cleanly on both frameworks (no `WFO0003`), and `requireAdministrator` remains in both manifests so hardware access is preserved on each target.
+- 2026-06-07: Graph/sensor-tree UI review fixes implemented (see [`feature-graph-ui-review-fixes.md`](feature-graph-ui-review-fixes.md)): column-width persistence regression, GraphInputsForm BindingList subscription leak, plot recompute double-fire/fan-out, sub-minute time-axis label resolution, and the GetNiceAxisStep tie-break. `net10.0-windows` + `net472` Release x64 build 0/0; GUI-interaction paths verified by code reasoning (advisor-reviewed), manual checklist outstanding — not runtime-verified to the curl/CSV standard used for the web-server/identifier fixes.
 - 2026-06-07: NVIDIA unique-identifier + CSV logger guard verified end-to-end (see [`feature-unique-gpu-sensor-ids.md`](feature-unique-gpu-sensor-ids.md)). `net10.0-windows` + `net472` Release x64 built 0/0; after relaunch `data.json` had 0 duplicate `SensorId` (12VHPWR Pin 1 = `/voltage/1`, GPU Core Voltage = `/voltage/0`) and a fresh CSV header was 533/533 unique (was 453/452 with the `/voltage/0` collision).
 - 2026-06-07: Remote Web Server JSON NaN/Infinity fix verified end-to-end (see [`feature-webserver-json-stream.md`](feature-webserver-json-stream.md)). `net10.0-windows` + `net472` Release x64 built 0/0; after relaunch `GET /data.json` returned HTTP 200 valid JSON (533 sensors) instead of hanging, NaN sensors (NIC "Network Utilization") serialized as `RawValue: null`, `GET /Sensor?action=Get` on a NaN sensor returned `value:null` with no hang, and `GET /metrics` stayed HTTP 200. Server auto-starts via persisted `runWebServerMenuItem=true`.

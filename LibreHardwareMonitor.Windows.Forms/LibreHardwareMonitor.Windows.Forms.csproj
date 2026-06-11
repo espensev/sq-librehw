@@ -79,6 +79,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="LibreHardwareMonitor.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Resources\**" />
     <None Include="Resources\app.net472.manifest" />
     <None Include="Resources\app.manifest" />

@@ -42,6 +42,7 @@ internal sealed class NvidiaGpu : GenericGpu
     private readonly Sensor _pcieThroughputRx;
     private readonly Sensor _pcieThroughputTx;
     private readonly Sensor[] _powers;
+    private readonly int[] _loadDomainIndices;
     private readonly Sensor _powerUsage;
     private readonly Sensor _coreVoltage;
     private readonly Sensor[] _temperatures;
@@ -253,6 +254,7 @@ internal sealed class NvidiaGpu : GenericGpu
         if (status == NvApi.NvStatus.OK)
         {
             var loads = new List<Sensor>();
+            var loadDomains = new List<int>();
             for (int index = 0; index < pStatesInfo.Utilizations.Length; index++)
             {
                 NvApi.NvDynamicPState load = pStatesInfo.Utilizations[index];
@@ -262,13 +264,17 @@ internal sealed class NvidiaGpu : GenericGpu
                     string name = GetUtilizationDomainName(utilizationDomain);
 
                     if (name != null)
+                    {
                         loads.Add(new Sensor(name, nextLoadIndex++, SensorType.Load, this, settings));
+                        loadDomains.Add(index);
+                    }
                 }
             }
 
             if (loads.Count > 0)
             {
                 _loads = loads.ToArray();
+                _loadDomainIndices = loadDomains.ToArray();
 
                 foreach (Sensor sensor in loads)
                     ActivateSensor(sensor);
@@ -280,6 +286,7 @@ internal sealed class NvidiaGpu : GenericGpu
             if (status == NvApi.NvStatus.OK)
             {
                 var loads = new List<Sensor>();
+                var loadDomains = new List<int>();
                 for (int index = 0; index < usages.Entries.Length; index++)
                 {
                     NvApi.NvUsagesEntry load = usages.Entries[index];
@@ -289,13 +296,17 @@ internal sealed class NvidiaGpu : GenericGpu
                         string name = GetUtilizationDomainName(utilizationDomain);
 
                         if (name != null)
+                        {
                             loads.Add(new Sensor(name, nextLoadIndex++, SensorType.Load, this, settings));
+                            loadDomains.Add(index);
+                        }
                     }
                 }
 
                 if (loads.Count > 0)
                 {
                     _loads = loads.ToArray();
+                    _loadDomainIndices = loadDomains.ToArray();
 
                     foreach (Sensor sensor in loads)
                         ActivateSensor(sensor);
@@ -575,7 +586,11 @@ internal sealed class NvidiaGpu : GenericGpu
                     if (Name.StartsWith("NVIDIA GeForce RTX 50", StringComparison.OrdinalIgnoreCase))
                     {
                         _hotSpotTemperature.Value = 0;
-                        _temperatures[0].Value = thermalSensors.Temperatures[1] / 256.0f;
+
+                        // _temperatures is null when the constructor's GetThermalSettings call failed.
+                        if (_temperatures is { Length: > 0 })
+                            _temperatures[0].Value = thermalSensors.Temperatures[1] / 256.0f;
+
                         _memoryJunctionTemperature.Value = thermalSensors.Temperatures[2] / 256.0f;
                     }
                     // RTX 40xx series
@@ -618,47 +633,52 @@ internal sealed class NvidiaGpu : GenericGpu
                 }
             }
 
-            if (_fans is { Length: > 0 })
+            if (_fans is { Length: > 0 } || _controls is { Length: > 0 })
             {
-                NvApi.NvFanCoolersStatus fanCoolers = GetFanCoolersStatus(out status);
-                if (status == NvApi.NvStatus.OK && fanCoolers.Count > 0)
-                {
-                    for (int i = 0; i < fanCoolers.Count; i++)
-                    {
-                        NvApi.NvFanCoolersStatusItem item = fanCoolers.Items[i];
-                        _fans[i].Value = item.CurrentRpm;
-                    }
-                }
-                else
-                {
-                    int tachReading = GetTachReading(out status);
-                    if (status == NvApi.NvStatus.OK)
-                        _fans[0].Value = tachReading;
-                }
-            }
+                // Fetched once per tick; the fan and control blocks below share it but keep their own fallbacks.
+                NvApi.NvFanCoolersStatus fanCoolers = GetFanCoolersStatus(out NvApi.NvStatus fanCoolersStatus);
 
-            if (_controls is { Length: > 0 })
-            {
-                NvApi.NvFanCoolersStatus fanCoolers = GetFanCoolersStatus(out status);
-                if (status == NvApi.NvStatus.OK && fanCoolers.Count > 0 && fanCoolers.Count == _controls.Length)
+                if (_fans is { Length: > 0 })
                 {
-                    for (int i = 0; i < fanCoolers.Count; i++)
+                    if (fanCoolersStatus == NvApi.NvStatus.OK && fanCoolers.Count > 0)
                     {
-                        NvApi.NvFanCoolersStatusItem item = fanCoolers.Items[i];
-
-                        if (Array.Find(_controls, c => c.Index == item.CoolerId) is { } control)
-                            control.Value = item.CurrentLevel;
-                    }
-                }
-                else
-                {
-                    NvApi.NvCoolerSettings coolerSettings = GetCoolerSettings(out status);
-                    if (status == NvApi.NvStatus.OK && coolerSettings.Count > 0)
-                    {
-                        for (int i = 0; i < coolerSettings.Count; i++)
+                        // Runtime cooler count can exceed the constructed array.
+                        for (int i = 0; i < fanCoolers.Count && i < _fans.Length; i++)
                         {
-                            NvApi.NvCooler cooler = coolerSettings.Cooler[i];
-                            _controls[i].Value = cooler.CurrentLevel;
+                            NvApi.NvFanCoolersStatusItem item = fanCoolers.Items[i];
+                            _fans[i].Value = item.CurrentRpm;
+                        }
+                    }
+                    else
+                    {
+                        int tachReading = GetTachReading(out status);
+                        if (status == NvApi.NvStatus.OK)
+                            _fans[0].Value = tachReading;
+                    }
+                }
+
+                if (_controls is { Length: > 0 })
+                {
+                    if (fanCoolersStatus == NvApi.NvStatus.OK && fanCoolers.Count > 0 && fanCoolers.Count == _controls.Length)
+                    {
+                        for (int i = 0; i < fanCoolers.Count; i++)
+                        {
+                            NvApi.NvFanCoolersStatusItem item = fanCoolers.Items[i];
+
+                            if (Array.Find(_controls, c => c.Index == item.CoolerId) is { } control)
+                                control.Value = item.CurrentLevel;
+                        }
+                    }
+                    else
+                    {
+                        NvApi.NvCoolerSettings coolerSettings = GetCoolerSettings(out status);
+                        if (status == NvApi.NvStatus.OK && coolerSettings.Count > 0)
+                        {
+                            for (int i = 0; i < coolerSettings.Count && i < _controls.Length; i++)
+                            {
+                                NvApi.NvCooler cooler = coolerSettings.Cooler[i];
+                                _controls[i].Value = cooler.CurrentLevel;
+                            }
                         }
                     }
                 }
@@ -666,14 +686,22 @@ internal sealed class NvidiaGpu : GenericGpu
 
             if (_loads is { Length: > 0 })
             {
+                // _loads is packed over the domains present at construction; match each runtime
+                // entry to its constructed slot by domain index, so a presence-set change after
+                // a driver restart leaves a sensor stale instead of shifting values to the
+                // wrong sensors (or throwing).
                 NvApi.NvDynamicPStatesInfo pStatesInfo = GetDynamicPstatesInfoEx(out status);
                 if (status == NvApi.NvStatus.OK)
                 {
                     for (int index = 0; index < pStatesInfo.Utilizations.Length; index++)
                     {
                         NvApi.NvDynamicPState load = pStatesInfo.Utilizations[index];
-                        if (load.IsPresent && Enum.IsDefined(typeof(NvApi.NvUtilizationDomain), index))
-                            _loads[index].Value = load.Percentage;
+                        if (!load.IsPresent)
+                            continue;
+
+                        int slot = Array.IndexOf(_loadDomainIndices, index);
+                        if (slot >= 0)
+                            _loads[slot].Value = load.Percentage;
                     }
                 }
                 else
@@ -684,8 +712,12 @@ internal sealed class NvidiaGpu : GenericGpu
                         for (int index = 0; index < usages.Entries.Length; index++)
                         {
                             NvApi.NvUsagesEntry load = usages.Entries[index];
-                            if (load.IsPresent > 0 && Enum.IsDefined(typeof(NvApi.NvUtilizationDomain), index))
-                                _loads[index].Value = load.Percentage;
+                            if (load.IsPresent <= 0)
+                                continue;
+
+                            int slot = Array.IndexOf(_loadDomainIndices, index);
+                            if (slot >= 0)
+                                _loads[slot].Value = load.Percentage;
                         }
                     }
                 }
@@ -696,8 +728,13 @@ internal sealed class NvidiaGpu : GenericGpu
                 NvApi.NvPowerTopology powerTopology = GetPowerTopology(out status);
                 if (status == NvApi.NvStatus.OK && powerTopology.Count > 0)
                 {
-                    for (int i = 0; i < powerTopology.Count; i++)
+                    // Slots are null for domains the constructor did not recognize, and the
+                    // driver can report more entries at runtime than at construction.
+                    for (int i = 0; i < powerTopology.Count && i < _powers.Length; i++)
                     {
+                        if (_powers[i] == null)
+                            continue;
+
                         NvApi.NvPowerTopologyEntry entry = powerTopology.Entries[i];
                         _powers[i].Value = entry.PowerUsage / 1000f;
                     }
@@ -1099,7 +1136,8 @@ internal sealed class NvidiaGpu : GenericGpu
                 for (int i = 0; i < powerTopology.Count; i++)
                 {
                     NvApi.NvPowerTopologyEntry entry = powerTopology.Entries[i];
-                    _powers[i].Value = entry.PowerUsage / 1000f;
+                    if (_powers != null && i < _powers.Length && _powers[i] != null)
+                        _powers[i].Value = entry.PowerUsage / 1000f;
 
                     r.AppendFormat(" Entries[{0}].Domain: {1}{2}", i, entry.Domain, Environment.NewLine);
                     r.AppendFormat(" Entries[{0}].PowerUsage: {1}{2}", i, entry.PowerUsage, Environment.NewLine);

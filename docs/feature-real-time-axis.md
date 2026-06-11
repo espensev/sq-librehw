@@ -2,7 +2,7 @@
 
 **Project:** LibreHardwareMonitor Sev IQ local fork  
 **Status:** Implemented  
-**Updated:** 2026-06-06  
+**Updated:** 2026-06-11  
 **Related docs:** `feature-graph-menu.md`, `feature-graph-panel-controls.md`, `local-ui-customizations.md`  
 **Purpose:** make the graph T axis show real local clock time by default, with elapsed history time still available as an alternate mode.
 
@@ -41,7 +41,7 @@ The graph gains a time-axis label mode with two choices:
 
 Local Time is the default for missing settings and new installations because it displays the time axis as truthfully as possible. Elapsed remains available as an explicit mode for users who want relative age labels.
 
-In Local Time mode, a point whose X position is 60 seconds from the live edge should label near the current local time minus 60 seconds, or the sample's own timestamp if the implementation can use it directly. The current `PlotPanel` data path computes X as age in seconds from a UTC refresh anchor; label formatting should map that age back to local time from the same refresh anchor. As the graph updates, labels scroll with the live data. Zoom and pan continue to operate on the same visible history window; only label formatting changes.
+In Local Time mode, a point whose X position is 60 seconds from the live edge should label near the current local time minus 60 seconds, or the sample's own timestamp if the implementation can use it directly. Since 2026-06-11 the `PlotPanel` data path computes X as seconds since a fixed UTC session origin (`_timeOrigin`), so the label is derived directly from the sample's own timestamp (`_timeOrigin + X`, converted to local time) rather than from a per-refresh "now" anchor. As the graph updates, the window pans toward "now" and labels scroll with the live data. Zoom and pan continue to operate on the same visible history window; only label formatting changes between modes.
 
 For short windows, labels should include seconds when the visible range is 2 minutes or less. For longer same-day windows, labels can use hours and minutes. If the visible range crosses a local date boundary, labels must include enough date context to avoid ambiguity. Use current-culture date/time formatting where practical.
 
@@ -75,13 +75,13 @@ If the persisted setting is missing, invalid, or from an older build, the app mu
 
 - [x] The graph offers a Local Time vs Elapsed label mode. (`Time Axis > Label Mode` in the plot context menu)
 - [x] Local Time is the default for missing settings and new installations. (`plotTimeAxisLabelMode` default `LocalTime`)
-- [x] Local Time mode labels the T axis with local wall-clock time corresponding as closely as possible to displayed samples. (`FormatLocalTimeAxisLabel` maps each tick back to local time from the live `_now` anchor)
-- [x] Elapsed mode remains available and matches current time-axis behavior. (`StringFormat = "h:mm"`, the original axis format)
+- [x] Local Time mode labels the T axis with local wall-clock time corresponding as closely as possible to displayed samples. (`FormatLocalTimeAxisLabel` maps each tick to the sample's own wall-clock time via the fixed session origin — exact, no longer approximated from a per-refresh anchor)
+- [x] Elapsed mode remains available and matches the historical display (`h:mm` age before "now"). (`FormatElapsedTimeAxisLabel` formats the tick's age relative to the live edge)
 - [x] The selected mode persists across app restart. (persisted via `UserRadioGroup` to `plotTimeAxisLabelMode`)
 - [x] Time-window presets and zoom still work in both modes. (label mode only swaps the formatter; preset/zoom paths unchanged)
 - [x] No sensor data, polling, logging, table values, or web/API behavior changes. (display-only formatter; no data-path edits)
 - [ ] Missing or invalid persisted label-mode settings fall back to Local Time. **Partial:** unparseable and negative values resolve to `LocalTime`, but an out-of-range high value clamps to `Elapsed` (`UserRadioGroup` clamps to `menuItems.Length - 1`). Only `0`/`1` are ever persisted, so this is unreachable in normal use; tighten only if a third mode is added.
-- [ ] Labels remain readable for 30-second, 10-minute, 1-hour, and 24-hour windows. Logic implemented (`HH:mm:ss` for ≤ 2 min, else `HH:mm`); awaiting runtime visual spot-check (§11).
+- [x] Labels remain readable for 30-second, 10-minute, 1-hour, and 24-hour windows. (`HH:mm:ss` for ≤ 2 min, else `HH:mm`; maintainer-confirmed at runtime 2026-06-11 on the session-origin axis)
 - [ ] A visible window that crosses midnight includes date context in Local Time mode. Logic implemented (`VisibleTimeAxisCrossesLocalDate` → `M/d HH:mm`); awaiting runtime visual spot-check (§11).
 
 ## 8. Verification Plan
@@ -106,7 +106,7 @@ If the persisted setting is missing, invalid, or from an older build, the app mu
 
 ## 10. Implementation Notes
 
-Current `PlotPanel` uses `TimeSpanAxis` with X values computed from `(_now - value.Time).TotalSeconds`. The lowest-risk implementation is likely a custom label formatter that maps relative seconds back to local time using the current live timestamp, rather than rewriting the series to `DateTimeAxis`.
+`PlotPanel` originally used `TimeSpanAxis` with X values computed from `(_now - value.Time).TotalSeconds` and a formatter mapping that age back to local time. With the long-window rendering work (2026-06-11, see `feature-long-window-graph-rendering.md` §10), X values became seconds since a fixed session origin and both label modes are custom formatters (`FormatLocalTimeAxisLabel`, `FormatElapsedTimeAxisLabel`); displayed label semantics are unchanged, but Local Time labels are now exact per sample instead of anchor-approximated.
 
 Implemented in `LibreHardwareMonitor.Windows.Forms/UI/PlotPanel.cs` using the existing `TimeSpanAxis` and a `LabelFormatter`. The new persisted setting is `plotTimeAxisLabelMode`, with `LocalTime` as index `0` and `Elapsed` as index `1`. Missing or unparseable stored values fall back to `LocalTime`, and `UserRadioGroup` clamps to the valid index range (a negative value resolves to index `0` = `LocalTime`). Note an out-of-range *high* value would clamp to `Elapsed` (index `1`), not `LocalTime`; this is unreachable in practice because only `0`/`1` are ever written.
 

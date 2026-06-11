@@ -59,7 +59,9 @@ public class UserRadioGroup
         add
         {
             _changed += value;
-            _changed?.Invoke(this, null);
+
+            // Initialize-on-subscribe: fire only the newly added handler (see UserOption.Changed).
+            value?.Invoke(this, null);
         }
         remove
         {

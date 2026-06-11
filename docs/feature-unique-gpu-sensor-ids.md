@@ -2,7 +2,7 @@
 
 **Project:** LibreHardwareMonitor Sev IQ local fork
 **Status:** Verified <!-- Draft | Accepted | Implemented | Verified | Done -->
-**Updated:** 2026-06-07
+**Updated:** 2026-06-11
 **Related docs:** [`feature-workflow.md`](feature-workflow.md), [`local-ui-customizations.md`](local-ui-customizations.md); GitHub issue #4
 **Purpose:** make every NVIDIA GPU sensor `Identifier` unique so identifier-keyed consumers (CSV, `data.json`, Prometheus, persisted plot state) are unambiguous.
 
@@ -63,10 +63,42 @@ because it started at 0 instead of 1.
 | Surface | Change |
 |---|---|
 | UI/menu/dialogs | None. |
-| Settings/config | Persisted plot/selection state keyed by identifier for `12VHPWR Pin 1..6` voltage now uses `/voltage/1..6`; old `/voltage/0..5` keys for those pins become stale (graph pen color/visibility may reset for the 5 pins once). |
-| Remote web/API | `data.json` `SensorId` and `/metrics` `sensorId` for `12VHPWR Pin 1..6` voltage change to `/voltage/1..6`; the duplicate `SensorId` is gone. |
-| Logging/files | New CSV files: `12VHPWR Pin 1..6` voltage identifier columns are `/voltage/1..6`; no duplicate identifier columns. Existing CSV files are not rewritten. |
+| Settings/config | Persisted plot/pen/hidden state keyed by identifier for `12VHPWR Pin 1..6` voltage now uses `/voltage/1..6`. Old `/voltage/0` (Pin 1) goes stale, but old `/voltage/1..5` keys are **reused by different physical pins** (see §5.1): state saved for Pin 2..6 silently attaches to Pin 1..5 unless remapped. |
+| Remote web/API | `data.json` `SensorId` and `/metrics` `sensorId` for `12VHPWR Pin 1..6` voltage change to `/voltage/1..6`; the duplicate `SensorId` is gone. Consumers keying on the old ids must apply the §5.1 remap table. |
+| Logging/files | New CSV files: `12VHPWR Pin 1..6` voltage identifier columns are `/voltage/1..6`; no duplicate identifier columns. Existing CSV files are not rewritten — but with Daily rotation the same-day file mixes pre-/post-upgrade pin columns under one header (see §5.1). |
 | Hardware/admin flow | None. |
+
+### 5.1 One-time identifier remap (all six pins moved)
+
+All **six** 12VHPWR voltage pin identifiers moved (`/voltage/0..5` → `/voltage/1..6`), not just Pin 1.
+Because the new scheme reuses the old ids `/voltage/1..5`, after the upgrade those identifiers denote
+**different physical pins**: historical data recorded for Pin 2..6 lives under identifiers now emitted by
+Pin 1..5. All pins read ~12 V, so values alone cannot reveal the shift — consumers must remap by table,
+not by plausibility checks.
+
+| Old identifier (`/gpu-nvidia/<n>/...`) | Physical pin (pre-upgrade data) | New identifier |
+|---|---|---|
+| `/voltage/0` | 12VHPWR Pin 1 (id shared with GPU Core Voltage — pre-upgrade data ambiguous) | `/voltage/1` |
+| `/voltage/1` | 12VHPWR Pin 2 | `/voltage/2` |
+| `/voltage/2` | 12VHPWR Pin 3 | `/voltage/3` |
+| `/voltage/3` | 12VHPWR Pin 4 | `/voltage/4` |
+| `/voltage/4` | 12VHPWR Pin 5 | `/voltage/5` |
+| `/voltage/5` | 12VHPWR Pin 6 | `/voltage/6` |
+
+After the upgrade `/voltage/0` belongs to `GPU Core Voltage` only, and `/voltage/6` is new. The remap
+applies to every identifier-keyed surface: `data.json` `SensorId`, `/metrics` `sensorId`, CSV identifier
+columns, and persisted plot/pen-color/hidden settings.
+
+**CSV Daily-rotation warning:** if Daily rotation is enabled across the upgrade, the same-day log file is
+reopened and pre-/post-upgrade samples are appended under one header — columns `/voltage/1..5` then hold
+Pin 2..6 data before the upgrade row boundary and Pin 1..5 data after it, with no in-file marker. In
+addition, Pin 6's new identifier `/voltage/6` matches no column in the reopened pre-upgrade header, so
+Pin 6 data is silently absent from that file until the next rotation. Force a new session/log file on the
+first upgraded run (or treat that day's pin columns as mixed and Pin 6 as missing).
+
+**Pinned-identifier scripts:** automation that hard-codes these identifiers (e.g. `LiquidCool.py`-style
+scripts keying on `/gpu-nvidia/<n>/voltage/<i>`) reads a different pin after the upgrade and must be
+remapped with the same table.
 
 ## 6. Compatibility and Risk
 
@@ -76,7 +108,7 @@ because it started at 0 instead of 1.
 | `net472` vs `net10.0-windows` | Framework-agnostic; both targets built clean. |
 | DPI/multi-monitor | Not applicable. |
 | Hardware/admin rights | Unchanged. Pin sensors only exist on ASUS Astral subsystem IDs. |
-| Existing settings/users | Downstream identifier-keyed consumers remap `12VHPWR Pin 1..6` voltage once (they are mis-keyed today regardless). Persisted plot state for those 5 pins may reset once. |
+| Existing settings/users | All six pin ids moved and `/voltage/1..5` are reused by different physical pins (§5.1) — consumers must apply the one-time remap table, not just drop stale keys, or Pin 2..6 history/settings silently attach to Pin 1..5. Unremapped persisted plot state mis-assigns pens rather than resetting. |
 
 ## 7. Acceptance Criteria
 

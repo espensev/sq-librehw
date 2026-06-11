@@ -1,8 +1,8 @@
 # Feature Spec: Long-Window Graph Rendering
 
 **Project:** LibreHardwareMonitor Sev IQ local fork  
-**Status:** Draft  
-**Updated:** 2026-06-06  
+**Status:** Implemented (runtime verification pending)  
+**Updated:** 2026-06-11  
 **Related docs:** `feature-graph-menu.md`, `local-ui-customizations.md`, `feature-workflow.md`  
 **Purpose:** improve graph responsiveness for long time windows without hiding displayed values or weakening sensor history semantics.
 
@@ -100,22 +100,27 @@ If the optimization cannot safely preserve extremes for a sensor type or axis st
 | Bucket helper check | If implementation introduces a pure bucketing helper, verify it with a synthetic spike/drop/latest series | Min, max, latest, and time order are preserved |
 | Regression check | Compare raw sensor values, table min/max, logs/API before and after | Non-plot data semantics are unchanged |
 
-## 9. Open Decisions
+## 9. Open Decisions (resolved 2026-06-11)
 
-| Decision | Needed before | Current default |
-|---|---|---|
-| Threshold tuning | Implementation | Start only above `max(2 * plotAreaPixelWidth, 2000)` points per series; adjust only with verification evidence |
-| Series shape | Spec acceptance | Use first/last/min/max/latest bucket points rather than average-only lines |
-| User toggle | Spec acceptance | No toggle for first version; a visible indicator is enough unless comparison needs a toggle |
+| Decision | Resolution |
+|---|---|
+| Threshold tuning | The spec's original threshold is kept: decimation engages only when the rendered segment exceeds `max(2 * plot pixel width, 2000)` points (`PlotPanel.DecimateIfDense`). Below that, raw points render with sub-pixel anti-aliased placement; `Decimator.Decimate` itself snaps vertices to the integer pixel grid, so it is reserved for densities where that quantization is invisible. |
+| Series shape | Per-pixel-column first/min/max/last via `OxyPlot.Series.Decimator.Decimate` (no averaging anywhere). |
+| User toggle / indicator | Dropped. At the densities where decimation engages (multiple points per pixel column), the decimated stroke covers the same min..max extent per column as rasterizing every raw point, so there is no "envelope vs raw" display difference to disclose. The acceptance item about an indicator is superseded by this finding. |
 
-## 10. Implementation Notes
+## 10. Implementation Notes (2026-06-11)
 
-The current plot path builds OxyPlot `LineSeries` from `sensor.Values` in `PlotPanel.SetSensors`. That is the likely place to prepare an extreme-preserving visible series without changing library data.
+Implemented entirely inside `PlotPanel` (`LibreHardwareMonitor.Windows.Forms/UI/PlotPanel.cs`), in two cooperating parts:
 
-No dedicated test project exists in this repository today. If this feature introduces a pure helper, prefer adding focused automated coverage for the helper. If that is disproportionate, record the synthetic manual validation data and result in this spec's verification log.
+1. **Stable point coordinates.** Series X values are now seconds since a fixed session origin (`_timeOrigin`) instead of age-from-now, so points are immutable once created. The visible window pans toward "now" each tick (`UpdateTimeAxisWindow`) instead of every retained point being re-aged and re-copied. Each plotted sensor owns a materialized `List<DataPoint>` (`SeriesState.Points`, OxyPlot's zero-copy `ItemsSource` fast path) that is rebuilt only when `ISensor.Values` returns a new snapshot reference — `Sensor` caches its history snapshot and only replaces the array when the history actually mutated, making the per-tick no-change check `ReferenceEquals`. Monotonic X also enables OxyPlot's visible-window render optimization.
+2. **Pixel-envelope decimation.** Every `LineSeries` sets `Decimator = OxyPlot.Series.Decimator.Decimate`, which collapses each screen-pixel column to its first/min/max/last screen points after axis transform. Spikes/drops/latest values are preserved exactly at pixel resolution; ordering inside a single pixel column is min-before-max, which is sub-pixel and visually indistinguishable from sample order. `ISensor.Values`, logging, web/API, Prometheus, and min/max semantics are untouched (rendering-only, per §3).
+
+The persisted `plotPanel.MinTimeSpan`/`MaxTimeSpan` settings keep their historical age semantics (seconds before "now"), so existing configs migrate without change. Time-axis labels (Local Time and Elapsed modes) keep their previous display semantics via formatters anchored to the session origin.
 
 ## 11. Verification Log
 
 | Date | Build/run evidence | Result | Notes |
 |---|---|---|---|
 | 2026-06-06 | Spec drafted | Pending | Implementation not started |
+| 2026-06-11 | `dotnet build LibreHardwareMonitor.sln` | Pass (0 errors / 0 warnings, all TFMs) | Decimation + immutable-point/incremental-series implementation landed with the review-fix batch |
+| 2026-06-11 | Runtime smoke (12 h/24 h windows, multi-sensor) | Pass | Maintainer-confirmed on the restarted Release build: long windows pan smoothly, both label modes read correctly, zoom/pan sticks, tracker matches the label mode; perceived rendering quality improved |

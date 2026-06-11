@@ -29,6 +29,14 @@ public class SensorNotifyIcon : IDisposable
     private readonly Pen _pen;
     private readonly Font _font;
     private readonly Font _smallFont;
+    private byte[] _iconBytes;
+
+    // Rendered-state cache: most ticks produce a pixel-identical icon, so skip the GDI
+    // rebuild, native handle churn, and Shell_NotifyIcon(Modify) IPC when nothing changed.
+    private bool _iconCreated;
+    private string _lastIconText;
+    private float? _lastIconValue;
+    private Color _lastIconColor;
 
     public SensorNotifyIcon(SystemTray sensorSystemTray, ISensor sensor, PersistentSettings settings, UnitManager unitManager)
     {
@@ -154,30 +162,30 @@ public class SensorNotifyIcon : IDisposable
         _smallFont.Dispose();
     }
 
-    private string GetString()
+    private string GetString(float? value)
     {
-        if (!Sensor.Value.HasValue)
+        if (!value.HasValue)
             return "-";
 
         switch (Sensor.SensorType)
         {
             case SensorType.Temperature:
-                return _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit ? $"{UnitManager.CelsiusToFahrenheit(Sensor.Value):F0}" : $"{Sensor.Value:F0}";
+                return _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit ? $"{UnitManager.CelsiusToFahrenheit(value):F0}" : $"{value:F0}";
             case SensorType.TimeSpan:
-                return $"{TimeSpan.FromSeconds(Sensor.Value.Value):g}";
+                return $"{TimeSpan.FromSeconds(value.Value):g}";
             case SensorType.Timing:
-                return $"{Sensor.Value.Value:F3}";
+                return $"{value.Value:F3}";
             case SensorType.Clock:
             case SensorType.Fan:
             case SensorType.Flow:
-                return $"{1e-3f * Sensor.Value:F1}";
+                return $"{1e-3f * value:F1}";
             case SensorType.Voltage:
             case SensorType.Current:
             case SensorType.SmallData:
             case SensorType.Factor:
             case SensorType.Throughput:
             case SensorType.Conductivity:
-                return $"{Sensor.Value:F1}";
+                return $"{value:F1}";
             case SensorType.Control:
             case SensorType.Frequency:
             case SensorType.Level:
@@ -187,15 +195,14 @@ public class SensorNotifyIcon : IDisposable
             case SensorType.Energy:
             case SensorType.Noise:
             case SensorType.Humidity:
-                return $"{Sensor.Value:F0}";
+                return $"{value:F0}";
             default:
                 return "-";
         }
     }
 
-    private Icon CreateTransparentIcon()
+    private Icon CreateTransparentIcon(string text)
     {
-        string text = GetString();
         int count = 0;
         for (int i = 0; i < text.Length; i++)
             if ((text[i] >= '0' && text[i] <= '9') || text[i] == '-')
@@ -214,7 +221,7 @@ public class SensorNotifyIcon : IDisposable
         IntPtr Scan0 = data.Scan0;
 
         int numBytes = _bitmap.Width * _bitmap.Height * 4;
-        byte[] bytes = new byte[numBytes];
+        byte[] bytes = _iconBytes ??= new byte[numBytes];
         Marshal.Copy(Scan0, bytes, 0, numBytes);
         _bitmap.UnlockBits(data);
 
@@ -235,7 +242,7 @@ public class SensorNotifyIcon : IDisposable
             PixelFormat.Format32bppArgb);
     }
 
-    private Icon CreatePercentageIcon()
+    private Icon CreatePercentageIcon(float value)
     {
         try
         {
@@ -246,7 +253,6 @@ public class SensorNotifyIcon : IDisposable
             _graphics.Clear(Color.Black);
         }
         _graphics.FillRectangle(_darkBrush, 0.5f, -0.5f, _bitmap.Width - 2, _bitmap.Height);
-        float value = Sensor.Value.GetValueOrDefault();
         float y = (float)(_bitmap.Height * 0.01f) * (100 - value);
         _graphics.FillRectangle(_brush, 0.5f, -0.5f + y, _bitmap.Width - 2, _bitmap.Height - y);
         _graphics.DrawRectangle(_pen, 1, 0, _bitmap.Width - 3, _bitmap.Height - 1);
@@ -256,21 +262,41 @@ public class SensorNotifyIcon : IDisposable
 
     public void Update()
     {
-        Icon icon = _notifyIcon.Icon;
+        // One snapshot per update: the background updater writes Sensor.Value concurrently, so
+        // repeated property reads could observe different values within one render.
+        float? sensorValue = Sensor.Value;
 
-        switch (Sensor.SensorType)
+        bool isPercentageIcon = Sensor.SensorType == SensorType.Load ||
+                                Sensor.SensorType == SensorType.Control ||
+                                Sensor.SensorType == SensorType.Level;
+
+        if (isPercentageIcon)
         {
-            case SensorType.Load:
-            case SensorType.Control:
-            case SensorType.Level:
-                _notifyIcon.Icon = CreatePercentageIcon();
-                break;
-            default:
-                _notifyIcon.Icon = CreateTransparentIcon();
-                break;
-        }
+            if (!_iconCreated || !Equals(_lastIconValue, sensorValue) || _lastIconColor != _color)
+            {
+                Icon icon = _notifyIcon.Icon;
+                _notifyIcon.Icon = CreatePercentageIcon(sensorValue.GetValueOrDefault());
+                icon?.Destroy();
 
-        icon?.Destroy();
+                _lastIconValue = sensorValue;
+                _lastIconColor = _color;
+                _iconCreated = true;
+            }
+        }
+        else
+        {
+            string iconText = GetString(sensorValue);
+            if (!_iconCreated || iconText != _lastIconText || _lastIconColor != _color)
+            {
+                Icon icon = _notifyIcon.Icon;
+                _notifyIcon.Icon = CreateTransparentIcon(iconText);
+                icon?.Destroy();
+
+                _lastIconText = iconText;
+                _lastIconColor = _color;
+                _iconCreated = true;
+            }
+        }
 
         string format = "";
         switch (Sensor.SensorType)
@@ -286,24 +312,27 @@ public class SensorNotifyIcon : IDisposable
             case SensorType.Level: format = "\n{0}: {1:F1} %"; break;
             case SensorType.Power: format = "\n{0}: {1:F0} W"; break;
             case SensorType.Data: format = "\n{0}: {1:F0} GB"; break;
-            case SensorType.Factor: format = "\n{0}: {1:F3} GB"; break;
-            case SensorType.Energy: format = "\n{0}: {0:F0} mWh"; break;
-            case SensorType.Noise: format = "\n{0}: {0:F0} dBA"; break;
-            case SensorType.Conductivity: format = "\n{0}: {0:F1} µS/cm"; break;
-            case SensorType.Humidity: format = "\n{0}: {0:F0} %"; break;
-            case SensorType.Timing: format = "\n{0}: {0:F3} ns"; break;
+            case SensorType.SmallData: format = "\n{0}: {1:F1} MB"; break;
+            case SensorType.Factor: format = "\n{0}: {1:F3}"; break;
+            case SensorType.Frequency: format = "\n{0}: {1:F0} Hz"; break;
+            case SensorType.Energy: format = "\n{0}: {1:F0} mWh"; break;
+            case SensorType.Noise: format = "\n{0}: {1:F0} dBA"; break;
+            case SensorType.Conductivity: format = "\n{0}: {1:F1} µS/cm"; break;
+            case SensorType.Humidity: format = "\n{0}: {1:F0} %"; break;
+            case SensorType.Timing: format = "\n{0}: {1:F3} ns"; break;
+            default: format = "\n{0}: {1}"; break;
         }
 
-        string formattedValue = string.Format(format, Sensor.Name, Sensor.Value);
+        string formattedValue = string.Format(format, Sensor.Name, sensorValue);
 
         if (Sensor.SensorType == SensorType.Temperature && _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit)
         {
             format = "\n{0}: {1:F1} °F";
-            formattedValue = string.Format(format, Sensor.Name, UnitManager.CelsiusToFahrenheit(Sensor.Value));
+            formattedValue = string.Format(format, Sensor.Name, UnitManager.CelsiusToFahrenheit(sensorValue));
         }
 
         string hardwareName = Sensor.Hardware.Name;
-        hardwareName = hardwareName.Substring(0, Math.Min(63 - formattedValue.Length, hardwareName.Length));
+        hardwareName = hardwareName.Substring(0, Math.Min(Math.Max(0, 63 - formattedValue.Length), hardwareName.Length));
         string text = hardwareName + formattedValue;
         if (text.Length > 63)
             text = null;

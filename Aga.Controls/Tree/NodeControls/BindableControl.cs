@@ -151,20 +151,32 @@ namespace Aga.Controls.Tree.NodeControls
 			return GetMemberAdapter(node).MemberType;
 		}
 
+		// Member lookup cache: the paint path resolves the binding for every visible cell on
+		// every repaint (at 1 Hz tree refresh), so uncached reflection lookups dominate it.
+		private static readonly Dictionary<KeyValuePair<Type, string>, MemberInfo> _memberCache = new Dictionary<KeyValuePair<Type, string>, MemberInfo>();
+
 		private MemberAdapter GetMemberAdapter(TreeNodeAdv node)
 		{
 			if (node.Tag != null && !string.IsNullOrEmpty(DataPropertyName))
 			{
 				Type type = node.Tag.GetType();
-				PropertyInfo pi = type.GetProperty(DataPropertyName);
-				if (pi != null)
-					return new MemberAdapter(node.Tag, pi);
-				else
+				var key = new KeyValuePair<Type, string>(type, DataPropertyName);
+
+				MemberInfo member;
+				lock (_memberCache)
 				{
-					FieldInfo fi = type.GetField(DataPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-					if (fi != null)
-						return new MemberAdapter(node.Tag, fi);
+					if (!_memberCache.TryGetValue(key, out member))
+					{
+						member = (MemberInfo)type.GetProperty(DataPropertyName)
+							?? type.GetField(DataPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+						_memberCache[key] = member;
+					}
 				}
+
+				if (member is PropertyInfo pi)
+					return new MemberAdapter(node.Tag, pi);
+				if (member is FieldInfo fi)
+					return new MemberAdapter(node.Tag, fi);
 			}
 			return MemberAdapter.Empty;
 		}

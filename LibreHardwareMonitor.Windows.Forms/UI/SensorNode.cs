@@ -95,11 +95,15 @@ public class SensorNode : Node
 
         bool hidden = settings.GetValue(new Identifier(sensor.Identifier, "hidden").ToString(), sensor.IsDefaultHidden);
         base.IsVisible = !hidden;
-        Plot = settings.GetValue(new Identifier(sensor.Identifier, "plot").ToString(), false);
+
+        // Initialize the backing fields directly: routing through the setters would persist a
+        // "plot=false" entry for every sensor ever seen and raise PlotSelectionChanged from the
+        // constructor (before any listener can be attached, and on whatever thread created us).
+        _plot = settings.GetValue(new Identifier(sensor.Identifier, "plot").ToString(), false);
         string id = new Identifier(sensor.Identifier, "penColor").ToString();
 
         if (settings.Contains(id))
-            PenColor = settings.GetValue(id, Color.Black);
+            _penColor = settings.GetValue(id, Color.Black);
     }
 
     public event EventHandler PlotSelectionChanged;
@@ -131,6 +135,9 @@ public class SensorNode : Node
         get { return _penColor; }
         set
         {
+            if (_penColor == value)
+                return;
+
             _penColor = value;
 
             string id = new Identifier(Sensor.Identifier, "penColor").ToString();
@@ -148,6 +155,9 @@ public class SensorNode : Node
         get { return _plot; }
         set
         {
+            if (_plot == value)
+                return;
+
             _plot = value;
             _settings.SetValue(new Identifier(Sensor.Identifier, "plot").ToString(), value);
             PlotSelectionChanged?.Invoke(this, null);
