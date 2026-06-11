@@ -98,16 +98,24 @@ public class HttpServer
             if (_listener.IsListening)
                 return true;
 
-            // validate that the selected IP exists (it could have been previously selected before switching networks)
-            IPHostEntry host = Dns.GetHostEntry(Dns.GetHostName());
+            // Validate that the selected IP exists (it could have been previously selected
+            // before switching networks). Enumerate local interfaces instead of a DNS
+            // round-trip: Dns.GetHostEntry can block for seconds on the UI thread while
+            // NICs initialize or DNS is misconfigured.
             bool ipFound = false;
-            foreach (IPAddress ip in host.AddressList)
+            foreach (System.Net.NetworkInformation.NetworkInterface nic in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
             {
-                if (ListenerIp == ip.ToString())
+                foreach (System.Net.NetworkInformation.UnicastIPAddressInformation address in nic.GetIPProperties().UnicastAddresses)
                 {
-                    ipFound = true;
-                    break;
+                    if (ListenerIp == address.Address.ToString())
+                    {
+                        ipFound = true;
+                        break;
+                    }
                 }
+
+                if (ipFound)
+                    break;
             }
 
             if (!ipFound)
@@ -143,8 +151,10 @@ public class HttpServer
         try
         {
             _cts?.Cancel();
-            _listenerTask?.Wait(TimeSpan.FromSeconds(5)); // Graceful wait
+            // Stop() faults the pending GetContextAsync (which ignores the token) so the accept
+            // loop exits immediately; the Wait below is only a backstop.
             _listener?.Stop();
+            _listenerTask?.Wait(TimeSpan.FromSeconds(5));
             _cts?.Dispose();
         }
         catch (HttpListenerException)
@@ -174,6 +184,10 @@ public class HttpServer
                 System.Diagnostics.Debug.WriteLine($"HttpListener error (code {ex.ErrorCode}): {ex.Message}. Retrying in 5 seconds.");
                 await Task.Delay(5000, cancellationToken);
             }
+            catch (HttpListenerException ex) when (ex.ErrorCode == 995)
+            {
+                break; // ERROR_OPERATION_ABORTED: Stop()/Abort() faulted the pending accept
+            }
             catch (ObjectDisposedException)
             {
                 break; // Listener stopped
@@ -202,6 +216,15 @@ public class HttpServer
 
     public SensorNode FindSensor(Node node, string id)
     {
+        // Listener threads traverse the tree while UI/worker threads mutate it.
+        lock (Node.SyncRoot)
+        {
+            return FindSensorCore(node, id);
+        }
+    }
+
+    private static SensorNode FindSensorCore(Node node, string id)
+    {
         if (node is SensorNode sNode)
         {
             if (sNode.Sensor.Identifier.ToString() == id)
@@ -210,7 +233,7 @@ public class HttpServer
 
         foreach (Node child in node.Nodes)
         {
-            SensorNode s = FindSensor(child, id);
+            SensorNode s = FindSensorCore(child, id);
             if (s != null)
             {
                 return s;
@@ -252,6 +275,27 @@ public class HttpServer
     //{"result":"fail","message":"Some error message"}
     //or:
     //{"result":"ok"}
+    private static bool IsCrossOriginBrowserRequest(HttpListenerRequest request)
+    {
+        string origin = request.Headers["Origin"];
+        if (!string.IsNullOrEmpty(origin))
+        {
+            // "null" origins (sandboxed frames, file://) fail TryCreate and are rejected.
+            return !(Uri.TryCreate(origin, UriKind.Absolute, out Uri originUri) &&
+                     string.Equals(originUri.Host, request.Url.Host, StringComparison.OrdinalIgnoreCase));
+        }
+
+        string referer = request.Headers["Referer"];
+        if (!string.IsNullOrEmpty(referer))
+        {
+            return !(Uri.TryCreate(referer, UriKind.Absolute, out Uri refererUri) &&
+                     string.Equals(refererUri.Host, request.Url.Host, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // No browser-context headers: a non-browser client (scripts, curl, the downstream poller).
+        return false;
+    }
+
     private void HandleSensorRequest(HttpListenerRequest request, Dictionary<string, object> result)
     {
         IDictionary<string, string> dict = ToDictionary(request.QueryString);
@@ -278,10 +322,18 @@ public class HttpServer
                 switch (dict["action"])
                 {
                     case "Set" when dict.ContainsKey("value"):
+                        // A cross-origin HTML form POST is a CORS "simple request" (no
+                        // preflight), so rejecting GET alone does not stop drive-by CSRF
+                        // against hardware control writes. Browsers always attach Origin
+                        // (or at least Referer) to cross-site form posts; script clients
+                        // like LiquidCool.py send neither and are unaffected.
+                        if (IsCrossOriginBrowserRequest(request))
+                            throw new ArgumentException("Set rejected: cross-origin browser requests are not allowed");
+
                         SetSensorControlValue(sNode, dict["value"]);
                         break;
                     case "Set":
-                        throw new ArgumentNullException("No value provided");
+                        throw new ArgumentException("No value provided");
                     case "Get":
                         // Non-finite readings (NaN/Infinity) are mapped to null so System.Text.Json
                         // does not throw; this path serves both GET and POST /Sensor requests.
@@ -296,12 +348,12 @@ public class HttpServer
             }
             else
             {
-                throw new ArgumentNullException("No id provided");
+                throw new ArgumentException("No id provided");
             }
         }
         else
         {
-            throw new ArgumentNullException("No action provided");
+            throw new ArgumentException("No action provided");
         }
     }
 
@@ -330,7 +382,7 @@ public class HttpServer
         catch (Exception e)
         {
             result["result"] = "fail";
-            result["message"] = e.ToString();
+            result["message"] = e.Message; // never e.ToString(): no stack traces to clients
         }
         return System.Text.Json.JsonSerializer.Serialize(result);
     }
@@ -410,7 +462,18 @@ public class HttpServer
                         if (requestedFile.Contains("Sensor"))
                         {
                             var sensorResult = new Dictionary<string, object>();
-                            HandleSensorRequest(request, sensorResult);
+
+                            // Hardware control writes must not be reachable via GET (CSRF).
+                            if (request.QueryString["action"] == "Set")
+                            {
+                                sensorResult["result"] = "fail";
+                                sensorResult["message"] = "Set requires a POST request";
+                            }
+                            else
+                            {
+                                HandleSensorRequest(request, sensorResult);
+                            }
+
                             await SendJsonSensorAsync(context.Response, sensorResult);
                             return;
                         }
@@ -547,9 +610,13 @@ public class HttpServer
         json["Max"] = "Max";
         json["ImageURL"] = string.Empty;
 
-        json["Children"] = new List<object> { GenerateJsonForNode(_root, ref nodeIndex) };
+        // Snapshot the node tree under the lock; serialization and I/O happen outside it.
+        lock (Node.SyncRoot)
+        {
+            json["Children"] = new List<object> { GenerateJsonForNode(_root, ref nodeIndex) };
+        }
 
-        byte[] buffer = Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(json));
+        byte[] buffer = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(json);
 
         bool acceptGzip;
         try
@@ -574,11 +641,16 @@ public class HttpServer
                 using (var zip = new GZipStream(ms, CompressionMode.Compress, true))
                     await zip.WriteAsync(buffer, 0, buffer.Length);
 
-                buffer = ms.ToArray();
+                // Write the stream's internal buffer directly instead of copying it via ToArray().
+                response.ContentLength64 = ms.Length;
+                await response.OutputStream.WriteAsync(ms.GetBuffer(), 0, (int)ms.Length);
+            }
+            else
+            {
+                response.ContentLength64 = buffer.Length;
+                await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
             }
 
-            response.ContentLength64 = buffer.Length;
-            await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
             response.OutputStream.Close();
         }
         catch (HttpListenerException)
@@ -587,43 +659,43 @@ public class HttpServer
         response.Close();
     }
 
-    private string GeneratePrometheusResponse(Node node, Dictionary<string, int> prometheusSettings)
+    // Dictionary to convert all data to base units for OpenMetrics
+    // SensorType, Item1 suffix, Item2 factor
+    private static readonly Dictionary<SensorType, (string, double)> _prometheusUnits = new()
     {
-        string responseStr = "";
-        string lastTagName = "";
+        { SensorType.Clock, ("hertz", 1000000)},                           //originally megahertz
+        { SensorType.Conductivity, ("seconds_per_centimeter", 0.000001) }, //originally microseconds per centimeter
+        { SensorType.Control, ("percent", 1) },
+        { SensorType.Current, ("amperes", 1) },
+        { SensorType.Data, ("bytes", 1000000000) },                        //originally GB
+        { SensorType.Energy, ("watthour", 0.001) },
+        { SensorType.Factor, ("", 1) },
+        { SensorType.Fan, ("rpm", 1) },
+        { SensorType.Flow, ("liters_per_hour", 1) },
+        { SensorType.Frequency, ("hertz", 1) },
+        { SensorType.Humidity, ("percent", 1) },
+        { SensorType.Level, ("percent", 1) },
+        { SensorType.Load, ("percent", 1) },
+        { SensorType.Noise, ("decibels", 1) },
+        { SensorType.Power, ("watts", 1) },
+        { SensorType.SmallData, ("bytes", 1024*1024) },                    //originally MiB
+        { SensorType.Temperature, ("celsius", 1) },
+        { SensorType.Throughput, ("bytes_per_second", 1) },
+        { SensorType.TimeSpan, ("seconds", 1) },
+        { SensorType.Timing, ("seconds", 0.000000001 ) },                  //originally nanoseconds
+        { SensorType.Voltage, ("volts", 1) },
+    };
 
-        /// Dictionary to convert all data to base units for OpenMetrics
-        /// SensorType, Item1 suffix, Item2 factor
-        var units = new Dictionary<SensorType, (string, double)>
-        {
-           { SensorType.Clock, ("hertz", 1000000)},                           //originally megahertz
-           { SensorType.Conductivity, ("seconds_per_centimeter", 0.000001) }, //originally microseconds per centimeter
-           { SensorType.Control, ("percent", 1) },
-           { SensorType.Current, ("amperes", 1) },
-           { SensorType.Data, ("bytes", 1000000000) },                        //originally GB
-           { SensorType.Energy, ("watthour", 0.001) },
-           { SensorType.Factor, ("", 1) },
-           { SensorType.Fan, ("rpm", 1) },
-           { SensorType.Flow, ("liters_per_hour", 1) },
-           { SensorType.Frequency, ("hertz", 1) },
-           { SensorType.Humidity, ("percent", 1) },
-           { SensorType.Level, ("percent", 1) },
-           { SensorType.Load, ("percent", 1) },
-           { SensorType.Noise, ("decibels", 1) },
-           { SensorType.Power, ("watts", 1) },
-           { SensorType.SmallData, ("bytes", 1024*1024) },                    //originally MiB
-           { SensorType.Temperature, ("celsius", 1) },
-           { SensorType.Throughput, ("bytes_per_second", 1) },
-           { SensorType.TimeSpan, ("seconds", 1) },
-           { SensorType.Timing, ("seconds", 0.000000001 ) },                  //originally nanoseconds
-           { SensorType.Voltage, ("volts", 1) },
-        };
+    private void GeneratePrometheusResponse(Node node, Dictionary<string, int> prometheusSettings, StringBuilder responseBuilder)
+    {
+        // Intentionally local: each HardwareNode recursion re-emits the TYPE line for its first tag.
+        string lastTagName = "";
 
         for (int i = 0; i < node.Nodes.Count; i++)
         {
             if (node.Nodes[i].GetType().Name == "HardwareNode")
             {
-                responseStr += GeneratePrometheusResponse(node.Nodes[i], prometheusSettings);
+                GeneratePrometheusResponse(node.Nodes[i], prometheusSettings, responseBuilder);
             }
 
             if (node.Nodes[i].GetType().Name == "TypeNode")
@@ -656,15 +728,15 @@ public class HttpServer
                     string tagSensorUnits = "";
 
                     // Get factor and unit suffix from dictionary ...
-                    if (units.ContainsKey(sensor.Sensor.SensorType))
+                    if (_prometheusUnits.ContainsKey(sensor.Sensor.SensorType))
                     {
-                        factor = units[sensor.Sensor.SensorType].Item2;
-                        tagSensorUnits = (units[sensor.Sensor.SensorType].Item1.Length == 0 ? String.Empty : "_" + units[sensor.Sensor.SensorType].Item1);
+                        factor = _prometheusUnits[sensor.Sensor.SensorType].Item2;
+                        tagSensorUnits = (_prometheusUnits[sensor.Sensor.SensorType].Item1.Length == 0 ? String.Empty : "_" + _prometheusUnits[sensor.Sensor.SensorType].Item1);
                     }
                     // ... or print an error message
                     else
                     {
-                        responseStr += $"# HELP {tagHardware}_{tagSensorType}:{valueSensorName} This Sensor type is not defined in the prometheus adapter [{sensor.Sensor.SensorType}]\n";
+                        responseBuilder.Append($"# HELP {tagHardware}_{tagSensorType}:{valueSensorName} This Sensor type is not defined in the prometheus adapter [{sensor.Sensor.SensorType}]\n");
                     }
 
                     // Creating the tag name for prometheus
@@ -681,20 +753,27 @@ public class HttpServer
 
                     if (lastTagName != tagName)
                     {
-                        responseStr += $"# TYPE {tagName} gauge\n";
+                        responseBuilder.Append($"# TYPE {tagName} gauge\n");
                         lastTagName = tagName;
                     }
 
+                    // Iterate newest-to-oldest by index instead of LINQ Reverse(): Reverse would
+                    // buffer the entire history snapshot per sensor per scrape, and this loop
+                    // runs while holding Node.SyncRoot (shared with data.json).
+                    IEnumerable<SensorValue> sensorValues = sensor.Sensor.Values;
+                    SensorValue[] history = sensorValues as SensorValue[] ?? sensorValues.ToArray();
+
                     int counter = 0;
-                    foreach (SensorValue val in sensor.Sensor.Values.Reverse())
+                    for (int v = history.Length - 1; v >= 0; v--)
                     {
+                        SensorValue val = history[v];
                         if (counter++ > prometheusSettings["archivelength"])
                             break;
 
                         if (float.IsNaN(val.Value))
                         {
                             // Print a help line saying what tag had an invalid value
-                            responseStr += $"# HELP {tagLine} has an invalid value and was skipped.\n";
+                            responseBuilder.Append($"# HELP {tagLine} has an invalid value and was skipped.\n");
                         }
                         else
                         {
@@ -703,18 +782,17 @@ public class HttpServer
 
                             if (prometheusSettings["timestamps"] == 1)
                             {
-                                responseStr += $"{tagLine} {(val.Value * factor).ToString(CultureInfo.InvariantCulture)} {((DateTimeOffset)val.Time).ToUnixTimeMilliseconds()}\n";
+                                responseBuilder.Append($"{tagLine} {(val.Value * factor).ToString(CultureInfo.InvariantCulture)} {((DateTimeOffset)val.Time).ToUnixTimeMilliseconds()}\n");
                             }
                             else
                             {
-                                responseStr += $"{tagLine} {(val.Value * factor).ToString(CultureInfo.InvariantCulture)}\n";
+                                responseBuilder.Append($"{tagLine} {(val.Value * factor).ToString(CultureInfo.InvariantCulture)}\n");
                             }
                         }
                     }
                 }
             }
         }
-        return responseStr;
     }
 
     private async Task SendPrometheusAsync(HttpListenerResponse response, HttpListenerRequest request = null)
@@ -778,7 +856,15 @@ public class HttpServer
             prometheusSettings["lastvalue"] = lastvalue;
         }
 
-        string responseContent = GeneratePrometheusResponse(_root, prometheusSettings);
+        StringBuilder responseBuilder = new StringBuilder();
+
+        // Snapshot the node tree under the lock; the response is written outside it.
+        lock (Node.SyncRoot)
+        {
+            GeneratePrometheusResponse(_root, prometheusSettings, responseBuilder);
+        }
+
+        string responseContent = responseBuilder.ToString();
         response.AddHeader("Cache-Control", "no-cache");
         response.AddHeader("Access-Control-Allow-Origin", "*");
 

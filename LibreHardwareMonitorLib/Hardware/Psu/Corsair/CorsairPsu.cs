@@ -157,7 +157,7 @@ internal sealed class CorsairPsu : Hardware
                                                   this,
                                                   settings,
                                                   powerRails,
-                                                  (acc, sensor) => acc + sensor.Value ?? 0f));
+                                                  (acc, sensor) => acc + (sensor.Value ?? 0f)));
 
         ActivateSensor(_compositeSensors[_compositeSensors.Count - 1]);
 

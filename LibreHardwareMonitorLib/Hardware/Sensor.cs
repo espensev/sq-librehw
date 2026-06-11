@@ -19,10 +19,12 @@ internal class Sensor : ISensor
     private readonly ISettings _settings;
     private readonly bool _trackMinMax;
     private readonly List<SensorValue> _values = new();
+    private readonly object _valuesLock = new();
     private int _count;
     private float? _currentValue;
     private string _name;
     private float _sum;
+    private SensorValue[] _valuesSnapshot;
     private TimeSpan _valuesTimeWindow = TimeSpan.FromDays(1.0);
 
     public Sensor(string name, int index, SensorType sensorType, Hardware hardware, ISettings settings) :
@@ -112,26 +114,49 @@ internal class Sensor : ISensor
             if (_valuesTimeWindow != TimeSpan.Zero)
             {
                 DateTime now = DateTime.UtcNow;
-                while (_values.Count > 0 && now - _values[0].Time > _valuesTimeWindow)
-                    _values.RemoveAt(0);
 
-                if (value.HasValue)
+                lock (_valuesLock)
                 {
-                    _sum += value.Value;
-                    _count++;
-                    if (_count == 4)
+                    int expiredCount = 0;
+                    while (expiredCount < _values.Count && now - _values[expiredCount].Time > _valuesTimeWindow)
+                        expiredCount++;
+
+                    if (expiredCount > 0)
                     {
-                        AppendValue(_sum / _count, now);
-                        _sum = 0;
-                        _count = 0;
+                        _values.RemoveRange(0, expiredCount);
+                        _valuesSnapshot = null;
+                    }
+
+                    if (value.HasValue)
+                    {
+                        if (!float.IsNaN(value.Value) && !float.IsInfinity(value.Value))
+                        {
+                            _sum += value.Value;
+                            _count++;
+                            if (_count == 4)
+                            {
+                                AppendValue(_sum / _count, now);
+                                _sum = 0;
+                                _count = 0;
+                                _valuesSnapshot = null;
+                            }
+                        }
+                        else
+                        {
+                            // A non-finite reading marks a sensor dropout: discard the partial
+                            // bucket so pre-dropout samples never blend into the first average
+                            // produced after the sensor recovers.
+                            _sum = 0;
+                            _count = 0;
+                        }
                     }
                 }
             }
 
             _currentValue = value;
-            if (_trackMinMax)
+            if (_trackMinMax && value.HasValue && !float.IsNaN(value.Value) && !float.IsInfinity(value.Value))
             {
-                if (value.HasValue && !float.IsNaN(value.Value) && !float.IsInfinity(value.Value))
+                lock (_valuesLock)
                 {
                     if (!Min.HasValue || Min > value)
                         Min = value;
@@ -145,7 +170,15 @@ internal class Sensor : ISensor
 
     public IEnumerable<SensorValue> Values
     {
-        get { return _values; }
+        get
+        {
+            // Cached snapshot: the returned array reference changes only when the data changed,
+            // so callers can use ReferenceEquals for O(1) change detection.
+            lock (_valuesLock)
+            {
+                return _valuesSnapshot ??= _values.ToArray();
+            }
+        }
     }
 
     public TimeSpan ValuesTimeWindow
@@ -156,28 +189,42 @@ internal class Sensor : ISensor
             _valuesTimeWindow = value;
             if (value == TimeSpan.Zero)
             {
-                _values.Clear();
-                _sum = 0;
-                _count = 0;
+                lock (_valuesLock)
+                {
+                    _values.Clear();
+                    _sum = 0;
+                    _count = 0;
+                    _valuesSnapshot = null;
+                }
             }
         }
     }
 
     public void ResetMin()
     {
-        Min = null;
+        lock (_valuesLock)
+        {
+            Min = null;
+        }
     }
 
     public void ResetMax()
     {
-        Max = null;
+        lock (_valuesLock)
+        {
+            Max = null;
+        }
     }
 
     public void ClearValues()
     {
-        _values.Clear();
-        _sum = 0;
-        _count = 0;
+        lock (_valuesLock)
+        {
+            _values.Clear();
+            _sum = 0;
+            _count = 0;
+            _valuesSnapshot = null;
+        }
     }
 
     public void Accept(IVisitor visitor)
@@ -203,12 +250,15 @@ internal class Sensor : ISensor
         {
             long t = 0;
 
-            foreach (SensorValue sensorValue in _values)
+            lock (_valuesLock)
             {
-                long v = sensorValue.Time.ToBinary();
-                binaryWriter.Write(v - t);
-                t = v;
-                binaryWriter.Write(sensorValue.Value);
+                foreach (SensorValue sensorValue in _values)
+                {
+                    long v = sensorValue.Time.ToBinary();
+                    binaryWriter.Write(v - t);
+                    t = v;
+                    binaryWriter.Write(sensorValue.Value);
+                }
             }
 
             binaryWriter.Flush();
@@ -237,24 +287,36 @@ internal class Sensor : ISensor
                 destination.Seek(0, SeekOrigin.Begin);
 
                 using BinaryReader reader = new(destination);
-                try
+                lock (_valuesLock)
                 {
-                    long t = 0;
-                    long readLen = reader.BaseStream.Length - reader.BaseStream.Position;
-                    while (readLen > 0)
+                    try
                     {
-                        t += reader.ReadInt64();
-                        DateTime time = DateTime.FromBinary(t);
-                        if (time > now)
-                            break;
+                        long t = 0;
+                        long readLen = reader.BaseStream.Length - reader.BaseStream.Position;
+                        while (readLen > 0)
+                        {
+                            t += reader.ReadInt64();
+                            DateTime time = DateTime.FromBinary(t);
+                            if (time > now)
+                                break;
 
-                        float value = reader.ReadSingle();
-                        AppendValue(value, time);
-                        readLen = reader.BaseStream.Length - reader.BaseStream.Position;
+                            float value = reader.ReadSingle();
+
+                            // Histories persisted by older builds may contain non-finite samples
+                            // (the live path now filters them); drop them on reload so the
+                            // finite-history invariant holds. The deliberate NaN session marker
+                            // is appended separately below.
+                            if (!float.IsNaN(value) && !float.IsInfinity(value))
+                                AppendValue(value, time);
+
+                            readLen = reader.BaseStream.Length - reader.BaseStream.Position;
+                        }
                     }
+                    catch (EndOfStreamException)
+                    { }
+
+                    _valuesSnapshot = null;
                 }
-                catch (EndOfStreamException)
-                { }
             }
             catch
             {
@@ -262,8 +324,14 @@ internal class Sensor : ISensor
             }
         }
 
-        if (_values.Count > 0)
-            AppendValue(float.NaN, DateTime.UtcNow);
+        lock (_valuesLock)
+        {
+            if (_values.Count > 0)
+            {
+                AppendValue(float.NaN, DateTime.UtcNow);
+                _valuesSnapshot = null;
+            }
+        }
 
         //remove the value string from the settings to reduce memory usage
         _settings.Remove(name);
