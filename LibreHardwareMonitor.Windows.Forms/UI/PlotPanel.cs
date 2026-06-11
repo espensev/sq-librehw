@@ -32,7 +32,7 @@ public class PlotPanel : UserControl
     private readonly UnitManager _unitManager;
     private readonly PlotView _plot;
     private readonly PlotModel _model;
-    private readonly TimeSpanAxis _timeAxis = new TimeSpanAxis();
+    private readonly SessionTimeAxis _timeAxis = new SessionTimeAxis();
     private readonly SortedDictionary<SensorType, LinearAxis> _axes = new SortedDictionary<SensorType, LinearAxis>();
     private readonly Dictionary<SensorType, LineAnnotation> _annotations = new Dictionary<SensorType, LineAnnotation>();
     private UserOption _stackedAxes;
@@ -41,7 +41,6 @@ public class PlotPanel : UserControl
     private UserOption _yAxesEnableZoom;
     private UserRadioGroup _gridDensity;
     private UserRadioGroup _timeAxisLabelMode;
-    private DateTime _now;
     private float _dpiX;
     private float _dpiY;
     private double _dpiXScale = 1;
@@ -49,11 +48,46 @@ public class PlotPanel : UserControl
     private Point _rightClickEnter;
     private bool _cancelContextMenu = false;
 
+    // Series X values are seconds since this fixed session origin, so a point's coordinates never
+    // change after creation. The visible window pans toward "now" each tick instead of every point
+    // being re-aged, which lets OxyPlot reuse the materialized point lists (and render only the
+    // visible window, since X is monotonic).
+    private readonly DateTime _timeOrigin;
+    private readonly Dictionary<ISensor, SeriesState> _seriesStates = new();
+    private double _windowAgeMin;
+    private double _windowAgeMax;
+    private double _lastNowX;
+    private bool _updatingTimeAxis;
+    private TemperatureUnit _lastTemperatureUnit;
+
+    private sealed class SeriesState
+    {
+        public readonly List<DataPoint> Points = new();
+
+        // Last snapshot returned by ISensor.Values; the sensor returns the same array reference
+        // until its history actually changes, so reference equality is an O(1) "dirty" check.
+        public IEnumerable<SensorValue> LastValues;
+    }
+
+    // The default tracker fills its X slot with TimeSpan.FromSeconds(axis value), which since the
+    // session-origin rework would read as time-since-launch. Substitute a value that matches the
+    // active label mode (wall-clock time, or age before "now" in Elapsed mode).
+    private sealed class SessionTimeAxis : TimeSpanAxis
+    {
+        public Func<double, object> TrackerValue { get; set; }
+
+        public override object GetValue(double x)
+        {
+            return TrackerValue != null ? TrackerValue(x) : base.GetValue(x);
+        }
+    }
+
     public PlotPanel(PersistentSettings settings, UnitManager unitManager)
     {
         _settings = settings;
         _unitManager = unitManager;
-        _now = DateTime.UtcNow;
+        _timeOrigin = DateTime.UtcNow;
+        _lastTemperatureUnit = unitManager.TemperatureUnit;
 
         SetDpi();
         _model = CreatePlotModel();
@@ -121,8 +155,19 @@ public class PlotPanel : UserControl
             _settings.SetValue("plotPanel.Min" + axis.Key, (float)axis.ActualMinimum);
             _settings.SetValue("plotPanel.Max" + axis.Key, (float)axis.ActualMaximum);
         }
-        _settings.SetValue("plotPanel.MinTimeSpan", (float)_timeAxis.ActualMinimum);
-        _settings.SetValue("plotPanel.MaxTimeSpan", (float)_timeAxis.ActualMaximum);
+
+        // Persist the window in age semantics (seconds before "now"), matching what the
+        // age-valued axis used to store under the same keys.
+        double ageMin = _windowAgeMin;
+        double ageMax = _windowAgeMax;
+        if (double.IsNaN(ageMax))
+        {
+            ageMax = Math.Max(0, _lastNowX - _timeAxis.ActualMinimum);
+            ageMin = Math.Max(0, _lastNowX - _timeAxis.ActualMaximum);
+        }
+
+        _settings.SetValue("plotPanel.MinTimeSpan", (float)ageMin);
+        _settings.SetValue("plotPanel.MaxTimeSpan", (float)ageMax);
     }
 
     private ContextMenuStrip CreateMenu()
@@ -143,7 +188,7 @@ public class PlotPanel : UserControl
         _stackedAxes.Changed += (sender, e) =>
         {
             UpdateAxesPosition();
-            InvalidatePlot();
+            InvalidatePlotCosmetic();
         };
         menu.Items.Add(stackedAxesMenuItem);
 
@@ -172,11 +217,7 @@ public class PlotPanel : UserControl
         menu.Items.Add(gridDensityMenuItem);
 
         _gridDensity = new UserRadioGroup("plotGridDensity", DefaultGridDensity, gridDensityMenuItems, _settings);
-        _gridDensity.Changed += (sender, e) =>
-        {
-            ApplyGridDensity();
-            InvalidatePlot();
-        };
+        _gridDensity.Changed += (sender, e) => InvalidatePlotCosmetic();
 
         ToolStripMenuItem timeAxisMenuItem = new ToolStripMenuItem("Time Axis");
         ToolStripMenuItem[] timeAxisMenuItems =
@@ -218,7 +259,7 @@ public class PlotPanel : UserControl
         _timeAxisLabelMode.Changed += (sender, e) =>
         {
             ApplyTimeAxisLabelMode();
-            InvalidatePlot();
+            InvalidatePlotCosmetic();
         };
 
         _timeAxisEnableZoom = new UserOption("timeAxisEnableZoom", true, timeAxisMenuItems[0], _settings);
@@ -255,17 +296,58 @@ public class PlotPanel : UserControl
         _timeAxis.MinorGridlineStyle = LineStyle.Solid;
         _timeAxis.MinorGridlineThickness = 1;
         _timeAxis.MinorGridlineColor = OxyColor.FromRgb(232, 232, 232);
-        _timeAxis.StartPosition = 1;
-        _timeAxis.EndPosition = 0;
+        _timeAxis.StartPosition = 0;
+        _timeAxis.EndPosition = 1;
         _timeAxis.MinimumPadding = 0;
         _timeAxis.MaximumPadding = 0;
-        _timeAxis.AbsoluteMinimum = 0;
-        _timeAxis.Minimum = 0;
-        _timeAxis.AbsoluteMaximum = 24 * 60 * 60;
-        _timeAxis.Zoom(
-                       _settings.GetValue("plotPanel.MinTimeSpan", 0.0f),
-                       _settings.GetValue("plotPanel.MaxTimeSpan", 10.0f * 60));
+        _timeAxis.MinimumRange = 1;
         _timeAxis.StringFormat = "h:mm";
+        _timeAxis.TrackerValue = x =>
+        {
+            if (_timeAxisLabelMode?.Value == TimeAxisLabelModeElapsed)
+                return TimeSpan.FromSeconds(Math.Max(0, _lastNowX - x));
+
+            try
+            {
+                return _timeOrigin.AddSeconds(x).ToLocalTime();
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return TimeSpan.FromSeconds(x);
+            }
+        };
+
+        // The persisted window is stored in age semantics (seconds before "now"), exactly as the
+        // previous age-valued axis persisted it, so existing configs keep their meaning.
+        _windowAgeMin = _settings.GetValue("plotPanel.MinTimeSpan", 0.0f);
+        _windowAgeMax = _settings.GetValue("plotPanel.MaxTimeSpan", 10.0f * 60);
+        if (!(_windowAgeMax > _windowAgeMin) || _windowAgeMin < 0)
+        {
+            _windowAgeMin = 0;
+            _windowAgeMax = 10.0 * 60;
+        }
+
+        UpdateTimeAxisWindow(0);
+
+#pragma warning disable CS0618 //obsolete warning
+
+        _timeAxis.AxisChanged += (sender, args) =>
+        {
+            // Track user pan/zoom as an age window so the per-tick update keeps the same
+            // distance from "now". Programmatic updates set _updatingTimeAxis to avoid feedback.
+            if (_updatingTimeAxis)
+                return;
+
+            double minimum = _timeAxis.ActualMinimum;
+            double maximum = _timeAxis.ActualMaximum;
+            if (double.IsNaN(minimum) || double.IsNaN(maximum))
+                return;
+
+            _windowAgeMin = Math.Max(0, _lastNowX - maximum);
+            _windowAgeMax = Math.Max(_windowAgeMin + 1e-3, _lastNowX - minimum);
+        };
+
+#pragma warning restore CS0618 //obsolete warning
 
         var units = new Dictionary<SensorType, string>
         {
@@ -345,24 +427,33 @@ public class PlotPanel : UserControl
     {
         if (_timeAxisLabelMode?.Value == TimeAxisLabelModeElapsed)
         {
-            _timeAxis.LabelFormatter = null;
-            _timeAxis.StringFormat = "h:mm";
+            _timeAxis.LabelFormatter = FormatElapsedTimeAxisLabel;
             return;
         }
 
         _timeAxis.LabelFormatter = FormatLocalTimeAxisLabel;
     }
 
-    private string FormatLocalTimeAxisLabel(double secondsFromNow)
+    private string FormatElapsedTimeAxisLabel(double elapsedSeconds)
     {
-        if (double.IsNaN(secondsFromNow) || double.IsInfinity(secondsFromNow))
+        if (double.IsNaN(elapsedSeconds) || double.IsInfinity(elapsedSeconds))
             return string.Empty;
 
-        DateTime anchor = _now == default ? DateTime.UtcNow : _now;
+        // Elapsed mode keeps the historical display semantics: the label is the sample's age
+        // relative to "now" (h:mm), even though the axis value is now seconds since session start.
+        TimeSpan age = TimeSpan.FromSeconds(Math.Max(0, _lastNowX - elapsedSeconds));
+        return string.Format(CultureInfo.CurrentCulture, "{0}:{1:00}", (int)age.TotalHours, age.Minutes);
+    }
+
+    private string FormatLocalTimeAxisLabel(double elapsedSeconds)
+    {
+        if (double.IsNaN(elapsedSeconds) || double.IsInfinity(elapsedSeconds))
+            return string.Empty;
+
         DateTime labelTime;
         try
         {
-            labelTime = anchor.AddSeconds(-secondsFromNow).ToLocalTime();
+            labelTime = _timeOrigin.AddSeconds(elapsedSeconds).ToLocalTime();
         }
         catch (ArgumentOutOfRangeException)
         {
@@ -401,11 +492,10 @@ public class PlotPanel : UserControl
         if (double.IsNaN(minimum) || double.IsNaN(maximum) || double.IsInfinity(minimum) || double.IsInfinity(maximum))
             return false;
 
-        DateTime anchor = _now == default ? DateTime.UtcNow : _now;
         try
         {
-            DateTime first = anchor.AddSeconds(-minimum).ToLocalTime();
-            DateTime second = anchor.AddSeconds(-maximum).ToLocalTime();
+            DateTime first = _timeOrigin.AddSeconds(minimum).ToLocalTime();
+            DateTime second = _timeOrigin.AddSeconds(maximum).ToLocalTime();
             return first.Date != second.Date;
         }
         catch (ArgumentOutOfRangeException)
@@ -441,29 +531,26 @@ public class PlotPanel : UserControl
         _model.Series.Clear();
         var types = new HashSet<SensorType>();
 
-
-        DataPoint CreateDataPoint(SensorType type, SensorValue value)
-        {
-            float displayedValue;
-
-            if (type == SensorType.Temperature && _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit)
-            {
-                displayedValue = UnitManager.CelsiusToFahrenheit(value.Value).Value;
-            }
-            else
-            {
-                displayedValue = value.Value;
-            }
-
-            return new DataPoint((_now - value.Time).TotalSeconds, displayedValue);
-        }
-
+        var retained = new HashSet<ISensor>(sensors);
+        var stale = _seriesStates.Keys.Where(sensor => !retained.Contains(sensor)).ToList();
+        foreach (ISensor sensor in stale)
+            _seriesStates.Remove(sensor);
 
         foreach (ISensor sensor in sensors)
         {
+            if (!_seriesStates.TryGetValue(sensor, out SeriesState state))
+            {
+                state = new SeriesState();
+                _seriesStates.Add(sensor, state);
+            }
+
             var series = new LineSeries
             {
-                ItemsSource = sensor.Values.Select(value => CreateDataPoint(sensor.SensorType, value)),
+                // A List<DataPoint> ItemsSource takes OxyPlot's zero-copy fast path; the list is
+                // owned by SeriesState and refreshed in SyncSeriesPoints only when the sensor's
+                // history snapshot actually changed.
+                ItemsSource = state.Points,
+                Decimator = DecimateIfDense,
                 Color = colors[sensor].ToOxyColor(),
                 StrokeThickness = strokeThickness,
                 YAxisKey = _axes[sensor.SensorType].Key,
@@ -486,13 +573,72 @@ public class PlotPanel : UserControl
         InvalidatePlot();
     }
 
+    private void SyncSeriesPoints()
+    {
+        bool temperatureUnitChanged = _unitManager.TemperatureUnit != _lastTemperatureUnit;
+        if (temperatureUnitChanged)
+            _lastTemperatureUnit = _unitManager.TemperatureUnit;
+
+        foreach (KeyValuePair<ISensor, SeriesState> pair in _seriesStates)
+        {
+            ISensor sensor = pair.Key;
+            SeriesState state = pair.Value;
+
+            IEnumerable<SensorValue> values = sensor.Values;
+            bool unitAffectsSeries = temperatureUnitChanged && sensor.SensorType == SensorType.Temperature;
+            if (!unitAffectsSeries && ReferenceEquals(values, state.LastValues))
+                continue;
+
+            state.LastValues = values;
+            RebuildPoints(state.Points, values, sensor.SensorType);
+        }
+    }
+
+    private void RebuildPoints(List<DataPoint> points, IEnumerable<SensorValue> values, SensorType type)
+    {
+        points.Clear();
+        bool toFahrenheit = type == SensorType.Temperature && _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit;
+
+        if (values is SensorValue[] array)
+        {
+            if (points.Capacity < array.Length)
+                points.Capacity = array.Length;
+
+            for (int i = 0; i < array.Length; i++)
+                points.Add(CreatePoint(array[i], toFahrenheit));
+
+            return;
+        }
+
+        foreach (SensorValue value in values)
+            points.Add(CreatePoint(value, toFahrenheit));
+    }
+
+    private DataPoint CreatePoint(SensorValue value, bool toFahrenheit)
+    {
+        float displayedValue = toFahrenheit ? UnitManager.CelsiusToFahrenheit(value.Value).Value : value.Value;
+        return new DataPoint((value.Time - _timeOrigin).TotalSeconds, displayedValue);
+    }
+
+    private void DecimateIfDense(List<ScreenPoint> input, List<ScreenPoint> output)
+    {
+        // Decimator.Decimate snaps every vertex to the integer pixel grid, so only engage it when
+        // the rendered segment is dense enough that sub-pixel placement is invisible anyway
+        // (spec threshold: max(2 * plot pixel width, 2000) points).
+        int width = _plot?.Width ?? 0;
+        if (input.Count > Math.Max(2 * width, 2000))
+            Decimator.Decimate(input, output);
+        else
+            output.AddRange(input);
+    }
+
     public void UpdateStrokeThickness(double strokeThickness)
     {
         foreach (LineSeries series in _model.Series)
         {
             series.StrokeThickness = strokeThickness;
         }
-        InvalidatePlot();
+        InvalidatePlotCosmetic();
     }
 
     private void ApplyGridDensity()
@@ -571,6 +717,8 @@ public class PlotPanel : UserControl
             axis.MinorStep = minorStep;
     }
 
+    private static readonly double[] NiceFactors = { 1, 2, 2.5, 5, 10 };
+
     private static double GetNiceAxisStep(double range, double targetDivisions)
     {
         if (double.IsNaN(range) || double.IsInfinity(range) || range <= 0 || targetDivisions <= 0)
@@ -580,13 +728,12 @@ public class PlotPanel : UserControl
         double magnitude = Math.Pow(10, Math.Floor(Math.Log10(rawStep)));
         double bestStep = double.NaN;
         double bestScore = double.PositiveInfinity;
-        double[] niceFactors = { 1, 2, 2.5, 5, 10 };
         const double scoreTolerance = 1e-9;
 
         for (int powerOffset = -1; powerOffset <= 1; powerOffset++)
         {
             double power = magnitude * Math.Pow(10, powerOffset);
-            foreach (double factor in niceFactors)
+            foreach (double factor in NiceFactors)
             {
                 double step = factor * power;
                 double divisions = range / step;
@@ -649,17 +796,19 @@ public class PlotPanel : UserControl
                     axis.PositionTier = 0;
                 }
                 LineAnnotation annotation = _annotations[pair.Key];
-                if (_model.Annotations.Contains(annotation)) 
+                if (_model.Annotations.Contains(annotation))
                     _model.Annotations.Remove(_annotations[pair.Key]);
             }
         }
-
-        ApplyGridDensity();
     }
 
     public void InvalidatePlot()
     {
-        _now = DateTime.UtcNow;
+        double nowX = (DateTime.UtcNow - _timeOrigin).TotalSeconds;
+        _lastNowX = nowX;
+
+        SyncSeriesPoints();
+        UpdateTimeAxisWindow(nowX);
         ApplyGridDensity();
 
         if (_axes != null)
@@ -670,8 +819,8 @@ public class PlotPanel : UserControl
                 SensorType type = pair.Key;
                 if (type == SensorType.Temperature)
                     axis.Unit = _unitManager.TemperatureUnit == TemperatureUnit.Celsius ? "°C" : "°F";
-                    
-                if (!_stackedAxes.Value) 
+
+                if (!_stackedAxes.Value)
                     continue;
 
                 var annotation = _annotations[pair.Key];
@@ -682,14 +831,60 @@ public class PlotPanel : UserControl
         _plot?.InvalidatePlot(true);
     }
 
-    public void TimeAxisZoom(double min, double max)
+    private void InvalidatePlotCosmetic()
     {
-        bool timeAxisIsZoomEnabled = _timeAxis.IsZoomEnabled;
+        // Re-render without re-running the series data update: none of the cosmetic call sites
+        // (stroke width, grid density, label mode, axis layout, window pan) change point data.
+        ApplyGridDensity();
+        _plot?.InvalidatePlot(false);
+    }
 
+    private void UpdateTimeAxisWindow(double nowX)
+    {
+        _updatingTimeAxis = true;
+        bool zoomEnabled = _timeAxis.IsZoomEnabled;
         _timeAxis.IsZoomEnabled = true;
-        _timeAxis.Zoom(min, max);
-        InvalidatePlot();
-        _timeAxis.IsZoomEnabled = timeAxisIsZoomEnabled;
+
+        try
+        {
+            _timeAxis.AbsoluteMaximum = nowX;
+            _timeAxis.AbsoluteMinimum = nowX - (24 * 60 * 60);
+
+            // NaN ageMax means "Auto": leave the range to OxyPlot's data-driven autoscale.
+            if (!double.IsNaN(_windowAgeMax))
+                _timeAxis.Zoom(nowX - _windowAgeMax, nowX - _windowAgeMin);
+        }
+        finally
+        {
+            _timeAxis.IsZoomEnabled = zoomEnabled;
+            _updatingTimeAxis = false;
+        }
+    }
+
+    public void TimeAxisZoom(double ageMin, double ageMax)
+    {
+        _windowAgeMin = ageMin;
+        _windowAgeMax = ageMax;
+
+        if (double.IsNaN(ageMax))
+        {
+            _updatingTimeAxis = true;
+            bool zoomEnabled = _timeAxis.IsZoomEnabled;
+            _timeAxis.IsZoomEnabled = true;
+
+            try
+            {
+                _timeAxis.Reset();
+            }
+            finally
+            {
+                _timeAxis.IsZoomEnabled = zoomEnabled;
+                _updatingTimeAxis = false;
+            }
+        }
+
+        UpdateTimeAxisWindow(_lastNowX);
+        InvalidatePlotCosmetic();
     }
 
     public void AutoscaleAllYAxes()
