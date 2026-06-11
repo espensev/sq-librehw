@@ -54,7 +54,14 @@ Useful baseline commands:
 ```powershell
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
+dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64
 ```
+
+The test project includes the **data.json golden-master tests** (`DataJsonGoldenTests`): the data.json
+payload is an external downstream contract, so any change touching `HttpServer.BuildDataJsonObject`,
+`GenerateJsonForNode`, or the serialization path must keep these green. The golden file embeds the
+assembly version; after a version bump, delete `LibreHardwareMonitor.Tests\data.golden.json`, re-run
+once to regenerate, and review the diff before committing.
 
 ## 5. Before handoff
 

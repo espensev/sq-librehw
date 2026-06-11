@@ -596,7 +596,16 @@ public class HttpServer
         response.Close();
     }
 
-    private async Task SendJsonAsync(HttpListenerResponse response, HttpListenerRequest request = null)
+    // Serialization buffer reused across data.json requests: the payload is ~155 KB, so a fresh
+    // array per 1 Hz poll would be a Large Object Heap allocation every second for the lifetime
+    // of the process. Contexts are handled concurrently, hence the gate.
+    private readonly MemoryStream _dataJsonBuffer = new();
+    private readonly SemaphoreSlim _dataJsonBufferGate = new(1, 1);
+
+    // The data.json object graph and its serialization are the external downstream contract;
+    // exposed internal (see LibreHardwareMonitor.Tests golden-master tests) so any change to
+    // either path is locked to byte-identical output.
+    internal Dictionary<string, object> BuildDataJsonObject()
     {
         Dictionary<string, object> json = new();
 
@@ -616,8 +625,16 @@ public class HttpServer
             json["Children"] = new List<object> { GenerateJsonForNode(_root, ref nodeIndex) };
         }
 
-        byte[] buffer = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(json);
+        return json;
+    }
 
+    internal void WriteDataJson(Stream output)
+    {
+        System.Text.Json.JsonSerializer.Serialize(output, BuildDataJsonObject());
+    }
+
+    private async Task SendJsonAsync(HttpListenerResponse response, HttpListenerRequest request = null)
+    {
         bool acceptGzip;
         try
         {
@@ -632,29 +649,41 @@ public class HttpServer
         response.AddHeader("Access-Control-Allow-Origin", "*");
         response.ContentType = "application/json";
 
+        await _dataJsonBufferGate.WaitAsync();
+
         try
         {
-            if (acceptGzip)
-            {
-                response.AddHeader("Content-Encoding", "gzip");
-                using var ms = new MemoryStream();
-                using (var zip = new GZipStream(ms, CompressionMode.Compress, true))
-                    await zip.WriteAsync(buffer, 0, buffer.Length);
+            _dataJsonBuffer.SetLength(0);
+            WriteDataJson(_dataJsonBuffer);
 
-                // Write the stream's internal buffer directly instead of copying it via ToArray().
-                response.ContentLength64 = ms.Length;
-                await response.OutputStream.WriteAsync(ms.GetBuffer(), 0, (int)ms.Length);
-            }
-            else
+            try
             {
-                response.ContentLength64 = buffer.Length;
-                await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
-            }
+                if (acceptGzip)
+                {
+                    response.AddHeader("Content-Encoding", "gzip");
+                    using var ms = new MemoryStream();
+                    using (var zip = new GZipStream(ms, CompressionMode.Compress, true))
+                        await zip.WriteAsync(_dataJsonBuffer.GetBuffer(), 0, (int)_dataJsonBuffer.Length);
 
-            response.OutputStream.Close();
+                    // Write the stream's internal buffer directly instead of copying it via ToArray().
+                    response.ContentLength64 = ms.Length;
+                    await response.OutputStream.WriteAsync(ms.GetBuffer(), 0, (int)ms.Length);
+                }
+                else
+                {
+                    response.ContentLength64 = _dataJsonBuffer.Length;
+                    await response.OutputStream.WriteAsync(_dataJsonBuffer.GetBuffer(), 0, (int)_dataJsonBuffer.Length);
+                }
+
+                response.OutputStream.Close();
+            }
+            catch (HttpListenerException)
+            { }
         }
-        catch (HttpListenerException)
-        { }
+        finally
+        {
+            _dataJsonBufferGate.Release();
+        }
 
         response.Close();
     }
