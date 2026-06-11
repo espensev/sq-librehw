@@ -6,3 +6,4 @@
 .vs/
 .vscode/
 packages/
+.claude/settings.local.json

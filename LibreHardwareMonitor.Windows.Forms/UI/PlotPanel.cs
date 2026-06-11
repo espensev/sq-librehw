@@ -32,6 +32,9 @@ public class PlotPanel : UserControl
     private readonly UnitManager _unitManager;
     private readonly PlotView _plot;
     private readonly PlotModel _model;
+    private ContextMenuStrip _menu;
+    private Button _optionsButton;
+    private readonly ToolTip _toolTip = new ToolTip();
     private readonly SessionTimeAxis _timeAxis = new SessionTimeAxis();
     private readonly SortedDictionary<SensorType, LinearAxis> _axes = new SortedDictionary<SensorType, LinearAxis>();
     private readonly Dictionary<SensorType, LineAnnotation> _annotations = new Dictionary<SensorType, LineAnnotation>();
@@ -116,6 +119,7 @@ public class PlotPanel : UserControl
         SuspendLayout();
         Controls.Add(_plot);
         ResumeLayout(true);
+        CreateOptionsButton();
         _plot.ShowTracker(new TrackerHitResult());
         _plot.HideTracker();
         foreach (Control plotControl in _plot.Controls)
@@ -126,10 +130,23 @@ public class PlotPanel : UserControl
         ApplyTheme();
     }
 
+    /// <summary>
+    /// Shared command wired by the owner (MainForm) so the graph-local menu can offer the same
+    /// "Reset Graph View" semantics as the main Graph menu without duplicating its logic.
+    /// </summary>
+    public Action ResetGraphView { get; set; }
+
     public void ApplyTheme()
     {
         _model.Background = Theme.Current.PlotBackgroundColor.ToOxyColor();
         _model.PlotAreaBorderColor = Theme.Current.PlotBorderColor.ToOxyColor();
+
+        if (_optionsButton != null)
+        {
+            _optionsButton.BackColor = Theme.Current.PlotBackgroundColor;
+            _optionsButton.ForeColor = Theme.Current.PlotTextColor;
+            _optionsButton.FlatAppearance.BorderColor = Theme.Current.PlotBorderColor;
+        }
         foreach (Axis axis in _model.Axes)
         {
             axis.AxislineColor = Theme.Current.PlotBorderColor.ToOxyColor();
@@ -284,7 +301,46 @@ public class PlotPanel : UserControl
                 axis.IsZoomEnabled = _yAxesEnableZoom.Value;
         };
 
+        menu.Items.Add(new ToolStripSeparator());
+        ToolStripMenuItem resetGraphViewMenuItem = new ToolStripMenuItem("Reset Graph View");
+        resetGraphViewMenuItem.Click += (sender, e) => ResetGraphView?.Invoke();
+        menu.Items.Add(resetGraphViewMenuItem);
+
+        _menu = menu;
         return menu;
+    }
+
+    private void CreateOptionsButton()
+    {
+        // Graph-local entry point to the same option set as the plot right-click menu
+        // (docs/feature-graph-panel-controls.md). Overlay button so the plot keeps its
+        // footprint; fixed glyph size so nothing clips in narrow panel placements.
+        int size = (int)Math.Round(24 * _dpiYScale);
+        int margin = (int)Math.Round(6 * _dpiXScale);
+
+        _optionsButton = new Button
+        {
+            Text = "⚙",
+            AccessibleName = "Graph options",
+            FlatStyle = FlatStyle.Flat,
+            Size = new Size(size, size),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            UseVisualStyleBackColor = false,
+            TabStop = true
+        };
+        _optionsButton.FlatAppearance.BorderSize = 1;
+        _optionsButton.Location = new Point(ClientSize.Width - size - margin, margin);
+        _optionsButton.Click += (sender, e) =>
+        {
+            // A preceding right-drag sets the suppression flag that the shared menu's Opening
+            // handler honors; a deliberate button click must not be eaten by it.
+            _cancelContextMenu = false;
+            _menu?.Show(_optionsButton, new Point(0, _optionsButton.Height));
+        };
+        _toolTip.SetToolTip(_optionsButton, "Graph options");
+
+        Controls.Add(_optionsButton);
+        _optionsButton.BringToFront();
     }
 
     private PlotModel CreatePlotModel()
@@ -891,5 +947,9 @@ public class PlotPanel : UserControl
     {
         foreach (LinearAxis axis in _axes.Values)
             axis.Zoom(double.NaN, double.NaN);
+
+        // Refresh now instead of waiting for the next update tick, so the rescale is visible
+        // immediately after the menu action.
+        InvalidatePlotCosmetic();
     }
 }
