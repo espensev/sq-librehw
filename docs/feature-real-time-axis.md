@@ -81,7 +81,7 @@ If the persisted setting is missing, invalid, or from an older build, the app mu
 - [x] Time-window presets and zoom still work in both modes. (label mode only swaps the formatter; preset/zoom paths unchanged)
 - [x] No sensor data, polling, logging, table values, or web/API behavior changes. (display-only formatter; no data-path edits)
 - [ ] Missing or invalid persisted label-mode settings fall back to Local Time. **Partial:** unparseable and negative values resolve to `LocalTime`, but an out-of-range high value clamps to `Elapsed` (`UserRadioGroup` clamps to `menuItems.Length - 1`). Only `0`/`1` are ever persisted, so this is unreachable in normal use; tighten only if a third mode is added.
-- [ ] Labels remain readable for 30-second, 10-minute, 1-hour, and 24-hour windows. Logic implemented (`HH:mm:ss` for ≤ 2 min, else `HH:mm`); awaiting runtime visual spot-check (§11).
+- [x] Labels remain readable for 30-second, 10-minute, 1-hour, and 24-hour windows. (`HH:mm:ss` for ≤ 2 min, else `HH:mm`; maintainer-confirmed at runtime 2026-06-11 on the session-origin axis)
 - [ ] A visible window that crosses midnight includes date context in Local Time mode. Logic implemented (`VisibleTimeAxisCrossesLocalDate` → `M/d HH:mm`); awaiting runtime visual spot-check (§11).
 
 ## 8. Verification Plan

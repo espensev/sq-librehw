@@ -123,4 +123,4 @@ The persisted `plotPanel.MinTimeSpan`/`MaxTimeSpan` settings keep their historic
 |---|---|---|---|
 | 2026-06-06 | Spec drafted | Pending | Implementation not started |
 | 2026-06-11 | `dotnet build LibreHardwareMonitor.sln` | Pass (0 errors / 0 warnings, all TFMs) | Decimation + immutable-point/incremental-series implementation landed with the review-fix batch |
-| 2026-06-11 | Runtime smoke (12 h/24 h windows, multi-sensor) | Pending | Manual launch check outstanding |
+| 2026-06-11 | Runtime smoke (12 h/24 h windows, multi-sensor) | Pass | Maintainer-confirmed on the restarted Release build: long windows pan smoothly, both label modes read correctly, zoom/pan sticks, tracker matches the label mode; perceived rendering quality improved |
