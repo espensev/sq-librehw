@@ -57,6 +57,13 @@ upstream merges and reviewers know they are intentional.
   identifier match, so a single sensor can never be fanned into multiple columns. This fixes a latent
   Daily-rotation/hot-plug bug where a duplicated identifier silently overwrote one real sensor's data;
   with the NVIDIA fix above it is also defence-in-depth against any future identifier collision.
+- **Millisecond row timestamps** (spec: [`feature-csv-millisecond-timestamps.md`](feature-csv-millisecond-timestamps.md), GH #9).
+  The row timestamp used the general `"G"` specifier (`MM/dd/yyyy HH:mm:ss`, no fractional seconds), so
+  at faster-than-1 Hz logging ~25% of samples collapsed onto a duplicate whole second and lost their
+  ordering. Now formatted via `FormatRowTimestamp`/`RowTimestampFormat` as `MM/dd/yyyy HH:mm:ss.fff`.
+  **Contract change:** the CSV `Time` column gains `.fff` milliseconds; the leading fields are
+  unchanged, so second-resolution readers are unaffected and the downstream ThermalTrace parser
+  (already updated) accepts both forms. Deliberate local-fork divergence from upstream's `"G"`.
 
 ## Remote Web Server (JSON endpoints)
 
@@ -101,3 +108,4 @@ upstream merges and reviewers know they are intentional.
 - 2026-06-07: Graph/sensor-tree UI review fixes implemented (see [`feature-graph-ui-review-fixes.md`](feature-graph-ui-review-fixes.md)): column-width persistence regression, GraphInputsForm BindingList subscription leak, plot recompute double-fire/fan-out, sub-minute time-axis label resolution, and the GetNiceAxisStep tie-break. `net10.0-windows` + `net472` Release x64 build 0/0; GUI-interaction paths verified by code reasoning (advisor-reviewed), manual checklist outstanding — not runtime-verified to the curl/CSV standard used for the web-server/identifier fixes.
 - 2026-06-07: NVIDIA unique-identifier + CSV logger guard verified end-to-end (see [`feature-unique-gpu-sensor-ids.md`](feature-unique-gpu-sensor-ids.md)). `net10.0-windows` + `net472` Release x64 built 0/0; after relaunch `data.json` had 0 duplicate `SensorId` (12VHPWR Pin 1 = `/voltage/1`, GPU Core Voltage = `/voltage/0`) and a fresh CSV header was 533/533 unique (was 453/452 with the `/voltage/0` collision).
 - 2026-06-07: Remote Web Server JSON NaN/Infinity fix verified end-to-end (see [`feature-webserver-json-stream.md`](feature-webserver-json-stream.md)). `net10.0-windows` + `net472` Release x64 built 0/0; after relaunch `GET /data.json` returned HTTP 200 valid JSON (533 sensors) instead of hanging, NaN sensors (NIC "Network Utilization") serialized as `RawValue: null`, `GET /Sensor?action=Get` on a NaN sensor returned `value:null` with no hang, and `GET /metrics` stayed HTTP 200. Server auto-starts via persisted `runWebServerMenuItem=true`.
+- 2026-06-13: CSV millisecond-timestamp fix implemented (see [`feature-csv-millisecond-timestamps.md`](feature-csv-millisecond-timestamps.md), GH #9). `dotnet test` 7/7 (5 new CSV-timestamp contract tests + 2 data.json golden); `net10.0-windows` + `net472` Release x64 built 0/0 (redirected temp `OutDir` — normal output path locked by the running app). Row `Time` column now emits `MM/dd/yyyy HH:mm:ss.fff`. Runtime CSV capture of `.fff` rows is the outstanding maintainer-launch step; the emitted format is the unit-pinned helper, so launch confirms wiring rather than format.
