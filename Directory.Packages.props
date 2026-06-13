@@ -1,0 +1,37 @@
+<Project>
+  <!--
+    Central Package Management (CPM). One version per package for the whole solution, so the
+    per-project version drift that produced NU1605 (Dependabot bumped a dependency in one project
+    without raising the matching direct reference in another) can no longer happen. Dependabot edits
+    the <PackageVersion> here; every consuming project inherits it.
+
+    Rules: PackageReference items in the .csproj files carry NO Version attribute (only Include, plus
+    any Condition / PrivateAssets / IncludeAssets). Each referenced package must have exactly one
+    PackageVersion entry below.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="DiskInfoToolkit" Version="2.1.1" />
+    <PackageVersion Include="HidSharp" Version="2.6.4" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="Microsoft.Win32.Registry" Version="5.0.0" />
+    <PackageVersion Include="Microsoft.Windows.CsWin32" Version="0.3.287" />
+    <PackageVersion Include="Mono.Posix.NETStandard" Version="1.0.0" />
+    <PackageVersion Include="OxyPlot.Core" Version="2.2.0" />
+    <PackageVersion Include="OxyPlot.WindowsForms" Version="2.2.0" />
+    <PackageVersion Include="RAMSPDToolkit-NDD" Version="1.5.0" />
+    <PackageVersion Include="System.IO.FileSystem.AccessControl" Version="5.0.0" />
+    <PackageVersion Include="System.IO.Ports" Version="10.0.9" />
+    <PackageVersion Include="System.Management" Version="10.0.9" />
+    <PackageVersion Include="System.Memory" Version="4.6.3" />
+    <PackageVersion Include="System.Resources.Extensions" Version="10.0.9" />
+    <PackageVersion Include="System.Text.Json" Version="10.0.8" />
+    <PackageVersion Include="System.Threading.AccessControl" Version="10.0.9" />
+    <PackageVersion Include="TaskScheduler" Version="2.12.2" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+</Project>
