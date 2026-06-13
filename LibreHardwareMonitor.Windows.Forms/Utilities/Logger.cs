@@ -107,6 +107,21 @@ public class Logger
             + string.Format(FileNameFormat, date, sessionNumber == 0 ? "" : "-" + sessionNumber);
     }
 
+    // Row timestamp format: the historical US-locale layout ("MM/dd/yyyy HH:mm:ss") with milliseconds
+    // (.fff) appended. The general "G" specifier has no fractional-seconds field, so it collapsed every
+    // sub-second sample onto a duplicate whole second (~25% of rows at faster-than-1 Hz logging),
+    // losing their ordering and true sub-second position (GH #9). Only the formatting dropped the
+    // resolution; DateTime.Now already carries it. The leading fields are byte-for-byte the legacy
+    // form, so a consumer reading second-resolution timestamps still parses unchanged; the downstream
+    // ThermalTrace parser also accepts this .fff form. Deliberate local-fork divergence from upstream's
+    // second-resolution "G".
+    internal const string RowTimestampFormat = "MM/dd/yyyy HH:mm:ss.fff";
+
+    internal static string FormatRowTimestamp(DateTime timestamp)
+    {
+        return timestamp.ToString(RowTimestampFormat, CultureInfo.InvariantCulture);
+    }
+
     private enum OpenLogResult
     {
         Opened,
@@ -314,7 +329,7 @@ public class Logger
             }
 
             StringBuilder row = new StringBuilder();
-            row.Append(now.ToString("G", CultureInfo.InvariantCulture));
+            row.Append(FormatRowTimestamp(now));
             row.Append(',');
 
             lock (_lock)
