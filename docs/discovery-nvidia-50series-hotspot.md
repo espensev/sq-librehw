@@ -1,18 +1,21 @@
 # Discovery: RTX 50-series GPU Hot Spot temperature (GH #10)
 
 **Project:** LibreHardwareMonitor Sev IQ local fork
-**Status:** Discovery — investigation only, no code change. GitHub issue #10 stays **open**.
-**Updated:** 2026-06-13
+**Status:** Discovery — **resolved (negative): no fix is currently possible**. No code change. See §"Decisive finding".
+**Updated:** 2026-06-14
 **Related:** GH #10; [`feature-unique-gpu-sensor-ids.md`](feature-unique-gpu-sensor-ids.md) (the other NVIDIA/`NvidiaGpu.cs` change); [`local-ui-customizations.md`](local-ui-customizations.md)
 
 ## Why this is a discovery note, not a fix
 
 The correct value for the 50-series hot spot depends on **what NVAPI returns on the actual RTX 5090** —
-and the only such card is the maintainer's live machine. No amount of further code reading produces a
+and the only such card is the maintainer's live machine. Reading source alone cannot produce a
 *verified* fix, and shipping a wrong value writes bad data to the most safety-relevant GPU temperature
-(it drives fan control and feeds ThermalTrace). So this note records what is provable from source and
-isolates the single hardware-confirmed data point needed to choose the fix. **`NvidiaGpu.cs` is
-unchanged.**
+(it drives fan control and feeds ThermalTrace).
+
+This note first records what is provable from source, then resolves the question against the
+maintainer's own controller telemetry from that 5090. **The answer is negative: the hot spot is not
+exposed via NVAPI on this card, so there is no correct index to plug in — see §"Decisive finding".**
+`NvidiaGpu.cs` is unchanged.
 
 ## What is provable from source
 
@@ -37,9 +40,9 @@ ActivateSensor(...)` is skipped, so the sensor is absent from the UI and the CSV
 
 ### 2. The issue's suggested fix — "port the undoc index N" — is unreliable (controller evidence)
 
-The maintainer's sibling controllers read the hot spot on the **same card** via direct NVAPI
-(`D:/Development/Thermals/nvg-gpu/unofficial-nvapi/nvapi-controller/`). Their logic is *more* careful
-than a fixed index:
+The maintainer's sibling controllers (`D:/Development/Thermals/nvg-gpu/unofficial-nvapi/nvapi-controller/`)
+attempt the hot spot on the **same card** via direct NVAPI, with logic *more* careful than a fixed index
+(and, as §"Decisive finding" shows, they currently get no hot-spot value either):
 
 - `nvapi_thermals.cpp::discover_sensors` probes all 32 undoc thermal slots, then **deliberately does
   not publish a fixed undoc slot as the hot spot**: `out.hotspot_index` is left at its default `-1`,
@@ -68,37 +71,54 @@ LHM already reads the documented thermal settings into `_temperatures[]` and lab
   `SizeConst = 3`; `GetThermalSettings` (`NvidiaGpu.cs:1252`) queries `NvThermalTarget.All` with
   `Count = 3`. If a documented hot-spot sensor sits beyond slot 3 on the 50-series, LHM never sees it.
 
-## The one open question (hardware-gated)
+## Decisive finding: the hot spot is not exposed via NVAPI on this 5090
 
-On the RTX 5090, when `NvAPI_GPU_GetThermalSettings(NV_THERMAL_TARGET_ALL)` is called:
+The open question — does NVAPI return a usable hot spot on this card — is answered directly by the
+maintainer's own controller telemetry on the same RTX 5090. **It does not.**
 
-> **Does it return a sensor whose `target == HOTSPOT (16)` with a valid `current_temp`, and is that
-> sensor within the first 3 entries (`Count <= 3`) — i.e. reachable by LHM's current struct?**
+Live status (`NVG-SmoothControl/runtime/logs/nvg_control_status.json`, `gpuName: NVIDIA GeForce
+RTX 5090`, updated 2026-06-13/14), and every A/B-run status snapshot from that day:
 
-The controller's discovery on this card already computes the answer. The data point needed is the
-maintainer's controller output for the 5090: `documented_hotspot_sensor_idx`, `thermalSettings.count`,
-and (if used) the proven undoc `hotspot_index`.
+```
+"thermal": { "coreC": 30.97, "memJunctionC": 42.0,
+             "hotspotC": 0.0000, "hotspotIndex": -1, "primarySource": "memj" }
+statusLine: "Core: 31.0C  HS--: --.-C  MJ: 42.0C ..."   // "HS--" = hot spot unavailable
+```
 
-## Fix paths, conditioned on that answer
+The controller logs the hot spot as a **column** (`hotspot_C`, `hotspot_idx` in
+`nvg_control_*.csv`), but the data is empty: across every recent archived CSV (2026-06-10 → 2026-06-13)
+`hotspot_C` is uniformly `0.000` and `hotspot_idx` is uniformly `-1`. The controller's `has_hotspot`
+is therefore false (both `documented_hotspot_sensor_idx` and `hotspot_index` are `-1`), which is why it
+falls back to `primarySource: "memj"`.
 
-| If, on the 5090… | Fix | Risk |
-|---|---|---|
-| documented HOTSPOT sensor **is present within the first 3 slots** | **Zero-marshaling:** add `Hotspot = 16` to `NvThermalTarget` + a `"GPU Hot Spot"` case in the `sensor.Target` switch. The existing `_temperatures[]` loop then names/activates/logs it automatically; the 50-series `_hotSpotTemperature` undoc handling can be dropped. | Low. Adds a named constant to an already-marshaled `int`-backed field — **no struct-layout / ABI change** — plus one `switch` case. |
-| documented HOTSPOT sensor exists **beyond slot 3** | Enlarge `MAX_THERMAL_SENSORS_PER_GPU` (and re-verify the marshaled `NvThermalSettings` against the driver for **all** NVIDIA GPUs), then as above. | Higher — ABI-sensitive `SizeConst` change; must be hardware-verified across cards. |
-| **no** documented HOTSPOT sensor (only the undoc array has it) | Read `thermalSensors.Temperatures[N]` for the 50-series, where **N is the value the controller proves on the card** (not a guess). | Medium — undoc, card-specific; wrong N = wrong safety-critical data. |
+**Conclusions:**
+
+- There is **no correct undoc index `N`** to give LHM — the maintainer's own discovery, which probes all
+  32 slots and cross-checks the documented HOTSPOT target, proves none on this card/driver. GH #10's
+  "port index N" is not achievable: `N` does not exist here.
+- The documented path is **also** a dead end on this driver (no `HOTSPOT (16)` sensor with a valid temp
+  in the thermal settings), so the otherwise-attractive enum+label fix would activate nothing.
+- LHM's `_hotSpotTemperature.Value = 0` stub (→ not activated → not logged) therefore **matches the
+  hardware reality**: there is genuinely no hot-spot reading to surface. "GPU Hot Spot" being absent from
+  the LHM CSV is correct, not a defect, on this card.
+- The issue's premise that the controllers "do read a GPU hot spot via direct NVAPI on the same card" is
+  **not borne out** by their current telemetry (`HS--`, value 0, index -1, primary = memj).
 
 ## Recommendation
 
-1. Do **not** ship a guessed undoc index (GH #10's literal suggestion); the controller evidence shows it
-   is unreliable.
-2. Pull the one data point above from the controller's discovery on the 5090.
-3. If the documented HOTSPOT sensor is reachable within LHM's 3-slot window, take the **zero-marshaling
-   enum + label** fix (preferred — no ABI risk, and it generalizes to any card that reports a documented
-   hot spot). Otherwise fall back to the undoc index using the controller-proven N, or the struct-size
-   change, accepting the higher risk and requiring hardware verification.
-4. Whatever path: it's a shared-lib (`NvidiaGpu.cs`/`NvApi.cs`) **and** data-contract change (new
-   `GPU Hot Spot` at `/gpu-nvidia/<n>/temperature/2` in CSV + `data.json`) — needs a feature spec and
-   runtime verification on the 5090 before merge, mirroring [`feature-unique-gpu-sensor-ids.md`](feature-unique-gpu-sensor-ids.md).
+1. **No LHM code change.** Any index would fabricate data; the enum+label path would activate nothing.
+   The stub is the correct behavior while the card doesn't expose the sensor.
+2. **Reframe / close GH #10** as *blocked on NVIDIA*: the RTX 50-series (Blackwell) does not expose a GPU
+   hot-spot thermal sensor via the NVAPI paths LHM and the controllers use on this driver. This is not a
+   LHM/upstream bug to fix in code.
+3. **Re-check trigger.** Revisit only if the situation changes on the hardware — concretely, when the
+   controller's telemetry starts reporting a non-zero `hotspot_C` / `hotspot_idx >= 0` (e.g. after a
+   driver/NVAPI update that exposes the sensor). At that point the controller's discovered index is the
+   ground truth, and the fix is small: prefer the documented HOTSPOT target if present within LHM's
+   3-slot window (add `Hotspot = 16` to `NvThermalTarget` + a `"GPU Hot Spot"` label case — no ABI
+   change; the existing `_temperatures[]` loop activates it); otherwise port the controller-proven undoc
+   index. Either way: feature spec + runtime verification on the card, mirroring
+   [`feature-unique-gpu-sensor-ids.md`](feature-unique-gpu-sensor-ids.md).
 
 ## Consumer note (ThermalTrace)
 
