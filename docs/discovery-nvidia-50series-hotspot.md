@@ -85,11 +85,21 @@ RTX 5090`, updated 2026-06-13/14), and every A/B-run status snapshot from that d
 statusLine: "Core: 31.0C  HS--: --.-C  MJ: 42.0C ..."   // "HS--" = hot spot unavailable
 ```
 
-The controller logs the hot spot as a **column** (`hotspot_C`, `hotspot_idx` in
-`nvg_control_*.csv`), but the data is empty: across every recent archived CSV (2026-06-10 → 2026-06-13)
-`hotspot_C` is uniformly `0.000` and `hotspot_idx` is uniformly `-1`. The controller's `has_hotspot`
-is therefore false (both `documented_hotspot_sensor_idx` and `hotspot_index` are `-1`), which is why it
-falls back to `primarySource: "memj"`.
+The controller logs the hot spot as a **column** (`hotspot_C`, `hotspot_idx` in `nvg_control_*.csv`),
+but the data is empty: across every archived CSV that *has* the column (2026-06-10 → 2026-06-13)
+`hotspot_C` is `0.000` and `hotspot_idx` is `-1` in every row sampled. (Older logs, e.g. 2026-03, predate
+the column entirely — they never tracked a hot spot. No controller CSV on this machine carries a non-zero
+hot-spot reading.) The controller's `has_hotspot` is therefore false (both
+`documented_hotspot_sensor_idx` and `hotspot_index` are `-1`), which is why it falls back to
+`primarySource: "memj"`.
+
+**Independent corroboration (ThermalTrace, the downstream consumer).** ThermalTrace's own fold spec
+(`ThermalTrace/docs/PARSER_CROSS_SOURCE_FOLD_SPEC.md` §1, `LOG_FORMATS.md`) states, scoped to the same
+card: *"On this RTX 5090 (ASUS ROG ASTRAL), LHM and HWiNFO expose only GPU Core and GPU Memory Junction —
+there is no 'GPU Hot Spot' sensor. Only the svg/nvg controllers report a `hotspot_C`. (Verified: no
+`Hot Spot` friendly name in either LHM build; not present in the real HWiNFO header.)"* So **HWiNFO has no
+hot spot for this card either** — it is not merely an NVAPI-path quirk. (The ~61–67 °C hot-spot stats that
+appear elsewhere in that spec are from a test fixture, `sensor_samples-fixture.csv`, not this card.)
 
 **Conclusions:**
 
@@ -108,9 +118,11 @@ falls back to `primarySource: "memj"`.
 
 1. **No LHM code change.** Any index would fabricate data; the enum+label path would activate nothing.
    The stub is the correct behavior while the card doesn't expose the sensor.
-2. **Reframe / close GH #10** as *blocked on NVIDIA*: the RTX 50-series (Blackwell) does not expose a GPU
-   hot-spot thermal sensor via the NVAPI paths LHM and the controllers use on this driver. This is not a
-   LHM/upstream bug to fix in code.
+2. **Reframe / close GH #10** as *blocked on the hardware*: **this RTX 5090 (ASUS ROG ASTRAL), on the
+   current driver,** does not expose a usable GPU hot-spot temperature — not via LHM/NVAPI, the
+   controllers' NVAPI discovery, *or* HWiNFO (per ThermalTrace's verification above). This is not a
+   LHM/upstream bug to fix in code. (Scope note: this is verified for *this* card only — it is **not** a
+   claim that all RTX 50-series / Blackwell cards lack a hot-spot sensor.)
 3. **Re-check trigger.** Revisit only if the situation changes on the hardware — concretely, when the
    controller's telemetry starts reporting a non-zero `hotspot_C` / `hotspot_idx >= 0` (e.g. after a
    driver/NVAPI update that exposes the sensor). At that point the controller's discovered index is the
@@ -122,6 +134,11 @@ falls back to `primarySource: "memj"`.
 
 ## Consumer note (ThermalTrace)
 
-When fixed, the hot spot lands at `/gpu-nvidia/<n>/temperature/2` (`index = thermalSettings.Count + 1`;
-Memory Junction `+2` → `/temperature/3`, matching today's logs). ThermalTrace's cross-source fold map
-should align controller hot spot to `/temperature/2`.
+GH #10 assumed a fixed LHM-fixed hot spot would land at `/gpu-nvidia/<n>/temperature/2`
+(`index = thermalSettings.Count + 1`). **ThermalTrace's implemented fold spec uses `/temperature/1`, not
+`/temperature/2`** (`PARSER_CROSS_SOURCE_FOLD_SPEC.md` §2/§8 Decision A): it maps `hotspot_C` /
+`gpu_hotspot_c` — and the LHM friendly name `GPU Hot Spot` *if it were ever emitted* — to
+`/gpu-nvidia/0/temperature/1`, with Memory Junction at `/temperature/3`. ThermalTrace canonicalizes by
+**friendly name**, so even if a future LHM build emitted the sensor at numeric index 2, the consumer would
+still fold it to `/temperature/1` by name. So no LHM-side index alignment is required; the path
+discrepancy is already handled downstream.
