@@ -44,8 +44,9 @@ because `GeneratePrometheusResponse` already skips `float.IsNaN` values explicit
 
 **Non-goals**
 
-- Changing the web UI (`GET /` currently returns `404` for `index.html`; that is a separate embedded
-  resource-name issue and is out of scope here).
+- Changing the web UI (`GET /` returned `404` for `index.html` when this spec was written — a separate
+  embedded resource-name issue, out of scope here; **subsequently fixed 2026-06-25**, see
+  [`local-ui-customizations.md`](local-ui-customizations.md) → "Web UI resource lookup for the renamed assembly").
 - Changing `/metrics` output (already NaN-safe).
 - Changing the formatted display strings (`Text`/`Value`/`Min`/`Max`), control/set semantics, auth,
   gzip, or the enable/port/interface workflow.
