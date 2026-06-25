@@ -2,7 +2,7 @@
 
 **Goal:** Evaluate this copied LibreHardwareMonitor checkout as the new local home, set up sync against the upstream repository, and identify .NET/package upgrade options.
 **Date:** 2026-05-20
-**Status:** complete; upstream sync applied; local modernization notes updated 2026-06-06
+**Status:** complete; upstream sync applied; local modernization notes updated 2026-06-06; fork now has an `origin` remote + fresh upstream triage — see "Update 2026-06-25" at end
 **Recommended next:** Decide whether the preserved `amd.png` deletion should be reapplied to `LibreHardwareMonitor.Windows.Forms/Resources/amd.png`, then keep the `net10.0-windows` and `net472` app builds clean while feature specs move forward.
 
 ---
@@ -152,3 +152,23 @@ This does not need a multi-agent campaign. Upstream sync is complete. The practi
 1. Decide whether to drop the preserved `amd.png` deletion stash or reapply it to `LibreHardwareMonitor.Windows.Forms/Resources/amd.png`.
 2. Keep the `net10.0-windows` and `net472` app builds clean during feature work.
 3. Decide whether the local fork should stay upstream-compatible or become a .NET 10-first app/library fork with legacy targets removed.
+
+---
+
+## Update 2026-06-25
+
+- **`origin` remote now exists.** This is no longer a local-only mirror: it is a personal fork at
+  `espensev/sq-librehw` (remote `origin`) with a PR-based workflow and GitHub Actions CI. This answers
+  the open question above ("local-only mirror vs personal fork"). `upstream` remains
+  `LibreHardwareMonitor/LibreHardwareMonitor` for sync.
+- **`upstream` is shallow-fetched** (depth-1 graft at its tip), and fork history is now disjoint from
+  upstream by SHA, so `git log master..upstream/master` is misleading. Run
+  `git fetch upstream master --deepen=50` before comparing or cherry-picking from upstream.
+- **Fresh upstream triage (10 substantive commits).** The fork is current: 8/10 were already present
+  (content-verified). Two were genuinely missing and were backported via PR #20:
+  - #2382 — web-server embedded-resource prefix for the renamed assembly (the web UI was 404ing).
+  - #2386 — guard the `Publish to NuGet` step so it no longer fails on every fork merge.
+  Dependency bumps are handled by this fork's own Dependabot (we are ahead of upstream on CsWin32).
+  Also backported earlier the same day: #2390 (web-server password double-encoding auth fix).
+- See [`local-ui-customizations.md`](local-ui-customizations.md) for the catalog of intentional local
+  divergences (now including local build version stamping and the NuGet fork guard).

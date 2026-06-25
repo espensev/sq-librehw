@@ -77,7 +77,15 @@ upstream merges and reviewers know they are intentional.
   try/catch → `500` / finally → `response.Close()`). **API contract change:** non-finite readings now
   serialize as `null` instead of crashing the response. `/metrics` was already NaN-safe and is
   unchanged; the formatted `Value/Min/Max` strings are unchanged. The `GET /` web UI `404`
-  (`index.html` resource lookup) is a separate, untouched issue.
+  (`index.html` resource lookup) was a separate issue, **fixed 2026-06-25** (next bullet).
+- **Web UI resource lookup for the renamed assembly** (`HttpServer.cs`; upstream #2382 backport).
+  `ServeResourceFileAsync`/`ServeResourceImageAsync` hardcoded the `LibreHardwareMonitor.Resources.`
+  manifest-resource prefix, but this fork's assembly is `LibreHardwareMonitor.Windows.Forms`, so the
+  real prefix is `LibreHardwareMonitor.Windows.Forms.Resources.*` — every static asset (`index.html`,
+  css, js, icons) returned `404`; only `data.json` (a separate path) worked. Switched to
+  `Assembly.GetExecutingAssembly().GetName().Name + ".Resources."`. The **same latent hardcoded prefix
+  in `MainForm.ExtractPawnIO`** (PawnIO_setup.exe extraction) was fixed too — that twin is a local
+  addition beyond upstream #2382. No `data.json`/contract change.
 
 ## Modernization (traceable to `discovery-librehw-sync-upgrade.md`)
 
@@ -96,6 +104,23 @@ upstream merges and reviewers know they are intentional.
   item as still executing (`Thread.Abort` is unsupported on modern .NET). This is an accepted
   consequence of modernization, not a regression to fix.
 
+## Build / versioning
+
+- **Local build version stamping** (`LibreHardwareMonitor.Windows.Forms.csproj`,
+  `StampLocalBuildVersion` target). Local (non-CI) builds embed a build-identifying `FileVersion`
+  (`0.9.6.<dateRev>`, `dateRev = (Year-2020)*366 + DayOfYear`) and
+  `ProductVersion`/`InformationalVersion` (`0.9.6+<shortsha>[-dirty].<date>`), so a freshly built exe
+  is distinguishable from a stale one in Explorer's Details tab. **`AssemblyVersion` is deliberately
+  left at `$(Version)` (0.9.6)** so the data.json `"Version"` field (`Assembly.GetName().Version`) and
+  its golden contract test stay byte-stable. The target and the
+  `IncludeSourceRevisionInInformationalVersion=false` toggle are guarded by
+  `'$(GITHUB_ACTIONS)' != 'true'`, so CI keeps its `-ci<run_number>` scheme.
+- **NuGet publish fork guard** (`.github/workflows/master.yml`; upstream #2386 backport). The
+  `Publish to NuGet` step is guarded by
+  `if: github.repository == 'LibreHardwareMonitor/LibreHardwareMonitor'`, so merges to this fork's
+  `master` no longer fail there (`Missing -ApiKey`) and cannot publish the upstream-named package
+  from a fork.
+
 ## Branding
 
 - **Window title and tray tooltip** changed from `Libre Hardware Monitor` to
@@ -109,3 +134,4 @@ upstream merges and reviewers know they are intentional.
 - 2026-06-07: NVIDIA unique-identifier + CSV logger guard verified end-to-end (see [`feature-unique-gpu-sensor-ids.md`](feature-unique-gpu-sensor-ids.md)). `net10.0-windows` + `net472` Release x64 built 0/0; after relaunch `data.json` had 0 duplicate `SensorId` (12VHPWR Pin 1 = `/voltage/1`, GPU Core Voltage = `/voltage/0`) and a fresh CSV header was 533/533 unique (was 453/452 with the `/voltage/0` collision).
 - 2026-06-07: Remote Web Server JSON NaN/Infinity fix verified end-to-end (see [`feature-webserver-json-stream.md`](feature-webserver-json-stream.md)). `net10.0-windows` + `net472` Release x64 built 0/0; after relaunch `GET /data.json` returned HTTP 200 valid JSON (533 sensors) instead of hanging, NaN sensors (NIC "Network Utilization") serialized as `RawValue: null`, `GET /Sensor?action=Get` on a NaN sensor returned `value:null` with no hang, and `GET /metrics` stayed HTTP 200. Server auto-starts via persisted `runWebServerMenuItem=true`.
 - 2026-06-13: CSV millisecond-timestamp fix implemented (see [`feature-csv-millisecond-timestamps.md`](feature-csv-millisecond-timestamps.md), GH #9). `dotnet test` 7/7 (5 new CSV-timestamp contract tests + 2 data.json golden); `net10.0-windows` + `net472` Release x64 built 0/0 (redirected temp `OutDir` — normal output path locked by the running app). Row `Time` column now emits `MM/dd/yyyy HH:mm:ss.fff`. Runtime CSV capture of `.fff` rows is the outstanding maintainer-launch step; the emitted format is the unit-pinned helper, so launch confirms wiring rather than format.
+- 2026-06-25: Backported upstream auth fix #2390 (web-server stored-password double-encoding); added local build version stamping; backported web UI resource-prefix fix #2382 (+ `MainForm.ExtractPawnIO` twin) and NuGet fork guard #2386. `dotnet test ...Tests... -p:Platform=x64` 7/7; `net10.0-windows` Release x64 built 0/0. Web UI verified end-to-end: `GET /` and `GET /index.html` now HTTP 200 (were 404), `data.json` still 200. `master` CI now green (previously failed at "Publish to NuGet" on every merge). EXE Details show `FileVersion 0.9.6.<dateRev>` / `ProductVersion 0.9.6+<sha>.<date>`.
