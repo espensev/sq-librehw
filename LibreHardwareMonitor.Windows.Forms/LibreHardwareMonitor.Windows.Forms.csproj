@@ -88,4 +88,41 @@
     <None Include="Resources\app.manifest" />
     <None Include="Resources\icon.ico" />
   </ItemGroup>
+
+  <!--
+    Local-build version stamping.
+    Makes every developer build self-identifying in the EXE file properties:
+      File version    -> 0.9.6.<dateRev>          (Explorer "File version")
+      Product version -> 0.9.6+<shortsha>[-dirty].<date>  (Explorer "Product version")
+    AssemblyVersion is deliberately left at $(Version) (0.9.6) so the data.json "Version"
+    field (typeof(HttpServer).Assembly.GetName().Version) and its golden contract test stay
+    byte-stable. Skipped under GitHub Actions, which applies its own -ci<run_number> scheme;
+    there the SDK keeps appending the source revision as before.
+  -->
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' != 'true'">
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <Target Name="StampLocalBuildVersion"
+          Condition="'$(GITHUB_ACTIONS)' != 'true'"
+          BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo">
+    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)&quot; rev-parse --short=7 HEAD"
+          ConsoleToMSBuild="true" StandardOutputImportance="low" ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitShortSha" />
+    </Exec>
+    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)&quot; status --porcelain --untracked-files=no"
+          ConsoleToMSBuild="true" StandardOutputImportance="low" ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitDirty" />
+    </Exec>
+    <PropertyGroup>
+      <_GitShortSha Condition="'$(_GitShortSha)' == ''">nogit</_GitShortSha>
+      <_GitDirtySuffix Condition="'$(_GitDirty)' != ''">-dirty</_GitDirtySuffix>
+      <_BuildDate>$([System.DateTime]::Now.ToString('yyyy-MM-dd'))</_BuildDate>
+      <!-- (Year-2020)*366 + DayOfYear: unique per day, monotonic, fits the 16-bit revision field -->
+      <_BuildRev>$([MSBuild]::Add($([MSBuild]::Multiply($([MSBuild]::Subtract($([System.DateTime]::Now.Year), 2020)), 366)), $([System.DateTime]::Now.DayOfYear)))</_BuildRev>
+      <FileVersion>$(Version).$(_BuildRev)</FileVersion>
+      <InformationalVersion>$(Version)+$(_GitShortSha)$(_GitDirtySuffix).$(_BuildDate)</InformationalVersion>
+    </PropertyGroup>
+    <Message Importance="high" Text="Local build stamp: FileVersion=$(FileVersion)  ProductVersion=$(InformationalVersion)" />
+  </Target>
 </Project>
