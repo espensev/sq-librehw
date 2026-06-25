@@ -522,7 +522,7 @@ public class HttpServer
     private async Task ServeResourceFileAsync(HttpListenerResponse response, string name, string ext)
     {
         // resource names do not support the hyphen
-        name = "LibreHardwareMonitor.Resources." +
+        name = Assembly.GetExecutingAssembly().GetName().Name + ".Resources." +
                name.Replace("custom-theme", "custom_theme");
 
         string[] names = Assembly.GetExecutingAssembly().GetManifestResourceNames();
@@ -563,7 +563,7 @@ public class HttpServer
 
     private async Task ServeResourceImageAsync(HttpListenerResponse response, string name)
     {
-        name = "LibreHardwareMonitor.Resources." + name;
+        name = Assembly.GetExecutingAssembly().GetName().Name + ".Resources." + name;
 
         string[] names = Assembly.GetExecutingAssembly().GetManifestResourceNames();
 
