@@ -14,6 +14,10 @@ namespace Aga.Controls.Tree.NodeControls
 	{
 		public const int ImageSize = 13;
 
+		/// <summary>Percent scale applied to the checkbox glyph footprint so it tracks the app's
+		/// Text Size (set by MainForm.ApplyUiTextScale). 100 = default DPI-only sizing.</summary>
+		public static int GlyphScalePercent = 100;
+
 		private Bitmap _check;
 		private Bitmap _uncheck;
 		private Bitmap _unknown;
@@ -46,9 +50,11 @@ namespace Aga.Controls.Tree.NodeControls
 
 		public override Size MeasureSize(TreeNodeAdv node, DrawContext context)
 		{
-			int scaledX = node.Tree.GetScaledSize(ImageSize, false);
-			int scaledY = node.Tree.GetScaledSize(ImageSize);
-			return new Size(scaledX, scaledY);
+			int baseX = node.Tree.GetScaledSize(ImageSize, false);
+			int baseY = node.Tree.GetScaledSize(ImageSize);
+			int sx = Math.Max(baseX, baseX * GlyphScalePercent / 100);
+			int sy = Math.Max(baseY, baseY * GlyphScalePercent / 100);
+			return new Size(sx, sy);
 		}
 
 		public override void Draw(TreeNodeAdv node, DrawContext context)
