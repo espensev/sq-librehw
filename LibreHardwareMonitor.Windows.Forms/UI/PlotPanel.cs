@@ -710,15 +710,16 @@ public class PlotPanel : UserControl
     private void ApplyGridDensity()
     {
         int density = _gridDensity?.Value ?? DefaultGridDensity;
+        int textScalePercent = _axisTextScalePercent;
 
-        ApplyAxisGrid(_timeAxis, density, true);
+        ApplyAxisGrid(_timeAxis, density, true, textScalePercent);
 
         bool showValueGrid = _stackedAxes?.Value == true;
         foreach (LinearAxis axis in _axes.Values)
-            ApplyAxisGrid(axis, density, showValueGrid);
+            ApplyAxisGrid(axis, density, showValueGrid, textScalePercent);
     }
 
-    private static void ApplyAxisGrid(Axis axis, int density, bool enabled)
+    private static void ApplyAxisGrid(Axis axis, int density, bool enabled, int textScalePercent)
     {
         // ApplyGridDensity runs on every plot refresh. Assign only when a value actually
         // changes: re-assigning identical MajorStep/MinorStep each frame forces OxyPlot to
@@ -740,7 +741,7 @@ public class PlotPanel : UserControl
         SetGridlineStyle(axis, LineStyle.Solid, density >= 2 ? LineStyle.Solid : LineStyle.None);
 
         if (density == 3)
-            ApplyFineAxisSteps(axis);
+            ApplyFineAxisSteps(axis, textScalePercent);
         else
             ResetAxisSteps(axis);
     }
@@ -761,7 +762,7 @@ public class PlotPanel : UserControl
             axis.MinorStep = double.NaN;
     }
 
-    private static void ApplyFineAxisSteps(Axis axis)
+    private static void ApplyFineAxisSteps(Axis axis, int textScalePercent)
     {
         double minimum = !double.IsNaN(axis.ActualMinimum) ? axis.ActualMinimum : axis.Minimum;
         double maximum = !double.IsNaN(axis.ActualMaximum) ? axis.ActualMaximum : axis.Maximum;
@@ -769,7 +770,10 @@ public class PlotPanel : UserControl
         if (double.IsNaN(range) || double.IsInfinity(range) || range <= 0)
             return;
 
-        double majorStep = GetNiceAxisStep(range, FineGridMajorDivisions);
+        // Fewer divisions (larger step) as text scale grows past 100%, so bigger tick labels
+        // don't crowd; at/below 100% this is unchanged (divisions == FineGridMajorDivisions).
+        double divisions = FineGridMajorDivisions * 100.0 / Math.Max(100, textScalePercent);
+        double majorStep = GetNiceAxisStep(range, divisions);
         if (double.IsNaN(majorStep) || majorStep <= 0)
             return;
 
