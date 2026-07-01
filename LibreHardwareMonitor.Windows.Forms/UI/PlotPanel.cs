@@ -65,6 +65,8 @@ public class PlotPanel : UserControl
     private double _lastNowX;
     private bool _updatingTimeAxis;
     private TemperatureUnit _lastTemperatureUnit;
+    private readonly bool _autoFitYOnStart;
+    private bool _didAutoFitYAxesOnStart;
 
     private sealed class SeriesState
     {
@@ -94,6 +96,11 @@ public class PlotPanel : UserControl
         _unitManager = unitManager;
         _timeOrigin = DateTime.UtcNow;
         _lastTemperatureUnit = unitManager.TemperatureUnit;
+
+        // One-time gate for the startup Y-axis auto-fit (see InvalidatePlot()): reclaims empty
+        // graph bands left over from a stale persisted zoom (axis.Zoom(...) below in
+        // CreatePlotModel), without touching later in-session zooms (manual or menu-driven).
+        _autoFitYOnStart = _settings.GetValue("plotPanel.AutoFitYOnStart", true);
 
         SetDpi();
         _model = CreatePlotModel();
@@ -867,6 +874,16 @@ public class PlotPanel : UserControl
         _lastNowX = nowX;
 
         SyncSeriesPoints();
+
+        // One-shot: reclaim empty Y-axis bands left over from a stale persisted zoom
+        // (CreatePlotModel's axis.Zoom(...) restore) once real data exists, then never again
+        // this session so a later manual/menu zoom sticks.
+        if (_autoFitYOnStart && !_didAutoFitYAxesOnStart && _seriesStates.Values.Any(state => state.Points.Count > 0))
+        {
+            _didAutoFitYAxesOnStart = true;
+            AutoscaleAllYAxes();
+        }
+
         UpdateTimeAxisWindow(nowX);
         ApplyGridDensity();
 
@@ -949,7 +966,22 @@ public class PlotPanel : UserControl
     public void AutoscaleAllYAxes()
     {
         foreach (LinearAxis axis in _axes.Values)
-            axis.Zoom(double.NaN, double.NaN);
+        {
+            // Zoom() silently no-ops when IsZoomEnabled is false (persisted via Value Axes >
+            // Enable Zoom, default true but can be off from a prior session). Force-enable around
+            // the call and restore after, mirroring UpdateTimeAxisWindow's pattern, so this always
+            // actually un-zooms the axis regardless of that setting.
+            bool zoomEnabled = axis.IsZoomEnabled;
+            axis.IsZoomEnabled = true;
+            try
+            {
+                axis.Zoom(double.NaN, double.NaN);
+            }
+            finally
+            {
+                axis.IsZoomEnabled = zoomEnabled;
+            }
+        }
 
         // Refresh now instead of waiting for the next update tick, so the rescale is visible
         // immediately after the menu action.
