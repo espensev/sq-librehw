@@ -82,6 +82,8 @@ public sealed partial class MainForm : Form
     private int _standardMaxColumnWidth;
     private int _uiTextScalePercent = UiScale.DefaultPercent;
     private Font _scaledTreeFont;   // owned; disposed on replacement (never dispose SystemFonts.MessageBoxFont)
+    private Font _baseMenuFont;     // captured once from mainMenu.Font; never disposed
+    private Font _scaledMenuFont;   // owned; disposed on replacement
     private int _baseValueColumnWidth = 100;
     private int _baseMinColumnWidth = 100;
     private int _baseMaxColumnWidth = 100;
@@ -947,6 +949,17 @@ public sealed partial class MainForm : Form
         treeView.Font = _scaledTreeFont;   // propagates to all text NodeControls; fires FullUpdate
         previous?.Dispose();
 
+        // Top menu-bar font (scaled from its captured base). Scaling a child MenuStrip's font does
+        // NOT trigger the form's AutoScaleMode.Font cascade — that keys off the form's own Font.
+        _baseMenuFont ??= (Font)mainMenu.Font.Clone();
+        Font previousMenu = _scaledMenuFont;
+        _scaledMenuFont = new Font(
+            _baseMenuFont.FontFamily,
+            UiScale.ScaledFontSize(_baseMenuFont.SizeInPoints, _uiTextScalePercent),
+            _baseMenuFont.Style);
+        mainMenu.Font = _scaledMenuFont;
+        previousMenu?.Dispose();
+
         // Value/Min/Max column widths from their 100% base (guarded so our sets don't churn the base).
         _updatingSensorTreeLayout = true;
         try
@@ -960,8 +973,9 @@ public sealed partial class MainForm : Form
             _updatingSensorTreeLayout = false;
         }
 
-        // Tree glyphs.
+        // Tree glyphs (expand/collapse + plot-select checkbox footprint).
         Theme.GlyphScalePercent = _uiTextScalePercent;
+        NodeCheckBox.GlyphScalePercent = _uiTextScalePercent;
 
         // Row height + column visibility + repaint (recomputes RowHeight from the live font).
         ApplySensorTreeLayout();
