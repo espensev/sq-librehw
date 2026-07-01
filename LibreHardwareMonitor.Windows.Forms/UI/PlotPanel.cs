@@ -48,6 +48,9 @@ public class PlotPanel : UserControl
     private float _dpiY;
     private double _dpiXScale = 1;
     private double _dpiYScale = 1;
+    private int _axisTextScalePercent = UiScale.DefaultPercent;
+    private Font _trackerBaseFont;   // captured lazily on first apply (MainForm sets _plot.Font first)
+    private Font _scaledTrackerFont;  // owned; disposed on replacement
     private Point _rightClickEnter;
     private bool _cancelContextMenu = false;
 
@@ -950,6 +953,36 @@ public class PlotPanel : UserControl
 
         // Refresh now instead of waiting for the next update tick, so the rescale is visible
         // immediately after the menu action.
+        InvalidatePlotCosmetic();
+    }
+
+    /// <summary>
+    /// Scales all axis tick-label and title fonts, plus the hover tracker font, by <paramref name="percent"/>.
+    /// DPI-independent on purpose: today's axis fonts are NOT DPI-scaled (ScaledPlotModel scales only the
+    /// NaN/auto margins, a no-op), so 100% reproduces the current look at every DPI. Auto-margins absorb
+    /// larger labels, so no clipping math is needed.
+    /// </summary>
+    public void SetAxisTextScale(int percent)
+    {
+        _axisTextScalePercent = UiScale.ClampPercent(percent);
+        double fontSize = UiScale.PlotAxisFontSize(_model.DefaultFontSize, _axisTextScalePercent);
+
+        foreach (Axis axis in _model.Axes)
+        {
+            axis.FontSize = fontSize;        // tick labels
+            axis.TitleFontSize = fontSize;   // axis titles (set explicitly; don't rely on the fallback)
+        }
+
+        // Tracker/tooltip is a WinForms Label that inherits PlotView.Font ambiently.
+        _trackerBaseFont ??= (Font)_plot.Font.Clone();
+        Font old = _scaledTrackerFont;
+        _scaledTrackerFont = new Font(
+            _trackerBaseFont.FontFamily,
+            UiScale.ScaledFontSize(_trackerBaseFont.Size, _axisTextScalePercent),
+            _trackerBaseFont.Style);
+        _plot.Font = _scaledTrackerFont;
+        old?.Dispose();
+
         InvalidatePlotCosmetic();
     }
 }
