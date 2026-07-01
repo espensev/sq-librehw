@@ -112,9 +112,10 @@ public sealed partial class MainForm : Form
         {
             X = _settings.GetValue("mainForm.Location.X", Location.X),
             Y = _settings.GetValue("mainForm.Location.Y", Location.Y),
-            Width = _settings.GetValue("mainForm.Width", 470),
-            Height = _settings.GetValue("mainForm.Height", 640)
+            Width = _settings.GetValue("mainForm.Width", 720),
+            Height = _settings.GetValue("mainForm.Height", 840)
         };
+        MinimumSize = new Size(360, 420);
 
         Theme setTheme = Theme.All.FirstOrDefault(theme => _settings.GetValue("theme", "auto") == theme.Id);
         if (setTheme != null)
@@ -1362,8 +1363,8 @@ public sealed partial class MainForm : Form
         {
             X = _settings.GetValue("mainForm.Location.X", Location.X),
             Y = _settings.GetValue("mainForm.Location.Y", Location.Y),
-            Width = _settings.GetValue("mainForm.Width", 470),
-            Height = _settings.GetValue("mainForm.Height", 640)
+            Width = _settings.GetValue("mainForm.Width", 720),
+            Height = _settings.GetValue("mainForm.Height", 840)
         };
 
         Rectangle fullWorkingArea = new(int.MaxValue, int.MaxValue, int.MinValue, int.MinValue);
@@ -1379,6 +1380,9 @@ public sealed partial class MainForm : Form
         }
 
         Bounds = newBounds;
+
+        if (_settings.GetValue("mainForm.Maximized", false))
+            WindowState = FormWindowState.Maximized;
 
         RestoreCollapsedNodeState(treeView);
 
@@ -1906,13 +1910,15 @@ public sealed partial class MainForm : Form
 
     private void MainForm_MoveOrResize(object sender, EventArgs e)
     {
-        if (WindowState != FormWindowState.Minimized)
-        {
-            _settings.SetValue("mainForm.Location.X", Bounds.X);
-            _settings.SetValue("mainForm.Location.Y", Bounds.Y);
-            _settings.SetValue("mainForm.Width", Bounds.Width);
-            _settings.SetValue("mainForm.Height", Bounds.Height);
-        }
+        if (WindowState == FormWindowState.Minimized)
+            return;
+
+        Rectangle b = WindowState == FormWindowState.Maximized ? RestoreBounds : Bounds;
+        _settings.SetValue("mainForm.Location.X", b.X);
+        _settings.SetValue("mainForm.Location.Y", b.Y);
+        _settings.SetValue("mainForm.Width", b.Width);
+        _settings.SetValue("mainForm.Height", b.Height);
+        _settings.SetValue("mainForm.Maximized", WindowState == FormWindowState.Maximized);
     }
 
     private void ResetClick(object sender, EventArgs e)
