@@ -80,6 +80,11 @@ public sealed partial class MainForm : Form
     private int _standardValueColumnWidth;
     private int _standardMinColumnWidth;
     private int _standardMaxColumnWidth;
+    private int _uiTextScalePercent = UiScale.DefaultPercent;
+    private Font _scaledTreeFont;   // owned; disposed on replacement (never dispose SystemFonts.MessageBoxFont)
+    private int _baseValueColumnWidth = 100;
+    private int _baseMinColumnWidth = 100;
+    private int _baseMaxColumnWidth = 100;
 
     public MainForm()
     {
@@ -87,6 +92,7 @@ public sealed partial class MainForm : Form
 
         _settings = new PersistentSettings();
         _settings.Load(Path.ChangeExtension(Application.ExecutablePath, ".config"));
+        _uiTextScalePercent = UiScale.ClampPercent(_settings.GetValue("uiTextScale", UiScale.DefaultPercent));
 
         _unitManager = new UnitManager(_settings);
 
@@ -173,6 +179,9 @@ public sealed partial class MainForm : Form
         _standardValueColumnWidth = treeView.Columns[1].Width;
         _standardMinColumnWidth = treeView.Columns[2].Width;
         _standardMaxColumnWidth = treeView.Columns[3].Width;
+        _baseValueColumnWidth = treeView.Columns[1].Width;
+        _baseMinColumnWidth = treeView.Columns[2].Width;
+        _baseMaxColumnWidth = treeView.Columns[3].Width;
 
         InitializeGraphMenu();
 
@@ -262,7 +271,7 @@ public sealed partial class MainForm : Form
 
         // Apply once now that all column options (and compact mode) are wired, so the initial
         // layout does not depend on the eager Changed callback of whichever option subscribed last.
-        ApplySensorTreeLayout();
+        ApplyUiTextScale();
 
         _ = new UserOption("startMinMenuItem", false, startMinMenuItem, _settings);
         _minimizeToTray = new UserOption("minTrayMenuItem", true, minTrayMenuItem, _settings);
@@ -851,13 +860,13 @@ public sealed partial class MainForm : Form
 
             if (compact)
             {
-                treeView.RowHeight = Math.Max(treeView.Font.Height, 16);
+                treeView.RowHeight = UiScale.TreeRowHeight(treeView.Font.Height, compact: true);
                 treeView.GridLineStyle = GridLineStyle.None;
-                treeView.Columns[1].Width = Math.Min(_standardValueColumnWidth, 78);
+                treeView.Columns[1].Width = Math.Min(_standardValueColumnWidth, UiScale.ScaledColumnWidth(78, _uiTextScalePercent));
             }
             else
             {
-                treeView.RowHeight = _standardRowHeight;
+                treeView.RowHeight = UiScale.TreeRowHeight(treeView.Font.Height, compact: false);
                 treeView.GridLineStyle = _standardGridLineStyle;
 
                 // Restore the saved column widths only when actually leaving compact mode
@@ -880,6 +889,48 @@ public sealed partial class MainForm : Form
         _compactLayoutActive = compact;
         TreeView_SizeChanged(treeView, EventArgs.Empty);
         treeView.Invalidate();
+    }
+
+    /// <summary>
+    /// Single apply path for the Text Size scale: tree font + row height + value/min/max column
+    /// widths + tree glyphs + plot axis text. Order-independent and composes with Compact Mode.
+    /// </summary>
+    private void ApplyUiTextScale()
+    {
+        _uiTextScalePercent = UiScale.ClampPercent(_uiTextScalePercent);
+
+        // Tree font (scaled from the shared base; dispose the previous scaled font).
+        Font previous = _scaledTreeFont;
+        _scaledTreeFont = new Font(
+            SystemFonts.MessageBoxFont.FontFamily,
+            UiScale.ScaledFontSize(SystemFonts.MessageBoxFont.SizeInPoints, _uiTextScalePercent),
+            SystemFonts.MessageBoxFont.Style);
+        treeView.Font = _scaledTreeFont;   // propagates to all text NodeControls; fires FullUpdate
+        previous?.Dispose();
+
+        // Value/Min/Max column widths from their 100% base (guarded so our sets don't churn the base).
+        _updatingSensorTreeLayout = true;
+        try
+        {
+            treeView.Columns[1].Width = UiScale.ScaledColumnWidth(_baseValueColumnWidth, _uiTextScalePercent);
+            treeView.Columns[2].Width = UiScale.ScaledColumnWidth(_baseMinColumnWidth, _uiTextScalePercent);
+            treeView.Columns[3].Width = UiScale.ScaledColumnWidth(_baseMaxColumnWidth, _uiTextScalePercent);
+        }
+        finally
+        {
+            _updatingSensorTreeLayout = false;
+        }
+
+        // Tree glyphs.
+        Theme.GlyphScalePercent = _uiTextScalePercent;
+
+        // Row height + column visibility + repaint (recomputes RowHeight from the live font).
+        ApplySensorTreeLayout();
+
+        // Plot axis text (single PlotPanel instance covers docked + separate-window modes).
+        _plotPanel?.SetAxisTextScale(_uiTextScalePercent);
+
+        _settings.SetValue("uiTextScale", _uiTextScalePercent);
     }
 
     private void InitializePlotForm()
@@ -1223,20 +1274,25 @@ public sealed partial class MainForm : Form
         _plotPanel.SetCurrentSettings();
 
         foreach (TreeColumn column in treeView.Columns)
-            _settings.SetValue("treeView.Columns." + column.Header + ".Width", column.Width);
+        {
+            int index = treeView.Columns.IndexOf(column);
+            int widthToSave = index switch
+            {
+                1 => _baseValueColumnWidth,
+                2 => _baseMinColumnWidth,
+                3 => _baseMaxColumnWidth,
+                _ => column.Width
+            };
+            _settings.SetValue("treeView.Columns." + column.Header + ".Width", widthToSave);
+        }
+
+        _settings.SetValue("uiTextScale", _uiTextScalePercent);
 
         _settings.SetValue("listenerIp", Server.ListenerIp);
         _settings.SetValue("listenerPort", Server.ListenerPort);
         _settings.SetValue("authenticationEnabled", Server.AuthEnabled);
         _settings.SetValue("authenticationUserName", Server.UserName);
         _settings.SetValue("authenticationPassword", Server.PasswordSHA256);
-
-        if (_compactLayoutActive)
-        {
-            _settings.SetValue("treeView.Columns." + treeView.Columns[1].Header + ".Width", _standardValueColumnWidth);
-            _settings.SetValue("treeView.Columns." + treeView.Columns[2].Header + ".Width", _standardMinColumnWidth);
-            _settings.SetValue("treeView.Columns." + treeView.Columns[3].Header + ".Width", _standardMaxColumnWidth);
-        }
 
         string fileName = Path.ChangeExtension(Application.ExecutablePath, ".config");
 
@@ -1948,6 +2004,11 @@ public sealed partial class MainForm : Form
     {
         if (_updatingSensorTreeLayout)
             return;
+
+        int changedIndex = treeView.Columns.IndexOf(column);
+        if (changedIndex == 1) _baseValueColumnWidth = UiScale.BaseFromScaled(column.Width, _uiTextScalePercent);
+        else if (changedIndex == 2) _baseMinColumnWidth = UiScale.BaseFromScaled(column.Width, _uiTextScalePercent);
+        else if (changedIndex == 3) _baseMaxColumnWidth = UiScale.BaseFromScaled(column.Width, _uiTextScalePercent);
 
         int index = treeView.Columns.IndexOf(column);
         int columnsWidth = 0;
