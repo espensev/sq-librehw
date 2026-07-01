@@ -875,9 +875,9 @@ public sealed partial class MainForm : Form
                 // dragged in normal mode, since _standard* is only refreshed when entering compact mode.
                 if (_compactLayoutActive)
                 {
-                    treeView.Columns[1].Width = _standardValueColumnWidth;
-                    treeView.Columns[2].Width = _standardMinColumnWidth;
-                    treeView.Columns[3].Width = _standardMaxColumnWidth;
+                    treeView.Columns[1].Width = UiScale.ScaledColumnWidth(_baseValueColumnWidth, _uiTextScalePercent);
+                    treeView.Columns[2].Width = UiScale.ScaledColumnWidth(_baseMinColumnWidth, _uiTextScalePercent);
+                    treeView.Columns[3].Width = UiScale.ScaledColumnWidth(_baseMaxColumnWidth, _uiTextScalePercent);
                 }
             }
         }
