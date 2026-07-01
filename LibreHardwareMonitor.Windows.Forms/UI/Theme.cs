@@ -27,20 +27,23 @@ namespace LibreHardwareMonitor.Windows.Forms.UI.Themes
             }
         }
 
+        /// <summary>Percent scale applied to the tree expand/collapse and plot-checkbox glyphs so they
+        /// track the Text Size slider and stay centered in taller rows. Set by MainForm.ApplyUiTextScale.</summary>
+        public static int GlyphScalePercent { get; set; } = 100;
+
         private static void Init()
         {
             TreeViewAdv.CustomPlusMinusRenderFunc = (g, rect, isExpanded) =>
             {
+                int size = Math.Max(6, (int)Math.Round(8 * GlyphScalePercent / 100.0));
                 int x = rect.Left;
-                int y = rect.Top + 5;
-                int size = 8;
+                int y = rect.Top + Math.Max(0, (rect.Height - size) / 2);
                 using (Brush brush = new SolidBrush(Current.BackgroundColor))
                 {
                     g.FillRectangle(brush, x - 1, y - 1, size + 4, size + 4);
                 }
                 using (Pen pen = new Pen(Current.TreeOutlineColor))
                 {
-
                     g.DrawRectangle(pen, x, y, size, size);
                     g.DrawLine(pen, x + 2, y + (size / 2), x + size - 2, y + (size / 2));
                     if (!isExpanded)
@@ -52,25 +55,28 @@ namespace LibreHardwareMonitor.Windows.Forms.UI.Themes
 
             TreeViewAdv.CustomCheckRenderFunc = (g, rect, isChecked) =>
             {
+                int size = Math.Max(10, (int)Math.Round(12 * GlyphScalePercent / 100.0));
                 int x = rect.Left;
-                int y = rect.Top + 1;
-                int size = 12;
+                int y = rect.Top + Math.Max(0, (rect.Height - size) / 2);
                 using (Brush brush = new SolidBrush(Current.BackgroundColor))
                 {
-                    g.FillRectangle(brush, x - 1, y - 1, 12, 12);
+                    g.FillRectangle(brush, x - 1, y - 1, size + 1, size + 1);
                 }
                 using (Pen pen = new Pen(Current.TreeOutlineColor))
                 {
                     g.DrawRectangle(pen, x, y, size, size);
-                    if (isChecked)
+                }
+                if (isChecked)
+                {
+                    using var check = new Pen(Current.TreeOutlineColor, Math.Max(1.5f, size / 6f));
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    g.DrawLines(check, new[]
                     {
-                        x += 3;
-                        y += 3;
-                        g.DrawLine(pen, x, y + 3, x + 2, y + 5);
-                        g.DrawLine(pen, x + 2, y + 5, x + 6, y + 1);
-                        g.DrawLine(pen, x, y + 4, x + 2, y + 6);
-                        g.DrawLine(pen, x + 2, y + 6, x + 6, y + 2);
-                    }
+                        new PointF(x + size * 0.22f, y + size * 0.55f),
+                        new PointF(x + size * 0.42f, y + size * 0.75f),
+                        new PointF(x + size * 0.78f, y + size * 0.28f),
+                    });
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.Default;
                 }
             };
 
