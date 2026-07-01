@@ -971,6 +971,11 @@ public class PlotPanel : UserControl
         {
             axis.FontSize = fontSize;        // tick labels
             axis.TitleFontSize = fontSize;   // axis titles (set explicitly; don't rely on the fallback)
+
+            // Grow tick spacing with the font so larger labels don't pack tighter than they render
+            // (OxyPlot's default IntervalLength is 60; at percent=100 this is exactly 60.0, so the
+            // 100% case is byte-identical to today's tick density).
+            axis.IntervalLength = 60.0 * (_axisTextScalePercent / 100.0);
         }
 
         // Tracker/tooltip is a WinForms Label that inherits PlotView.Font ambiently.
