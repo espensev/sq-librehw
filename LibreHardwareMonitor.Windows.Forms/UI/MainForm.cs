@@ -225,6 +225,10 @@ public sealed partial class MainForm : Form
                 e.Cancel = true;
         };
 
+        ToolStripMenuItem autoFitColumnsMenuItem = new("Auto-Fit Columns");
+        autoFitColumnsMenuItem.Click += delegate { AutoFitTreeColumns(); };
+        viewMenuItem.DropDownItems.Insert(6, autoFitColumnsMenuItem);
+
         treeView.ShowNodeToolTips = true;
         treeView.SelectionMode = TreeSelectionMode.Multi;
         NodeToolTipProvider tooltipProvider = new();
@@ -966,6 +970,49 @@ public sealed partial class MainForm : Form
         _plotPanel?.SetAxisTextScale(_uiTextScalePercent);
 
         _settings.SetValue("uiTextScale", _uiTextScalePercent);
+    }
+
+    /// <summary>
+    /// Sizes the Value/Min/Max tree columns to their widest currently-visible header/cell text
+    /// (clamped to <see cref="UiScale.MinColumnWidth"/>/<see cref="UiScale.MaxColumnWidth"/>).
+    /// Column 0 (Sensor) already auto-fills via <see cref="TreeView_SizeChanged"/>.
+    /// </summary>
+    private void AutoFitTreeColumns()
+    {
+        (int col, Func<SensorNode, string> text)[] fitters =
+        {
+            (1, n => n.Value),
+            (2, n => n.Min),
+            (3, n => n.Max),
+        };
+
+        using Graphics g = treeView.CreateGraphics();
+        foreach ((int col, Func<SensorNode, string> text) in fitters)
+        {
+            int widest = TextRenderer.MeasureText(g, treeView.Columns[col].Header, treeView.Font).Width;
+            foreach (TreeNodeAdv node in treeView.AllNodes)
+            {
+                if (node.Tag is SensorNode sensorNode)
+                {
+                    string s = text(sensorNode);
+                    if (!string.IsNullOrEmpty(s))
+                        widest = Math.Max(widest, TextRenderer.MeasureText(g, s, treeView.Font).Width);
+                }
+            }
+
+            _updatingSensorTreeLayout = true;
+            try { treeView.Columns[col].Width = Math.Max(UiScale.MinColumnWidth, Math.Min(UiScale.MaxColumnWidth, widest + 12)); }
+            finally { _updatingSensorTreeLayout = false; }
+
+            // Keep the scale-independent base in sync so a later slider move preserves the fit.
+            int baseWidth = UiScale.BaseFromScaled(treeView.Columns[col].Width, _uiTextScalePercent);
+            if (col == 1) _baseValueColumnWidth = baseWidth;
+            else if (col == 2) _baseMinColumnWidth = baseWidth;
+            else _baseMaxColumnWidth = baseWidth;
+        }
+
+        TreeView_SizeChanged(treeView, EventArgs.Empty);
+        treeView.Invalidate();
     }
 
     private void InitializePlotForm()
