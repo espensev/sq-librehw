@@ -190,6 +190,40 @@ public sealed partial class MainForm : Form
         _compactMode = new UserOption("compactMode", false, compactModeMenuItem, _settings);
         _compactMode.Changed += delegate { ApplySensorTreeLayout(); };
 
+        ToolStripMenuItem textSizeMenuItem = new($"Text Size ({_uiTextScalePercent}%)");
+        viewMenuItem.DropDownItems.Insert(5, textSizeMenuItem);
+
+        double dpiScale = DeviceDpi / 96.0;
+        TrackBar textSizeTrackBar = new()
+        {
+            Minimum = UiScale.MinPercent,
+            Maximum = UiScale.MaxPercent,
+            TickFrequency = 25,
+            SmallChange = 5,
+            LargeChange = 25,
+            AutoSize = false,
+            Value = _uiTextScalePercent,
+            Size = new Size((int)Math.Round(170 * dpiScale), (int)Math.Round(45 * dpiScale)),
+            BackColor = Theme.Current.MenuBackgroundColor
+        };
+        ToolStripControlHost textSizeHost = new(textSizeTrackBar) { AutoSize = false, BackColor = Theme.Current.MenuBackgroundColor };
+        textSizeHost.Size = textSizeTrackBar.Size;
+        textSizeMenuItem.DropDownItems.Add(textSizeHost);
+
+        textSizeTrackBar.ValueChanged += (s, e) =>
+        {
+            _uiTextScalePercent = UiScale.ClampPercent(textSizeTrackBar.Value);
+            textSizeMenuItem.Text = $"Text Size ({_uiTextScalePercent}%)";
+            ApplyUiTextScale();
+        };
+
+        // Keep the dropdown open while dragging the slider (a drag is not an ItemClicked).
+        textSizeMenuItem.DropDown.Closing += (s, e) =>
+        {
+            if (e.CloseReason == ToolStripDropDownCloseReason.ItemClicked)
+                e.Cancel = true;
+        };
+
         treeView.ShowNodeToolTips = true;
         treeView.SelectionMode = TreeSelectionMode.Multi;
         NodeToolTipProvider tooltipProvider = new();
