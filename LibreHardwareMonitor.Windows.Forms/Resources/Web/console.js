@@ -71,6 +71,14 @@
       Object.keys(value).forEach(k => { if (typeof k === 'string' && k.length) out[k] = !!value[k]; });
     return out;
   }
+  function cleanCardStyleMap(value) {
+    const out = {};
+    if (value && typeof value === 'object' && !Array.isArray(value))
+      Object.keys(value).forEach(k => {
+        if (k && (value[k] === 'gauge' || value[k] === 'number' || value[k] === 'graph')) out[k] = value[k];
+      });
+    return out;
+  }
   SQ.defaultDashboardState = function () {
     return {
       version: 1,
@@ -83,7 +91,8 @@
       paused: false,
       rate: 2,
       theme: 'dark',
-      collapsedPanels: {}
+      collapsedPanels: {},
+      cardStyle: {}
     };
   };
   SQ.normalizeDashboardState = function (value) {
@@ -100,7 +109,8 @@
       paused: value.paused === true,
       rate: clampRate(value.rate),
       theme: value.theme === 'light' ? 'light' : 'dark',
-      collapsedPanels: cleanCollapsedMap(value.collapsedPanels)
+      collapsedPanels: cleanCollapsedMap(value.collapsedPanels),
+      cardStyle: cleanCardStyleMap(value.cardStyle)
     };
   };
   SQ.loadDashboardState = function (storage) {
@@ -283,6 +293,36 @@
     if (s.cls === 'nvme') return [25, limits?.[s.hwid]?.crit || 80];
     if (s.cls === 'dimm') return [20, limits?.[s.hwid]?.crit || 85];
     return null;
+  };
+  SQ.kindOf = function (type) {
+    if (type === 'Temperature') return 'temp';
+    if (type === 'Load' || type === 'Level' || type === 'Control') return 'load';
+    if (type === 'Fan') return 'fan';
+    if (type === 'Power' || type === 'Voltage' || type === 'Current') return 'power';
+    if (type === 'Clock') return 'clock';
+    return 'data';
+  };
+  SQ.niceCeil = function (x) {
+    x = Number(x);
+    if (!Number.isFinite(x) || x <= 0) return null;
+    const m = Math.pow(10, Math.floor(Math.log10(x)));
+    for (const f of [1, 2, 5, 10]) { if (x <= f * m + 1e-9) return f * m; }
+    return 10 * m;
+  };
+  SQ.speedoRange = function (s, limits) {
+    const bounded = SQ.visualRangeForSensor(s, limits || {});
+    if (bounded) return bounded;
+    if (s.type !== 'Fan' && s.type !== 'Power' && s.type !== 'Clock') return null;
+    const motion = SENSOR_MOTION.get(s.id);
+    const peak = Math.max(s.rawMax ?? 0, motion ? motion.max : 0, s.raw ?? 0);
+    const hi = SQ.niceCeil(peak);
+    return hi ? [0, hi] : null;
+  };
+  SQ.cardStyleFor = function (styleValue, hasRange, graphsEnabled) {
+    if (styleValue === 'gauge') return { arc: !!hasRange, spark: !!graphsEnabled };
+    if (styleValue === 'number') return { arc: false, spark: !!graphsEnabled };
+    if (styleValue === 'graph') return { arc: !!hasRange, spark: true };
+    return { arc: !!hasRange, spark: !!graphsEnabled };
   };
 
   SQ.splitValue = function (v) {

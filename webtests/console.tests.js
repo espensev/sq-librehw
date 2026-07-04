@@ -107,6 +107,26 @@
     eq('isPinned true', S.isPinned({pinnedCards:[{id:'/x',title:''}]}, '/x'), true);
     eq('isPinned false', S.isPinned({pinnedCards:[]}, '/x'), false);
 
+    // --- v2: kinds, niceCeil, speedoRange, cardStyle ---
+    eq('kindOf temp', S.kindOf('Temperature'), 'temp');
+    eq('kindOf load family', [S.kindOf('Load'), S.kindOf('Level'), S.kindOf('Control')], ['load','load','load']);
+    eq('kindOf fan', S.kindOf('Fan'), 'fan');
+    eq('kindOf power family', [S.kindOf('Power'), S.kindOf('Voltage'), S.kindOf('Current')], ['power','power','power']);
+    eq('kindOf clock', S.kindOf('Clock'), 'clock');
+    eq('kindOf data fallback', [S.kindOf('Throughput'), S.kindOf('Factor'), S.kindOf('Nope')], ['data','data','data']);
+    eq('niceCeil ladder', [S.niceCeil(87), S.niceCeil(1740), S.niceCeil(0.7), S.niceCeil(100), S.niceCeil(101)], [100, 2000, 1, 100, 200]);
+    eq('niceCeil junk', [S.niceCeil(0), S.niceCeil(-5), S.niceCeil(NaN)], [null, null, null]);
+    S.resetSensorMotion();
+    eq('speedoRange fan from rawMax', S.speedoRange({type:'Fan', raw:900, rawMax:1740, id:'/f'}, {}), [0, 2000]);
+    eq('speedoRange power current-peak', S.speedoRange({type:'Power', raw:87, rawMax:null, id:'/p'}, {}), [0, 100]);
+    eq('speedoRange null when no peak', S.speedoRange({type:'Fan', raw:null, rawMax:null, id:'/f2'}, {}), null);
+    eq('speedoRange temp delegates', S.speedoRange({cls:'cpu', type:'Temperature', text:'Tctl', raw:60, id:'/t'}, {}), [30, 95]);
+    eq('cardStyle map normalized', S.normalizeDashboardState({cardStyle:{'/a':'gauge','/b':'nope','/c':'graph', '':'gauge'}}).cardStyle, {'/a':'gauge','/c':'graph'});
+    eq('cardStyleFor gauge', S.cardStyleFor('gauge', true, false), {arc:true, spark:false});
+    eq('cardStyleFor number keeps global spark', S.cardStyleFor('number', true, true), {arc:false, spark:true});
+    eq('cardStyleFor graph forces spark', S.cardStyleFor('graph', false, false), {arc:false, spark:true});
+    eq('cardStyleFor auto', S.cardStyleFor(undefined, true, true), {arc:true, spark:true});
+
     // === Tier 3 cases are appended below by later tasks ===
 
     return { pass, fail, log };
