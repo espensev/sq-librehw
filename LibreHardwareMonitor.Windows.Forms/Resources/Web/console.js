@@ -134,7 +134,8 @@
     const STGLYPH = { ok:'●', warn:'▲', crit:'✕', info:'·', off:'○' };
     function arcSVG(frac) {
       const R = 30, C = 2 * Math.PI * R, len = C * 0.75;
-      const off = len * (1 - Math.max(0, Math.min(1, frac)));
+      const f = isFinite(frac) ? Math.max(0, Math.min(1, frac)) : 0;  // no-reading -> empty arc, not a NaN offset (full arc)
+      const off = len * (1 - f);
       return `<svg class="arc" viewBox="0 0 78 78"><g transform="rotate(135 39 39)">
         <circle cx="39" cy="39" r="${R}" fill="none" stroke="var(--line-soft)" stroke-width="6"
           stroke-linecap="round" stroke-dasharray="${len} ${C}"/>
