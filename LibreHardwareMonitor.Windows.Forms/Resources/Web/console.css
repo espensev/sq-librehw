@@ -8,6 +8,7 @@
   --ink:#e7eef4; --muted:#8794a1; --dim:#5a6570;
   --cy:#00e5ff; --lime:#EAF7B0;
   --ok:#34D399; --warn:#F5A524; --crit:#FF5C5C; --off:#6B7B86;
+  --t-temp:#F5A524; --t-load:#34D399; --t-fan:#00e5ff; --t-power:#c084fc; --t-clock:#60a5fa; --t-data:#8794a1;
   --shadow:0 1px 0 rgba(255,255,255,.04), 0 22px 46px -26px rgba(0,0,0,.9);
   --mono:ui-monospace,"Cascadia Mono",Consolas,"SFMono-Regular",monospace;
   --sans:system-ui,"Segoe UI Variable Text","Segoe UI",Roboto,sans-serif;
@@ -21,17 +22,20 @@
   --ink:#0b1116; --muted:#4f5b67; --dim:#8a95a0;
   --cy:#0091a8; --lime:#5a7d00;
   --ok:#0a9d55; --warn:#b8790a; --crit:#d1332b; --off:#8a95a0;
+  --t-temp:#b8790a; --t-load:#0a9d55; --t-fan:#0091a8; --t-power:#7c3aed; --t-clock:#2563eb; --t-data:#4f5b67;
   --shadow:0 1px 0 rgba(255,255,255,.6), 0 16px 32px -24px rgba(20,40,60,.4);
 }}
 :root[data-theme="dark"]{
   --bg:#080b0f; --bg-glow:rgba(0,229,255,.06); --panel:#0e141a; --panel-2:#0b0f14; --rim:rgba(255,255,255,.045);
   --line:rgba(0,229,255,.13); --line-soft:rgba(255,255,255,.06); --ink:#e7eef4; --muted:#8794a1; --dim:#5a6570;
   --cy:#00e5ff; --lime:#EAF7B0; --ok:#34D399; --warn:#F5A524; --crit:#FF5C5C; --off:#6B7B86;
+  --t-temp:#F5A524; --t-load:#34D399; --t-fan:#00e5ff; --t-power:#c084fc; --t-clock:#60a5fa; --t-data:#8794a1;
 }
 :root[data-theme="light"]{
   --bg:#e7edf1; --bg-glow:rgba(0,140,160,.08); --panel:#ffffff; --panel-2:#f2f6f8; --rim:rgba(0,0,0,.04);
   --line:rgba(0,120,140,.18); --line-soft:rgba(0,0,0,.08); --ink:#0b1116; --muted:#4f5b67; --dim:#8a95a0;
   --cy:#0091a8; --lime:#5a7d00; --ok:#0a9d55; --warn:#b8790a; --crit:#d1332b; --off:#8a95a0;
+  --t-temp:#b8790a; --t-load:#0a9d55; --t-fan:#0091a8; --t-power:#7c3aed; --t-clock:#2563eb; --t-data:#4f5b67;
 }
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -116,6 +120,22 @@ section{margin-top:30px}
   opacity:.85;padding-top:6px}
 .spark polyline{filter:drop-shadow(0 0 4px color-mix(in srgb,var(--c) 35%,transparent))}
 .spark.empty{height:0;margin-top:0;border:0;padding:0}
+
+/* v2 card anatomy */
+.cell{height:132px;display:flex;flex-direction:column}
+.cell.graph-on{height:172px}
+.cell .k{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.cell .k2{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:1px}
+.ticon{width:14px;height:14px;color:var(--tc);flex:none;opacity:.9}
+.chip-state{display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:999px;font-family:var(--mono);
+  font-size:9px;font-weight:700;letter-spacing:.09em;border:1px solid currentColor}
+.readout .big .v{color:var(--tc)}
+.readout .big .ceil{font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:6px}
+.readout .meta{display:flex;gap:10px;align-items:baseline;min-height:16px;margin-top:5px}
+.readout .meta .range{margin-top:0}
+.trend{font-family:var(--mono);font-size:10.5px;color:var(--muted);white-space:nowrap}
+.spark{margin-top:auto}
+body.stale main{opacity:.55;filter:saturate(.6);transition:opacity .3s}
 
 /* placard */
 .placard{border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line));border-radius:8px;overflow:hidden;

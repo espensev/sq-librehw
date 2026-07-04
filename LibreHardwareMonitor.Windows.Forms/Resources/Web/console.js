@@ -392,6 +392,15 @@
     const STGLYPH = { ok:'●', warn:'▲', crit:'✕', info:'·', off:'○' };
     const CLASSLABEL = { cpu:'CPU', gpu:'GPU', igpu:'iGPU', mem:'MEMORY', dimm:'DIMM', nvme:'STORAGE', disk:'DISK', mb:'BOARD', nic:'NET', other:'MISC' };
     const TORDER = ['Temperature','Limits','Load','Power','Clock','Fan','Control','Voltage','Current','Data','SmallData','Throughput','Level','Factor','Timing'];
+    const TICONS = {
+      temp:  '<path d="M8 3a2 2 0 0 1 4 0v7.3a4.5 4.5 0 1 1-4 0z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="14" r="2" fill="currentColor"/>',
+      load:  '<path d="M3 13a7 7 0 0 1 14 0" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 13 13.5 8" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="13" r="1.4" fill="currentColor"/>',
+      fan:   '<circle cx="10" cy="10" r="1.8" fill="currentColor"/><path d="M10 8.2C10 4 13 3 15 5c-1 2-3 3-5 3.2M11.8 10c4.2 0 5.2 3 3.2 5-2-1-3-3-3.2-5M10 11.8C10 16 7 17 5 15c1-2 3-3 5-3.2M8.2 10C4 10 3 7 5 5c2 1 3 3 3.2 5" fill="none" stroke="currentColor" stroke-width="1.4"/>',
+      power: '<path d="M11 2 4 12h5l-1 6 7-10h-5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>',
+      clock: '<circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 6v4l3 2" fill="none" stroke="currentColor" stroke-width="1.6"/>',
+      data:  '<path d="M2 11h4l2-5 4 9 2-5h4" fill="none" stroke="currentColor" stroke-width="1.6"/>'
+    };
+    const tIcon = kind => `<svg class="ticon" viewBox="0 0 20 20" aria-hidden="true">${TICONS[kind] || TICONS.data}</svg>`;
     const isCoreRow = s => /\bcore\s*#?\d/i.test(s.text) && !/average|max|total/i.test(s.text);
     const dashboard0 = SQ.migrateLegacyState(localStorage, SQ.loadDashboardState(localStorage));
     SQ.saveDashboardState(localStorage, dashboard0);
@@ -525,8 +534,7 @@
         <circle cx="39" cy="39" r="${R}" fill="none" stroke="var(--c)" stroke-width="6" stroke-linecap="round"
           stroke-dasharray="${len} ${C}" stroke-dashoffset="${off}"/></g></svg>`;
     }
-    function sparklineSVG(sensor, bounded) {
-      if (!state.dashboard.graphsEnabled) return '';
+    function sparkAreaSVG(sensor, bounded) {
       const hist = SQ.historyFor(sensor.id).filter(p => Number.isFinite(p.raw));
       if (hist.length < 2) return '<div class="spark empty"></div>';
       const values = hist.map(p => p.raw);
@@ -534,13 +542,14 @@
       let max = bounded ? bounded[1] : Math.max(...values);
       if (!(max > min)) { min -= 1; max += 1; }
       const w = 120, h = 28;
-      const points = hist.map((p, i) => {
-        const x = hist.length === 1 ? 0 : (i / (hist.length - 1)) * w;
+      const pts = hist.map((p, i) => {
+        const x = (i / (hist.length - 1)) * w;
         const y = h - ((p.raw - min) / (max - min)) * h;
         return `${x.toFixed(1)},${Math.max(0, Math.min(h, y)).toFixed(1)}`;
-      }).join(' ');
+      });
       return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
-        <polyline points="${points}" fill="none" stroke="var(--c)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+        <polygon points="0,${h} ${pts.join(' ')} ${w},${h}" fill="var(--tc)" opacity="0.18"/>
+        <polyline points="${pts.join(' ')}" fill="none" stroke="var(--tc)" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
     }
     function rangeMarkup(s) {
       const rmin = SQ.splitValue(s.min).n, rmax = SQ.splitValue(s.max).n;
@@ -553,21 +562,34 @@
       const { n, unit } = SQ.splitValue(h.s.value);
       const u = unit || h.unit || '';
       const st = h.status;
-      const bounded = h.bounded || SQ.visualRangeForSensor(h.s, {});
+      const kind = SQ.kindOf(h.s.type);
+      const styleVal = state.dashboard.cardStyle[h.s.id];
+      const range = h.bounded || SQ.speedoRange(h.s, {});
+      const fx = SQ.cardStyleFor(styleVal, !!range && h.s.raw != null, state.dashboard.graphsEnabled);
       let arc = '';
-      if (bounded) { const [lo, hi] = bounded; arc = arcSVG(h.s.id, (h.s.raw - lo) / (hi - lo)); }
+      if (fx.arc) { const [lo, hi] = range; arc = arcSVG(h.s.id, (h.s.raw - lo) / (hi - lo)); }
+      const isHealth = (h.s.type === 'Temperature' && !SQ.isLimitSensor(h.s)) ||
+                       (h.s.type === 'Level' && (h.s.text || '').toLowerCase().includes('life'));
+      const chip = isHealth && (st === 'ok' || st === 'warn' || st === 'crit')
+        ? `<span class="chip-state g-${st}">${STGLYPH[st]} ${STLABEL[st]}</span>` : '';
+      const trend = SQ.trendFor(h.s.id, kind);
+      const trendHtml = trend
+        ? `<span class="trend">${trend.direction === 'rising' ? '&#8599;' : '&#8600;'} ${Math.abs(trend.rate).toFixed(trend.rate >= 10 ? 0 : 2)} ${esc(trend.rateUnit)}</span>`
+        : '<span class="trend"></span>';
+      const ceil = fx.arc && !h.bounded ? `<span class="ceil">/ ${esc(String(range[1]))}</span>` : '';
       const cell = document.createElement('div');
-      cell.className = `cell s-${st}${pinned ? ' pinned' : ''}${state.dashboard.graphsEnabled ? ' graph-on' : ''}`;
+      cell.className = `cell s-${st}${pinned ? ' pinned' : ''}${fx.spark ? ' graph-on' : ''}`;
+      cell.style.setProperty('--tc', `var(--t-${kind})`);
       if (pinned) cell.dataset.key = h.s.id;
       const source = (h.s.hw || '').split(' ').slice(0, 3).join(' ');
       cell.innerHTML =
-        `<div class="k"><span class="name">${esc(h.label)}</span><span class="src">${esc(source)}</span></div>
+        `<div class="k"><span class="name">${esc(h.label)}</span>${chip}</div>
+         <div class="k2"><span class="src">${esc(source)}</span>${tIcon(kind)}</div>
          <div class="body">${arc}<div class="readout">
-           <div class="big"><span class="v">${esc(n)}</span><span class="u">${esc(u)}</span></div>
-           ${rangeMarkup(h.s)}
-           <div class="tags"><span class="tag-stat g-${st}">${STGLYPH[st]} ${STLABEL[st]}</span></div>
-         </div></div>${sparklineSVG(h.s, bounded)}`;
-      const showHide = !pinned; // hero cards get hide; the dedicated pinned strip gets unpin only
+           <div class="big"><span class="v">${esc(n)}</span><span class="u">${esc(u)}</span>${ceil}</div>
+           <div class="meta">${rangeMarkup(h.s) || '<div class="range"></div>'}${trendHtml}</div>
+         </div></div>${fx.spark ? sparkAreaSVG(h.s, range) : ''}`;
+      const showHide = !pinned;
       const ctl = document.createElement('div');
       ctl.className = 'cell-ctl';
       ctl.innerHTML = (pinned ? `<button class="grip" aria-label="Drag to reorder ${esc(h.label)}" title="Drag to reorder">&#8942;&#8942;</button>` : '') + ctlCluster(h.s.id, h.label, { hide: showHide });
@@ -771,9 +793,11 @@
         const data = await r.json();
         if (state.dragging) return;   // drag started during the fetch — don't render over it
         render(data);
+        document.body.classList.remove('stale');
       } catch (e) {
         $('#freshdot').className = 'lamp s-warn';
         $('#freshtxt').textContent = 'stale - retrying';
+        document.body.classList.add('stale');
       }
     }
     function schedule() { clearInterval(state.timer); state.timer = setInterval(tick, state.rate * 1000); }
