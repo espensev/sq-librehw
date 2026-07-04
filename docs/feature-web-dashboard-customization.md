@@ -3,7 +3,7 @@
 **Project:** LibreHardwareMonitor Sev IQ local fork
 **Status:** In implementation
 **Updated:** 2026-07-04
-**Related docs:** [`feature-workflow.md`](feature-workflow.md), [`local-ui-customizations.md`](local-ui-customizations.md), [`superpowers/specs/2026-07-04-web-dashboard-telemetry-console-design.md`](superpowers/specs/2026-07-04-web-dashboard-telemetry-console-design.md), [`superpowers/plans/2026-07-04-web-dashboard-customization.md`](superpowers/plans/2026-07-04-web-dashboard-customization.md)
+**Related docs:** [`feature-workflow.md`](feature-workflow.md), [`local-ui-customizations.md`](local-ui-customizations.md), [`superpowers/specs/2026-07-04-web-dashboard-telemetry-console-design.md`](superpowers/specs/2026-07-04-web-dashboard-telemetry-console-design.md), [`superpowers/plans/2026-07-04-web-dashboard-customization.md`](superpowers/plans/2026-07-04-web-dashboard-customization.md), follow-up v3 [`feature-web-dashboard-card-truth.md`](feature-web-dashboard-card-truth.md) (card truth & card-first controls — supersedes the drawer direction)
 **Purpose:** let the SQ Telemetry Console hide noisy sensors and persist user-arranged cards without changing LibreHardwareMonitor sensor contracts.
 
 ## 1. Summary
