@@ -99,8 +99,8 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
 - **Zero contract change.** The console is a pure client that polls the existing
   `GET /data.json` endpoint (`fetch('data.json', {cache:'no-store'})`) on an interval; it does not
   read or depend on any new server endpoint, and nothing in `HttpServer.cs`/`AssemblyVersion` was
-  touched to build it. The 7 data-contract tests (`LibreHardwareMonitor.Tests`) stay green — see
-  Verification below.
+  touched to build it. The data.json/CSV golden contract tests (`LibreHardwareMonitor.Tests`) stay
+  green — see Verification below.
 - **Status model** (`console.js` `SQ.statusOf`/`tempStatus`/`SQ.deriveLimits`): every sensor is
   classified `ok` / `warn` / `crit` / `info` / `off` (`raw == null` -> `off`). Only two sensor
   shapes are ever alarmed:
@@ -167,10 +167,8 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   over-band sensors, not an opinion. Masthead controls are now: freshness dot/text, rate slider,
   Pause, Graphs, Theme, Customize.
 - **Card anatomy v2 — two channels, two meanings** (`cardEl`, card rules in `console.css`): a card's
-  **rail + chip communicate health STATE**; its **icon + value color communicate metric TYPE** — the
-  two can't collide by construction (state-green for `ok` and type-green for `load` never land on
-  the same element: chips only ever appear on temperature/life cards, whose type color is amber, not
-  green).
+  **rail + chip communicate health STATE**; its **icon + value color communicate metric TYPE** — two
+  independent channels on the same card.
   - **State** (`s-ok`/`s-warn`/`s-crit`/`s-off`; `info` is not a health state): a 3px left rail
     (`.cell::before`, state-colored) plus, only on sensors the status model actually health-judges
     (non-limit Temperature, and Level sensors whose text contains "life"), a small `OK`/`WATCH`/
