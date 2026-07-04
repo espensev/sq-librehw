@@ -65,6 +65,32 @@
     eq('resolve pinned ignores missing', cards.map(c => c.label), ['CPU Work']);
     eq('apply panel order', S.applyOrder([{key:'a',index:0},{key:'b',index:1}], ['b'], x => x.key).map(x => x.key), ['b','a']);
 
+    // --- Tier 3: schema + migration ---
+    eq('default has consolidated fields', (() => { const d = S.defaultDashboardState();
+      return [d.paused, d.rate, d.theme, JSON.stringify(d.collapsedPanels)]; })(), [false, 2, 'dark', '{}']);
+    eq('normalize clamps rate high', S.normalizeDashboardState({rate: 99}).rate, 10);
+    eq('normalize clamps rate low', S.normalizeDashboardState({rate: 0}).rate, 1);
+    eq('normalize rate default', S.normalizeDashboardState({}).rate, 2);
+    eq('normalize theme light', S.normalizeDashboardState({theme:'light'}).theme, 'light');
+    eq('normalize theme junk -> dark', S.normalizeDashboardState({theme:'x'}).theme, 'dark');
+    eq('normalize paused bool', S.normalizeDashboardState({paused:true}).paused, true);
+    eq('normalize collapsed map coerces', S.normalizeDashboardState({collapsedPanels:{CPU:1,GPU:false,'':true}}).collapsedPanels, {CPU:true, GPU:false});
+    eq('normalize collapsed rejects array', S.normalizeDashboardState({collapsedPanels:['CPU']}).collapsedPanels, {});
+    const legacyStore = (() => {
+      const m = {'sq.paused':'1','sq.rate':'5','sq.theme':'light','sq.panel.CPU':'1','sq.panel.Network':'0','other':'keep'};
+      return { get length(){return Object.keys(m).length;}, key:i=>Object.keys(m)[i],
+        getItem:k=>k in m?m[k]:null, setItem:(k,v)=>{m[k]=String(v);}, removeItem:k=>{delete m[k];}, _m:m };
+    })();
+    const migrated = S.migrateLegacyState(legacyStore, S.defaultDashboardState());
+    eq('migrate folds paused', migrated.paused, true);
+    eq('migrate folds rate', migrated.rate, 5);
+    eq('migrate folds theme', migrated.theme, 'light');
+    eq('migrate folds collapsed map', migrated.collapsedPanels, {CPU:true, Network:false});
+    eq('migrate removes legacy keys', [legacyStore._m['sq.paused'], legacyStore._m['sq.rate'], legacyStore._m['sq.theme'], legacyStore._m['sq.panel.CPU']], [undefined, undefined, undefined, undefined]);
+    eq('migrate keeps unrelated key', legacyStore._m['other'], 'keep');
+    eq('migrate idempotent (2nd pass)', (() => { const again = S.migrateLegacyState(legacyStore, migrated);
+      return [again.paused, again.rate, again.theme]; })(), [true, 5, 'light']);
+
     // === Tier 3 cases are appended below by later tasks ===
 
     return { pass, fail, log };

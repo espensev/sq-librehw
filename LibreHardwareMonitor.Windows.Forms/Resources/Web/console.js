@@ -60,6 +60,17 @@
     });
     return out;
   }
+  function clampRate(n) {
+    n = Math.round(Number(n));
+    if (!Number.isFinite(n)) return 2;
+    return Math.max(1, Math.min(10, n));
+  }
+  function cleanCollapsedMap(value) {
+    const out = {};
+    if (value && typeof value === 'object' && !Array.isArray(value))
+      Object.keys(value).forEach(k => { if (typeof k === 'string' && k.length) out[k] = !!value[k]; });
+    return out;
+  }
   SQ.defaultDashboardState = function () {
     return {
       version: 1,
@@ -68,7 +79,11 @@
       pinnedCards: [],
       panelOrder: [],
       pinnedOrder: [],
-      graphsEnabled: false
+      graphsEnabled: false,
+      paused: false,
+      rate: 2,
+      theme: 'dark',
+      collapsedPanels: {}
     };
   };
   SQ.normalizeDashboardState = function (value) {
@@ -81,7 +96,11 @@
       pinnedCards: cleanPinnedCards(value.pinnedCards),
       panelOrder: cleanStringList(value.panelOrder),
       pinnedOrder: cleanStringList(value.pinnedOrder),
-      graphsEnabled: value.graphsEnabled === true
+      graphsEnabled: value.graphsEnabled === true,
+      paused: value.paused === true,
+      rate: clampRate(value.rate),
+      theme: value.theme === 'light' ? 'light' : 'dark',
+      collapsedPanels: cleanCollapsedMap(value.collapsedPanels)
     };
   };
   SQ.loadDashboardState = function (storage) {
@@ -98,6 +117,29 @@
     if (storage && typeof storage.setItem === 'function')
       storage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(state));
     return state;
+  };
+  SQ.migrateLegacyState = function (storage, state) {
+    const cfg = SQ.normalizeDashboardState(state);
+    if (!storage || typeof storage.getItem !== 'function') return cfg;
+    const paused = storage.getItem('sq.paused');
+    if (paused != null) cfg.paused = paused === '1';
+    const rate = storage.getItem('sq.rate');
+    if (rate != null && rate !== '') cfg.rate = clampRate(rate);
+    const theme = storage.getItem('sq.theme');
+    if (theme === 'dark' || theme === 'light') cfg.theme = theme;
+    const panelKeys = [];
+    if (typeof storage.length === 'number' && typeof storage.key === 'function') {
+      for (let i = 0; i < storage.length; i++) {
+        const k = storage.key(i);
+        if (typeof k === 'string' && k.indexOf('sq.panel.') === 0) panelKeys.push(k);
+      }
+    }
+    panelKeys.forEach(k => { cfg.collapsedPanels[k.slice('sq.panel.'.length)] = storage.getItem(k) === '1'; });
+    if (typeof storage.removeItem === 'function') {
+      ['sq.paused', 'sq.rate', 'sq.theme'].forEach(k => storage.removeItem(k));
+      panelKeys.forEach(k => storage.removeItem(k));
+    }
+    return cfg;
   };
   SQ.isDefaultHiddenSensorId = function (id) {
     return DEFAULT_HIDDEN_SENSOR_IDS.has(id);
