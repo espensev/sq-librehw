@@ -48,6 +48,9 @@ public class PlotPanel : UserControl
     private float _dpiY;
     private double _dpiXScale = 1;
     private double _dpiYScale = 1;
+    private int _axisTextScalePercent = UiScale.DefaultPercent;
+    private Font _trackerBaseFont;   // captured lazily on first apply (MainForm sets _plot.Font first)
+    private Font _scaledTrackerFont;  // owned; disposed on replacement
     private Point _rightClickEnter;
     private bool _cancelContextMenu = false;
 
@@ -62,6 +65,8 @@ public class PlotPanel : UserControl
     private double _lastNowX;
     private bool _updatingTimeAxis;
     private TemperatureUnit _lastTemperatureUnit;
+    private readonly bool _autoFitYOnStart;
+    private bool _didAutoFitYAxesOnStart;
 
     private sealed class SeriesState
     {
@@ -91,6 +96,11 @@ public class PlotPanel : UserControl
         _unitManager = unitManager;
         _timeOrigin = DateTime.UtcNow;
         _lastTemperatureUnit = unitManager.TemperatureUnit;
+
+        // One-time gate for the startup Y-axis auto-fit (see InvalidatePlot()): reclaims empty
+        // graph bands left over from a stale persisted zoom (axis.Zoom(...) below in
+        // CreatePlotModel), without touching later in-session zooms (manual or menu-driven).
+        _autoFitYOnStart = _settings.GetValue("plotPanel.AutoFitYOnStart", true);
 
         SetDpi();
         _model = CreatePlotModel();
@@ -700,15 +710,16 @@ public class PlotPanel : UserControl
     private void ApplyGridDensity()
     {
         int density = _gridDensity?.Value ?? DefaultGridDensity;
+        int textScalePercent = _axisTextScalePercent;
 
-        ApplyAxisGrid(_timeAxis, density, true);
+        ApplyAxisGrid(_timeAxis, density, true, textScalePercent);
 
         bool showValueGrid = _stackedAxes?.Value == true;
         foreach (LinearAxis axis in _axes.Values)
-            ApplyAxisGrid(axis, density, showValueGrid);
+            ApplyAxisGrid(axis, density, showValueGrid, textScalePercent);
     }
 
-    private static void ApplyAxisGrid(Axis axis, int density, bool enabled)
+    private static void ApplyAxisGrid(Axis axis, int density, bool enabled, int textScalePercent)
     {
         // ApplyGridDensity runs on every plot refresh. Assign only when a value actually
         // changes: re-assigning identical MajorStep/MinorStep each frame forces OxyPlot to
@@ -730,7 +741,7 @@ public class PlotPanel : UserControl
         SetGridlineStyle(axis, LineStyle.Solid, density >= 2 ? LineStyle.Solid : LineStyle.None);
 
         if (density == 3)
-            ApplyFineAxisSteps(axis);
+            ApplyFineAxisSteps(axis, textScalePercent);
         else
             ResetAxisSteps(axis);
     }
@@ -751,7 +762,7 @@ public class PlotPanel : UserControl
             axis.MinorStep = double.NaN;
     }
 
-    private static void ApplyFineAxisSteps(Axis axis)
+    private static void ApplyFineAxisSteps(Axis axis, int textScalePercent)
     {
         double minimum = !double.IsNaN(axis.ActualMinimum) ? axis.ActualMinimum : axis.Minimum;
         double maximum = !double.IsNaN(axis.ActualMaximum) ? axis.ActualMaximum : axis.Maximum;
@@ -759,7 +770,10 @@ public class PlotPanel : UserControl
         if (double.IsNaN(range) || double.IsInfinity(range) || range <= 0)
             return;
 
-        double majorStep = GetNiceAxisStep(range, FineGridMajorDivisions);
+        // Fewer divisions (larger step) as text scale grows past 100%, so bigger tick labels
+        // don't crowd; at/below 100% this is unchanged (divisions == FineGridMajorDivisions).
+        double divisions = FineGridMajorDivisions * 100.0 / Math.Max(100, textScalePercent);
+        double majorStep = GetNiceAxisStep(range, divisions);
         if (double.IsNaN(majorStep) || majorStep <= 0)
             return;
 
@@ -864,6 +878,16 @@ public class PlotPanel : UserControl
         _lastNowX = nowX;
 
         SyncSeriesPoints();
+
+        // One-shot: reclaim empty Y-axis bands left over from a stale persisted zoom
+        // (CreatePlotModel's axis.Zoom(...) restore) once real data exists, then never again
+        // this session so a later manual/menu zoom sticks.
+        if (_autoFitYOnStart && !_didAutoFitYAxesOnStart && _seriesStates.Values.Any(state => state.Points.Count > 0))
+        {
+            _didAutoFitYAxesOnStart = true;
+            AutoscaleAllYAxes();
+        }
+
         UpdateTimeAxisWindow(nowX);
         ApplyGridDensity();
 
@@ -946,10 +970,60 @@ public class PlotPanel : UserControl
     public void AutoscaleAllYAxes()
     {
         foreach (LinearAxis axis in _axes.Values)
-            axis.Zoom(double.NaN, double.NaN);
+        {
+            // Zoom() silently no-ops when IsZoomEnabled is false (persisted via Value Axes >
+            // Enable Zoom, default true but can be off from a prior session). Force-enable around
+            // the call and restore after, mirroring UpdateTimeAxisWindow's pattern, so this always
+            // actually un-zooms the axis regardless of that setting.
+            bool zoomEnabled = axis.IsZoomEnabled;
+            axis.IsZoomEnabled = true;
+            try
+            {
+                axis.Zoom(double.NaN, double.NaN);
+            }
+            finally
+            {
+                axis.IsZoomEnabled = zoomEnabled;
+            }
+        }
 
         // Refresh now instead of waiting for the next update tick, so the rescale is visible
         // immediately after the menu action.
+        InvalidatePlotCosmetic();
+    }
+
+    /// <summary>
+    /// Scales all axis tick-label and title fonts, plus the hover tracker font, by <paramref name="percent"/>.
+    /// DPI-independent on purpose: today's axis fonts are NOT DPI-scaled (ScaledPlotModel scales only the
+    /// NaN/auto margins, a no-op), so 100% reproduces the current look at every DPI. Auto-margins absorb
+    /// larger labels, so no clipping math is needed.
+    /// </summary>
+    public void SetAxisTextScale(int percent)
+    {
+        _axisTextScalePercent = UiScale.ClampPercent(percent);
+        double fontSize = UiScale.PlotAxisFontSize(_model.DefaultFontSize, _axisTextScalePercent);
+
+        foreach (Axis axis in _model.Axes)
+        {
+            axis.FontSize = fontSize;        // tick labels
+            axis.TitleFontSize = fontSize;   // axis titles (set explicitly; don't rely on the fallback)
+
+            // Grow tick spacing with the font so larger labels don't pack tighter than they render
+            // (OxyPlot's default IntervalLength is 60; at percent=100 this is exactly 60.0, so the
+            // 100% case is byte-identical to today's tick density).
+            axis.IntervalLength = 60.0 * (_axisTextScalePercent / 100.0);
+        }
+
+        // Tracker/tooltip is a WinForms Label that inherits PlotView.Font ambiently.
+        _trackerBaseFont ??= (Font)_plot.Font.Clone();
+        Font old = _scaledTrackerFont;
+        _scaledTrackerFont = new Font(
+            _trackerBaseFont.FontFamily,
+            UiScale.ScaledFontSize(_trackerBaseFont.Size, _axisTextScalePercent),
+            _trackerBaseFont.Style);
+        _plot.Font = _scaledTrackerFont;
+        old?.Dispose();
+
         InvalidatePlotCosmetic();
     }
 }

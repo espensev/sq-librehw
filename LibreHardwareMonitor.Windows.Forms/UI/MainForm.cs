@@ -80,6 +80,13 @@ public sealed partial class MainForm : Form
     private int _standardValueColumnWidth;
     private int _standardMinColumnWidth;
     private int _standardMaxColumnWidth;
+    private int _uiTextScalePercent = UiScale.DefaultPercent;
+    private Font _scaledTreeFont;   // owned; disposed on replacement (never dispose SystemFonts.MessageBoxFont)
+    private Font _baseMenuFont;     // captured once from mainMenu.Font; never disposed
+    private Font _scaledMenuFont;   // owned; disposed on replacement
+    private int _baseValueColumnWidth = 100;
+    private int _baseMinColumnWidth = 100;
+    private int _baseMaxColumnWidth = 100;
 
     public MainForm()
     {
@@ -87,6 +94,7 @@ public sealed partial class MainForm : Form
 
         _settings = new PersistentSettings();
         _settings.Load(Path.ChangeExtension(Application.ExecutablePath, ".config"));
+        _uiTextScalePercent = UiScale.ClampPercent(_settings.GetValue("uiTextScale", UiScale.DefaultPercent));
 
         _unitManager = new UnitManager(_settings);
 
@@ -106,9 +114,10 @@ public sealed partial class MainForm : Form
         {
             X = _settings.GetValue("mainForm.Location.X", Location.X),
             Y = _settings.GetValue("mainForm.Location.Y", Location.Y),
-            Width = _settings.GetValue("mainForm.Width", 470),
-            Height = _settings.GetValue("mainForm.Height", 640)
+            Width = _settings.GetValue("mainForm.Width", 720),
+            Height = _settings.GetValue("mainForm.Height", 840)
         };
+        MinimumSize = new Size(360, 420);
 
         Theme setTheme = Theme.All.FirstOrDefault(theme => _settings.GetValue("theme", "auto") == theme.Id);
         if (setTheme != null)
@@ -173,6 +182,9 @@ public sealed partial class MainForm : Form
         _standardValueColumnWidth = treeView.Columns[1].Width;
         _standardMinColumnWidth = treeView.Columns[2].Width;
         _standardMaxColumnWidth = treeView.Columns[3].Width;
+        _baseValueColumnWidth = treeView.Columns[1].Width;
+        _baseMinColumnWidth = treeView.Columns[2].Width;
+        _baseMaxColumnWidth = treeView.Columns[3].Width;
 
         InitializeGraphMenu();
 
@@ -180,6 +192,44 @@ public sealed partial class MainForm : Form
         viewMenuItem.DropDownItems.Insert(4, compactModeMenuItem);
         _compactMode = new UserOption("compactMode", false, compactModeMenuItem, _settings);
         _compactMode.Changed += delegate { ApplySensorTreeLayout(); };
+
+        ToolStripMenuItem textSizeMenuItem = new($"Text Size ({_uiTextScalePercent}%)");
+        viewMenuItem.DropDownItems.Insert(5, textSizeMenuItem);
+
+        double dpiScale = DeviceDpi / 96.0;
+        TrackBar textSizeTrackBar = new()
+        {
+            Minimum = UiScale.MinPercent,
+            Maximum = UiScale.MaxPercent,
+            TickFrequency = 25,
+            SmallChange = 5,
+            LargeChange = 25,
+            AutoSize = false,
+            Value = _uiTextScalePercent,
+            Size = new Size((int)Math.Round(170 * dpiScale), (int)Math.Round(45 * dpiScale)),
+            BackColor = Theme.Current.MenuBackgroundColor
+        };
+        ToolStripControlHost textSizeHost = new(textSizeTrackBar) { AutoSize = false, BackColor = Theme.Current.MenuBackgroundColor };
+        textSizeHost.Size = textSizeTrackBar.Size;
+        textSizeMenuItem.DropDownItems.Add(textSizeHost);
+
+        textSizeTrackBar.ValueChanged += (s, e) =>
+        {
+            _uiTextScalePercent = UiScale.ClampPercent(textSizeTrackBar.Value);
+            textSizeMenuItem.Text = $"Text Size ({_uiTextScalePercent}%)";
+            ApplyUiTextScale();
+        };
+
+        // Keep the dropdown open while dragging the slider (a drag is not an ItemClicked).
+        textSizeMenuItem.DropDown.Closing += (s, e) =>
+        {
+            if (e.CloseReason == ToolStripDropDownCloseReason.ItemClicked)
+                e.Cancel = true;
+        };
+
+        ToolStripMenuItem autoFitColumnsMenuItem = new("Auto-Fit Columns");
+        autoFitColumnsMenuItem.Click += delegate { AutoFitTreeColumns(); };
+        viewMenuItem.DropDownItems.Insert(6, autoFitColumnsMenuItem);
 
         treeView.ShowNodeToolTips = true;
         treeView.SelectionMode = TreeSelectionMode.Multi;
@@ -262,7 +312,7 @@ public sealed partial class MainForm : Form
 
         // Apply once now that all column options (and compact mode) are wired, so the initial
         // layout does not depend on the eager Changed callback of whichever option subscribed last.
-        ApplySensorTreeLayout();
+        ApplyUiTextScale();
 
         _ = new UserOption("startMinMenuItem", false, startMinMenuItem, _settings);
         _minimizeToTray = new UserOption("minTrayMenuItem", true, minTrayMenuItem, _settings);
@@ -851,13 +901,13 @@ public sealed partial class MainForm : Form
 
             if (compact)
             {
-                treeView.RowHeight = Math.Max(treeView.Font.Height, 16);
+                treeView.RowHeight = UiScale.TreeRowHeight(treeView.Font.Height, compact: true);
                 treeView.GridLineStyle = GridLineStyle.None;
-                treeView.Columns[1].Width = Math.Min(_standardValueColumnWidth, 78);
+                treeView.Columns[1].Width = Math.Min(_standardValueColumnWidth, UiScale.ScaledColumnWidth(78, _uiTextScalePercent));
             }
             else
             {
-                treeView.RowHeight = _standardRowHeight;
+                treeView.RowHeight = UiScale.TreeRowHeight(treeView.Font.Height, compact: false);
                 treeView.GridLineStyle = _standardGridLineStyle;
 
                 // Restore the saved column widths only when actually leaving compact mode
@@ -866,9 +916,9 @@ public sealed partial class MainForm : Form
                 // dragged in normal mode, since _standard* is only refreshed when entering compact mode.
                 if (_compactLayoutActive)
                 {
-                    treeView.Columns[1].Width = _standardValueColumnWidth;
-                    treeView.Columns[2].Width = _standardMinColumnWidth;
-                    treeView.Columns[3].Width = _standardMaxColumnWidth;
+                    treeView.Columns[1].Width = UiScale.ScaledColumnWidth(_baseValueColumnWidth, _uiTextScalePercent);
+                    treeView.Columns[2].Width = UiScale.ScaledColumnWidth(_baseMinColumnWidth, _uiTextScalePercent);
+                    treeView.Columns[3].Width = UiScale.ScaledColumnWidth(_baseMaxColumnWidth, _uiTextScalePercent);
                 }
             }
         }
@@ -878,6 +928,103 @@ public sealed partial class MainForm : Form
         }
 
         _compactLayoutActive = compact;
+        TreeView_SizeChanged(treeView, EventArgs.Empty);
+        treeView.Invalidate();
+    }
+
+    /// <summary>
+    /// Single apply path for the Text Size scale: tree font + row height + value/min/max column
+    /// widths + tree glyphs + plot axis text. Order-independent and composes with Compact Mode.
+    /// </summary>
+    private void ApplyUiTextScale()
+    {
+        _uiTextScalePercent = UiScale.ClampPercent(_uiTextScalePercent);
+
+        // Tree font (scaled from the shared base; dispose the previous scaled font).
+        Font previous = _scaledTreeFont;
+        _scaledTreeFont = new Font(
+            SystemFonts.MessageBoxFont.FontFamily,
+            UiScale.ScaledFontSize(SystemFonts.MessageBoxFont.SizeInPoints, _uiTextScalePercent),
+            SystemFonts.MessageBoxFont.Style);
+        treeView.Font = _scaledTreeFont;   // propagates to all text NodeControls; fires FullUpdate
+        previous?.Dispose();
+
+        // Top menu-bar font (scaled from its captured base). Scaling a child MenuStrip's font does
+        // NOT trigger the form's AutoScaleMode.Font cascade — that keys off the form's own Font.
+        _baseMenuFont ??= (Font)mainMenu.Font.Clone();
+        Font previousMenu = _scaledMenuFont;
+        _scaledMenuFont = new Font(
+            _baseMenuFont.FontFamily,
+            UiScale.ScaledFontSize(_baseMenuFont.SizeInPoints, _uiTextScalePercent),
+            _baseMenuFont.Style);
+        mainMenu.Font = _scaledMenuFont;
+        previousMenu?.Dispose();
+
+        // Value/Min/Max column widths from their 100% base (guarded so our sets don't churn the base).
+        _updatingSensorTreeLayout = true;
+        try
+        {
+            treeView.Columns[1].Width = UiScale.ScaledColumnWidth(_baseValueColumnWidth, _uiTextScalePercent);
+            treeView.Columns[2].Width = UiScale.ScaledColumnWidth(_baseMinColumnWidth, _uiTextScalePercent);
+            treeView.Columns[3].Width = UiScale.ScaledColumnWidth(_baseMaxColumnWidth, _uiTextScalePercent);
+        }
+        finally
+        {
+            _updatingSensorTreeLayout = false;
+        }
+
+        // Tree glyphs (expand/collapse + plot-select checkbox footprint).
+        Theme.GlyphScalePercent = _uiTextScalePercent;
+        NodeCheckBox.GlyphScalePercent = _uiTextScalePercent;
+
+        // Row height + column visibility + repaint (recomputes RowHeight from the live font).
+        ApplySensorTreeLayout();
+
+        // Plot axis text (single PlotPanel instance covers docked + separate-window modes).
+        _plotPanel?.SetAxisTextScale(_uiTextScalePercent);
+
+        _settings.SetValue("uiTextScale", _uiTextScalePercent);
+    }
+
+    /// <summary>
+    /// Sizes the Value/Min/Max tree columns to their widest currently-visible header/cell text
+    /// (clamped to <see cref="UiScale.MinColumnWidth"/>/<see cref="UiScale.MaxColumnWidth"/>).
+    /// Column 0 (Sensor) already auto-fills via <see cref="TreeView_SizeChanged"/>.
+    /// </summary>
+    private void AutoFitTreeColumns()
+    {
+        (int col, Func<SensorNode, string> text)[] fitters =
+        {
+            (1, n => n.Value),
+            (2, n => n.Min),
+            (3, n => n.Max),
+        };
+
+        using Graphics g = treeView.CreateGraphics();
+        foreach ((int col, Func<SensorNode, string> text) in fitters)
+        {
+            int widest = TextRenderer.MeasureText(g, treeView.Columns[col].Header, treeView.Font).Width;
+            foreach (TreeNodeAdv node in treeView.AllNodes)
+            {
+                if (node.Tag is SensorNode sensorNode)
+                {
+                    string s = text(sensorNode);
+                    if (!string.IsNullOrEmpty(s))
+                        widest = Math.Max(widest, TextRenderer.MeasureText(g, s, treeView.Font).Width);
+                }
+            }
+
+            _updatingSensorTreeLayout = true;
+            try { treeView.Columns[col].Width = Math.Max(UiScale.MinColumnWidth, Math.Min(UiScale.MaxColumnWidth, widest + 12)); }
+            finally { _updatingSensorTreeLayout = false; }
+
+            // Keep the scale-independent base in sync so a later slider move preserves the fit.
+            int baseWidth = UiScale.BaseFromScaled(treeView.Columns[col].Width, _uiTextScalePercent);
+            if (col == 1) _baseValueColumnWidth = baseWidth;
+            else if (col == 2) _baseMinColumnWidth = baseWidth;
+            else _baseMaxColumnWidth = baseWidth;
+        }
+
         TreeView_SizeChanged(treeView, EventArgs.Empty);
         treeView.Invalidate();
     }
@@ -1223,20 +1370,25 @@ public sealed partial class MainForm : Form
         _plotPanel.SetCurrentSettings();
 
         foreach (TreeColumn column in treeView.Columns)
-            _settings.SetValue("treeView.Columns." + column.Header + ".Width", column.Width);
+        {
+            int index = treeView.Columns.IndexOf(column);
+            int widthToSave = index switch
+            {
+                1 => _baseValueColumnWidth,
+                2 => _baseMinColumnWidth,
+                3 => _baseMaxColumnWidth,
+                _ => column.Width
+            };
+            _settings.SetValue("treeView.Columns." + column.Header + ".Width", widthToSave);
+        }
+
+        _settings.SetValue("uiTextScale", _uiTextScalePercent);
 
         _settings.SetValue("listenerIp", Server.ListenerIp);
         _settings.SetValue("listenerPort", Server.ListenerPort);
         _settings.SetValue("authenticationEnabled", Server.AuthEnabled);
         _settings.SetValue("authenticationUserName", Server.UserName);
         _settings.SetValue("authenticationPassword", Server.PasswordSHA256);
-
-        if (_compactLayoutActive)
-        {
-            _settings.SetValue("treeView.Columns." + treeView.Columns[1].Header + ".Width", _standardValueColumnWidth);
-            _settings.SetValue("treeView.Columns." + treeView.Columns[2].Header + ".Width", _standardMinColumnWidth);
-            _settings.SetValue("treeView.Columns." + treeView.Columns[3].Header + ".Width", _standardMaxColumnWidth);
-        }
 
         string fileName = Path.ChangeExtension(Application.ExecutablePath, ".config");
 
@@ -1272,8 +1424,8 @@ public sealed partial class MainForm : Form
         {
             X = _settings.GetValue("mainForm.Location.X", Location.X),
             Y = _settings.GetValue("mainForm.Location.Y", Location.Y),
-            Width = _settings.GetValue("mainForm.Width", 470),
-            Height = _settings.GetValue("mainForm.Height", 640)
+            Width = _settings.GetValue("mainForm.Width", 720),
+            Height = _settings.GetValue("mainForm.Height", 840)
         };
 
         Rectangle fullWorkingArea = new(int.MaxValue, int.MaxValue, int.MinValue, int.MinValue);
@@ -1289,6 +1441,9 @@ public sealed partial class MainForm : Form
         }
 
         Bounds = newBounds;
+
+        if (_settings.GetValue("mainForm.Maximized", false))
+            WindowState = FormWindowState.Maximized;
 
         RestoreCollapsedNodeState(treeView);
 
@@ -1816,13 +1971,15 @@ public sealed partial class MainForm : Form
 
     private void MainForm_MoveOrResize(object sender, EventArgs e)
     {
-        if (WindowState != FormWindowState.Minimized)
-        {
-            _settings.SetValue("mainForm.Location.X", Bounds.X);
-            _settings.SetValue("mainForm.Location.Y", Bounds.Y);
-            _settings.SetValue("mainForm.Width", Bounds.Width);
-            _settings.SetValue("mainForm.Height", Bounds.Height);
-        }
+        if (WindowState == FormWindowState.Minimized)
+            return;
+
+        Rectangle b = WindowState == FormWindowState.Maximized ? RestoreBounds : Bounds;
+        _settings.SetValue("mainForm.Location.X", b.X);
+        _settings.SetValue("mainForm.Location.Y", b.Y);
+        _settings.SetValue("mainForm.Width", b.Width);
+        _settings.SetValue("mainForm.Height", b.Height);
+        _settings.SetValue("mainForm.Maximized", WindowState == FormWindowState.Maximized);
     }
 
     private void ResetClick(object sender, EventArgs e)
@@ -1948,6 +2105,11 @@ public sealed partial class MainForm : Form
     {
         if (_updatingSensorTreeLayout)
             return;
+
+        int changedIndex = treeView.Columns.IndexOf(column);
+        if (changedIndex == 1) _baseValueColumnWidth = UiScale.BaseFromScaled(column.Width, _uiTextScalePercent);
+        else if (changedIndex == 2) _baseMinColumnWidth = UiScale.BaseFromScaled(column.Width, _uiTextScalePercent);
+        else if (changedIndex == 3) _baseMaxColumnWidth = UiScale.BaseFromScaled(column.Width, _uiTextScalePercent);
 
         int index = treeView.Columns.IndexOf(column);
         int columnsWidth = 0;
