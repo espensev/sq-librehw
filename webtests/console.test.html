@@ -1,0 +1,51 @@
+<!doctype html><meta charset="utf-8"><title>SQ console self-test</title>
+<body><pre id="out">running…</pre>
+<script>window.SQ_NO_BOOT = true;</script>
+<script src="/LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js"></script>
+<script>
+(async () => {
+  const out = document.getElementById('out'); let pass = 0, fail = 0, log = [];
+  const eq = (name, got, want) => {
+    const ok = JSON.stringify(got) === JSON.stringify(want);
+    log.push(`${ok ? 'ok  ' : 'FAIL'}  ${name}  got=${JSON.stringify(got)} want=${JSON.stringify(want)}`);
+    ok ? pass++ : fail++;
+  };
+  const data = await (await fetch('/webtests/fixture.data.json', {cache:'no-store'})).json();
+  const S = window.SQ;
+
+  eq('classOf amdcpu', S.classOf('/amdcpu/0/temperature/2'), 'cpu');
+  eq('classOf gpu-nvidia', S.classOf('/gpu-nvidia/0/temperature/0'), 'gpu');
+  eq('classOf gpu-amd', S.classOf('/gpu-amd/0/temperature/4'), 'igpu');
+  eq('classOf nvme', S.classOf('/nvme/1/temperature/0'), 'nvme');
+  eq('classOf lpc', S.classOf('/lpc/nct6701d/0/temperature/5'), 'mb');
+  eq('classOf nic', S.classOf('/nic/%7BX%7D/load/1'), 'nic');
+
+  eq('splitValue temp', S.splitValue('65.5 °C'), {n:'65.5', unit:'°C'});
+  eq('splitValue pct', S.splitValue('27.1 %'), {n:'27.1', unit:'%'});
+  eq('splitValue null', S.splitValue(null), {n:'—', unit:''});
+
+  const sensors = S.flatten(data.Children[0]);
+  const limits = S.deriveLimits(sensors);
+  const byId = id => sensors.find(s => s.id === id);
+  const st = id => S.statusOf(byId(id), limits);
+
+  // cpu Tctl 65.5 -> ok (< 85)
+  eq('cpu Tctl ok', st('/amdcpu/0/temperature/2'), 'ok');
+  // motherboard stray 89°C -> info (never alarmed)
+  eq('mb stray info', st('/lpc/nct6701d/0/temperature/5'), 'info');
+  // nvme working temp 52.9 with self-limits present -> ok (warn 84)
+  eq('nvme temp ok', st('/nvme/2/temperature/2'), 'ok');
+  // nvme "Warning Temperature" is a limit sensor -> info
+  eq('nvme limit info', st('/nvme/2/temperature/10'), 'info');
+  // load is info, not alarm
+  eq('cpu load info', st('/amdcpu/0/load/0'), 'info');
+
+  const hero = S.pickHero(sensors, limits);
+  eq('hero has CPU Temp', hero.some(h => h.label === 'CPU Temp'), true);
+  eq('CPU Power unbounded', !!hero.find(h => h.label === 'CPU Power')?.bounded, false);
+  eq('CPU Temp bounded', !!hero.find(h => h.label === 'CPU Temp')?.bounded, true);
+
+  console.log(`SELFTEST ${fail === 0 ? 'PASS' : 'FAIL'} ${pass}/${pass+fail}`);
+  out.textContent = log.join('\n') + `\n\nSELFTEST ${fail === 0 ? 'PASS' : 'FAIL'} ${pass}/${pass+fail}`;
+})();
+</script>
