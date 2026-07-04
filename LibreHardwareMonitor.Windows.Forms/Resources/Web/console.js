@@ -397,6 +397,10 @@
     const r = SQ.rangeFor(s, limits, undefined);
     return r ? [r.lo, r.hi] : null;
   };
+  SQ.fanControlFor = function (fan, sensors) {
+    if (!fan || fan.type !== 'Fan' || !Array.isArray(sensors)) return null;
+    return sensors.find(s => s.type === 'Control' && s.hwid === fan.hwid && s.text === fan.text && s.raw != null) || null;
+  };
   SQ.cardStyleFor = function (styleValue, hasRange, graphsEnabled) {
     if (styleValue === 'gauge') return { arc: !!hasRange, spark: !!graphsEnabled };
     if (styleValue === 'number') return { arc: false, spark: !!graphsEnabled };
@@ -616,9 +620,11 @@
       const rr = h.bounded ? { lo: h.bounded[0], hi: h.bounded[1], source: 'band' }
                            : SQ.rangeFor(h.s, {}, state.dashboard);
       const range = rr ? [rr.lo, rr.hi] : null;
-      const fx = SQ.cardStyleFor(styleVal, !!range && h.s.raw != null, state.dashboard.graphsEnabled);
+      const ctrl = kind === 'fan' ? SQ.fanControlFor(h.s, state.allSensors) : null;
+      const fx = SQ.cardStyleFor(styleVal, (!!range || !!ctrl) && h.s.raw != null, state.dashboard.graphsEnabled);
       let arc = '';
-      if (fx.arc) { const [lo, hi] = range; arc = arcSVG(h.s.id, (h.s.raw - lo) / (hi - lo)); }
+      if (fx.arc && ctrl) arc = arcSVG(h.s.id, ctrl.raw / 100);
+      else if (fx.arc && range) { const [lo, hi] = range; arc = arcSVG(h.s.id, (h.s.raw - lo) / (hi - lo)); }
       const isHealth = (h.s.type === 'Temperature' && !SQ.isLimitSensor(h.s)) ||
                        (h.s.type === 'Level' && (h.s.text || '').toLowerCase().includes('life'));
       const chip = isHealth && (st === 'ok' || st === 'warn' || st === 'crit')
@@ -627,7 +633,7 @@
       const trendHtml = trend
         ? `<span class="trend">${trend.direction === 'rising' ? '&#8599;' : '&#8600;'} ${Math.abs(trend.rate).toFixed(Math.abs(trend.rate) >= 10 ? 0 : 2)} ${esc(trend.rateUnit)}</span>`
         : '<span class="trend"></span>';
-      const ceil = fx.arc && !h.bounded ? `<span class="ceil">/ ${esc(String(range[1]))}</span>` : '';
+      const ceil = fx.arc && !ctrl && rr && rr.source !== 'band' ? `<span class="ceil">/ ${esc(String(rr.hi))}</span>` : '';
       const cell = document.createElement('div');
       cell.className = `cell s-${st}${pinned ? ' pinned' : ''}${fx.spark ? ' graph-on' : ''}`;
       cell.style.setProperty('--tc', `var(--t-${kind})`);
@@ -638,7 +644,7 @@
          <div class="k2"><span class="src">${esc(source)}</span>${tIcon(kind)}</div>
          <div class="body">${arc}<div class="readout">
            <div class="big"><span class="v">${esc(n)}</span><span class="u">${esc(u)}</span>${ceil}</div>
-           <div class="meta">${rangeMarkup(h.s) || '<div class="range"></div>'}${trendHtml}</div>
+           <div class="meta">${rangeMarkup(h.s) || '<div class="range"></div>'}${trendHtml}${ctrl ? `<span class="cmd">cmd ${esc(ctrl.value)}</span>` : ''}</div>
          </div></div>${fx.spark ? sparkAreaSVG(h.s, range) : ''}`;
       const showHide = !pinned;
       const ctl = document.createElement('div');
@@ -682,8 +688,9 @@
         ? (parseFloat(s.min) > 0 ? `<span class="mm">${esc(s.min)} / ${esc(s.max)}</span>` : `<span class="mm">peak ${esc(s.max)}</span>`)
         : '';
       const r = document.createElement('div'); r.className = `row ${st}`;
+      const fanCtl = s.type === 'Fan' ? SQ.fanControlFor(s, state.allSensors) : null;
       r.innerHTML = `<span class="glyph-stat g-${st}" title="${STLABEL[st]}">${st === 'info' ? '' : STGLYPH[st]}</span>
-        <span class="rn">${esc(s.text)}${mm}</span><span class="rv">${esc(s.raw == null ? '—' : (s.value ?? '-'))}</span>
+        <span class="rn">${esc(s.text)}${mm}</span><span class="rv">${esc(s.raw == null ? '—' : (s.value ?? '-'))}${fanCtl ? ` <small class="rvcmd">· ${esc(fanCtl.value)}</small>` : ''}</span>
         ${showBar ? `<div class="bar ${st==='warn'?'warn':st==='crit'?'crit':''}"><i style="width:${Math.max(0,Math.min(100,s.raw))}%"></i></div>` : ''}`;
       const rctl = document.createElement('span');
       rctl.className = 'row-ctl';
