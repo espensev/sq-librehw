@@ -626,6 +626,8 @@
       return SQ.isSensorHidden(s, state.dashboard) ? 'Show' : 'Hide';
     }
     function renderSensorRows(container, filter, mode) {
+      const ae = document.activeElement;
+      if (ae && container.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA')) return;
       const q = filter.trim().toLowerCase();
       const rows = state.allSensors.filter(s => !q || sensorSearchText(s).includes(q)).slice(0, 220);
       container.innerHTML = rows.map(s => {
@@ -642,6 +644,8 @@
     }
     function renderPinnedEditor() {
       const box = $('#pinnedList');
+      const ae = document.activeElement;
+      if (ae && box.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA')) return;
       const sensors = state.allSensors;
       const resolved = SQ.resolvePinnedCards(sensors, state.dashboard, {});
       const currentOrder = mergeOrder(state.dashboard.pinnedOrder, state.dashboard.pinnedCards.map(c => c.id));
@@ -853,6 +857,7 @@
       placeIndicator(a, sibs);
     }
     function startDrag(grip, ev) {
+      if (drag.active) return;
       const el = grip.closest('.panel') || grip.closest('.cell.pinned');
       if (!el || !el.dataset.key) return;
       ev.preventDefault();
