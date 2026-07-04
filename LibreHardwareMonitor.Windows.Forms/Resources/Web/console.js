@@ -79,7 +79,7 @@
     const add = (s, label, opts) => { if (s) H.push(Object.assign({ s, label, status: SQ.statusOf(s, limits) }, opts || {})); };
     if (sensors.some(s => s.cls === 'cpu')) {
       const c = sensors.filter(s => s.cls === 'cpu');
-      add(c.find(s => s.type === 'Temperature' && s.text.includes('Tctl')), 'CPU Temp', { bounded: [30, 95], unit: '°C' });
+      add(c.find(s => s.type === 'Temperature' && (s.text.includes('Tctl') || /package/i.test(s.text))), 'CPU Temp', { bounded: [30, 95], unit: '°C' });
       add(c.find(s => s.type === 'Load' && /CPU Total/i.test(s.text)), 'CPU Load', { bounded: [0, 100], unit: '%' });
       add(c.find(s => s.type === 'Power' && /^Package/i.test(s.text)), 'CPU Power', { unit: 'W' });
     }
@@ -103,7 +103,7 @@
     const state = {
       paused: localStorage.getItem('sq.paused') === '1',
       rate: +localStorage.getItem('sq.rate') || 2,
-      last: null, stale: false, timer: null,
+      timer: null,
     };
 
     function render(data) {
@@ -127,8 +127,10 @@
       if (window.renderPanels) window.renderPanels(sensors);
       $('#host').textContent = host;
       $('#foot-left').textContent = `LibreHardwareMonitor ${data.Version} · host ${host} · GET /data.json · ${state.rate}s poll`;
-      $('#freshtxt').textContent = 'updated ' + new Date().toLocaleTimeString();
-      $('#freshdot').className = 'lamp s-ok';
+      if (!state.paused) {   // a forced initial render while paused must not overwrite the "paused" freshness chip
+        $('#freshtxt').textContent = 'updated ' + new Date().toLocaleTimeString();
+        $('#freshdot').className = 'lamp s-ok';
+      }
     }
 
     const STGLYPH = { ok:'●', warn:'▲', crit:'✕', info:'·', off:'○' };
@@ -254,9 +256,9 @@
         const r = await fetch('data.json', { cache: 'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const data = await r.json();
-        state.last = data; state.stale = false; render(data);
+        render(data);
       } catch (e) {
-        state.stale = true; $('#freshdot').className = 'lamp s-warn';
+        $('#freshdot').className = 'lamp s-warn';
         $('#freshtxt').textContent = 'stale — retrying';
       }
     }

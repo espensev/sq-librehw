@@ -119,10 +119,12 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   - The masthead verdict lamp and OK/WATCH/CRIT census are derived from the worst non-`info`,
     non-`off` status across all sensors (`SQ.RANK` ordering `crit > warn > ok > info/off`).
 - **Auto-heuristic hero gauges** (`SQ.pickHero`): the top Primary Flight Display strip
-  auto-selects up to 9 headline metrics with no per-machine config — CPU Tctl/Total Load/Package
-  Power when a `cpu`-class sensor is present, GPU Core Temp/Junction/Load/Package Power when a
-  `gpu`-class (NVIDIA) sensor is present, overall RAM Load, and the single hottest non-limit NVMe
-  temperature. **Only bounded metrics get an arc gauge** (`h.bounded = [lo, hi]`, e.g. CPU Temp
+  auto-selects up to 9 headline metrics with no per-machine config — CPU package temp (AMD
+  `Tctl/Tdie` or Intel `CPU Package`)/Total Load/Package Power when a `cpu`-class sensor is present,
+  GPU Core Temp/Junction/Load/Package Power when a `gpu`-class (NVIDIA) sensor is present, overall
+  RAM Load (the `Total Memory` node), and the single hottest non-limit NVMe temperature. Selection
+  keys on standard LHM sensor names; a gauge is simply omitted (no error) if a given host names that
+  sensor differently. **Only bounded metrics get an arc gauge** (`h.bounded = [lo, hi]`, e.g. CPU Temp
   `[30, 95]`, GPU Temp `[25, 92]`): the SVG arc fraction is `(raw - lo) / (hi - lo)`, clamped and
   guarded against non-finite values (`arcSVG`) so a missing reading renders an empty arc, not a
   `NaN`-driven full one. Power and Clock readouts have no natural upper bound, so they render as
