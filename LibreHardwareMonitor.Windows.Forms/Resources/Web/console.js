@@ -702,6 +702,7 @@
         const r = await fetch('data.json', { cache: 'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const data = await r.json();
+        if (state.dragging) return;   // drag started during the fetch — don't render over it
         render(data);
       } catch (e) {
         $('#freshdot').className = 'lamp s-warn';
