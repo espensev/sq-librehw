@@ -237,3 +237,17 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
   .order-row .title-input{grid-column:1/-1}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* inline customize controls */
+.cell,.row{position:relative}
+.ctl{font:12px var(--mono);line-height:1;padding:3px 5px;border:1px solid var(--line-soft);border-radius:6px;
+  background:var(--panel-2);color:var(--muted);cursor:pointer}
+.ctl:hover{color:var(--cy);border-color:var(--cy)}
+.ctl.pin.on{color:var(--lime);border-color:color-mix(in srgb,var(--lime) 45%,var(--line))}
+.cell-ctl,.row-ctl{position:absolute;display:none;gap:4px;z-index:2}
+.cell-ctl{top:10px;right:11px}
+.row-ctl{top:50%;right:12px;transform:translateY(-50%);align-items:center;
+  background:linear-gradient(90deg,transparent,var(--panel) 22%);padding-left:22px}
+.cell:hover .cell-ctl,.cell:focus-within .cell-ctl,
+.row:hover .row-ctl,.row:focus-within .row-ctl{display:flex}
+@media (hover:none){.cell-ctl,.row-ctl{display:flex}}

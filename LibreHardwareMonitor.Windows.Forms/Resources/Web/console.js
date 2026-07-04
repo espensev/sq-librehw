@@ -342,6 +342,12 @@
     function esc(v) {
       return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     }
+    function ctlCluster(id, label, opts) {
+      const pinned = SQ.isPinned(state.dashboard, id);
+      const pin = `<button class="ctl pin${pinned ? ' on' : ''}" data-act="${pinned ? 'unpin' : 'pin'}" data-id="${esc(id)}" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(label)}" title="${pinned ? 'Unpin' : 'Pin'}">&#128204;</button>`;
+      const hide = opts && opts.hide ? `<button class="ctl hide" data-act="hide" data-id="${esc(id)}" aria-label="Hide ${esc(label)}" title="Hide">&#8856;</button>` : '';
+      return pin + hide;
+    }
     function rootNode(data) {
       return data.Children && data.Children[0] ? data.Children[0] : data;
     }
@@ -497,6 +503,11 @@
            ${rangeMarkup(h.s)}
            <div class="tags"><span class="tag-stat g-${st}">${STGLYPH[st]} ${STLABEL[st]}</span></div>
          </div></div>${sparklineSVG(h.s, bounded)}`;
+      const showHide = !pinned; // hero cards get hide; the dedicated pinned strip gets unpin only
+      const ctl = document.createElement('div');
+      ctl.className = 'cell-ctl';
+      ctl.innerHTML = ctlCluster(h.s.id, h.label, { hide: showHide });
+      cell.appendChild(ctl);
       return cell;
     }
     function renderPinnedCards(sensors, limits) {
@@ -537,6 +548,10 @@
       r.innerHTML = `<span class="glyph-stat g-${st}" title="${STLABEL[st]}">${st === 'info' ? '' : STGLYPH[st]}</span>
         <span class="rn">${esc(s.text)}${mm}</span><span class="rv">${esc(s.value ?? '-')}</span>
         ${showBar ? `<div class="bar ${st==='warn'?'warn':st==='crit'?'crit':''}"><i style="width:${Math.max(0,Math.min(100,s.raw))}%"></i></div>` : ''}`;
+      const rctl = document.createElement('span');
+      rctl.className = 'row-ctl';
+      rctl.innerHTML = ctlCluster(s.id, s.text, { hide: true });
+      r.appendChild(rctl);
       return r;
     }
     function panelEl(item) {
@@ -765,6 +780,19 @@
           commitDashboard();
           break;
       }
+    });
+
+    ['#pfd', '#pinned', '#panels'].forEach(sel => {
+      const host = $(sel);
+      host && host.addEventListener('click', e => {
+        const b = e.target.closest('.ctl');
+        if (!b || !host.contains(b)) return;
+        e.stopPropagation();
+        const id = b.dataset.id;
+        if (b.dataset.act === 'pin') pinSensor(id);
+        else if (b.dataset.act === 'unpin') unpinSensor(id);
+        else if (b.dataset.act === 'hide') setSensorHidden(id, true);
+      });
     });
 
     paintPause();
