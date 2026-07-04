@@ -99,8 +99,8 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
 - **Zero contract change.** The console is a pure client that polls the existing
   `GET /data.json` endpoint (`fetch('data.json', {cache:'no-store'})`) on an interval; it does not
   read or depend on any new server endpoint, and nothing in `HttpServer.cs`/`AssemblyVersion` was
-  touched to build it. The 7 data-contract tests (`LibreHardwareMonitor.Tests`) stay green — see
-  Verification below.
+  touched to build it. The data.json/CSV golden contract tests (`LibreHardwareMonitor.Tests`) stay
+  green — see Verification below.
 - **Status model** (`console.js` `SQ.statusOf`/`tempStatus`/`SQ.deriveLimits`): every sensor is
   classified `ok` / `warn` / `crit` / `info` / `off` (`raw == null` -> `off`). Only two sensor
   shapes are ever alarmed:
@@ -111,24 +111,110 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
     (`SQ.deriveLimits`, keyed by `hwid`) over the static band when present. Any sensor whose text
     looks like a limit/threshold readout itself (`isLimitSensor`: "limit", "warning temperature",
     "critical temperature", "resolution") is always `info`, never alarmed — it is metadata, not a
-    live reading.
+    live reading. In the subsystem panels these metadata rows are grouped under `Limits`, not
+    `Temperature`, so drive warning/critical thresholds do not read as fake live drive temperatures.
   - **SSD/NVMe "Life" level** sensors (`type === 'Level'`, inverted thresholds): `< 5` -> `crit`,
     `< 20` -> `warn`, else `ok`.
   - Everything else (Load, Power, Clock, Voltage, Current, Fan, Data throughput, …) is `info` —
-    displayed but never drives the verdict lamp or census.
-  - The masthead verdict lamp and OK/WATCH/CRIT census are derived from the worst non-`info`,
-    non-`off` status across all sensors (`SQ.RANK` ordering `crit > warn > ok > info/off`).
+    displayed on its card/row but never health-judged: `info` sensors carry no state chip (see
+    "Card anatomy v2" below) and never populate the placard.
+  - `SQ.RANK` (`crit > warn > ok > info/off`) exists to *rank* statuses for sorting/worst-of
+    purposes only — e.g. the placard's worst-first ordering, a subsystem panel header's worst-child
+    lamp — not to aggregate them into one dashboard-wide verdict (that aggregate verdict/census was
+    removed in v2; see "De-opinionated masthead" below).
+- **Dashboard-only noisy sensor suppression** (`console.js` `SQ.isDashboardSuppressedSensor`):
+  the live Nuvoton NCT6701D board exposes known-bad local temperature inputs
+  `/lpc/nct6701d/0/temperature/3`, `/temperature/5`, and `/temperature/6`; the web dashboard hides
+  them before hero/card rendering so they do not headline the Board panel. Numbered NVMe aux
+  temperature rows such as `Temperature #2` are hidden until dashboard-observed motion proves they
+  move by more than 1 C across at least five poll samples, because runtime CSV evidence showed these
+  static rows can otherwise masquerade as the hottest drive temperature. This is intentionally
+  client-side only: `data.json`, `/metrics`, CSV logging, and the desktop sensor tree still expose
+  the raw LibreHardwareMonitor readings for auditability.
+- **Background treatment** (`console.css`): the web console keeps the subtle radial cockpit glow but
+  no longer draws the page-level grid background.
 - **Auto-heuristic hero gauges** (`SQ.pickHero`): the top Primary Flight Display strip
-  auto-selects up to 9 headline metrics with no per-machine config — CPU package temp (AMD
+  auto-selects headline metrics with no per-machine config — CPU package temp (AMD
   `Tctl/Tdie` or Intel `CPU Package`)/Total Load/Package Power when a `cpu`-class sensor is present,
   GPU Core Temp/Junction/Load/Package Power when a `gpu`-class (NVIDIA) sensor is present, overall
-  RAM Load (the `Total Memory` node), and the single hottest non-limit NVMe temperature. Selection
-  keys on standard LHM sensor names; a gauge is simply omitted (no error) if a given host names that
-  sensor differently. **Only bounded metrics get an arc gauge** (`h.bounded = [lo, hi]`, e.g. CPU Temp
-  `[30, 95]`, GPU Temp `[25, 92]`): the SVG arc fraction is `(raw - lo) / (hi - lo)`, clamped and
-  guarded against non-finite values (`arcSVG`) so a missing reading renders an empty arc, not a
-  `NaN`-driven full one. Power and Clock readouts have no natural upper bound, so they render as
-  plain numeric readouts with no arc — this was a deliberate correctness fix, not an oversight.
+  RAM Load (the `Total Memory` node), the single hottest non-limit NVMe temperature, and — **fans
+  first** (v2) — up to 4 active fans (`Type === 'Fan'`, `raw > 0`, sorted rpm-descending), with the
+  hero cap raised from 9 to **12**; on a maximal host (all 9 base heroes present) the slowest
+  active fan can still fall past the cap — pin it if you want it guaranteed. Selection keys on standard LHM sensor names; a gauge
+  is simply omitted (no error) if a given host names that sensor differently. A fan that spun
+  earlier this session but currently reads 0 rpm is a real reading and stays visible at 0 if already
+  selected (that's signal, not noise, worth keeping); a `null` fan reading is never counted as
+  active. Bounded metrics (CPU/GPU/drive temps, Load) get an arc gauge from their real range
+  (`h.bounded = [lo, hi]`, e.g. CPU Temp `[30, 95]`, GPU Temp `[25, 92]`): the SVG arc fraction is
+  `(raw - lo) / (hi - lo)`, clamped and guarded against non-finite values (`arcSVG`) so a missing
+  reading renders an empty arc, not a `NaN`-driven full one. Power, Fan, and Clock readouts have no
+  natural hardware bound and instead get a **speedometer arc** — see the next bullet.
+- **Speedometer arcs on unbounded metrics (v2)** (`SQ.speedoRange`, `SQ.niceCeil`): this is
+  card-rendering behavior, not hero-selection behavior — it applies to *any* card showing a Fan,
+  Power, or Clock sensor (hero, pinned, or a sensor forced to `gauge` style; see "Per-card style
+  override" below), not only the auto-selected heroes. The arc's ceiling is
+  `niceCeil(max(RawMax from data.json, client-observed session max, current raw))`, rounded **up**
+  the 1-2-5 ladder (e.g. 87 W -> 100, 1740 rpm -> 2000); the ladder is coarse for some inputs (e.g.
+  clock speeds) but is applied consistently rather than hand-tuned per sensor type. The ceiling is
+  shown as a small, muted `/ N` label next to the value (`.ceil`) so the arc can never be mistaken
+  for a hardware-rated maximum — it's an honestly-derived display scale. Every number on the card
+  still comes from measured `data.json`/session history; nothing is invented.
+- **De-opinionated masthead (v2)**: the masthead's **Thermal Verdict pill** (`GO`/`WATCH`/`CRITICAL`
+  lamp + label) and the **OK/WATCH/CRIT census** chip row were removed from `index.html` and from
+  `console.js` `render()` — the dashboard no longer computes or displays one aggregate judgement over
+  every sensor. The warn/crit **placard** (`renderPlacard`) is unchanged in spirit and stays: it
+  renders only when at least one sensor is genuinely over its warn/crit band ("Thermal Watch"/
+  "Thermal Alert", worst status first) and is hidden the rest of the time — a report of measured
+  over-band sensors, not an opinion. Masthead controls are now: freshness dot/text, rate slider,
+  Pause, Graphs, Theme, Customize.
+- **Card anatomy v2 — two channels, two meanings** (`cardEl`, card rules in `console.css`): a card's
+  **rail + chip communicate health STATE**; its **icon + value color communicate metric TYPE** — two
+  independent channels on the same card.
+  - **State** (`s-ok`/`s-warn`/`s-crit`/`s-off`; `info` is not a health state): a 3px left rail
+    (`.cell::before`, state-colored) plus, only on sensors the status model actually health-judges
+    (non-limit Temperature, and Level sensors whose text contains "life"), a small `OK`/`WATCH`/
+    `CRIT` chip (`STGLYPH`/`STLABEL`). Info-class cards (power, clock, fan, load, …) render no chip
+    at all; `off` (raw `null`) shows no chip either.
+  - **Type** (`SQ.kindOf`: `temp`/`load`/`fan`/`power`/`clock`/`data`): a small inline `currentColor`
+    SVG icon plus the big numeric value, both colored via a per-type CSS custom property set on the
+    card (`--tc: var(--t-<kind>)`) — `--t-temp` amber, `--t-load` green, `--t-fan` cyan, `--t-power`
+    violet, `--t-clock` blue, `--t-data` a neutral muted grey — each defined for both themes.
+  - **Fixed heights**: every card is `132px` tall in compact mode and `172px` once its sparkline is
+    on (`.cell` / `.cell.graph-on`), so the card grid never goes ragged; an empty context slot stays
+    blank rather than reflowing the card.
+  - **Graph-mode sparkline**: a filled, type-colored area chart (`sparkAreaSVG` — a translucent
+    `<polygon>` fill plus a `<polyline>` stroke, both `var(--tc)`) built only from the session's own
+    polled history (`SQ.historyFor`), drawn across the card's bottom edge; the exact numeric value
+    stays the primary readout and the graph is supporting context.
+- **Honesty rules (v2)**: a `null` `RawValue` always renders as an em dash ("—"), never `0` and
+  never a stale-looking formatted string — `cardEl` (and the panel-row equivalent, `rowEl`) checks
+  `raw == null` before any value formatting. Context lines (the min/max, or "peak", range under the
+  value) show only measured values: `rangeMarkup` omits the line entirely when nothing was measured,
+  and the card's context row reserves its vertical space regardless (`min-height`), so its absence
+  never reflows the card. Freshness stays a single, global signal — the masthead freshness dot/text
+  is the only freshness indicator; there is no per-card "updated Ns ago" line implying any one sensor
+  was measured more recently than its neighbors. When a poll fails, `tick()` adds a `stale` class to
+  `<body>`, which dims and desaturates the entire console at once (`body.stale main`) — every card
+  enters the stale look together, because every sensor really did arrive (or fail to arrive)
+  together in the same poll.
+- **Trend arrows (v2)** (`SQ.trendFor`, `SQ.TRENDBANDS`): each card computes a rate of change from
+  the last ~30 s of the session's own polled history (mean of the newer half minus mean of the older
+  half, divided by half the window), against a per-kind deadband below which no arrow is drawn at all
+  (never a "stable" label — omission is the honest signal): Temperature `0.05 °C/s`, Fan
+  `30 rpm/min`, Power `1.5 W/s`, Load `0.5 %/s`, Clock `15 MHz/s`. Outside the deadband, an up/down
+  glyph plus the signed rate and unit appear next to the value. A one-sided hysteresis stops the
+  arrow from strobing on sensor noise: once armed, a direction survives as long as the rate stays
+  same-signed down to **half** the deadband, and only flips once the opposite-signed rate itself
+  clears the **full** deadband. Sensors with no `TRENDBANDS` entry (kind `data`) never show a trend.
+- **Per-card style override (v2)** (`cardStyle` map inside `sq.dashboard.v1`, `SQ.cardStyleFor`):
+  any sensor id can be pinned to `auto` (default; absent from the map) / `gauge` / `number` /
+  `graph`. `auto` keeps the existing heuristic — an arc when a real or speedometer range exists,
+  sparkline following the global Graphs toggle; `gauge`/`number` force the arc on/off; `graph` forces
+  *this* card's sparkline on even while the global Graphs toggle is off. Precedence: explicit
+  per-card style > global Graphs toggle > auto heuristic. Editable via a `<select>` next to each
+  sensor in the Customize drawer's **Cards** tab (both the pinned-card reorder list and the sensor
+  picker below it); setting it back to `auto` deletes the key rather than storing the word `"auto"`
+  (`cleanCardStyleMap` also drops anything not one of the three explicit values on load).
 - **Network panel collapse** (`renderPanels`): NIC sensors are excluded from the normal
   one-panel-per-hardware grouping and instead folded into a single collapsed-by-default "Network"
   panel containing only interfaces with nonzero `Throughput` (`active = nics with Throughput > 0`)
@@ -136,20 +222,47 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
 - **Per-core row collapse** (CPU panels only): individual `Core #N` / hybrid-Intel `P-Core #N` /
   `E-Core #N` rows (`isCoreRow`, excluding Average/Max/Total summaries) are tucked behind a
   "+ N per-core …" toggle per sensor type, so a 16-core CPU doesn't dominate the panel.
-- **Persistence** (all via `localStorage`, keys prefixed `sq.`): theme (`sq.theme`, `dark`/`light`,
-  default dark), poll rate (`sq.rate`, seconds, default 2), pause state (`sq.paused`), and each
-  hardware panel's collapsed/expanded state (`sq.panel.<hardware name>`) all persist across page
-  reloads. A stored per-panel choice always wins over the code's default-collapsed hint (e.g. the
-  Network panel defaults collapsed only until the user expands it once).
+- **Persistence** (all via `localStorage`): theme (`dark`/`light`, default dark), poll rate
+  (seconds, default 2), pause state, and each hardware panel's collapsed/expanded state persist
+  across page reloads as fields of the single versioned `sq.dashboard.v1` object — see the
+  "Consolidated state" bullet below for the one-time migration off the legacy loose `sq.*` keys.
+  A stored per-panel choice always wins over the code's default-collapsed hint (e.g. the Network
+  panel defaults collapsed only until the user expands it once; tri-state map, absent = default).
+- **Dashboard customization state** (`sq.dashboard.v1`): hidden-sensor choices, default-hidden
+  overrides, pinned cards, pinned/panel order, per-card style overrides (`cardStyle`), and the
+  optional card-graph toggle are browser-local. This is intentionally separate from raw telemetry:
+  hiding, pinning, or restyling affects only the web dashboard projection, not `data.json`,
+  `/metrics`, CSV logging, or the desktop sensor tree.
+- **Inline pin/hide**: hovering (or keyboard-focusing) a hero card, pinned card, or panel row
+  reveals compact pin and hide controls. Pin mirrors the drawer's Cards tab; hide adds the sensor
+  to the browser-local hidden list (reversible from the drawer's Hidden tab). Raw endpoints are
+  unaffected.
+- **Live drag reorder**: a drag grip on panel headers and pinned cards reorders panels and pinned
+  cards directly on the page; the CSS-column masonry reflows on drop and the order persists in
+  `sq.dashboard.v1`. Keyboard users reorder with the drawer's Up/Down buttons. Polling is
+  suppressed for the duration of a drag.
+- **Consolidated state**: theme, poll rate, paused, and per-panel collapse now persist inside the
+  single versioned `sq.dashboard.v1` object; legacy `sq.theme`/`sq.rate`/`sq.paused`/`sq.panel.*`
+  keys are migrated into it once on load and then removed.
+- **Optional graphs and smoothed card motion**: the row bars remain the dense exact readout. Card
+  sparklines are opt-in — via the global Graphs toggle, or forced on one card at a time by its
+  per-card style override (v2; see "Per-card style override" above) — and use only the current
+  browser session's recent poll history. Gauge arcs (hero and pinned cards alike) are visually
+  damped between polls so fast-moving values do not jump as hard at a 2-second refresh cadence,
+  while the displayed numeric value remains the latest `data.json` value.
 - **Self-test**: `webtests/console.test.html` loads `console.js` in a `window.SQ_NO_BOOT = true`
   harness (so it exposes the pure `SQ` model functions without booting the live poller/DOM
   renderer against a real page), fetches the fixture `webtests/fixture.data.json`, and asserts
   `classOf`, `splitValue`, `statusOf` (including the GPU junction-band override and inverted SSD
-  Life thresholds), and `pickHero` (bounded vs. unbounded hero selection) against known-good
-  values. To run it: serve the repo root over HTTP (e.g. `python -m http.server` or any static
-  server so the absolute `/LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js` and
-  `/webtests/fixture.data.json` paths resolve) and open `webtests/console.test.html` in a browser;
-  it prints `SELFTEST PASS n/n` (or `FAIL`) plus a per-assertion log to the page.
+  Life thresholds), `pickHero` (bounded vs. unbounded hero selection, plus v2 fan promotion), and
+  the v2 model helpers `niceCeil`/`speedoRange`/`cardStyleFor`/`trendFor` (deadband + hysteresis)
+  against known-good values. To run it: serve the repo root over HTTP (e.g. `python -m http.server`
+  or any static server so the absolute `/LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js`
+  and `/webtests/fixture.data.json` paths resolve) and open `webtests/console.test.html` in a
+  browser; it prints `SELFTEST PASS n/n` (or `FAIL`) plus a per-assertion log to the page. The same
+  assertions (`webtests/console.tests.js`) also run headlessly via `node webtests/selftest.node.js`,
+  which `eval`s `console.js` under a minimal `window.SQ_NO_BOOT` shim — this is the entry point used
+  for command-line/agent verification.
 
 ## Modernization (traceable to `discovery-librehw-sync-upgrade.md`)
 
@@ -210,3 +323,17 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   LibreHardwareMonitor.Tests -p:Platform=x64` (normal Debug output path, unaffected by the lock):
   **7/7 passed**, including the data.json/CSV golden contract tests — proving the deletion made no
   contract change.
+- 2026-07-04: Console v2 (honest cards, speedometers, fans-first, de-opinionated masthead) shipped —
+  see [`2026-07-04-console-v2-cards-design.md`](superpowers/specs/2026-07-04-console-v2-cards-design.md)
+  and this file's updated web-dashboard section. `dotnet test LibreHardwareMonitor.Tests
+  -p:Platform=x64` **27/27 passed, 0 failures** (contract untouched — v2 is a pure client change).
+  `dotnet build LibreHardwareMonitor.Windows.Forms -c Release -f net10.0-windows -p:Platform=x64`
+  built **0 warnings / 0 errors**; the normal output path was locked by the running `Libre Hardware
+  Monitor` instance (left running, per instruction), so the redirected `-p:OutDir=` path was used
+  (`-p:BaseOutputPath=` does not work in this repo — the csproj hardcodes `OutputPath`). `node
+  webtests/selftest.node.js` → **SELFTEST PASS 85/85**, including all new v2 model-helper cases
+  (`kindOf`, `niceCeil`, `speedoRange`, `cardStyleFor`, `trendFor` deadband/hysteresis, hero fan
+  promotion). DOM/CSS card-anatomy rendering (rail/chip vs icon/color, fixed heights, filled
+  sparkline, masthead verdict/census removal) is self-test-adjacent but not itself unit-tested —
+  confirmed by direct reading of the shipped `console.js`/`console.css`/`index.html` against the
+  spec; live-browser E2E remains a user follow-up per the spec's Verification section.

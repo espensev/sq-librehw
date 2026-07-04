@@ -11,18 +11,21 @@
     <div class="wordmark"><b id="host">—</b><span>Hardware Telemetry Console</span></div>
   </div>
   <div class="spacer"></div>
-  <div class="verdict"><span class="lamp big" id="vlamp"></span><div>
-    <div class="lab">Thermal Verdict</div><div class="st" id="vstate">—</div></div></div>
-  <div class="census" id="census"></div>
   <div class="controls">
     <div class="fresh"><span class="lamp s-ok" id="freshdot"></span><span id="freshtxt">live</span></div>
     <div class="rate"><span>rate</span><input type="range" id="rate" min="1" max="10" value="2"><span id="ratev">2s</span></div>
     <button class="btn" id="pause">❚❚ Pause</button>
+    <button class="btn" id="graphs" aria-pressed="false">Graphs</button>
     <button class="btn" id="theme">◐ Theme</button>
+    <button class="btn" id="customize">Customize</button>
   </div>
 </div></header>
 
 <main class="wrap">
+  <section id="pinnedsec" style="display:none">
+    <div class="sec-head"><h2>Pinned</h2><div class="rule"></div><span class="tag" id="pinnedtag">0 pinned</span></div>
+    <div class="pfd" id="pinned"></div>
+  </section>
   <section>
     <div class="sec-head"><h2>Primary Flight Display</h2><div class="rule"></div><span class="tag" id="pfdtag">auto-selected</span></div>
     <div class="pfd" id="pfd"></div>
@@ -41,5 +44,38 @@
     </span>
   </footer>
 </main>
+<div class="scrim" id="customizeScrim"></div>
+<aside class="drawer" id="customizeDrawer" aria-hidden="true" aria-label="Customize dashboard">
+  <div class="drawer-head">
+    <div><b>Customize</b><span>Browser-local dashboard state</span></div>
+    <button class="iconbtn" id="drawerClose" aria-label="Close customize panel">Close</button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="hidden" role="tab">Hidden</button>
+    <button class="tab" data-tab="cards" role="tab">Cards</button>
+    <button class="tab" data-tab="layout" role="tab">Layout</button>
+  </div>
+  <div class="pane" data-pane="hidden">
+    <div class="drawer-tools">
+      <input id="hiddenSearch" type="search" placeholder="Search sensors">
+      <button class="iconbtn" data-action="reset-hidden">Reset hidden</button>
+    </div>
+    <div class="sensor-list" id="hiddenList"></div>
+  </div>
+  <div class="pane" data-pane="cards" hidden>
+    <div class="drawer-tools">
+      <input id="cardSearch" type="search" placeholder="Search sensors">
+      <button class="iconbtn" data-action="clear-pinned">Clear pinned</button>
+    </div>
+    <div class="order-list" id="pinnedList"></div>
+    <div class="sensor-list" id="cardList"></div>
+  </div>
+  <div class="pane" data-pane="layout" hidden>
+    <div class="drawer-tools">
+      <button class="iconbtn" data-action="reset-panels">Reset panel order</button>
+    </div>
+    <div class="order-list" id="panelOrderList"></div>
+  </div>
+</aside>
 <script src="console.js"></script>
 </body></html>

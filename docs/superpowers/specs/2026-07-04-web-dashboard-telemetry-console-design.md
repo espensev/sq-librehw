@@ -23,9 +23,9 @@ This project replaces it with a **massively upgraded, purpose-built telemetry co
 
 **Non-goals**
 - No change to `data.json`, the `/Sensor` API, `/metrics`, CSV, or `AssemblyVersion`.
-- No history/sparklines in v1 (client keeps only the current snapshot). Deferred as a possible follow-up.
+- No server-side history/sparkline contract in v1. Optional card sparklines may use only the current browser session's client-side poll history.
 - No hardware **control** writes from the dashboard (read-only view; the `/Sensor` Set CSRF surface is untouched).
-- No sensor pinning/customization UI (heuristic selection only).
+- Sensor pinning/customization is handled by the follow-up dashboard customization spec and must remain browser-local/read-only.
 
 ## Architecture
 
@@ -56,13 +56,14 @@ Nested `Children` tree: computer → hardware nodes (`HardwareId`) → type-grou
 
 ## Information architecture
 
-1. **Sticky masthead** — brand sigil + host wordmark (`SND-DESK` / "Hardware Telemetry Console"); **Thermal Verdict** pill (GO / WATCH / CRITICAL + big lamp); census chips (OK / WATCH / CRIT counts); freshness dot + "updated HH:MM:SS"; rate slider (1–10 s), Pause, Theme toggle.
+1. **Sticky masthead** — brand sigil + host wordmark (`SND-DESK` / "Hardware Telemetry Console"); **Thermal Verdict** pill (GO / WATCH / CRITICAL + big lamp); census chips (OK / WATCH / CRIT counts); freshness dot + "updated HH:MM:SS"; rate slider (1–10 s), Pause, optional Graphs toggle, Theme toggle, Customize entry point.
 2. **Primary Flight Display** — the auto-picked hero row of gauge cells.
 3. **Range-safety placard** — shown only when ≥1 sensor is WATCH/CRIT; lists offending sensors (name, hardware, value) with status glyph.
 4. **Subsystems** — per-hardware panels in a responsive grid: CPU, GPU(s), Memory, DIMMs, Storage, Disk, Board/Fans, then a single collapsed **Network** section. Each panel: status lamp + name + class tag + headline stat, collapsible; body groups rows by SensorType; rows show glyph · name (min/max on temps) · value · optional fill bar (Load/Level/Control).
 5. **Footer** — version, host, endpoint, poll rate, and a status-color legend.
 
-Background: glass-cockpit radial glow + faint grid. `prefers-reduced-motion` disables animation/jitter.
+Background: glass-cockpit radial glow without the site-style page grid. `prefers-reduced-motion`
+disables animation/jitter.
 
 ## Status model (the crux — grounded in live data)
 
@@ -73,7 +74,8 @@ Only **two sensor classes drive alarm color**, so stray/unlabeled readings never
   - gpu core: warn ≥ 83, crit ≥ 92; gpu **memory-junction / hot-spot** (name match): warn ≥ 95, crit ≥ 105
   - nvme / dimm: **prefer the hardware's own published limits** when present as sibling sensors — NVMe `Warning Temperature` / `Critical Temperature`; DIMM `Thermal Sensor High Limit` / `Critical High Limit` — else defaults nvme warn 70 / crit 80, dimm warn 55 / crit 85
   - mb (`/lpc`): **informational only** (no red) — e.g. the observed stray `Temperature #5 = 89 °C` on the NCT6701D must not alarm
-  - **limit/metadata sensors** (names containing `Limit`, `Warning Temperature`, `Critical Temperature`, `Resolution`) are themselves rendered as **info**, never alarmed.
+  - **limit/metadata sensors** (names containing `Limit`, `Warning Temperature`, `Critical Temperature`, `Resolution`) are themselves rendered as **info**, never alarmed. In subsystem panels they are grouped separately as `Limits` rather than live `Temperature` rows, so drive warning/critical thresholds do not appear to be fake current temperatures.
+  - Known static/noisy dashboard readings are hidden client-side only before hero/card rendering; on this host that includes the Nuvoton noisy board temps and numbered NVMe aux temperature rows until dashboard-observed motion proves they move by more than 1 C across at least five poll samples. Raw `data.json`, CSV, `/metrics`, and the desktop tree remain unchanged.
 - **SSD "Life" `Level`** — inverted: warn < 20 %, crit < 5 %.
 - **Everything else** (Load, Power, Voltage, Current, Clock, Fan, Control, Data, SmallData, Throughput, Factor, Timing) — **info**; shown as readouts / fill bars, never alarm-red.
 - **Thermal Verdict** = worst status across the alarm-eligible set (temps + life). Labeled "Thermal Verdict" so it doesn't over-claim whole-system health.
@@ -97,6 +99,8 @@ Baked into the mockup's known gaps; the implementation must address:
 2. **Panel height balance** — masonry-style columns (CSS `columns` or JS balancing) so tall panels (CPU ~123 sensors, Storage 3 drives) don't leave large grid gaps; per-type row caps with a "show N more" expander.
 3. **Per-core signal-over-noise** — default to `Cores (Average)` + `CPU Core Max` (and equivalents); collapse the full per-core clock/load/power lists behind the expander (same discipline as the NIC collapse).
 4. *(nice-to-have)* faint warn/crit zone tick on the arc track so the fill is quantitatively meaningful; census may also show INFO/IDLE counts.
+5. **Fast-value motion** — exact values remain current, but decorative hero arcs should be visually damped so 2-second poll jumps do not feel broken. Existing row bars are retained.
+6. **Optional graph context** — compact card sparklines are a user option, not a replacement for bars, cards, or subsystem rows.
 
 ## Network handling
 
@@ -104,7 +108,7 @@ Collapse all `/nic` nodes into a **single "Network" panel**, defaulted collapsed
 
 ## Refresh & controls
 
-- Default **2 s** auto-poll; rate slider 1–10 s; Pause toggle; freshness dot (live/paused/stale). All persisted.
+- Default **2 s** auto-poll; rate slider 1–10 s; Pause toggle; optional Graphs toggle; freshness dot (live/paused/stale). All persisted.
 - On fetch failure, keep last-good values and flip the freshness dot to "stale" rather than blanking the UI.
 
 ## Verification
