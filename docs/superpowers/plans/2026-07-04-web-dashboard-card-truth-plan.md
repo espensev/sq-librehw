@@ -27,6 +27,17 @@ The isolated worktree `.worktrees/card-truth` is on branch `feat/web-card-truth-
 
 Resume implementation at **Task A4 Step 1** in that worktree. Do not start the card-first or row/subgroup worktrees until A4, A5, B1, and B2 are green and the Phase A/B live gates have been recorded.
 
+## Execution Status (2026-07-04 — round 1, stopped on operator order)
+
+Executed on branch **`feat/web-card-truth-base`** in worktree `.worktrees/card-truth` (cut from master `db1d2d5`). Deviation from the "commit to master" constraint below: a concurrent session was actively committing to master (it merged+deleted the old feature branch mid-planning), so this work is isolated on a base branch — operator merges to master when ready (`git merge feat/web-card-truth-base`).
+
+- ✅ **A0 preflight** — selftest baseline **85/85** (docs' "32/32" was stale); `dotnet build` net10.0-windows x64 → 0 errors (temp `-o`, running app untouched); `git diff 749f386..db1d2d5` = docs-only, so the symptom analysis holds. Live-app re-verification deferred to operator relaunch.
+- ✅ **A1** `6ee50c5` — v3 state schema: `rangeOverrides`/`observedMax`/`rowOrder`/`netAdapterOrder`/`hiddenNetAdapters` + cleaners (selftest 90/90)
+- ✅ **A2** `13fbd6b` — `SQ.rangeFor` provenance resolver, `speedoRange` kept as wrapper, `cardEl` consumes `rr` (96/96)
+- ✅ **A3** `a6af9e1` — `SQ.fanControlFor` (hwid+text); fan card arc = Control %, RPM stays the number, `cmd N %` card meta, `· N %` on fan rows (100/100)
+- ⏭ **RESUME AT: Task A4 Step 1** (failing test for `SQ.mergeObservedPeaks`), then A5 → B1 → B2 → cut `feat/web-card-first` for Phase C. No UI/visual verification yet — do the Phase A live gate after A5.
+- Handoff: [`2026-07-04-web-dashboard-card-truth-HANDOFF.md`](2026-07-04-web-dashboard-card-truth-HANDOFF.md)
+
 ## Global Constraints
 
 - Phases A–D touch ONLY: `LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js`, `console.css`, `index.html`, `webtests/*`, `docs/*`. Nothing under `LibreHardwareMonitorLib/` or `Utilities/`.
@@ -45,7 +56,7 @@ Resume implementation at **Task A4 Step 1** in that worktree. Do not start the c
 
 ## Phase A — true ranges (trunk)
 
-### Task A0: Preflight — confirm live symptoms on a current build
+### Task A0: Preflight — confirm live symptoms on a current build — ✅ DONE (round 1; live re-check deferred to operator)
 
 **Files:** none (verification only)
 
@@ -54,7 +65,7 @@ Resume implementation at **Task A4 Step 1** in that worktree. Do not start the c
 - [ ] **Step 3:** With the operator's running instance (or a temp-run on another port if the operator declines a restart), verify on `http://localhost:8085/`: (a) GPU/CPU power hero shows an unlabeled `/ 200`-style ceiling, (b) fan cards arc against an RPM ceiling, (c) the pin/hide cluster can paint over the state chip (hover a card with an OK chip; or narrow window). Record which still reproduce in the spec §11 log.
 - [ ] **Step 4:** Commit any log-only doc update: `git commit -m "docs(web): card-truth preflight — symptom verification log"`
 
-### Task A1: Dashboard state — `rangeOverrides` + `observedMax` (+ later-phase keys)
+### Task A1: Dashboard state — `rangeOverrides` + `observedMax` (+ later-phase keys) — ✅ DONE `6ee50c5`
 
 **Files:**
 - Modify: `LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js` (state section, ~lines 48–115)
@@ -114,7 +125,7 @@ Extend `defaultDashboardState` return with `rangeOverrides: {}, observedMax: {},
 - [ ] **Step 4:** self-test → PASS.
 - [ ] **Step 5:** `git add … && git commit -m "feat(web): v3 dashboard state - range overrides, observed peaks, row/net order maps"`
 
-### Task A2: `SQ.rangeFor` — one resolver with provenance
+### Task A2: `SQ.rangeFor` — one resolver with provenance — ✅ DONE `13fbd6b`
 
 **Files:**
 - Modify: `console.js` (replace `SQ.speedoRange` internals ~line 342; keep `visualRangeForSensor` as-is)
@@ -181,7 +192,7 @@ const range = rr ? [rr.lo, rr.hi] : null;
 - [ ] **Step 4:** self-test → PASS (including the four pre-existing `speedoRange` cases).
 - [ ] **Step 5:** `git commit -m "feat(web): SQ.rangeFor - range provenance resolver (override>limit>band>peak)"`
 
-### Task A3: Fan cards — arc from paired Control %, RPM as the number
+### Task A3: Fan cards — arc from paired Control %, RPM as the number — ✅ DONE `a6af9e1`
 
 **Files:**
 - Modify: `console.js` (`SQ.fanControlFor` in model; `cardEl`, `rowEl` in boot)
