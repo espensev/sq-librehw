@@ -134,6 +134,8 @@ section{margin-top:30px}
 .readout .meta{display:flex;gap:10px;align-items:baseline;min-height:16px;margin-top:5px}
 .readout .meta .range{margin-top:0}
 .trend{font-family:var(--mono);font-size:10.5px;color:var(--muted);white-space:nowrap}
+.readout .meta .cmd{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap}
+.rvcmd{font-family:var(--mono);font-size:10px;color:var(--muted)}
 .spark{margin-top:auto}
 body.stale main{opacity:.55;filter:saturate(.6);transition:opacity .3s}
 

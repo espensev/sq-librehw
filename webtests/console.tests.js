@@ -155,6 +155,40 @@
 
     // === Tier 3 cases are appended below by later tasks ===
 
+    // --- v3: range/override/order schema ---
+    eq('normalize rangeOverrides', S.normalizeDashboardState({rangeOverrides:{'/a':{max:575},'/b':{max:-1},'/c':{max:200,min:50},'':{max:5},'/d':'x'}}).rangeOverrides,
+      {'/a':{max:575},'/c':{max:200,min:50}});
+    eq('normalize observedMax', S.normalizeDashboardState({observedMax:{'/a':150.9,'/b':'nope'}}).observedMax, {'/a':150.9});
+    eq('normalize rowOrder', S.normalizeDashboardState({rowOrder:{'k|Fan':['/f1','/f2'],'bad':[],7:'x'}}).rowOrder, {'k|Fan':['/f1','/f2']});
+    eq('normalize net lists', (() => { const d = S.normalizeDashboardState({netAdapterOrder:['/nic/a','/nic/a'], hiddenNetAdapters:['/nic/b']});
+      return [d.netAdapterOrder, d.hiddenNetAdapters]; })(), [['/nic/a'], ['/nic/b']]);
+    eq('default has v3 fields', (() => { const d = S.defaultDashboardState();
+      return [d.rangeOverrides, d.observedMax, d.rowOrder, d.netAdapterOrder, d.hiddenNetAdapters]; })(), [{}, {}, {}, [], []]);
+
+    // --- v3: rangeFor provenance ---
+    S.resetSensorMotion();
+    eq('rangeFor override wins', S.rangeFor({id:'/p', type:'Power', raw:80, rawMax:122}, {}, {rangeOverrides:{'/p':{max:575}}}),
+      {lo:0, hi:575, source:'override'});
+    eq('rangeFor band for temp', S.rangeFor({cls:'cpu', type:'Temperature', text:'Tctl', raw:60, id:'/t'}, {}, {}),
+      {lo:30, hi:95, source:'band'});
+    eq('rangeFor peak est', S.rangeFor({id:'/p2', type:'Power', raw:87, rawMax:122}, {}, {}), {lo:0, hi:200, source:'peak'});
+    eq('rangeFor honors persisted peak', S.rangeFor({id:'/p3', type:'Power', raw:10, rawMax:12}, {}, {observedMax:{'/p3':480}}),
+      {lo:0, hi:500, source:'peak'});
+    eq('rangeFor null for voltage', S.rangeFor({id:'/v', type:'Voltage', raw:1.02}, {}, {}), null);
+    eq('speedoRange still [lo,hi]', S.speedoRange({type:'Power', raw:87, rawMax:null, id:'/p4'}, {}), [0, 100]);
+
+    // --- v3: fan/control pairing ---
+    const fanPairSensors = [
+      {hwid:'/lpc/nct6701d/0', type:'Fan',     text:'Fan #2', raw:642,  id:'/lpc/nct6701d/0/fan/1'},
+      {hwid:'/lpc/nct6701d/0', type:'Control', text:'Fan #2', raw:29.8, id:'/lpc/nct6701d/0/control/1'},
+      {hwid:'/gpu-nvidia/0',   type:'Control', text:'Fan #2', raw:50,   id:'/gpu-nvidia/0/control/9'}
+    ];
+    eq('fanControlFor pairs hwid+text', S.fanControlFor(fanPairSensors[0], fanPairSensors)?.id, '/lpc/nct6701d/0/control/1');
+    eq('fanControlFor null when unpaired', S.fanControlFor({hwid:'/z', type:'Fan', text:'Pump', raw:100, id:'/z/fan/0'}, fanPairSensors), null);
+    eq('fanControlFor null for non-fan', S.fanControlFor(fanPairSensors[1], fanPairSensors), null);
+    eq('fanControlFor live fixture', (() => { const f = sensors.find(s => s.id === '/lpc/nct6701d/0/fan/1');
+      return f ? S.fanControlFor(f, sensors)?.id : '/lpc/nct6701d/0/control/1'; })(), '/lpc/nct6701d/0/control/1');
+
     return { pass, fail, log };
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = runConsoleTests;

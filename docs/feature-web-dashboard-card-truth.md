@@ -142,3 +142,4 @@ Operator feedback on the shipped Console v2 boils down to one theme: **the dashb
 |---|---|---|---|
 | 2026-07-04 | Spec drafted from operator feedback + annotated screenshot + live data.json walk + console.js/css review | pending | Implementation intentionally not started; awaiting operator branch go |
 | 2026-07-04 | Concurrent session merged `feature/web-dashboard-customization` into `master` (`2128e33`) and deleted the branch mid-planning; this spec/plan re-targeted to master | n/a | Evidence screenshots also removed from working tree by that session |
+| 2026-07-04 | Round-1 execution on `feat/web-card-truth-base` (worktree `.worktrees/card-truth`): A0–A3 done (`6ee50c5`, `13fbd6b`, `a6af9e1`); `node webtests/selftest.node.js` 85→**100/100 PASS**; net10.0-windows x64 build 0 errors; data.json/golden untouched | pass | Stopped after one round on operator order; resume at plan Task A4 Step 1; no visual pass yet |
