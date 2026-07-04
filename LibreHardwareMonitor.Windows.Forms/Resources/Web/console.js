@@ -52,7 +52,7 @@
   function tempStatus(s, limits) {
     const t = (s.text || '').toLowerCase(), lim = limits[s.hwid];
     let warn, crit;
-    if (s.cls === 'gpu' && (t.includes('junction') || t.includes('hot'))) { warn = 95; crit = 105; }
+    if ((s.cls === 'gpu' || s.cls === 'igpu') && (t.includes('junction') || t.includes('hot'))) { warn = 95; crit = 105; }
     else if ((s.cls === 'nvme' || s.cls === 'dimm') && lim) { warn = lim.warn ?? TEMPBANDS[s.cls][0]; crit = lim.crit ?? TEMPBANDS[s.cls][1]; }
     else { const b = TEMPBANDS[s.cls]; if (!b) return 'info'; warn = b[0]; crit = b[1]; }
     if (s.raw >= crit) return 'crit';

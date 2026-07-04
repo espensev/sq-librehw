@@ -40,6 +40,12 @@
   // load is info, not alarm
   eq('cpu load info', st('/amdcpu/0/load/0'), 'info');
 
+  // AMD "GPU Hot Spot" (class igpu) must use the junction band [95,105], not [83,92]
+  eq('amd hotspot junction band', S.statusOf({cls:'igpu', type:'Temperature', text:'GPU Hot Spot', raw:94, hwid:'x'}, {}), 'ok');
+  // SSD Life level thresholds (inverted): warn <20, crit <5
+  eq('ssd life crit', S.statusOf({type:'Level', text:'Life', raw:3}, {}), 'crit');
+  eq('ssd life warn', S.statusOf({type:'Level', text:'Life', raw:15}, {}), 'warn');
+
   const hero = S.pickHero(sensors, limits);
   eq('hero has CPU Temp', hero.some(h => h.label === 'CPU Temp'), true);
   eq('CPU Power unbounded', !!hero.find(h => h.label === 'CPU Power')?.bounded, false);
