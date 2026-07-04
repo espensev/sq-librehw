@@ -157,6 +157,17 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   overrides, pinned cards, pinned/panel order, and the optional card-graph toggle are browser-local.
   This is intentionally separate from raw telemetry: hiding or pinning affects only the web
   dashboard projection, not `data.json`, `/metrics`, CSV logging, or the desktop sensor tree.
+- **Inline pin/hide**: hovering (or keyboard-focusing) a hero card, pinned card, or panel row
+  reveals compact pin and hide controls. Pin mirrors the drawer's Cards tab; hide adds the sensor
+  to the browser-local hidden list (reversible from the drawer's Hidden tab). Raw endpoints are
+  unaffected.
+- **Live drag reorder**: a drag grip on panel headers and pinned cards reorders panels and pinned
+  cards directly on the page; the CSS-column masonry reflows on drop and the order persists in
+  `sq.dashboard.v1`. Keyboard users reorder with the drawer's Up/Down buttons. Polling is
+  suppressed for the duration of a drag.
+- **Consolidated state**: theme, poll rate, paused, and per-panel collapse now persist inside the
+  single versioned `sq.dashboard.v1` object; legacy `sq.theme`/`sq.rate`/`sq.paused`/`sq.panel.*`
+  keys are migrated into it once on load and then removed.
 - **Optional graphs and smoothed card motion**: the row bars remain the dense exact readout. Card
   sparklines are opt-in and use only the current browser session's recent poll history. Hero gauge
   arcs are visually damped between polls so fast-moving values do not jump as hard at a 2-second
