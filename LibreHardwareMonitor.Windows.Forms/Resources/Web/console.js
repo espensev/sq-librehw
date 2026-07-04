@@ -375,14 +375,27 @@
     for (const f of [1, 2, 5, 10]) { if (x <= f * m + 1e-9) return f * m; }
     return 10 * m;
   };
-  SQ.speedoRange = function (s, limits) {
-    const bounded = SQ.visualRangeForSensor(s, limits || {});
-    if (bounded) return bounded;
+  SQ.derivedPowerLimit = function () { return null; };   // real implementation lands with power-limit tracking
+  SQ.rangeFor = function (s, limits, state) {
+    if (!s) return null;
+    const cfg = SQ.normalizeDashboardState(state);
+    const ov = cfg.rangeOverrides[s.id];
+    if (ov) return { lo: ov.min ?? 0, hi: ov.max, source: 'override' };
+    if (s.type === 'Power' && /^GPU Package/i.test(s.text || '')) {
+      const d = SQ.derivedPowerLimit(s.hwid);
+      if (d) return { lo: 0, hi: d, source: 'limit', derived: true };
+    }
+    const band = SQ.visualRangeForSensor(s, limits || {});
+    if (band) return { lo: band[0], hi: band[1], source: 'band' };
     if (s.type !== 'Fan' && s.type !== 'Power' && s.type !== 'Clock') return null;
     const motion = SENSOR_MOTION.get(s.id);
-    const peak = Math.max(s.rawMax ?? 0, motion ? motion.max : 0, s.raw ?? 0);
+    const peak = Math.max(s.rawMax ?? 0, motion ? motion.max : 0, s.raw ?? 0, cfg.observedMax[s.id] ?? 0);
     const hi = SQ.niceCeil(peak);
-    return hi ? [0, hi] : null;
+    return hi ? { lo: 0, hi, source: 'peak' } : null;
+  };
+  SQ.speedoRange = function (s, limits) {
+    const r = SQ.rangeFor(s, limits, undefined);
+    return r ? [r.lo, r.hi] : null;
   };
   SQ.cardStyleFor = function (styleValue, hasRange, graphsEnabled) {
     if (styleValue === 'gauge') return { arc: !!hasRange, spark: !!graphsEnabled };
@@ -600,7 +613,9 @@
       const st = h.status;
       const kind = SQ.kindOf(h.s.type);
       const styleVal = state.dashboard.cardStyle[h.s.id];
-      const range = h.bounded || SQ.speedoRange(h.s, {});
+      const rr = h.bounded ? { lo: h.bounded[0], hi: h.bounded[1], source: 'band' }
+                           : SQ.rangeFor(h.s, {}, state.dashboard);
+      const range = rr ? [rr.lo, rr.hi] : null;
       const fx = SQ.cardStyleFor(styleVal, !!range && h.s.raw != null, state.dashboard.graphsEnabled);
       let arc = '';
       if (fx.arc) { const [lo, hi] = range; arc = arcSVG(h.s.id, (h.s.raw - lo) / (hi - lo)); }

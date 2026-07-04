@@ -165,6 +165,18 @@
     eq('default has v3 fields', (() => { const d = S.defaultDashboardState();
       return [d.rangeOverrides, d.observedMax, d.rowOrder, d.netAdapterOrder, d.hiddenNetAdapters]; })(), [{}, {}, {}, [], []]);
 
+    // --- v3: rangeFor provenance ---
+    S.resetSensorMotion();
+    eq('rangeFor override wins', S.rangeFor({id:'/p', type:'Power', raw:80, rawMax:122}, {}, {rangeOverrides:{'/p':{max:575}}}),
+      {lo:0, hi:575, source:'override'});
+    eq('rangeFor band for temp', S.rangeFor({cls:'cpu', type:'Temperature', text:'Tctl', raw:60, id:'/t'}, {}, {}),
+      {lo:30, hi:95, source:'band'});
+    eq('rangeFor peak est', S.rangeFor({id:'/p2', type:'Power', raw:87, rawMax:122}, {}, {}), {lo:0, hi:200, source:'peak'});
+    eq('rangeFor honors persisted peak', S.rangeFor({id:'/p3', type:'Power', raw:10, rawMax:12}, {}, {observedMax:{'/p3':480}}),
+      {lo:0, hi:500, source:'peak'});
+    eq('rangeFor null for voltage', S.rangeFor({id:'/v', type:'Voltage', raw:1.02}, {}, {}), null);
+    eq('speedoRange still [lo,hi]', S.speedoRange({type:'Power', raw:87, rawMax:null, id:'/p4'}, {}), [0, 100]);
+
     return { pass, fail, log };
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = runConsoleTests;
