@@ -175,6 +175,19 @@
       return (a.index ?? 0) - (b.index ?? 0);
     });
   };
+  SQ.reorderByDrop = function (orderedKeys, movedKey, targetIndex) {
+    const keys = cleanStringList(orderedKeys);
+    const from = keys.indexOf(movedKey);
+    if (from < 0) return keys;
+    keys.splice(from, 1);
+    const n = Math.trunc(Number(targetIndex));
+    const to = Math.max(0, Math.min(keys.length, Number.isFinite(n) ? n : 0));
+    keys.splice(to, 0, movedKey);
+    return keys;
+  };
+  SQ.isPinned = function (state, id) {
+    return SQ.normalizeDashboardState(state).pinnedCards.some(c => c.id === id);
+  };
   SQ.resolvePinnedCards = function (sensors, state, limits) {
     const byId = new Map(sensors.map(s => [s.id, s]));
     const cfg = SQ.normalizeDashboardState(state);

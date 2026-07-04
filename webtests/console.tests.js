@@ -97,6 +97,16 @@
     eq('collapse absent uses default true', S.isPanelCollapsed({collapsedPanels:{}}, 'Network', true), true);
     eq('collapse absent uses default false', S.isPanelCollapsed({collapsedPanels:{}}, 'CPU', false), false);
 
+    // --- Tier 3: reorder + isPinned ---
+    eq('reorder move to end', S.reorderByDrop(['a','b','c'], 'a', 2), ['b','c','a']);
+    eq('reorder move to front', S.reorderByDrop(['a','b','c'], 'c', 0), ['c','a','b']);
+    eq('reorder no-op index', S.reorderByDrop(['a','b','c'], 'b', 1), ['a','b','c']);
+    eq('reorder clamps high index', S.reorderByDrop(['a','b','c'], 'a', 99), ['b','c','a']);
+    eq('reorder clamps low index', S.reorderByDrop(['a','b','c'], 'c', -5), ['c','a','b']);
+    eq('reorder missing key unchanged', S.reorderByDrop(['a','b','c'], 'z', 0), ['a','b','c']);
+    eq('isPinned true', S.isPinned({pinnedCards:[{id:'/x',title:''}]}, '/x'), true);
+    eq('isPinned false', S.isPinned({pinnedCards:[]}, '/x'), false);
+
     // === Tier 3 cases are appended below by later tasks ===
 
     return { pass, fail, log };
