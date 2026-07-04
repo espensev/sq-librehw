@@ -91,6 +91,12 @@
     eq('migrate idempotent (2nd pass)', (() => { const again = S.migrateLegacyState(legacyStore, migrated);
       return [again.paused, again.rate, again.theme]; })(), [true, 5, 'light']);
 
+    // --- Tier 3: panel collapse tri-state ---
+    eq('collapse stored true wins', S.isPanelCollapsed({collapsedPanels:{CPU:true}}, 'CPU', false), true);
+    eq('collapse stored false wins over default-collapsed', S.isPanelCollapsed({collapsedPanels:{Network:false}}, 'Network', true), false);
+    eq('collapse absent uses default true', S.isPanelCollapsed({collapsedPanels:{}}, 'Network', true), true);
+    eq('collapse absent uses default false', S.isPanelCollapsed({collapsedPanels:{}}, 'CPU', false), false);
+
     // === Tier 3 cases are appended below by later tasks ===
 
     return { pass, fail, log };

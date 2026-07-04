@@ -141,6 +141,10 @@
     }
     return cfg;
   };
+  SQ.isPanelCollapsed = function (state, hw, defaultCollapsed) {
+    const v = SQ.normalizeDashboardState(state).collapsedPanels[hw];
+    return v == null ? !!defaultCollapsed : v === true;
+  };
   SQ.isDefaultHiddenSensorId = function (id) {
     return DEFAULT_HIDDEN_SENSOR_IDS.has(id);
   };
@@ -304,11 +308,14 @@
     const CLASSLABEL = { cpu:'CPU', gpu:'GPU', igpu:'iGPU', mem:'MEMORY', dimm:'DIMM', nvme:'STORAGE', disk:'DISK', mb:'BOARD', nic:'NET', other:'MISC' };
     const TORDER = ['Temperature','Limits','Load','Power','Clock','Fan','Control','Voltage','Current','Data','SmallData','Throughput','Level','Factor','Timing'];
     const isCoreRow = s => /\bcore\s*#?\d/i.test(s.text) && !/average|max|total/i.test(s.text);
+    const dashboard0 = SQ.migrateLegacyState(localStorage, SQ.loadDashboardState(localStorage));
+    SQ.saveDashboardState(localStorage, dashboard0);
     const state = {
-      paused: localStorage.getItem('sq.paused') === '1',
-      rate: +localStorage.getItem('sq.rate') || 2,
+      paused: dashboard0.paused,
+      rate: dashboard0.rate,
       timer: null,
-      dashboard: SQ.loadDashboardState(localStorage),
+      dragging: false,
+      dashboard: dashboard0,
       lastData: null,
       allSensors: [],
       visibleSensors: [],
@@ -522,9 +529,8 @@
     function panelEl(item) {
       const { hw, ss, collapsed } = item;
       let worst = 'info'; ss.forEach(s => { if (SQ.RANK[s.status] > SQ.RANK[worst]) worst = s.status; });
-      const cls = ss[0].cls, collapseKey = 'sq.panel.' + hw;
-      const stored = localStorage.getItem(collapseKey);
-      const startCollapsed = stored != null ? stored === '1' : !!collapsed;
+      const cls = ss[0].cls;
+      const startCollapsed = SQ.isPanelCollapsed(state.dashboard, hw, collapsed);
       const p = document.createElement('div'); p.className = 'panel' + (startCollapsed ? ' collapsed' : '');
       const temps = ss.filter(s => s.type === 'Temperature' && s.raw != null && !SQ.isLimitSensor(s)).sort((a,b)=>b.raw-a.raw);
       const head = temps[0] ? temps[0].value : (ss.find(s => s.type === 'Load')?.value || '');
@@ -532,7 +538,11 @@
       h.innerHTML = `<span class="lamp s-${worst}"></span><span class="nm">${esc(hw)}</span>
         <span class="cls">${CLASSLABEL[cls] || ''}</span>
         <span class="head-stat">${esc(head)}<span class="chev">&#9656;</span></span>`;
-      h.onclick = () => { p.classList.toggle('collapsed'); localStorage.setItem(collapseKey, p.classList.contains('collapsed') ? '1':'0'); };
+      h.onclick = () => {
+        p.classList.toggle('collapsed');
+        state.dashboard.collapsedPanels[hw] = p.classList.contains('collapsed');
+        saveDashboard();
+      };
       p.appendChild(h);
       const body = document.createElement('div'); body.className = 'panel-body';
       const byType = new Map(); ss.forEach(s => { const t = SQ.displayType(s); (byType.get(t) || byType.set(t, []).get(t)).push(s); });
@@ -669,19 +679,30 @@
     }
     function schedule() { clearInterval(state.timer); state.timer = setInterval(tick, state.rate * 1000); }
 
-    document.documentElement.setAttribute('data-theme', localStorage.getItem('sq.theme') || 'dark');
-    $('#theme').onclick = () => { const r = document.documentElement;
-      const t = r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      r.setAttribute('data-theme', t); localStorage.setItem('sq.theme', t); };
+    document.documentElement.setAttribute('data-theme', state.dashboard.theme);
+    $('#theme').onclick = () => {
+      const t = state.dashboard.theme === 'dark' ? 'light' : 'dark';
+      state.dashboard.theme = t;
+      document.documentElement.setAttribute('data-theme', t);
+      saveDashboard();
+    };
     const rate = $('#rate'); rate.value = state.rate; $('#ratev').textContent = state.rate + 's';
-    rate.oninput = e => { state.rate = +e.target.value; $('#ratev').textContent = state.rate + 's';
-      localStorage.setItem('sq.rate', state.rate); schedule(); };
+    rate.oninput = e => {
+      state.rate = clampRate(e.target.value);
+      state.dashboard.rate = state.rate;
+      $('#ratev').textContent = state.rate + 's';
+      saveDashboard(); schedule();
+    };
     const pause = $('#pause');
     function paintPause() { pause.textContent = state.paused ? 'Resume' : 'Pause';
       $('#freshdot').className = 'lamp ' + (state.paused ? 's-off' : 's-ok');
       $('#freshtxt').textContent = state.paused ? 'paused' : 'live'; }
-    pause.onclick = () => { state.paused = !state.paused; localStorage.setItem('sq.paused', state.paused ? '1':'0');
-      paintPause(); if (!state.paused) tick(); };
+    pause.onclick = () => {
+      state.paused = !state.paused;
+      state.dashboard.paused = state.paused;
+      saveDashboard(); paintPause();
+      if (!state.paused) tick();
+    };
     $('#graphs').onclick = () => { state.dashboard.graphsEnabled = !state.dashboard.graphsEnabled; commitDashboard(); };
     $('#customize').onclick = () => { state.customizeOpen = true; renderCustomize(); };
     $('#drawerClose').onclick = () => { state.customizeOpen = false; renderCustomize(); };
