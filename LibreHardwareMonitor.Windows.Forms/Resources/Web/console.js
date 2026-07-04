@@ -187,12 +187,14 @@
 
     const CLASSLABEL = { cpu:'CPU', gpu:'GPU', igpu:'iGPU', mem:'MEMORY', dimm:'DIMM', nvme:'STORAGE', disk:'DISK', mb:'BOARD', nic:'NET', other:'MISC' };
     const TORDER = ['Temperature','Load','Power','Clock','Fan','Control','Voltage','Current','Data','SmallData','Throughput','Level','Factor','Timing'];
-    const isCoreRow = s => /(^|\s)(Core|CPU Core)\s*#?\d/i.test(s.text) && !/Average|Max|Total/i.test(s.text);
+    // matches "Core #1", "CPU Core #1", and hybrid-Intel "P-Core #1"/"E-Core #1" (\b handles the hyphen); excludes Average/Max/Total summaries
+    const isCoreRow = s => /\bcore\s*#?\d/i.test(s.text) && !/average|max|total/i.test(s.text);
 
     function panelEl(hw, ss, collapsed) {
       let worst = 'info'; ss.forEach(s => { if (SQ.RANK[s.status] > SQ.RANK[worst]) worst = s.status; });
       const cls = ss[0].cls, key = 'sq.panel.' + hw;
-      const startCollapsed = localStorage.getItem(key) === '1' || !!collapsed;
+      const stored = localStorage.getItem(key);   // stored choice wins; `collapsed` is only the default when unset (else a re-render reverts the user's toggle)
+      const startCollapsed = stored != null ? stored === '1' : !!collapsed;
       const p = document.createElement('div'); p.className = 'panel' + (startCollapsed ? ' collapsed' : '');
       const temps = ss.filter(s => s.type === 'Temperature' && s.raw != null && !SQ.isLimitSensor(s)).sort((a,b)=>b.raw-a.raw);
       const head = temps[0] ? temps[0].value : (ss.find(s => s.type === 'Load')?.value || '');
