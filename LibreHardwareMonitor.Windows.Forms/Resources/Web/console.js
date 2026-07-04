@@ -97,5 +97,68 @@
   };
 
   window.SQ = SQ;
-  if (!window.SQ_NO_BOOT) { /* Task 3 installs the bootstrap here */ }
+  if (!window.SQ_NO_BOOT) {
+    const $ = s => document.querySelector(s);
+    const STLABEL = { ok:'OK', warn:'WATCH', crit:'CRIT', info:'INFO', off:'IDLE' };
+    const state = {
+      paused: localStorage.getItem('sq.paused') === '1',
+      rate: +localStorage.getItem('sq.rate') || 2,
+      last: null, stale: false, timer: null,
+    };
+
+    function render(data) {
+      const sensors = SQ.flatten(data.Children[0]);
+      const limits = SQ.deriveLimits(sensors);
+      sensors.forEach(s => s.status = SQ.statusOf(s, limits));
+      const alarm = sensors.filter(s => s.status !== 'info' && s.status !== 'off');
+      let worst = 'ok'; alarm.forEach(s => { if (SQ.RANK[s.status] > SQ.RANK[worst]) worst = s.status; });
+      const vmap = { ok:['GO','s-ok','ok'], warn:['WATCH','s-warn','warn'], crit:['CRITICAL','s-crit','crit'] };
+      const [vt, vc, vk] = vmap[worst];
+      $('#vlamp').className = 'lamp big ' + vc;
+      $('#vstate').textContent = vt; $('#vstate').style.color = `var(--${vk})`;
+      const counts = { ok:0, warn:0, crit:0 }; alarm.forEach(s => counts[s.status] != null && counts[s.status]++);
+      $('#census').innerHTML =
+        `<span class="chip"><span class="lamp s-ok"></span>OK <b>${counts.ok}</b></span>` +
+        `<span class="chip"><span class="lamp s-warn"></span>WATCH <b>${counts.warn}</b></span>` +
+        `<span class="chip"><span class="lamp s-crit"></span>CRIT <b>${counts.crit}</b></span>`;
+      if (window.renderPFD) window.renderPFD(sensors, limits);
+      if (window.renderPlacard) window.renderPlacard(alarm);
+      if (window.renderPanels) window.renderPanels(sensors);
+      $('#foot-left').textContent = `LibreHardwareMonitor ${data.Version} · host ${data.Text} · GET /data.json · ${state.rate}s poll`;
+      $('#freshtxt').textContent = 'updated ' + new Date().toLocaleTimeString();
+      $('#freshdot').className = 'lamp s-ok';
+    }
+
+    async function tick() {
+      if (state.paused) return;
+      try {
+        const r = await fetch('data.json', { cache: 'no-store' });
+        const data = await r.json();
+        state.last = data; state.stale = false; render(data);
+      } catch (e) {
+        state.stale = true; $('#freshdot').className = 'lamp s-warn';
+        $('#freshtxt').textContent = 'stale — retrying';
+      }
+    }
+    function schedule() { clearInterval(state.timer); state.timer = setInterval(tick, state.rate * 1000); }
+
+    // controls
+    document.documentElement.setAttribute('data-theme', localStorage.getItem('sq.theme') || 'dark');
+    $('#theme').onclick = () => { const r = document.documentElement;
+      const t = r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      r.setAttribute('data-theme', t); localStorage.setItem('sq.theme', t); };
+    const rate = $('#rate'); rate.value = state.rate; $('#ratev').textContent = state.rate + 's';
+    rate.oninput = e => { state.rate = +e.target.value; $('#ratev').textContent = state.rate + 's';
+      localStorage.setItem('sq.rate', state.rate); schedule(); };
+    const pause = $('#pause');
+    function paintPause() { pause.textContent = state.paused ? '▶ Resume' : '❚❚ Pause';
+      $('#freshdot').className = 'lamp ' + (state.paused ? 's-off' : 's-ok');
+      $('#freshtxt').textContent = state.paused ? 'paused' : 'live'; }
+    pause.onclick = () => { state.paused = !state.paused; localStorage.setItem('sq.paused', state.paused ? '1':'0');
+      paintPause(); if (!state.paused) tick(); };
+    paintPause();
+
+    window.SQ._STLABEL = STLABEL;      // shared with render tasks
+    tick(); schedule();
+  }
 })();

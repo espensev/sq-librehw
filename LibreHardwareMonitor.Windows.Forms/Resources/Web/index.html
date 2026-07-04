@@ -1,63 +1,45 @@
-<!-- This Source Code Form is subject to the terms of the Mozilla Public
-   - License, v. 2.0. If a copy of the MPL was not distributed with this
-   - file, You can obtain one at http://mozilla.org/MPL/2.0/.  
-	 
-	 - Copyright (C) 2012 Prince Samuel <prince.samuel@gmail.com>  -->
-
-<html>
-<head>
-    <link rel="shortcut icon" type="image/x-icon" href="favicon.ico" />
-    <title>Libre Hardware Monitor - Web Version</title>
-    <script type='text/javascript' src='js/jquery-1.7.2.min.js'></script>
-    <script type='text/javascript' src='js/jquery.tmpl.min.js'></script>
-    <script type='text/javascript' src='js/knockout-2.1.0.min.js'></script>
-    <script type='text/javascript' src='js/knockout.mapping-latest.min.js'></script>
-
-    <link href="css/jquery.treeTable.css" rel="stylesheet" type="text/css" />
-    <script type='text/javascript' src='js/jquery.treeTable.min.js'></script>
-
-    <link href="css/custom-theme/jquery-ui-1.8.16.custom.css" rel="stylesheet" type="text/css" />
-    <link href="css/ohm_web.css" rel="stylesheet" type="text/css" />
-    <script type='text/javascript' src='js/jquery-ui-1.8.16.custom.min.js'></script>
-    <style>
-        #toolbar {
-            padding: 10px 10px;
-        }
-
-        #slider {
-            display: inline-block;
-            width: 100px;
-        }
-    </style>
-
-
-    <script type='text/javascript' src='js/ohm_web.js'></script>
-
+<!doctype html><html lang="en" data-theme="dark"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SQ Telemetry Console</title>
+<link rel="shortcut icon" href="favicon.ico">
+<link rel="stylesheet" href="console.css">
 </head>
+<body>
+<header><div class="wrap mast">
+  <div class="brand">
+    <div class="sigil">SQ</div>
+    <div class="wordmark"><b>SND&#8209;<i>DESK</i></b><span>Hardware Telemetry Console</span></div>
+  </div>
+  <div class="spacer"></div>
+  <div class="verdict"><span class="lamp big" id="vlamp"></span><div>
+    <div class="lab">Thermal Verdict</div><div class="st" id="vstate">—</div></div></div>
+  <div class="census" id="census"></div>
+  <div class="controls">
+    <div class="fresh"><span class="lamp s-ok" id="freshdot"></span><span id="freshtxt">live</span></div>
+    <div class="rate"><span>rate</span><input type="range" id="rate" min="1" max="10" value="2"><span id="ratev">2s</span></div>
+    <button class="btn" id="pause">❚❚ Pause</button>
+    <button class="btn" id="theme">◐ Theme</button>
+  </div>
+</div></header>
 
-  <body>
-
-    <div class="header">
-
-      <span id="toolbar" class="ui-widget-header ui-corner-all">
-        <button id="refresh" data-bind="click: update">Refresh</button>
-        <input type="checkbox" id="auto_refresh" data-bind="checked: auto_refresh"/><label for="auto_refresh">Auto Refresh</label>
-        &nbsp;<div id="slider"></div>&nbsp;&nbsp;&nbsp;&nbsp;<span for="auto_refresh" id="lbl"></span>
-      </span>
-    </div>
-
-    <div class="main">
-      <table data-bind="treeTable: flattened, treeOptions: { initialState: 'expanded', clickableNodeNames: true } ">
-        <thead><td>Sensor</td><td>Min</td><td>Value</td><td>Max</td>
-          <tbody data-bind="foreach: flattened">
-            <tr data-bind="attr: { 'id': 'node-' + id(), 'class': parent.id()?'child-of-node-' + parent.id():'' }">
-              <td data-bind="html: '<img src=' + ImageURL() + ' />&nbsp; ' + Text()"></td>
-              <td data-bind="text: Min"></td>
-              <td data-bind="text: Value"></td>
-              <td data-bind="text: Max"></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </body>
-  </html>
+<main class="wrap">
+  <section>
+    <div class="sec-head"><h2>Primary Flight Display</h2><div class="rule"></div><span class="tag" id="pfdtag">auto-selected</span></div>
+    <div class="pfd" id="pfd"></div>
+  </section>
+  <section id="placardsec" style="display:none"></section>
+  <section>
+    <div class="sec-head"><h2>Subsystems</h2><div class="rule"></div><span class="tag" id="subtag"></span></div>
+    <div class="grid" id="panels"></div>
+  </section>
+  <footer>
+    <span id="foot-left"></span>
+    <span class="legend">
+      <span><span class="lamp s-ok"></span>OK</span><span><span class="lamp s-warn"></span>WATCH</span>
+      <span><span class="lamp s-crit"></span>CRIT</span><span><span class="lamp s-info"></span>INFO</span>
+      <span><span class="lamp s-off"></span>IDLE</span>
+    </span>
+  </footer>
+</main>
+<script src="console.js"></script>
+</body></html>
