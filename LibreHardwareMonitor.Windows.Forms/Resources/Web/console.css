@@ -251,3 +251,17 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .cell:hover .cell-ctl,.cell:focus-within .cell-ctl,
 .row:hover .row-ctl,.row:focus-within .row-ctl{display:flex}
 @media (hover:none){.cell-ctl,.row-ctl{display:flex}}
+
+/* drag reorder */
+.grip{font:11px var(--mono);letter-spacing:-2px;line-height:1;padding:2px 4px;margin-right:2px;
+  border:1px solid var(--line-soft);border-radius:5px;background:var(--panel-2);color:var(--dim);
+  cursor:grab;display:none;touch-action:none}
+.panel-head:hover .grip,.panel-head:focus-within .grip,.cell:hover .grip,.cell:focus-within .grip{display:inline-block}
+@media (hover:none){.grip{display:inline-block}}
+.grip:hover{color:var(--cy);border-color:var(--cy)}
+.grip:active{cursor:grabbing}
+.dragging{opacity:.4}
+.drag-ghost{position:fixed;z-index:80;pointer-events:none;font:600 12px var(--disp);letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink);background:linear-gradient(180deg,var(--panel),var(--panel-2));
+  border:1px solid var(--cy);border-radius:7px;padding:7px 11px;box-shadow:0 12px 30px -14px rgba(0,0,0,.9)}
+.drop-ind{height:0;border-top:2px solid var(--cy);margin:0 0 12px;box-shadow:0 0 8px var(--cy);break-inside:avoid;width:100%}

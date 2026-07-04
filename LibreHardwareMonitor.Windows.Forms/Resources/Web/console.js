@@ -495,6 +495,7 @@
       if (bounded) { const [lo, hi] = bounded; arc = arcSVG(h.s.id, (h.s.raw - lo) / (hi - lo)); }
       const cell = document.createElement('div');
       cell.className = `cell s-${st}${pinned ? ' pinned' : ''}${state.dashboard.graphsEnabled ? ' graph-on' : ''}`;
+      if (pinned) cell.dataset.key = h.s.id;
       const source = (h.s.hw || '').split(' ').slice(0, 3).join(' ');
       cell.innerHTML =
         `<div class="k"><span class="name">${esc(h.label)}</span><span class="src">${esc(source)}</span></div>
@@ -506,7 +507,7 @@
       const showHide = !pinned; // hero cards get hide; the dedicated pinned strip gets unpin only
       const ctl = document.createElement('div');
       ctl.className = 'cell-ctl';
-      ctl.innerHTML = ctlCluster(h.s.id, h.label, { hide: showHide });
+      ctl.innerHTML = (pinned ? `<button class="grip" aria-label="Drag to reorder ${esc(h.label)}" title="Drag to reorder">&#8942;&#8942;</button>` : '') + ctlCluster(h.s.id, h.label, { hide: showHide });
       cell.appendChild(ctl);
       return cell;
     }
@@ -560,12 +561,14 @@
       const cls = ss[0].cls;
       const startCollapsed = SQ.isPanelCollapsed(state.dashboard, hw, collapsed);
       const p = document.createElement('div'); p.className = 'panel' + (startCollapsed ? ' collapsed' : '');
+      p.dataset.key = item.key;
       const temps = ss.filter(s => s.type === 'Temperature' && s.raw != null && !SQ.isLimitSensor(s)).sort((a,b)=>b.raw-a.raw);
       const head = temps[0] ? temps[0].value : (ss.find(s => s.type === 'Load')?.value || '');
       const h = document.createElement('div'); h.className = 'panel-head';
-      h.innerHTML = `<span class="lamp s-${worst}"></span><span class="nm">${esc(hw)}</span>
-        <span class="cls">${CLASSLABEL[cls] || ''}</span>
-        <span class="head-stat">${esc(head)}<span class="chev">&#9656;</span></span>`;
+      h.innerHTML = `<button class="grip" aria-label="Drag to reorder ${esc(hw)}" title="Drag to reorder">&#8942;&#8942;</button>` +
+        `<span class="lamp s-${worst}"></span><span class="nm">${esc(hw)}</span>` +
+        `<span class="cls">${CLASSLABEL[cls] || ''}</span>` +
+        `<span class="head-stat">${esc(head)}<span class="chev">&#9656;</span></span>`;
       h.onclick = () => {
         p.classList.toggle('collapsed');
         state.dashboard.collapsedPanels[hw] = p.classList.contains('collapsed');
@@ -694,7 +697,7 @@
     }
 
     async function tick(force) {
-      if (state.paused && !force) return;
+      if ((state.paused && !force) || state.dragging) return;
       try {
         const r = await fetch('data.json', { cache: 'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -794,6 +797,72 @@
         else if (b.dataset.act === 'hide') setSensorHidden(id, true);
       });
     });
+
+    const drag = { active: null };
+    function orderedKeysFor(container) {
+      return Array.from(container.children).map(el => el.dataset.key).filter(k => typeof k === 'string' && k.length);
+    }
+    function dropIndex(container, movedKey, clientY) {
+      const sibs = Array.from(container.children).filter(el => el.dataset.key && el.dataset.key !== movedKey);
+      for (let i = 0; i < sibs.length; i++) {
+        const r = sibs[i].getBoundingClientRect();
+        if (clientY < r.top + r.height / 2) return i;
+      }
+      return sibs.length;
+    }
+    function moveGhost(ev) {
+      const a = drag.active; if (!a) return;
+      a.ghost.style.left = (ev.clientX + 12) + 'px';
+      a.ghost.style.top = (ev.clientY + 12) + 'px';
+      a.dropIdx = dropIndex(a.container, a.key, ev.clientY);
+      const sibs = Array.from(a.container.children).filter(el => el.dataset.key && el.dataset.key !== a.key);
+      const ref = sibs[a.dropIdx];
+      if (ref) a.container.insertBefore(a.ind, ref); else a.container.appendChild(a.ind);
+    }
+    function startDrag(grip, ev) {
+      const el = grip.closest('.panel') || grip.closest('.cell.pinned');
+      if (!el || !el.dataset.key) return;
+      ev.preventDefault();
+      const nameEl = el.querySelector('.nm') || el.querySelector('.k .name');
+      state.dragging = true;
+      const ghost = document.createElement('div');
+      ghost.className = 'drag-ghost';
+      ghost.textContent = nameEl ? nameEl.textContent : el.dataset.key;
+      document.body.appendChild(ghost);
+      const ind = document.createElement('div');
+      ind.className = 'drop-ind';
+      drag.active = { container: el.parentElement, el, key: el.dataset.key,
+        isPanel: el.classList.contains('panel'), ghost, ind, grip, pointerId: ev.pointerId };
+      el.classList.add('dragging');
+      moveGhost(ev);
+      try { grip.setPointerCapture(ev.pointerId); } catch (e) {}
+    }
+    function endDrag(commit) {
+      const a = drag.active; if (!a) return;
+      drag.active = null; state.dragging = false;
+      a.el.classList.remove('dragging');
+      a.ghost.remove(); a.ind.remove();
+      try { a.grip.releasePointerCapture(a.pointerId); } catch (e) {}
+      if (commit && typeof a.dropIdx === 'number') {
+        const next = SQ.reorderByDrop(orderedKeysFor(a.container), a.key, a.dropIdx);
+        if (a.isPanel) state.dashboard.panelOrder = next; else state.dashboard.pinnedOrder = next;
+        commitDashboard();
+      } else {
+        rerender();
+      }
+    }
+    document.addEventListener('pointerdown', ev => {
+      const grip = ev.target.closest && ev.target.closest('.grip');
+      if (grip) { ev.stopPropagation(); startDrag(grip, ev); }
+    });
+    document.addEventListener('pointermove', ev => { if (drag.active) moveGhost(ev); });
+    document.addEventListener('pointerup', () => { if (drag.active) endDrag(true); });
+    document.addEventListener('pointercancel', () => { if (drag.active) endDrag(false); });
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && drag.active) endDrag(false); });
+    document.addEventListener('click', ev => {
+      const grip = ev.target.closest && ev.target.closest('.grip');
+      if (grip) { ev.preventDefault(); ev.stopPropagation(); }
+    }, true);
 
     paintPause();
     paintGraphs();
