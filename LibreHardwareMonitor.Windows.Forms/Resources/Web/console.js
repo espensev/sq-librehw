@@ -252,6 +252,36 @@
     return SENSOR_HISTORY.get(id) || [];
   };
 
+  const TREND_DIRS = new Map();
+  SQ.TRENDBANDS = {
+    temp:  { unit: '°C/s',    db: 0.05, scale: 1 },
+    fan:   { unit: 'rpm/min', db: 30,   scale: 60 },
+    power: { unit: 'W/s',     db: 1.5,  scale: 1 },
+    load:  { unit: '%/s',     db: 0.5,  scale: 1 },
+    clock: { unit: 'MHz/s',   db: 15,   scale: 1 }
+  };
+  SQ.resetSensorTrends = function () { TREND_DIRS.clear(); };
+  SQ.trendFor = function (id, kind, now) {
+    const band = SQ.TRENDBANDS[kind];
+    if (!band) return null;
+    const t = Number.isFinite(now) ? now : Date.now();
+    const win = SENSOR_HISTORY.get(id)?.filter(p => t - p.t <= 30000 && Number.isFinite(p.raw)) || [];
+    if (win.length < 3) { TREND_DIRS.delete(id); return null; }
+    const mid = Math.floor(win.length / 2);
+    const mean = a => a.reduce((s, p) => s + p.raw, 0) / a.length;
+    const tMid = (win[win.length - 1].t - win[0].t) / 2 / 1000;
+    if (tMid <= 0) { TREND_DIRS.delete(id); return null; }
+    const rate = ((mean(win.slice(mid)) - mean(win.slice(0, mid))) / tMid) * band.scale;
+    const prev = TREND_DIRS.get(id);
+    let direction = null;
+    if (rate > band.db) direction = 'rising';
+    else if (rate < -band.db) direction = 'falling';
+    else if (prev && Math.abs(rate) >= band.db / 2 &&
+             ((prev === 'rising' && rate > 0) || (prev === 'falling' && rate < 0))) direction = prev;
+    if (direction) TREND_DIRS.set(id, direction); else TREND_DIRS.delete(id);
+    return direction ? { direction, rate, rateUnit: band.unit } : null;
+  };
+
   SQ.deriveLimits = function (sensors) {
     const m = {};
     sensors.forEach(s => {
@@ -350,7 +380,9 @@
     add(find(s => s.cls === 'mem' && s.hw === 'Total Memory' && s.type === 'Load'), 'RAM Used', { bounded: [0, 100], unit: '%' });
     const drives = sensors.filter(SQ.isPrimaryDriveTemp).sort((a, b) => b.raw - a.raw);
     add(drives[0], 'Drive Temp', { bounded: [25, 80], unit: '°C' });
-    return H.slice(0, 9);
+    sensors.filter(s => s.type === 'Fan' && s.raw > 0).sort((a, b) => b.raw - a.raw).slice(0, 4)
+      .forEach(f => add(f, f.text, { unit: 'rpm' }));
+    return H.slice(0, 12);
   };
 
   window.SQ = SQ;

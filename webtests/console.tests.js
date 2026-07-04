@@ -127,6 +127,32 @@
     eq('cardStyleFor graph forces spark', S.cardStyleFor('graph', false, false), {arc:false, spark:true});
     eq('cardStyleFor auto', S.cardStyleFor(undefined, true, true), {arc:true, spark:true});
 
+    // --- v2: trend + hero fans ---
+    S.resetSensorTrends();
+    const seedHist = (id, pts) => pts.forEach(([t, raw]) => S.trackSensorHistory([{id, raw}], t));
+    seedHist('/tr1', [[0,50],[5000,50.5],[10000,51],[15000,51.5],[20000,52],[25000,52.5],[30000,53]]); // windowed rate ~ +0.12 °C/s
+    eq('trend rising past deadband', S.trendFor('/tr1', 'temp', 30000)?.direction, 'rising');
+    eq('trend unit', S.trendFor('/tr1', 'temp', 30000)?.rateUnit, '°C/s');
+    S.resetSensorTrends();
+    seedHist('/tr2', [[0,50],[10000,50.01],[20000,50.02],[30000,50.03]]); // ~0.001 °C/s, inside band
+    eq('trend inside deadband -> null', S.trendFor('/tr2', 'temp', 30000), null);
+    S.resetSensorTrends();
+    seedHist('/tr3', [[0,50],[15000,50.45],[30000,50.9]]); // windowed rate ~ +0.045: within [db/2, db), no prior -> null
+    eq('hysteresis: weak same-sign w/o prior -> null', S.trendFor('/tr3', 'temp', 30000), null);
+    S.resetSensorTrends();
+    seedHist('/tr4', [[0,50],[15000,50.9],[30000,51.8]]); // windowed rate +0.09 °C/s -> rising stored
+    eq('hysteresis: arm rising', S.trendFor('/tr4', 'temp', 30000)?.direction, 'rising');
+    seedHist('/tr4', [[35000,51.85],[45000,52.3],[60000,52.4]]); // 30s-window rate ~ +0.035: within [db/2, db)
+    eq('hysteresis: weak same-sign keeps arrow', S.trendFor('/tr4', 'temp', 60000)?.direction, 'rising');
+    eq('trend data kind -> null', S.trendFor('/tr1', 'data', 30000), null);
+    S.resetSensorTrends();
+    const fanHero = S.pickHero([
+      {hw:'Board', hwid:'b', cls:'mb', type:'Fan', text:'Fan #1', raw:900, value:'900 RPM', id:'/fan1'},
+      {hw:'Board', hwid:'b', cls:'mb', type:'Fan', text:'Fan #2', raw:1400, value:'1400 RPM', id:'/fan2'},
+      {hw:'Board', hwid:'b', cls:'mb', type:'Fan', text:'Fan #3', raw:0, value:'0 RPM', id:'/fan3'}
+    ], {});
+    eq('hero fans active only, rpm-desc', fanHero.filter(h => h.s.type === 'Fan').map(h => h.s.id), ['/fan2','/fan1']);
+
     // === Tier 3 cases are appended below by later tasks ===
 
     return { pass, fail, log };
