@@ -155,6 +155,16 @@
 
     // === Tier 3 cases are appended below by later tasks ===
 
+    // --- v3: range/override/order schema ---
+    eq('normalize rangeOverrides', S.normalizeDashboardState({rangeOverrides:{'/a':{max:575},'/b':{max:-1},'/c':{max:200,min:50},'':{max:5},'/d':'x'}}).rangeOverrides,
+      {'/a':{max:575},'/c':{max:200,min:50}});
+    eq('normalize observedMax', S.normalizeDashboardState({observedMax:{'/a':150.9,'/b':'nope'}}).observedMax, {'/a':150.9});
+    eq('normalize rowOrder', S.normalizeDashboardState({rowOrder:{'k|Fan':['/f1','/f2'],'bad':[],7:'x'}}).rowOrder, {'k|Fan':['/f1','/f2']});
+    eq('normalize net lists', (() => { const d = S.normalizeDashboardState({netAdapterOrder:['/nic/a','/nic/a'], hiddenNetAdapters:['/nic/b']});
+      return [d.netAdapterOrder, d.hiddenNetAdapters]; })(), [['/nic/a'], ['/nic/b']]);
+    eq('default has v3 fields', (() => { const d = S.defaultDashboardState();
+      return [d.rangeOverrides, d.observedMax, d.rowOrder, d.netAdapterOrder, d.hiddenNetAdapters]; })(), [{}, {}, {}, [], []]);
+
     return { pass, fail, log };
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = runConsoleTests;

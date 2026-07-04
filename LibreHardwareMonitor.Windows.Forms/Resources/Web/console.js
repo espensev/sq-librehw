@@ -79,6 +79,32 @@
       });
     return out;
   }
+  function cleanRangeOverrides(value) {
+    const out = {};
+    if (value && typeof value === 'object' && !Array.isArray(value))
+      Object.keys(value).forEach(k => {
+        const v = value[k];
+        if (!k || !v || typeof v !== 'object') return;
+        const max = Number(v.max), min = Number(v.min);
+        if (!Number.isFinite(max) || max <= 0) return;
+        const o = { max };
+        if (Number.isFinite(min) && min < max) o.min = min;
+        out[k] = o;
+      });
+    return out;
+  }
+  function cleanNumberMap(value) {
+    const out = {};
+    if (value && typeof value === 'object' && !Array.isArray(value))
+      Object.keys(value).forEach(k => { const n = Number(value[k]); if (k && Number.isFinite(n)) out[k] = n; });
+    return out;
+  }
+  function cleanOrderMap(value) {
+    const out = {};
+    if (value && typeof value === 'object' && !Array.isArray(value))
+      Object.keys(value).forEach(k => { const l = cleanStringList(value[k]); if (k && l.length) out[k] = l; });
+    return out;
+  }
   SQ.defaultDashboardState = function () {
     return {
       version: 1,
@@ -92,7 +118,12 @@
       rate: 2,
       theme: 'dark',
       collapsedPanels: {},
-      cardStyle: {}
+      cardStyle: {},
+      rangeOverrides: {},
+      observedMax: {},
+      rowOrder: {},
+      netAdapterOrder: [],
+      hiddenNetAdapters: []
     };
   };
   SQ.normalizeDashboardState = function (value) {
@@ -110,7 +141,12 @@
       rate: clampRate(value.rate),
       theme: value.theme === 'light' ? 'light' : 'dark',
       collapsedPanels: cleanCollapsedMap(value.collapsedPanels),
-      cardStyle: cleanCardStyleMap(value.cardStyle)
+      cardStyle: cleanCardStyleMap(value.cardStyle),
+      rangeOverrides: cleanRangeOverrides(value.rangeOverrides),
+      observedMax: cleanNumberMap(value.observedMax),
+      rowOrder: cleanOrderMap(value.rowOrder),
+      netAdapterOrder: cleanStringList(value.netAdapterOrder),
+      hiddenNetAdapters: cleanStringList(value.hiddenNetAdapters)
     };
   };
   SQ.loadDashboardState = function (storage) {
