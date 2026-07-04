@@ -1,14 +1,18 @@
 # Feature Spec: Web Dashboard Customization
 
 **Project:** LibreHardwareMonitor Sev IQ local fork
-**Status:** In implementation
+**Status:** Implemented for Console v2; superseded by v3 card-truth/card-first follow-up
 **Updated:** 2026-07-04
 **Related docs:** [`feature-workflow.md`](feature-workflow.md), [`local-ui-customizations.md`](local-ui-customizations.md), [`superpowers/specs/2026-07-04-web-dashboard-telemetry-console-design.md`](superpowers/specs/2026-07-04-web-dashboard-telemetry-console-design.md), [`superpowers/plans/2026-07-04-web-dashboard-customization.md`](superpowers/plans/2026-07-04-web-dashboard-customization.md), follow-up v3 [`feature-web-dashboard-card-truth.md`](feature-web-dashboard-card-truth.md) (card truth & card-first controls — supersedes the drawer direction)
 **Purpose:** let the SQ Telemetry Console hide noisy sensors and persist user-arranged cards without changing LibreHardwareMonitor sensor contracts.
 
+**Supersession note (2026-07-04):** the v2 drawer/list UI shipped as a browser-local customization surface, but it is not the desired long-term interaction model. Operator review after the screenshots called for cards, not side panes: cards and rows should carry source, unit, current value, real range/limit, status, raw details, max override, pin/hide/style, rename/alias, and move actions. Ordering must be possible from the visible UI surface for cards, rows, panels, and network groups, not from a drawer. The follow-up authority is [`feature-web-dashboard-card-truth.md`](feature-web-dashboard-card-truth.md).
+
 ## 1. Summary
 
 Add dashboard-local customization to the web console served at `GET /`: hide/de-emphasize noisy sensors, pin/create card views from existing sensors, reorder cards and panels, optionally show compact client-side graphs, and persist layout choices per browser. The raw `data.json`, `/metrics`, CSV, and desktop sensor tree remain unchanged.
+
+This v2 spec explains what shipped. New work must not expand the drawer or replace it with another side pane; v3 should move normal details/actions onto cards and rows, keeping only a compact masthead sensor search/restore popover for sensors that are not currently visible. Dashboard-local aliases are allowed for operator labels such as showing raw `Fan #7` as `Pump`, but raw LibreHardwareMonitor labels and `SensorId` values must stay visible in detail/search.
 
 ## 2. Problem and Motivation
 
@@ -36,13 +40,13 @@ The current dashboard is useful but fully automatic. On this host the Nuvoton bo
 
 ## 4. Behavior Specification
 
-The dashboard starts in the current automatic view. A customize mode exposes controls for hiding sensors, creating cards, and changing order.
+The dashboard starts in the current automatic view. Console v2 exposes a customize drawer for hiding sensors, creating cards, and changing order. Treat that drawer as transitional compatibility, not as the target for more feature growth.
 
 Hidden sensors are omitted from dashboard hero/card/panel rendering but remain available in a hidden-sensors manager and in raw endpoints. Missing hidden sensors are ignored when they are absent from a later `data.json`.
 
 Pinned cards are built from one or more existing `SensorId` values. A single-sensor card shows sensor name, hardware, current value, min/max where meaningful, status glyph, and optional bar/arc only when the sensor type has a real bounded range. A multi-sensor card groups selected rows under a custom title.
 
-Reordering persists card and panel order. The first implementation may use explicit up/down controls instead of pointer drag; pointer drag can be added later if it stays reliable on desktop and touch input. A reset command clears layout keys and returns to the automatic dashboard.
+Reordering persists card and panel order. The first implementation may use explicit up/down controls instead of pointer drag; pointer drag can be added later if it stays reliable on desktop and touch input. A reset command clears layout keys and returns to the automatic dashboard. V3 extends this to every visible ordered surface: individual sensor rows/cards, subsystem panels, and network adapter groups, with keyboard-accessible move actions attached to the visible card/row/header surface.
 
 The graph option is dashboard-local and client-side only. When enabled, pinned and automatic cards show compact sparklines from the current browser session's recently polled values. When disabled, existing cards and row bars remain unchanged. Hero gauge arcs may be visually damped between polls, but the displayed number always remains the current `data.json` value.
 
@@ -113,3 +117,4 @@ The staged implementation plan is in [`superpowers/plans/2026-07-04-web-dashboar
 | 2026-07-04 | `dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64` | pass | 27 tests passed |
 | 2026-07-04 | Release builds for `net10.0-windows` and `net472` to temp output directories | pass | Default Release output was locked by the running LibreHardwareMonitor process, so the app was not stopped |
 | 2026-07-04 | Temporary fixture site with Chrome screenshots at desktop and mobile-width layouts | pass | Verified current source against `webtests/fixture.data.json`; live endpoint was left untouched |
+| 2026-07-04 | Post-v2 operator screenshot review | follow-up required | Drawer/list customization should be minimized; wrong gauge ceilings, fan RPM scaling, duplicate hardware identity, two-GPU display, badge/icon overlap, missing-range honesty, all-surface reorder, and dashboard-local alias/rename are tracked in `feature-web-dashboard-card-truth.md`. |
