@@ -87,6 +87,68 @@ upstream merges and reviewers know they are intentional.
   in `MainForm.ExtractPawnIO`** (PawnIO_setup.exe extraction) was fixed too — that twin is a local
   addition beyond upstream #2382. No `data.json`/contract change.
 
+## Web dashboard: SQ Telemetry Console (replaces the legacy jQuery/Knockout UI)
+
+The stock Open Hardware Monitor–era web dashboard (jQuery 1.7.2, jQuery UI, jQuery `tmpl`,
+Knockout 2.1 + `knockout.mapping`, `jquery.treeTable`, `ohm_web.js`/`.css`, `css/custom-theme/`)
+has been **removed** and replaced with a self-contained dashboard: `index.html`, `console.css`,
+`console.js` under `LibreHardwareMonitor.Windows.Forms/Resources/Web/`. It is served at the same
+route (bare `GET /`) via the existing `HttpServer.cs` embedded-resource lookup — no server-side
+change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are kept as-is.
+
+- **Zero contract change.** The console is a pure client that polls the existing
+  `GET /data.json` endpoint (`fetch('data.json', {cache:'no-store'})`) on an interval; it does not
+  read or depend on any new server endpoint, and nothing in `HttpServer.cs`/`AssemblyVersion` was
+  touched to build it. The 7 data-contract tests (`LibreHardwareMonitor.Tests`) stay green — see
+  Verification below.
+- **Status model** (`console.js` `SQ.statusOf`/`tempStatus`/`SQ.deriveLimits`): every sensor is
+  classified `ok` / `warn` / `crit` / `info` / `off` (`raw == null` -> `off`). Only two sensor
+  shapes are ever alarmed:
+  - **Temperature**, banded per hardware class (`TEMPBANDS`): CPU `[85, 95]`, GPU/iGPU core
+    `[83, 92]` (GPU/iGPU "Junction"/"Hot Spot" rows use a separate `[95, 105]` band), NVMe
+    `[70, 80]`, DIMM `[55, 85]`, motherboard/RAM sensors have no band (`info`). NVMe/DIMM prefer
+    the drive/module's own self-reported `Warning`/`Critical Temperature` limit sensors
+    (`SQ.deriveLimits`, keyed by `hwid`) over the static band when present. Any sensor whose text
+    looks like a limit/threshold readout itself (`isLimitSensor`: "limit", "warning temperature",
+    "critical temperature", "resolution") is always `info`, never alarmed — it is metadata, not a
+    live reading.
+  - **SSD/NVMe "Life" level** sensors (`type === 'Level'`, inverted thresholds): `< 5` -> `crit`,
+    `< 20` -> `warn`, else `ok`.
+  - Everything else (Load, Power, Clock, Voltage, Current, Fan, Data throughput, …) is `info` —
+    displayed but never drives the verdict lamp or census.
+  - The masthead verdict lamp and OK/WATCH/CRIT census are derived from the worst non-`info`,
+    non-`off` status across all sensors (`SQ.RANK` ordering `crit > warn > ok > info/off`).
+- **Auto-heuristic hero gauges** (`SQ.pickHero`): the top Primary Flight Display strip
+  auto-selects up to 9 headline metrics with no per-machine config — CPU Tctl/Total Load/Package
+  Power when a `cpu`-class sensor is present, GPU Core Temp/Junction/Load/Package Power when a
+  `gpu`-class (NVIDIA) sensor is present, overall RAM Load, and the single hottest non-limit NVMe
+  temperature. **Only bounded metrics get an arc gauge** (`h.bounded = [lo, hi]`, e.g. CPU Temp
+  `[30, 95]`, GPU Temp `[25, 92]`): the SVG arc fraction is `(raw - lo) / (hi - lo)`, clamped and
+  guarded against non-finite values (`arcSVG`) so a missing reading renders an empty arc, not a
+  `NaN`-driven full one. Power and Clock readouts have no natural upper bound, so they render as
+  plain numeric readouts with no arc — this was a deliberate correctness fix, not an oversight.
+- **Network panel collapse** (`renderPanels`): NIC sensors are excluded from the normal
+  one-panel-per-hardware grouping and instead folded into a single collapsed-by-default "Network"
+  panel containing only interfaces with nonzero `Throughput` (`active = nics with Throughput > 0`)
+  — idle/virtual adapters (common on multi-NIC boards and VM hosts) don't clutter the panel grid.
+- **Per-core row collapse** (CPU panels only): individual `Core #N` / hybrid-Intel `P-Core #N` /
+  `E-Core #N` rows (`isCoreRow`, excluding Average/Max/Total summaries) are tucked behind a
+  "+ N per-core …" toggle per sensor type, so a 16-core CPU doesn't dominate the panel.
+- **Persistence** (all via `localStorage`, keys prefixed `sq.`): theme (`sq.theme`, `dark`/`light`,
+  default dark), poll rate (`sq.rate`, seconds, default 2), pause state (`sq.paused`), and each
+  hardware panel's collapsed/expanded state (`sq.panel.<hardware name>`) all persist across page
+  reloads. A stored per-panel choice always wins over the code's default-collapsed hint (e.g. the
+  Network panel defaults collapsed only until the user expands it once).
+- **Self-test**: `webtests/console.test.html` loads `console.js` in a `window.SQ_NO_BOOT = true`
+  harness (so it exposes the pure `SQ` model functions without booting the live poller/DOM
+  renderer against a real page), fetches the fixture `webtests/fixture.data.json`, and asserts
+  `classOf`, `splitValue`, `statusOf` (including the GPU junction-band override and inverted SSD
+  Life thresholds), and `pickHero` (bounded vs. unbounded hero selection) against known-good
+  values. To run it: serve the repo root over HTTP (e.g. `python -m http.server` or any static
+  server so the absolute `/LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js` and
+  `/webtests/fixture.data.json` paths resolve) and open `webtests/console.test.html` in a browser;
+  it prints `SELFTEST PASS n/n` (or `FAIL`) plus a per-assertion log to the page.
+
 ## Modernization (traceable to `discovery-librehw-sync-upgrade.md`)
 
 - **High DPI**: `Program.cs` `Application.SetHighDpiMode(SystemAware)` (under `NETCOREAPP`),
@@ -135,3 +197,14 @@ upstream merges and reviewers know they are intentional.
 - 2026-06-07: Remote Web Server JSON NaN/Infinity fix verified end-to-end (see [`feature-webserver-json-stream.md`](feature-webserver-json-stream.md)). `net10.0-windows` + `net472` Release x64 built 0/0; after relaunch `GET /data.json` returned HTTP 200 valid JSON (533 sensors) instead of hanging, NaN sensors (NIC "Network Utilization") serialized as `RawValue: null`, `GET /Sensor?action=Get` on a NaN sensor returned `value:null` with no hang, and `GET /metrics` stayed HTTP 200. Server auto-starts via persisted `runWebServerMenuItem=true`.
 - 2026-06-13: CSV millisecond-timestamp fix implemented (see [`feature-csv-millisecond-timestamps.md`](feature-csv-millisecond-timestamps.md), GH #9). `dotnet test` 7/7 (5 new CSV-timestamp contract tests + 2 data.json golden); `net10.0-windows` + `net472` Release x64 built 0/0 (redirected temp `OutDir` — normal output path locked by the running app). Row `Time` column now emits `MM/dd/yyyy HH:mm:ss.fff`. Runtime CSV capture of `.fff` rows is the outstanding maintainer-launch step; the emitted format is the unit-pinned helper, so launch confirms wiring rather than format.
 - 2026-06-25: Backported upstream auth fix #2390 (web-server stored-password double-encoding); added local build version stamping; backported web UI resource-prefix fix #2382 (+ `MainForm.ExtractPawnIO` twin) and NuGet fork guard #2386. `dotnet test ...Tests... -p:Platform=x64` 7/7; `net10.0-windows` Release x64 built 0/0. Web UI verified end-to-end: `GET /` and `GET /index.html` now HTTP 200 (were 404), `data.json` still 200. `master` CI now green (previously failed at "Publish to NuGet" on every merge). EXE Details show `FileVersion 0.9.6.<dateRev>` / `ProductVersion 0.9.6+<sha>.<date>`.
+- 2026-07-04: Legacy jQuery/Knockout/`jquery.treeTable`/jQuery-UI dashboard assets deleted (`js/*`,
+  `css/jquery.treeTable.css`, `css/ohm_web.css`, `css/custom-theme/**`) now that the SQ Telemetry
+  Console fully replaces them; `favicon.ico`/`images/`/`index.html`/`console.css`/`console.js` kept.
+  No references to the deleted files remained in `HttpServer.cs` or any `.csproj` (the one
+  `custom-theme` hit in `HttpServer.cs` is a generic hyphen-to-underscore resource-name sanitizer,
+  not a path reference). Builds used redirected `OutDir` (the normal `bin\Release\...` path was
+  locked by a running `Libre Hardware Monitor` instance): `net10.0-windows` Release x64 built 0
+  warnings / 0 errors; `net472` Release x64 built 0 warnings / 0 errors. `dotnet test
+  LibreHardwareMonitor.Tests -p:Platform=x64` (normal Debug output path, unaffected by the lock):
+  **7/7 passed**, including the data.json/CSV golden contract tests — proving the deletion made no
+  contract change.
