@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SQ Telemetry Console — SND-DESK</title>
+<style>
+/*__FONT__*/
+:root{
+  --bg:#080b0f; --bg-glow:rgba(0,229,255,.06);
+  --panel:#0e141a; --panel-2:#0b0f14; --rim:rgba(255,255,255,.045);
+  --line:rgba(0,229,255,.13); --line-soft:rgba(255,255,255,.06);
+  --ink:#e7eef4; --muted:#8794a1; --dim:#5a6570;
+  --cy:#00e5ff; --lime:#EAF7B0;
+  --ok:#34D399; --warn:#F5A524; --crit:#FF5C5C; --off:#6B7B86;
+  --grid:rgba(255,255,255,.022);
+  --shadow:0 1px 0 rgba(255,255,255,.04), 0 22px 46px -26px rgba(0,0,0,.9);
+  --mono:ui-monospace,"Cascadia Mono",Consolas,"SFMono-Regular",monospace;
+  --sans:system-ui,"Segoe UI Variable Text","Segoe UI",Roboto,sans-serif;
+  --disp:"Chakra Petch",var(--sans);
+  --maxw:1520px;
+}
+@media (prefers-color-scheme:light){:root{
+  --bg:#e7edf1; --bg-glow:rgba(0,140,160,.08);
+  --panel:#ffffff; --panel-2:#f2f6f8; --rim:rgba(0,0,0,.04);
+  --line:rgba(0,120,140,.18); --line-soft:rgba(0,0,0,.08);
+  --ink:#0b1116; --muted:#4f5b67; --dim:#8a95a0;
+  --cy:#0091a8; --lime:#5a7d00;
+  --ok:#0a9d55; --warn:#b8790a; --crit:#d1332b; --off:#8a95a0;
+  --grid:rgba(0,40,60,.03);
+  --shadow:0 1px 0 rgba(255,255,255,.6), 0 16px 32px -24px rgba(20,40,60,.4);
+}}
+:root[data-theme="dark"]{
+  --bg:#080b0f; --bg-glow:rgba(0,229,255,.06); --panel:#0e141a; --panel-2:#0b0f14; --rim:rgba(255,255,255,.045);
+  --line:rgba(0,229,255,.13); --line-soft:rgba(255,255,255,.06); --ink:#e7eef4; --muted:#8794a1; --dim:#5a6570;
+  --cy:#00e5ff; --lime:#EAF7B0; --ok:#34D399; --warn:#F5A524; --crit:#FF5C5C; --off:#6B7B86; --grid:rgba(255,255,255,.022);
+}
+:root[data-theme="light"]{
+  --bg:#e7edf1; --bg-glow:rgba(0,140,160,.08); --panel:#ffffff; --panel-2:#f2f6f8; --rim:rgba(0,0,0,.04);
+  --line:rgba(0,120,140,.18); --line-soft:rgba(0,0,0,.08); --ink:#0b1116; --muted:#4f5b67; --dim:#8a95a0;
+  --cy:#0091a8; --lime:#5a7d00; --ok:#0a9d55; --warn:#b8790a; --crit:#d1332b; --off:#8a95a0; --grid:rgba(0,40,60,.03);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:var(--sans); color:var(--ink); background:var(--bg); line-height:1.5;
+  -webkit-font-smoothing:antialiased; min-height:100vh;
+  background-image:
+    radial-gradient(1200px 640px at 82% -10%, var(--bg-glow), transparent 60%),
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size:auto, 46px 46px, 46px 46px;
+}
+.mono{font-family:var(--mono); font-variant-numeric:tabular-nums}
+.num{font-variant-numeric:tabular-nums}
+.eyebrow{font-family:var(--disp);font-weight:600;letter-spacing:.2em;text-transform:uppercase;font-size:11px;color:var(--muted)}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 clamp(14px,3vw,30px)}
+:focus-visible{outline:2px solid var(--cy);outline-offset:2px;border-radius:5px}
+
+/* lamps + status */
+.lamp{--c:var(--off);display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--c);
+  box-shadow:0 0 0 1px rgba(0,0,0,.5),0 0 9px var(--c);flex:none;vertical-align:middle}
+.s-ok{--c:var(--ok)} .s-warn{--c:var(--warn)} .s-crit{--c:var(--crit)} .s-off{--c:var(--off)} .s-info{--c:var(--cy)}
+.glyph-stat{font-family:var(--mono);font-weight:700;font-size:10px}
+.g-ok{color:var(--ok)} .g-warn{color:var(--warn)} .g-crit{color:var(--crit)} .g-info{color:var(--cy)} .g-off{color:var(--off)}
+
+/* masthead */
+header{position:sticky;top:0;z-index:30;border-bottom:1px solid var(--line);
+  background:color-mix(in srgb,var(--bg) 84%,transparent);backdrop-filter:blur(10px)}
+.mast{display:flex;align-items:center;gap:20px;padding:12px 0;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.sigil{width:36px;height:36px;flex:none;display:grid;place-items:center;position:relative;border:1.5px solid var(--cy);
+  border-radius:9px;color:var(--cy);font-family:var(--disp);font-weight:600;font-size:14px;letter-spacing:.02em;
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--cy) 26%,transparent) inset,0 0 18px -6px var(--cy)}
+.sigil::after{content:"";position:absolute;inset:3px;border:1px solid color-mix(in srgb,var(--cy) 20%,transparent);border-radius:6px}
+.wordmark{display:flex;flex-direction:column;line-height:1.08}
+.wordmark b{font-family:var(--disp);font-weight:600;font-size:17px;letter-spacing:.13em;text-transform:uppercase}
+.wordmark b i{font-style:normal;color:var(--cy)}
+.wordmark span{font-size:10.5px;color:var(--muted);letter-spacing:.05em}
+.spacer{flex:1 1 30px}
+.verdict{display:flex;align-items:center;gap:12px;padding:7px 15px;border:1px solid var(--line);border-radius:10px;
+  background:linear-gradient(180deg,var(--panel),var(--panel-2))}
+.verdict .big{width:13px;height:13px}
+.verdict .lab{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase}
+.verdict .st{font-family:var(--disp);font-weight:600;font-size:19px;letter-spacing:.05em;line-height:1.05}
+.census{display:flex;gap:6px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.04em;
+  color:var(--muted);padding:5px 9px;border:1px solid var(--line-soft);border-radius:7px;background:rgba(255,255,255,.012)}
+.chip b{color:var(--ink);font-weight:700}
+.controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.fresh{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.btn{font-family:var(--disp);font-weight:600;letter-spacing:.07em;text-transform:uppercase;font-size:11px;color:var(--ink);
+  background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:7px 11px;cursor:pointer;
+  display:inline-flex;gap:6px;align-items:center}
+.btn:hover{border-color:var(--cy);color:var(--cy)}
+.rate{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+input[type=range]{accent-color:var(--cy)}
+
+/* section scaffold */
+main{padding:24px 0 60px}
+section{margin-top:30px}
+.sec-head{display:flex;align-items:center;gap:12px;margin:0 0 14px}
+.sec-head h2{font-family:var(--disp);font-weight:600;font-size:14px;letter-spacing:.2em;text-transform:uppercase;margin:0}
+.sec-head .rule{height:1px;flex:1;background:linear-gradient(90deg,var(--line),transparent)}
+.sec-head .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;color:var(--muted)}
+
+/* PFD gauges */
+.pfd{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.cell{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:13px;padding:14px 15px 13px;
+  background:linear-gradient(180deg,var(--panel),var(--panel-2));box-shadow:var(--shadow)}
+.cell::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--c,var(--off))}
+.cell.s-ok{--c:var(--ok)} .cell.s-warn{--c:var(--warn)} .cell.s-crit{--c:var(--crit)} .cell.s-info{--c:var(--cy)} .cell.s-off{--c:var(--off)}
+.cell .k{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.cell .k .name{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.cell .k .src{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.05em}
+.cell .body{display:flex;align-items:center;gap:13px;margin-top:8px}
+.arc{width:78px;height:78px;flex:none}
+.arc text{font-family:var(--disp);fill:var(--ink)}
+.readout{min-width:0}
+.readout .big{font-family:var(--disp);font-weight:600;font-size:30px;line-height:1;letter-spacing:.01em}
+.readout .big small{font-family:var(--sans);font-weight:400;font-size:13px;color:var(--muted);letter-spacing:0}
+.readout .sub{margin-top:6px;font-family:var(--mono);font-size:10.5px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.tag-stat{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border-radius:999px;font-family:var(--mono);
+  font-size:9.5px;font-weight:700;letter-spacing:.09em;border:1px solid var(--line)}
+.tag-stat.g-ok{color:var(--ok)} .tag-stat.g-warn{color:var(--warn)} .tag-stat.g-crit{color:var(--crit)}
+.tag-stat.g-info{color:var(--cy)} .tag-stat.g-off{color:var(--off)}
+
+/* placard */
+.placard{border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line));border-radius:13px;overflow:hidden;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--warn) 8%,var(--panel)),var(--panel-2))}
+.placard.crit{border-color:color-mix(in srgb,var(--crit) 45%,var(--line));
+  background:linear-gradient(180deg,color-mix(in srgb,var(--crit) 9%,var(--panel)),var(--panel-2))}
+.placard-head{display:flex;align-items:center;gap:11px;padding:11px 16px;border-bottom:1px solid var(--line-soft);
+  background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--warn) 12%,transparent) 0 14px,transparent 14px 28px)}
+.placard.crit .placard-head{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--crit) 13%,transparent) 0 14px,transparent 14px 28px)}
+.placard-head h3{font-family:var(--disp);font-weight:600;font-size:13px;letter-spacing:.16em;text-transform:uppercase;margin:0}
+.placard ul{list-style:none;margin:0;padding:8px 16px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:2px 20px}
+.placard li{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:13px}
+.placard li .who{color:var(--ink)} .placard li .who small{color:var(--muted);font-family:var(--mono);font-size:11px}
+.placard li .val{margin-left:auto;font-family:var(--mono);font-weight:700}
+
+/* hardware panels */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
+.panel{border:1px solid var(--line);border-radius:13px;overflow:hidden;background:linear-gradient(180deg,var(--panel),var(--panel-2));box-shadow:var(--shadow)}
+.panel-head{display:flex;align-items:center;gap:11px;padding:13px 15px;cursor:pointer;border-bottom:1px solid var(--line-soft)}
+.panel-head .lamp{width:11px;height:11px}
+.panel-head .nm{font-family:var(--disp);font-weight:600;font-size:14px;letter-spacing:.02em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.panel-head .cls{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
+  border:1px solid var(--line-soft);border-radius:5px;padding:2px 6px}
+.panel-head .head-stat{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.panel-head .chev{color:var(--dim);font-family:var(--mono);font-size:11px;transition:transform .2s}
+.panel.collapsed .panel-body{display:none}
+.panel.collapsed .chev{transform:rotate(-90deg)}
+.panel-body{padding:4px 0}
+.tg{padding:8px 15px 3px;font-family:var(--mono);font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+.row{display:grid;grid-template-columns:14px 1fr auto;gap:9px;align-items:center;padding:5px 15px}
+.row:hover{background:rgba(255,255,255,.02)}
+.row .rn{font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .rn .mm{color:var(--dim);font-family:var(--mono);font-size:10.5px;margin-left:7px}
+.row .rv{font-family:var(--mono);font-size:12.5px;font-weight:600;text-align:right;white-space:nowrap}
+.row.info .rv{color:var(--ink)} .row.ok .rv{color:var(--ok)} .row.warn .rv{color:var(--warn)} .row.crit .rv{color:var(--crit)} .row.off .rv{color:var(--dim)}
+.bar{grid-column:2/4;height:5px;border-radius:999px;background:var(--line-soft);overflow:hidden;margin-top:2px}
+.bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--cy),var(--lime))}
+.bar.warn i{background:var(--warn)} .bar.crit i{background:var(--crit)}
+
+footer{margin-top:40px;border-top:1px solid var(--line);padding:16px 0 0;display:flex;justify-content:space-between;
+  gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;color:var(--muted)}
+footer .legend{display:flex;gap:14px;flex-wrap:wrap}
+footer .legend span{display:inline-flex;align-items:center;gap:6px}
+
+@media (max-width:640px){.mast{gap:12px}.verdict{flex:1}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header><div class="wrap mast">
+  <div class="brand">
+    <div class="sigil">SQ</div>
+    <div class="wordmark"><b>SND&#8209;<i>DESK</i></b><span>Hardware Telemetry Console</span></div>
+  </div>
+  <div class="spacer"></div>
+  <div class="verdict"><span class="lamp big" id="vlamp"></span><div>
+    <div class="lab">Thermal Verdict</div><div class="st" id="vstate">—</div></div></div>
+  <div class="census" id="census"></div>
+  <div class="controls">
+    <div class="fresh"><span class="lamp s-ok" id="freshdot"></span><span id="freshtxt">live</span></div>
+    <div class="rate"><span>rate</span><input type="range" id="rate" min="1" max="10" value="2"><span id="ratev">2s</span></div>
+    <button class="btn" id="pause">❚❚ Pause</button>
+    <button class="btn" id="theme">◐ Theme</button>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <section>
+    <div class="sec-head"><h2>Primary Flight Display</h2><div class="rule"></div><span class="tag" id="pfdtag">auto-selected</span></div>
+    <div class="pfd" id="pfd"></div>
+  </section>
+  <section id="placardsec" style="display:none"></section>
+  <section>
+    <div class="sec-head"><h2>Subsystems</h2><div class="rule"></div><span class="tag" id="subtag"></span></div>
+    <div class="grid" id="panels"></div>
+  </section>
+  <footer>
+    <span id="foot-left"></span>
+    <span class="legend">
+      <span><span class="lamp s-ok"></span>OK</span><span><span class="lamp s-warn"></span>WATCH</span>
+      <span><span class="lamp s-crit"></span>CRIT</span><span><span class="lamp s-info"></span>INFO</span>
+      <span><span class="lamp s-off"></span>IDLE</span>
+    </span>
+  </footer>
+</main>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+/* ---------- model ---------- */
+function classOf(sid){
+  if(!sid) return 'other';
+  if(sid.startsWith('/amdcpu')||sid.startsWith('/intelcpu')) return 'cpu';
+  if(sid.startsWith('/gpu-nvidia')) return 'gpu';
+  if(sid.startsWith('/gpu-amd')||sid.startsWith('/gpu-intel')) return 'igpu';
+  if(sid.startsWith('/ram')||sid.startsWith('/vram')) return 'mem';
+  if(sid.startsWith('/memory/dimm')) return 'dimm';
+  if(sid.startsWith('/nvme')||sid.startsWith('/hdd')) return 'nvme';
+  if(sid.startsWith('/usb')) return 'disk';
+  if(sid.startsWith('/lpc')) return 'mb';
+  if(sid.startsWith('/nic')) return 'nic';
+  return 'other';
+}
+const CLASSLABEL={cpu:'CPU',gpu:'GPU',igpu:'iGPU',mem:'MEMORY',dimm:'DIMM',nvme:'STORAGE',disk:'DISK',mb:'BOARD',nic:'NET',other:'MISC'};
+
+// flatten sensors, remembering their owning hardware node
+function walk(node, hw, hwid, out){
+  if(node.HardwareId!==undefined){ hw=node.Text; hwid=node.HardwareId; }
+  if(node.SensorId!==undefined){
+    out.push({hw,hwid,cls:classOf(node.SensorId),type:node.Type,text:node.Text,
+      value:node.Value,min:node.Min,max:node.Max,raw:node.RawValue,id:node.SensorId});
+  }
+  (node.Children||[]).forEach(c=>walk(c,hw,hwid,out));
+}
+
+// per-hardware self-reported temperature limits (drives/DIMMs publish these)
+function limitMap(sensors){
+  const m={};
+  sensors.forEach(s=>{
+    if(s.type!=='Temperature'||s.raw==null) return;
+    const t=s.text.toLowerCase();
+    m[s.hwid]=m[s.hwid]||{};
+    if(t.includes('critical')&&(t.includes('high')||t.includes('temperature'))) m[s.hwid].crit=s.raw;
+    else if((t.includes('warning'))||(t.includes('high')&&t.includes('limit'))) m[s.hwid].warn=s.raw;
+  });
+  return m;
+}
+function isLimitSensor(s){
+  const t=s.text.toLowerCase();
+  return t.includes('limit')||t.includes('warning temperature')||t.includes('critical temperature')||t.includes('resolution');
+}
+
+const TEMPBANDS={cpu:[85,95], gpu:[83,92], igpu:[83,92], nvme:[70,80], dimm:[55,85], mb:null, mem:null};
+function tempStatus(s,limits){
+  const t=s.text.toLowerCase();
+  const lim=limits[s.hwid];
+  let warn,crit;
+  if(s.cls==='gpu'&&(t.includes('junction')||t.includes('hot'))){warn=95;crit=105;}
+  else if((s.cls==='nvme'||s.cls==='dimm')&&lim){ warn=lim.warn??TEMPBANDS[s.cls][0]; crit=lim.crit??TEMPBANDS[s.cls][1]; }
+  else { const b=TEMPBANDS[s.cls]; if(!b) return 'info'; warn=b[0]; crit=b[1]; }
+  if(s.raw>=crit) return 'crit';
+  if(s.raw>=warn) return 'warn';
+  return 'ok';
+}
+function statusOf(s,limits){
+  if(s.raw==null) return 'off';
+  if(s.type==='Temperature'){ if(isLimitSensor(s)) return 'info'; return tempStatus(s,limits); }
+  if(s.type==='Level'&&s.text.toLowerCase().includes('life')){ if(s.raw<5) return 'crit'; if(s.raw<20) return 'warn'; return 'ok'; }
+  return 'info';
+}
+const RANK={crit:3,warn:2,ok:1,info:0,off:-1};
+
+/* ---------- hero heuristic ---------- */
+function pick(sensors,pred){ return sensors.find(pred); }
+function heroMetrics(sensors,limits){
+  const H=[];
+  const add=(s,label,opts={})=>{ if(!s)return; H.push({s,label,status:statusOf(s,limits),...opts}); };
+  // per CPU
+  sensors.filter(s=>s.cls==='cpu').length && (()=>{
+    const cpu=sensors.filter(s=>s.cls==='cpu');
+    add(pick(cpu,s=>s.type==='Temperature'&&s.text.includes('Tctl')),'CPU Temp',{bounded:[30,95],unit:'°C'});
+    add(pick(cpu,s=>s.type==='Load'&&/CPU Total/i.test(s.text)),'CPU Load',{bounded:[0,100],unit:'%'});
+    add(pick(cpu,s=>s.type==='Power'&&/^Package/i.test(s.text)),'CPU Power',{unit:'W'});
+  })();
+  // discrete GPU (nvidia)
+  sensors.filter(s=>s.cls==='gpu').length && (()=>{
+    const g=sensors.filter(s=>s.cls==='gpu');
+    add(pick(g,s=>s.type==='Temperature'&&/^GPU Core/i.test(s.text)),'GPU Temp',{bounded:[25,92],unit:'°C'});
+    add(pick(g,s=>s.type==='Temperature'&&/Junction/i.test(s.text)),'GPU Mem Jct',{bounded:[25,105],unit:'°C'});
+    add(pick(g,s=>s.type==='Load'&&/^GPU Core/i.test(s.text)),'GPU Load',{bounded:[0,100],unit:'%'});
+    add(pick(g,s=>s.type==='Power'&&/Package/i.test(s.text)),'GPU Power',{unit:'W'});
+  })();
+  // memory
+  add(pick(sensors,s=>s.cls==='mem'&&s.hw==='Total Memory'&&s.type==='Load'),'RAM Used',{bounded:[0,100],unit:'%'});
+  // hottest drive
+  const drives=sensors.filter(s=>s.cls==='nvme'&&s.type==='Temperature'&&!isLimitSensor(s)&&s.raw!=null)
+    .sort((a,b)=>b.raw-a.raw);
+  add(drives[0],'Drive Temp',{bounded:[25,80],unit:'°C'});
+  return H.slice(0,9);
+}
+
+/* ---------- render ---------- */
+const $=(s,r=document)=>r.querySelector(s);
+const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+const STLABEL={ok:'OK',warn:'WATCH',crit:'CRIT',info:'INFO',off:'IDLE'};
+const STGLYPH={ok:'●',warn:'▲',crit:'✕',info:'·',off:'○'};
+
+function arcSVG(frac,statusCls){
+  const R=30, C=2*Math.PI*R, s=.75, len=C*s;
+  const off=len*(1-Math.max(0,Math.min(1,frac)));
+  return `<svg class="arc" viewBox="0 0 78 78">
+    <g transform="rotate(135 39 39)">
+      <circle cx="39" cy="39" r="${R}" fill="none" stroke="var(--line-soft)" stroke-width="6"
+        stroke-linecap="round" stroke-dasharray="${len} ${C}"/>
+      <circle cx="39" cy="39" r="${R}" fill="none" stroke="var(--c)" stroke-width="6"
+        stroke-linecap="round" stroke-dasharray="${len} ${C}" stroke-dashoffset="${off}"
+        style="stroke:var(--c);transition:stroke-dashoffset .5s ease"/>
+    </g></svg>`;
+}
+function fmtNum(s){ // split "65.5 °C" into number + unit
+  if(s.value==null) return {n:'—',u:''};
+  const m=String(s.value).match(/^([\-\d.,]+)\s*(.*)$/);
+  return m?{n:m[1],u:m[2]}:{n:String(s.value),u:''};
+}
+
+let state={paused:false,rate:2000};
+
+function render(){
+  const sensors=[]; walk(DATA.Children[0],DATA.Text,undefined,sensors);
+  const limits=limitMap(sensors);
+  sensors.forEach(s=>s.status=statusOf(s,limits));
+
+  // verdict = worst among alarm-eligible (temps + life)
+  const alarm=sensors.filter(s=>s.status!=='info'&&s.status!=='off');
+  let worst='ok'; alarm.forEach(s=>{ if(RANK[s.status]>RANK[worst])worst=s.status; });
+  const vmap={ok:['GO','s-ok'],warn:['WATCH','s-warn'],crit:['CRITICAL','s-crit']};
+  const [vt,vc]=vmap[worst]||['GO','s-ok'];
+  $('#vlamp').className='lamp big '+vc; $('#vstate').textContent=vt; $('#vstate').style.color=`var(--${worst==='ok'?'ok':worst==='warn'?'warn':'crit'})`;
+
+  // census
+  const counts={ok:0,warn:0,crit:0}; alarm.forEach(s=>counts[s.status]!=null&&counts[s.status]++);
+  $('#census').innerHTML=`
+    <span class="chip"><span class="lamp s-ok"></span>OK <b>${counts.ok}</b></span>
+    <span class="chip"><span class="lamp s-warn"></span>WATCH <b>${counts.warn}</b></span>
+    <span class="chip"><span class="lamp s-crit"></span>CRIT <b>${counts.crit}</b></span>`;
+
+  // PFD
+  const H=heroMetrics(sensors,limits); const pfd=$('#pfd'); pfd.innerHTML='';
+  H.forEach(h=>{
+    const {n,u}=fmtNum(h.s); const st=h.status;
+    const c=el('div',`cell s-${st}`);
+    let bodyArc='';
+    if(h.bounded){ const [lo,hi]=h.bounded; const frac=(h.s.raw-lo)/(hi-lo); bodyArc=arcSVG(frac,st); }
+    c.innerHTML=`<div class="k"><span class="name">${h.label}</span><span class="src">${h.s.hw.split(' ').slice(0,2).join(' ')}</span></div>
+      <div class="body">${bodyArc}
+        <div class="readout"><div class="big">${n}<small> ${u||h.unit||''}</small></div>
+          <div class="sub"><span class="tag-stat g-${st}">${STGLYPH[st]} ${STLABEL[st]}</span>${h.s.min!=null?`<span>min ${h.s.min} · max ${h.s.max}</span>`:''}</div>
+        </div></div>`;
+    pfd.appendChild(c);
+  });
+
+  // placard
+  const flagged=alarm.filter(s=>s.status==='warn'||s.status==='crit').sort((a,b)=>RANK[b.status]-RANK[a.status]);
+  const ps=$('#placardsec');
+  if(flagged.length){
+    const hasCrit=flagged.some(s=>s.status==='crit');
+    ps.style.display=''; ps.innerHTML=`<div class="placard ${hasCrit?'crit':''}">
+      <div class="placard-head"><span class="lamp ${hasCrit?'s-crit':'s-warn'}"></span>
+        <h3>${hasCrit?'Thermal Alert':'Thermal Watch'}</h3>
+        <span class="tag" style="margin-left:auto;font-family:var(--mono);color:var(--muted)">${flagged.length} sensor(s) over band</span></div>
+      <ul>${flagged.map(s=>`<li><span class="glyph-stat g-${s.status}">${STGLYPH[s.status]}</span>
+        <span class="who">${s.text} <small>${s.hw}</small></span><span class="val g-${s.status}">${s.value}</span></li>`).join('')}</ul></div>`;
+  } else ps.style.display='none';
+
+  // panels grouped by hardware, network collapsed into one
+  const panels=$('#panels'); panels.innerHTML='';
+  const byHw=new Map();
+  sensors.forEach(s=>{ if(s.cls==='nic')return; if(!byHw.has(s.hw))byHw.set(s.hw,[]); byHw.get(s.hw).push(s); });
+  const order=['cpu','gpu','igpu','mem','dimm','nvme','disk','mb','other'];
+  [...byHw.entries()].sort((a,b)=>order.indexOf(a[1][0].cls)-order.indexOf(b[1][0].cls))
+    .forEach(([hw,ss])=>panels.appendChild(panelEl(hw,ss)));
+  // network panel
+  const nics=sensors.filter(s=>s.cls==='nic');
+  const active=nics.filter(s=>s.type==='Throughput'&&s.raw>0).map(s=>s.hw);
+  const activeSet=new Set(active);
+  const netSensors=nics.filter(s=>activeSet.has(s.hw));
+  if(netSensors.length) panels.appendChild(panelEl('Network',netSensors,true));
+
+  $('#subtag').textContent=`${byHw.size+ (netSensors.length?1:0)} components`;
+  $('#pfdtag').textContent=`${H.length} auto-selected`;
+  $('#foot-left').textContent=`LibreHardwareMonitor ${DATA.Version} · host ${DATA.Text} · GET /data.json · ${state.rate/1000}s poll`;
+  $('#freshtxt').textContent='updated '+new Date().toLocaleTimeString();
+}
+
+function panelEl(hw,ss,collapsed=false){
+  let worst='info'; ss.forEach(s=>{ if(RANK[s.status]>RANK[worst])worst=s.status; });
+  const p=el('div','panel'+(collapsed?' collapsed':''));
+  const cls=ss[0].cls;
+  // headline stat: hottest temp or main load
+  const temps=ss.filter(s=>s.type==='Temperature'&&s.raw!=null&&!isLimitSensor(s)).sort((a,b)=>b.raw-a.raw);
+  const head=temps[0]?`${temps[0].value}`:(ss.find(s=>s.type==='Load')?.value||'');
+  const h=el('div','panel-head');
+  h.innerHTML=`<span class="lamp s-${worst==='info'?'info':worst}"></span>
+    <span class="nm">${hw}</span><span class="cls">${CLASSLABEL[cls]||''}</span>
+    <span class="head-stat">${head}<span class="chev">▸</span></span>`;
+  h.onclick=()=>p.classList.toggle('collapsed');
+  p.appendChild(h);
+  const body=el('div','panel-body');
+  // group by type
+  const byType=new Map(); ss.forEach(s=>{ if(!byType.has(s.type))byType.set(s.type,[]); byType.get(s.type).push(s); });
+  const tOrder=['Temperature','Load','Power','Clock','Fan','Control','Voltage','Current','Data','SmallData','Throughput','Level','Factor','Timing'];
+  [...byType.entries()].sort((a,b)=>tOrder.indexOf(a[0])-tOrder.indexOf(b[0])).forEach(([type,list])=>{
+    body.appendChild(el('div','tg',type));
+    list.slice(0,12).forEach(s=>{
+      const st=s.status;
+      const showBar=(s.type==='Load'||s.type==='Level'||s.type==='Control')&&s.raw!=null;
+      const r=el('div',`row ${st}`);
+      r.innerHTML=`<span class="glyph-stat g-${st}" title="${STLABEL[st]}">${st==='info'?'':STGLYPH[st]}</span>
+        <span class="rn">${s.text}${s.min!=null&&s.min!==''&&type==='Temperature'?`<span class="mm">${s.min} / ${s.max}</span>`:''}</span>
+        <span class="rv">${s.value??'—'}</span>
+        ${showBar?`<div class="bar ${st==='warn'?'warn':st==='crit'?'crit':''}"><i style="width:${Math.max(0,Math.min(100,s.raw))}%"></i></div>`:''}`;
+      body.appendChild(r);
+    });
+  });
+  p.appendChild(body);
+  return p;
+}
+
+/* ---------- controls + fake liveness ---------- */
+$('#theme').onclick=()=>{ const r=document.documentElement; r.setAttribute('data-theme', r.getAttribute('data-theme')==='dark'?'light':'dark'); };
+$('#rate').oninput=e=>{ state.rate=e.target.value*1000; $('#ratev').textContent=e.target.value+'s'; };
+$('#pause').onclick=e=>{ state.paused=!state.paused; e.target.textContent=state.paused?'▶ Resume':'❚❚ Pause';
+  $('#freshdot').className='lamp '+(state.paused?'s-off':'s-ok'); $('#freshtxt').textContent=state.paused?'paused':'live'; };
+
+function jitter(node){ // simulate live movement on temps/loads for the mockup only
+  if(node.SensorId&&node.RawValue!=null&&/temperature|load/.test(node.SensorId)){
+    const d=(Math.sin(Date.now()/2500+node.SensorId.length)*1.4);
+    if(node.Type==='Temperature'){ node.RawValue=Math.max(20,node.RawValue+d*0.2); node.Value=node.RawValue.toFixed(1)+' °C'; }
+  }
+  (node.Children||[]).forEach(jitter);
+}
+render();
+setInterval(()=>{ if(!state.paused){ jitter(DATA.Children[0]); render(); } }, 2000);
+</script>
+</body>
+</html>
