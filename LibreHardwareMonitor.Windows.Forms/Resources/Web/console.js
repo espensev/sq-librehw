@@ -155,8 +155,11 @@
         let arc = '';
         if (h.bounded) { const [lo, hi] = h.bounded; arc = arcSVG((h.s.raw - lo) / (hi - lo)); }
         const rmin = SQ.splitValue(h.s.min).n, rmax = SQ.splitValue(h.s.max).n;
-        const range = (h.s.min != null && h.s.min !== '')
-          ? `<div class="range"><b>${rmin}</b> &rarr; <b>${rmax}</b></div>` : '';
+        // NVMe/limit temps report 0 at init and LHM keeps that 0 as Min forever; a component temp is never <=0 in operation, so treat it as no valid min
+        const badTempMin = h.s.type === 'Temperature' && !(parseFloat(rmin) > 0);
+        const range = (h.s.min == null || h.s.min === '') ? ''
+          : badTempMin ? `<div class="range">peak <b>${rmax}</b></div>`
+          : `<div class="range"><b>${rmin}</b> &rarr; <b>${rmax}</b></div>`;
         const cell = document.createElement('div');
         cell.className = `cell s-${st}`;
         cell.innerHTML =
@@ -228,7 +231,9 @@
     }
     function rowEl(s, type) {
       const st = s.status, showBar = (s.type === 'Load' || s.type === 'Level' || s.type === 'Control') && s.raw != null;
-      const mm = (s.min != null && s.min !== '' && type === 'Temperature') ? `<span class="mm">${s.min} / ${s.max}</span>` : '';
+      const mm = (s.min != null && s.min !== '' && type === 'Temperature')
+        ? (parseFloat(s.min) > 0 ? `<span class="mm">${s.min} / ${s.max}</span>` : `<span class="mm">peak ${s.max}</span>`)  // hide bogus 0-init temp min
+        : '';
       const r = document.createElement('div'); r.className = `row ${st}`;
       r.innerHTML = `<span class="glyph-stat g-${st}" title="${SQ._STLABEL[st]}">${st === 'info' ? '' : STGLYPH[st]}</span>
         <span class="rn">${s.text}${mm}</span><span class="rv">${s.value ?? '—'}</span>
