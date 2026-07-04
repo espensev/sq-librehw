@@ -356,6 +356,7 @@
       paintGraphs();
     }
     function rerender() {
+      if (state.dragging) return;
       if (state.lastData) render(state.lastData);
     }
     function commitDashboard() {
@@ -803,22 +804,53 @@
     function orderedKeysFor(container) {
       return Array.from(container.children).map(el => el.dataset.key).filter(k => typeof k === 'string' && k.length);
     }
-    function dropIndex(container, movedKey, clientY) {
-      const sibs = Array.from(container.children).filter(el => el.dataset.key && el.dataset.key !== movedKey);
+    function dragSiblings(container, movedKey) {
+      return Array.from(container.children).filter(el => el.dataset.key && el.dataset.key !== movedKey);
+    }
+    function dropIndex(sibs, clientX, clientY, columnMajor) {
       for (let i = 0; i < sibs.length; i++) {
         const r = sibs[i].getBoundingClientRect();
-        if (clientY < r.top + r.height / 2) return i;
+        if (columnMajor) {
+          // #panels CSS multi-column masonry: columns left->right, items top->bottom.
+          if (clientX < r.left) return i;
+          if (clientX <= r.right && clientY < r.top + r.height / 2) return i;
+        } else {
+          // #pinned row-major grid: rows top->bottom, items left->right.
+          if (clientY < r.top) return i;
+          if (clientY <= r.bottom && clientX < r.left + r.width / 2) return i;
+        }
       }
       return sibs.length;
+    }
+    function placeIndicator(a, sibs) {
+      const ind = a.ind;
+      if (!sibs.length) { ind.style.display = 'none'; return; }
+      const crect = a.container.getBoundingClientRect();
+      const before = sibs[a.dropIdx]; // insert-before sibling, or undefined for end-drop
+      const anchor = before || sibs[sibs.length - 1];
+      const r = anchor.getBoundingClientRect();
+      ind.style.display = 'block';
+      if (a.isPanel) {
+        // horizontal bar above the anchor (below the last panel for end-drop)
+        ind.style.left = (r.left - crect.left) + 'px';
+        ind.style.width = r.width + 'px';
+        ind.style.height = '2px';
+        ind.style.top = ((before ? r.top : r.bottom) - crect.top - 1) + 'px';
+      } else {
+        // vertical bar left of the anchor (right of the last card for end-drop)
+        ind.style.top = (r.top - crect.top) + 'px';
+        ind.style.height = r.height + 'px';
+        ind.style.width = '2px';
+        ind.style.left = ((before ? r.left : r.right) - crect.left - 1) + 'px';
+      }
     }
     function moveGhost(ev) {
       const a = drag.active; if (!a) return;
       a.ghost.style.left = (ev.clientX + 12) + 'px';
       a.ghost.style.top = (ev.clientY + 12) + 'px';
-      a.dropIdx = dropIndex(a.container, a.key, ev.clientY);
-      const sibs = Array.from(a.container.children).filter(el => el.dataset.key && el.dataset.key !== a.key);
-      const ref = sibs[a.dropIdx];
-      if (ref) a.container.insertBefore(a.ind, ref); else a.container.appendChild(a.ind);
+      const sibs = dragSiblings(a.container, a.key);
+      a.dropIdx = dropIndex(sibs, ev.clientX, ev.clientY, a.isPanel);
+      placeIndicator(a, sibs);
     }
     function startDrag(grip, ev) {
       const el = grip.closest('.panel') || grip.closest('.cell.pinned');
@@ -832,6 +864,7 @@
       document.body.appendChild(ghost);
       const ind = document.createElement('div');
       ind.className = 'drop-ind';
+      el.parentElement.appendChild(ind);
       drag.active = { container: el.parentElement, el, key: el.dataset.key,
         isPanel: el.classList.contains('panel'), ghost, ind, grip, pointerId: ev.pointerId };
       el.classList.add('dragging');

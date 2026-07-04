@@ -97,7 +97,7 @@ section{margin-top:30px}
 .sec-head .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;color:var(--muted)}
 
 /* PFD gauges */
-.pfd{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:12px}
+.pfd{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:12px;position:relative}
 .cell{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:13px;padding:14px 15px 13px;
   background:linear-gradient(180deg,var(--panel),var(--panel-2));box-shadow:var(--shadow)}
 .cell::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--c,var(--off))}
@@ -142,7 +142,7 @@ section{margin-top:30px}
 .placard li .val{margin-left:auto;font-family:var(--mono);font-weight:700}
 
 /* hardware panels */
-.grid{column-width:370px;column-gap:14px}
+.grid{column-width:370px;column-gap:14px;position:relative}
 .panel{break-inside:avoid;-webkit-column-break-inside:avoid;margin:0 0 14px;display:inline-block;width:100%;
   border:1px solid var(--line);border-radius:8px;overflow:hidden;
   background:linear-gradient(180deg,var(--panel),var(--panel-2));box-shadow:var(--shadow)}
@@ -264,4 +264,4 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .drag-ghost{position:fixed;z-index:80;pointer-events:none;font:600 12px var(--disp);letter-spacing:.06em;
   text-transform:uppercase;color:var(--ink);background:linear-gradient(180deg,var(--panel),var(--panel-2));
   border:1px solid var(--cy);border-radius:7px;padding:7px 11px;box-shadow:0 12px 30px -14px rgba(0,0,0,.9)}
-.drop-ind{height:0;border-top:2px solid var(--cy);margin:0 0 12px;box-shadow:0 0 8px var(--cy);break-inside:avoid;width:100%}
+.drop-ind{position:absolute;display:none;pointer-events:none;z-index:5;background:var(--cy);box-shadow:0 0 8px var(--cy);border-radius:2px}
