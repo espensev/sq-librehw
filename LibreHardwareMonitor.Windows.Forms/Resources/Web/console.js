@@ -169,6 +169,83 @@
       document.querySelector('#pfdtag').textContent = `${H.length} auto-selected`;
     };
 
+    window.renderPlacard = function (alarm) {
+      const flagged = alarm.filter(s => s.status === 'warn' || s.status === 'crit')
+        .sort((a, b) => SQ.RANK[b.status] - SQ.RANK[a.status]);
+      const ps = document.querySelector('#placardsec');
+      if (!flagged.length) { ps.style.display = 'none'; ps.innerHTML = ''; return; }
+      const crit = flagged.some(s => s.status === 'crit');
+      ps.style.display = '';
+      ps.innerHTML = `<div class="placard ${crit ? 'crit' : ''}">
+        <div class="placard-head"><span class="lamp ${crit ? 's-crit' : 's-warn'}"></span>
+          <h3>${crit ? 'Thermal Alert' : 'Thermal Watch'}</h3>
+          <span class="tag" style="margin-left:auto;font-family:var(--mono);color:var(--muted)">${flagged.length} over band</span></div>
+        <ul>${flagged.map(s => `<li><span class="glyph-stat g-${s.status}">${STGLYPH[s.status]}</span>
+          <span class="who">${s.text} <small>${s.hw}</small></span>
+          <span class="val g-${s.status}">${s.value}</span></li>`).join('')}</ul></div>`;
+    };
+
+    const CLASSLABEL = { cpu:'CPU', gpu:'GPU', igpu:'iGPU', mem:'MEMORY', dimm:'DIMM', nvme:'STORAGE', disk:'DISK', mb:'BOARD', nic:'NET', other:'MISC' };
+    const TORDER = ['Temperature','Load','Power','Clock','Fan','Control','Voltage','Current','Data','SmallData','Throughput','Level','Factor','Timing'];
+    const isCoreRow = s => /(^|\s)(Core|CPU Core)\s*#?\d/i.test(s.text) && !/Average|Max|Total/i.test(s.text);
+
+    function panelEl(hw, ss, collapsed) {
+      let worst = 'info'; ss.forEach(s => { if (SQ.RANK[s.status] > SQ.RANK[worst]) worst = s.status; });
+      const cls = ss[0].cls, key = 'sq.panel.' + hw;
+      const startCollapsed = localStorage.getItem(key) === '1' || !!collapsed;
+      const p = document.createElement('div'); p.className = 'panel' + (startCollapsed ? ' collapsed' : '');
+      const temps = ss.filter(s => s.type === 'Temperature' && s.raw != null && !SQ.isLimitSensor(s)).sort((a,b)=>b.raw-a.raw);
+      const head = temps[0] ? temps[0].value : (ss.find(s => s.type === 'Load')?.value || '');
+      const h = document.createElement('div'); h.className = 'panel-head';
+      h.innerHTML = `<span class="lamp s-${worst}"></span><span class="nm">${hw}</span>
+        <span class="cls">${CLASSLABEL[cls] || ''}</span>
+        <span class="head-stat">${head}<span class="chev">&#9656;</span></span>`;
+      h.onclick = () => { p.classList.toggle('collapsed'); localStorage.setItem(key, p.classList.contains('collapsed') ? '1':'0'); };
+      p.appendChild(h);
+      const body = document.createElement('div'); body.className = 'panel-body';
+      const byType = new Map(); ss.forEach(s => { (byType.get(s.type) || byType.set(s.type, []).get(s.type)).push(s); });
+      [...byType.entries()].sort((a,b) => TORDER.indexOf(a[0]) - TORDER.indexOf(b[0])).forEach(([type, list]) => {
+        body.appendChild(Object.assign(document.createElement('div'), { className: 'tg', textContent: type }));
+        // fix #3: on CPU, split per-core rows into a collapsed "show N more"
+        const primary = [], extra = [];
+        list.forEach(s => (cls === 'cpu' && isCoreRow(s) ? extra : primary).push(s));
+        primary.forEach(s => body.appendChild(rowEl(s, type)));
+        if (extra.length) {
+          const box = document.createElement('div'); box.className = 'extra';
+          extra.forEach(s => box.appendChild(rowEl(s, type)));
+          const btn = document.createElement('button'); btn.className = 'morebtn';
+          btn.textContent = `+ ${extra.length} per-core ${type.toLowerCase()}`;
+          btn.onclick = () => { box.classList.toggle('open'); btn.textContent =
+            box.classList.contains('open') ? `− hide per-core ${type.toLowerCase()}` : `+ ${extra.length} per-core ${type.toLowerCase()}`; };
+          body.appendChild(btn); body.appendChild(box);
+        }
+      });
+      p.appendChild(body); return p;
+    }
+    function rowEl(s, type) {
+      const st = s.status, showBar = (s.type === 'Load' || s.type === 'Level' || s.type === 'Control') && s.raw != null;
+      const mm = (s.min != null && s.min !== '' && type === 'Temperature') ? `<span class="mm">${s.min} / ${s.max}</span>` : '';
+      const r = document.createElement('div'); r.className = `row ${st}`;
+      r.innerHTML = `<span class="glyph-stat g-${st}" title="${SQ._STLABEL[st]}">${st === 'info' ? '' : STGLYPH[st]}</span>
+        <span class="rn">${s.text}${mm}</span><span class="rv">${s.value ?? '—'}</span>
+        ${showBar ? `<div class="bar ${st==='warn'?'warn':st==='crit'?'crit':''}"><i style="width:${Math.max(0,Math.min(100,s.raw))}%"></i></div>` : ''}`;
+      return r;
+    }
+    window.renderPanels = function (sensors) {
+      const panels = document.querySelector('#panels'); panels.innerHTML = '';
+      const byHw = new Map();
+      sensors.forEach(s => { if (s.cls === 'nic') return; (byHw.get(s.hw) || byHw.set(s.hw, []).get(s.hw)).push(s); });
+      const order = ['cpu','gpu','igpu','mem','dimm','nvme','disk','mb','other'];
+      [...byHw.entries()].sort((a,b) => order.indexOf(a[1][0].cls) - order.indexOf(b[1][0].cls))
+        .forEach(([hw, ss]) => panels.appendChild(panelEl(hw, ss, false)));
+      // network collapse: one panel, active interfaces only
+      const nics = sensors.filter(s => s.cls === 'nic');
+      const active = new Set(nics.filter(s => s.type === 'Throughput' && s.raw > 0).map(s => s.hw));
+      const net = nics.filter(s => active.has(s.hw));
+      if (net.length) panels.appendChild(panelEl('Network', net, true));
+      document.querySelector('#subtag').textContent = `${byHw.size + (net.length ? 1 : 0)} components`;
+    };
+
     async function tick(force) {
       if (state.paused && !force) return;
       try {
