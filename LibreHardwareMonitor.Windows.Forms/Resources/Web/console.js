@@ -720,9 +720,14 @@
         const action = mode === 'cards' ? (pinned ? 'unpin' : 'pin') : (hidden ? 'show' : 'hide');
         const label = mode === 'cards' ? (pinned ? 'Unpin' : 'Pin') : sensorButtonLabel(s);
         const badge = DEFAULT_HIDDEN_SENSOR_IDS.has(s.id) ? '<span class="mini-badge">default</span>' : '';
+        const styleSel = mode === 'cards'
+          ? `<select class="style-select" data-action="style" data-id="${esc(s.id)}">
+              ${['auto','gauge','number','graph'].map(v =>
+                `<option value="${v}"${(state.dashboard.cardStyle[s.id] || 'auto') === v ? ' selected' : ''}>${v}</option>`).join('')}
+            </select>` : '';
         return `<div class="sensor-choice ${hidden ? 'is-hidden' : ''}">
           <div><b>${esc(s.text)}</b> ${badge}<span>${esc(s.hw)} · ${esc(s.type)} · ${esc(s.value ?? '-')}</span><code>${esc(s.id)}</code></div>
-          <button class="iconbtn" data-action="${action}" data-id="${esc(s.id)}">${label}</button>
+          ${styleSel}<button class="iconbtn" data-action="${action}" data-id="${esc(s.id)}">${label}</button>
         </div>`;
       }).join('') || '<div class="empty-note">No sensors</div>';
     }
@@ -740,6 +745,10 @@
         return `<div class="order-row">
           <div><b>${esc(card?.title || h.s.text)}</b><span>${esc(h.s.hw)} · ${esc(h.s.value ?? '-')}</span></div>
           <input class="title-input" data-action="rename" data-id="${esc(id)}" value="${esc(card?.title || '')}" placeholder="${esc(h.s.text)}">
+          <select class="style-select" data-action="style" data-id="${esc(id)}">
+            ${['auto','gauge','number','graph'].map(v =>
+              `<option value="${v}"${(state.dashboard.cardStyle[id] || 'auto') === v ? ' selected' : ''}>${v}</option>`).join('')}
+          </select>
           <button class="iconbtn" data-action="pin-up" data-id="${esc(id)}" ${i <= 0 ? 'disabled' : ''}>Up</button>
           <button class="iconbtn" data-action="pin-down" data-id="${esc(id)}" ${i >= currentOrder.length - 1 ? 'disabled' : ''}>Down</button>
           <button class="iconbtn" data-action="unpin" data-id="${esc(id)}">Remove</button>
@@ -836,6 +845,13 @@
     $('#customizeDrawer').addEventListener('change', e => {
       const input = e.target.closest('[data-action="rename"]');
       if (input) renamePinned(input.dataset.id, input.value);
+      const sel = e.target.closest('[data-action="style"]');
+      if (sel) {
+        const v = sel.value;
+        if (v === 'auto') delete state.dashboard.cardStyle[sel.dataset.id];
+        else state.dashboard.cardStyle[sel.dataset.id] = v;
+        commitDashboard();
+      }
     });
     $('#customizeDrawer').addEventListener('click', e => {
       const btn = e.target.closest('[data-action]');
