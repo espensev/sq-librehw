@@ -559,7 +559,7 @@
         `<div class="range"><b>${esc(rmin)}</b> &rarr; <b>${esc(rmax)}</b></div>`;
     }
     function cardEl(h, pinned) {
-      const { n, unit } = SQ.splitValue(h.s.value);
+      const { n, unit } = h.s.raw == null ? { n: '—', unit: '' } : SQ.splitValue(h.s.value);
       const u = unit || h.unit || '';
       const st = h.status;
       const kind = SQ.kindOf(h.s.type);
@@ -574,7 +574,7 @@
         ? `<span class="chip-state g-${st}">${STGLYPH[st]} ${STLABEL[st]}</span>` : '';
       const trend = SQ.trendFor(h.s.id, kind);
       const trendHtml = trend
-        ? `<span class="trend">${trend.direction === 'rising' ? '&#8599;' : '&#8600;'} ${Math.abs(trend.rate).toFixed(trend.rate >= 10 ? 0 : 2)} ${esc(trend.rateUnit)}</span>`
+        ? `<span class="trend">${trend.direction === 'rising' ? '&#8599;' : '&#8600;'} ${Math.abs(trend.rate).toFixed(Math.abs(trend.rate) >= 10 ? 0 : 2)} ${esc(trend.rateUnit)}</span>`
         : '<span class="trend"></span>';
       const ceil = fx.arc && !h.bounded ? `<span class="ceil">/ ${esc(String(range[1]))}</span>` : '';
       const cell = document.createElement('div');
@@ -632,7 +632,7 @@
         : '';
       const r = document.createElement('div'); r.className = `row ${st}`;
       r.innerHTML = `<span class="glyph-stat g-${st}" title="${STLABEL[st]}">${st === 'info' ? '' : STGLYPH[st]}</span>
-        <span class="rn">${esc(s.text)}${mm}</span><span class="rv">${esc(s.value ?? '-')}</span>
+        <span class="rn">${esc(s.text)}${mm}</span><span class="rv">${esc(s.raw == null ? '—' : (s.value ?? '-'))}</span>
         ${showBar ? `<div class="bar ${st==='warn'?'warn':st==='crit'?'crit':''}"><i style="width:${Math.max(0,Math.min(100,s.raw))}%"></i></div>` : ''}`;
       const rctl = document.createElement('span');
       rctl.className = 'row-ctl';

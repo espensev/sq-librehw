@@ -103,7 +103,7 @@ section{margin-top:30px}
 .cell .body{display:flex;align-items:center;gap:13px;margin-top:8px}
 .arc{width:78px;height:78px;flex:none}
 .arc text{font-family:var(--disp);fill:var(--ink)}
-.cell{min-height:118px;border-radius:8px}
+.cell{border-radius:8px}
 .cell.pinned{border-color:color-mix(in srgb,var(--lime) 28%,var(--line))}
 .readout{min-width:0}
 .readout .big{display:flex;align-items:baseline;gap:4px;font-family:var(--disp);font-weight:600;line-height:1}
