@@ -148,11 +148,12 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
 - **Per-core row collapse** (CPU panels only): individual `Core #N` / hybrid-Intel `P-Core #N` /
   `E-Core #N` rows (`isCoreRow`, excluding Average/Max/Total summaries) are tucked behind a
   "+ N per-core …" toggle per sensor type, so a 16-core CPU doesn't dominate the panel.
-- **Persistence** (all via `localStorage`, keys prefixed `sq.`): theme (`sq.theme`, `dark`/`light`,
-  default dark), poll rate (`sq.rate`, seconds, default 2), pause state (`sq.paused`), and each
-  hardware panel's collapsed/expanded state (`sq.panel.<hardware name>`) all persist across page
-  reloads. A stored per-panel choice always wins over the code's default-collapsed hint (e.g. the
-  Network panel defaults collapsed only until the user expands it once).
+- **Persistence** (all via `localStorage`): theme (`dark`/`light`, default dark), poll rate
+  (seconds, default 2), pause state, and each hardware panel's collapsed/expanded state persist
+  across page reloads as fields of the single versioned `sq.dashboard.v1` object — see the
+  "Consolidated state" bullet below for the one-time migration off the legacy loose `sq.*` keys.
+  A stored per-panel choice always wins over the code's default-collapsed hint (e.g. the Network
+  panel defaults collapsed only until the user expands it once; tri-state map, absent = default).
 - **Dashboard customization state** (`sq.dashboard.v1`): hidden-sensor choices, default-hidden
   overrides, pinned cards, pinned/panel order, and the optional card-graph toggle are browser-local.
   This is intentionally separate from raw telemetry: hiding or pinning affects only the web
