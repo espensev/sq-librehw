@@ -99,7 +99,7 @@ section{margin-top:30px}
 .cell.s-ok{--c:var(--ok)} .cell.s-warn{--c:var(--warn)} .cell.s-crit{--c:var(--crit)} .cell.s-info{--c:var(--cy)} .cell.s-off{--c:var(--off)}
 .cell .k{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .cell .k .name{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
-.cell .k .src{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.05em}
+.cell .src{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.05em}
 .cell .body{display:flex;align-items:center;gap:13px;margin-top:8px}
 .arc{width:78px;height:78px;flex:none}
 .arc text{font-family:var(--disp);fill:var(--ink)}
@@ -239,7 +239,7 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
   .sec-head .tag{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
   .pfd{grid-template-columns:1fr}
   .cell .body{gap:10px}
-  .cell .k .src{max-width:118px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cell .src{max-width:118px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .readout .big .v{font-size:28px}
   .grid{column-width:auto;column-count:1}
   .order-row{grid-template-columns:minmax(0,1fr) auto auto;align-items:start}
