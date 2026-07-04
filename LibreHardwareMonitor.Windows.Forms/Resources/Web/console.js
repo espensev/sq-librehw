@@ -492,16 +492,6 @@
       state.visibleSensors = sensors;
 
       const alarm = sensors.filter(s => s.status !== 'info' && s.status !== 'off');
-      let worst = 'ok'; alarm.forEach(s => { if (SQ.RANK[s.status] > SQ.RANK[worst]) worst = s.status; });
-      const vmap = { ok:['GO','s-ok','ok'], warn:['WATCH','s-warn','warn'], crit:['CRITICAL','s-crit','crit'] };
-      const [vt, vc, vk] = vmap[worst];
-      $('#vlamp').className = 'lamp big ' + vc;
-      $('#vstate').textContent = vt; $('#vstate').style.color = `var(--${vk})`;
-      const counts = { ok:0, warn:0, crit:0 }; alarm.forEach(s => counts[s.status] != null && counts[s.status]++);
-      $('#census').innerHTML =
-        `<span class="chip"><span class="lamp s-ok"></span>OK <b>${counts.ok}</b></span>` +
-        `<span class="chip"><span class="lamp s-warn"></span>WATCH <b>${counts.warn}</b></span>` +
-        `<span class="chip"><span class="lamp s-crit"></span>CRIT <b>${counts.crit}</b></span>`;
       renderPinnedCards(sensors, limits);
       renderPFD(sensors, limits);
       renderPlacard(alarm);
