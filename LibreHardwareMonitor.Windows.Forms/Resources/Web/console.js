@@ -153,7 +153,7 @@
         if (h.bounded) { const [lo, hi] = h.bounded; arc = arcSVG((h.s.raw - lo) / (hi - lo)); }
         const rmin = SQ.splitValue(h.s.min).n, rmax = SQ.splitValue(h.s.max).n;
         const range = (h.s.min != null && h.s.min !== '')
-          ? `<div class="range">min <b>${rmin}</b> &rarr; max <b>${rmax}</b> ${u}</div>` : '';
+          ? `<div class="range"><b>${rmin}</b> &rarr; <b>${rmax}</b></div>` : '';
         const cell = document.createElement('div');
         cell.className = `cell s-${st}`;
         cell.innerHTML =
