@@ -107,6 +107,7 @@
     };
 
     function render(data) {
+      const host = data.Children[0].Text;
       const sensors = SQ.flatten(data.Children[0]);
       const limits = SQ.deriveLimits(sensors);
       sensors.forEach(s => s.status = SQ.statusOf(s, limits));
@@ -124,15 +125,17 @@
       if (window.renderPFD) window.renderPFD(sensors, limits);
       if (window.renderPlacard) window.renderPlacard(alarm);
       if (window.renderPanels) window.renderPanels(sensors);
-      $('#foot-left').textContent = `LibreHardwareMonitor ${data.Version} · host ${data.Text} · GET /data.json · ${state.rate}s poll`;
+      $('#host').textContent = host;
+      $('#foot-left').textContent = `LibreHardwareMonitor ${data.Version} · host ${host} · GET /data.json · ${state.rate}s poll`;
       $('#freshtxt').textContent = 'updated ' + new Date().toLocaleTimeString();
       $('#freshdot').className = 'lamp s-ok';
     }
 
-    async function tick() {
-      if (state.paused) return;
+    async function tick(force) {
+      if (state.paused && !force) return;
       try {
         const r = await fetch('data.json', { cache: 'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
         const data = await r.json();
         state.last = data; state.stale = false; render(data);
       } catch (e) {
@@ -159,6 +162,6 @@
     paintPause();
 
     window.SQ._STLABEL = STLABEL;      // shared with render tasks
-    tick(); schedule();
+    tick(true); schedule();
   }
 })();
