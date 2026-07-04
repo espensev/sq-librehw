@@ -111,13 +111,25 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
     (`SQ.deriveLimits`, keyed by `hwid`) over the static band when present. Any sensor whose text
     looks like a limit/threshold readout itself (`isLimitSensor`: "limit", "warning temperature",
     "critical temperature", "resolution") is always `info`, never alarmed — it is metadata, not a
-    live reading.
+    live reading. In the subsystem panels these metadata rows are grouped under `Limits`, not
+    `Temperature`, so drive warning/critical thresholds do not read as fake live drive temperatures.
   - **SSD/NVMe "Life" level** sensors (`type === 'Level'`, inverted thresholds): `< 5` -> `crit`,
     `< 20` -> `warn`, else `ok`.
   - Everything else (Load, Power, Clock, Voltage, Current, Fan, Data throughput, …) is `info` —
     displayed but never drives the verdict lamp or census.
   - The masthead verdict lamp and OK/WATCH/CRIT census are derived from the worst non-`info`,
     non-`off` status across all sensors (`SQ.RANK` ordering `crit > warn > ok > info/off`).
+- **Dashboard-only noisy sensor suppression** (`console.js` `SQ.isDashboardSuppressedSensor`):
+  the live Nuvoton NCT6701D board exposes known-bad local temperature inputs
+  `/lpc/nct6701d/0/temperature/3`, `/temperature/5`, and `/temperature/6`; the web dashboard hides
+  them before hero/card rendering so they do not headline the Board panel. Numbered NVMe aux
+  temperature rows such as `Temperature #2` are hidden until dashboard-observed motion proves they
+  move by more than 1 C across at least five poll samples, because runtime CSV evidence showed these
+  static rows can otherwise masquerade as the hottest drive temperature. This is intentionally
+  client-side only: `data.json`, `/metrics`, CSV logging, and the desktop sensor tree still expose
+  the raw LibreHardwareMonitor readings for auditability.
+- **Background treatment** (`console.css`): the web console keeps the subtle radial cockpit glow but
+  no longer draws the page-level grid background.
 - **Auto-heuristic hero gauges** (`SQ.pickHero`): the top Primary Flight Display strip
   auto-selects up to 9 headline metrics with no per-machine config — CPU package temp (AMD
   `Tctl/Tdie` or Intel `CPU Package`)/Total Load/Package Power when a `cpu`-class sensor is present,
@@ -141,6 +153,14 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   hardware panel's collapsed/expanded state (`sq.panel.<hardware name>`) all persist across page
   reloads. A stored per-panel choice always wins over the code's default-collapsed hint (e.g. the
   Network panel defaults collapsed only until the user expands it once).
+- **Dashboard customization state** (`sq.dashboard.v1`): hidden-sensor choices, default-hidden
+  overrides, pinned cards, pinned/panel order, and the optional card-graph toggle are browser-local.
+  This is intentionally separate from raw telemetry: hiding or pinning affects only the web
+  dashboard projection, not `data.json`, `/metrics`, CSV logging, or the desktop sensor tree.
+- **Optional graphs and smoothed card motion**: the row bars remain the dense exact readout. Card
+  sparklines are opt-in and use only the current browser session's recent poll history. Hero gauge
+  arcs are visually damped between polls so fast-moving values do not jump as hard at a 2-second
+  refresh cadence, while the displayed numeric value remains the latest `data.json` value.
 - **Self-test**: `webtests/console.test.html` loads `console.js` in a `window.SQ_NO_BOOT = true`
   harness (so it exposes the pure `SQ` model functions without booting the live poller/DOM
   renderer against a real page), fetches the fixture `webtests/fixture.data.json`, and asserts

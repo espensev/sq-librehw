@@ -28,15 +28,34 @@
   const limits = S.deriveLimits(sensors);
   const byId = id => sensors.find(s => s.id === id);
   const st = id => S.statusOf(byId(id), limits);
+  const storage = value => {
+    let slot = value;
+    return { getItem: () => slot, setItem: (k, v) => { slot = v; } };
+  };
 
   // cpu Tctl 65.5 -> ok (< 85)
   eq('cpu Tctl ok', st('/amdcpu/0/temperature/2'), 'ok');
   // motherboard stray 89°C -> info (never alarmed)
   eq('mb stray info', st('/lpc/nct6701d/0/temperature/5'), 'info');
+  eq('mb stray suppressed from dashboard', S.isDashboardSuppressedSensor(byId('/lpc/nct6701d/0/temperature/5')), true);
+  eq('visible sensors hide mb stray', S.visibleSensors(sensors).some(s => s.id === '/lpc/nct6701d/0/temperature/5'), false);
   // nvme working temp 52.9 with self-limits present -> ok (warn 84)
   eq('nvme temp ok', st('/nvme/2/temperature/2'), 'ok');
+  S.resetSensorMotion();
+  eq('nvme static aux temp suppressed from dashboard',
+    S.isDashboardSuppressedSensor({cls:'nvme', type:'Temperature', text:'Temperature #2', rawMin:52.85, rawMax:52.85, id:'/nvme/2/temperature/2'}), true);
+  S.trackSensorMotion([52.4, 52.5, 52.6, 52.4, 52.7].map(raw => ({id:'/nvme/2/temperature/2', raw})));
+  eq('nvme low-motion aux temp remains suppressed',
+    S.isDashboardSuppressedSensor({cls:'nvme', type:'Temperature', text:'Temperature #2', id:'/nvme/2/temperature/2'}), true);
+  S.resetSensorMotion();
+  S.trackSensorMotion([45, 46, 47, 50, 52.85].map(raw => ({id:'/nvme/2/temperature/2', raw})));
+  eq('nvme moving aux temp remains visible',
+    S.isDashboardSuppressedSensor({cls:'nvme', type:'Temperature', text:'Temperature #2', rawMin:45, rawMax:52.85, id:'/nvme/2/temperature/2'}), false);
+  S.resetSensorMotion();
   // nvme "Warning Temperature" is a limit sensor -> info
   eq('nvme limit info', st('/nvme/2/temperature/10'), 'info');
+  eq('nvme limit display type', S.displayType(byId('/nvme/2/temperature/10')), 'Limits');
+  eq('nvme real temp display type', S.displayType(byId('/nvme/2/temperature/2')), 'Temperature');
   // load is info, not alarm
   eq('cpu load info', st('/amdcpu/0/load/0'), 'info');
 
@@ -50,6 +69,19 @@
   eq('hero has CPU Temp', hero.some(h => h.label === 'CPU Temp'), true);
   eq('CPU Power unbounded', !!hero.find(h => h.label === 'CPU Power')?.bounded, false);
   eq('CPU Temp bounded', !!hero.find(h => h.label === 'CPU Temp')?.bounded, true);
+
+  eq('dashboard state bad json falls back', S.loadDashboardState(storage('{bad')).hiddenSensorIds, []);
+  const showDefault = S.normalizeDashboardState({shownDefaultHiddenSensorIds:['/lpc/nct6701d/0/temperature/5']});
+  eq('default hidden can be shown', S.visibleSensors(sensors, showDefault).some(s => s.id === '/lpc/nct6701d/0/temperature/5'), true);
+  const explicitHidden = S.normalizeDashboardState({hiddenSensorIds:['/amdcpu/0/load/0']});
+  eq('explicit hidden sensor removed', S.visibleSensors(sensors, explicitHidden).some(s => s.id === '/amdcpu/0/load/0'), false);
+  const pinned = S.normalizeDashboardState({pinnedCards:[
+    {id:'/amdcpu/0/load/0', title:'CPU Work'},
+    {id:'/missing/sensor', title:'Missing'}
+  ], pinnedOrder:['/missing/sensor','/amdcpu/0/load/0']});
+  const cards = S.resolvePinnedCards(sensors, pinned, limits);
+  eq('resolve pinned ignores missing', cards.map(c => c.label), ['CPU Work']);
+  eq('apply panel order', S.applyOrder([{key:'a',index:0},{key:'b',index:1}], ['b'], x => x.key).map(x => x.key), ['b','a']);
 
   console.log(`SELFTEST ${fail === 0 ? 'PASS' : 'FAIL'} ${pass}/${pass+fail}`);
   out.textContent = log.join('\n') + `\n\nSELFTEST ${fail === 0 ? 'PASS' : 'FAIL'} ${pass}/${pass+fail}`;
