@@ -385,7 +385,74 @@
     return H.slice(0, 12);
   };
 
+  // Dashboard Templates Router
+  const ROUTER = {
+    routes: ['main', 'gaming', 'storage'],
+    currentRoute: null,
+    storageKeyBase: 'sq.dashboard.v1',
+    init() {
+      window.addEventListener('hashchange', () => this.navigate());
+      this.navigate();
+    },
+    storageKey(route) {
+      return `sq.dashboard.${route || this.currentRoute || 'main'}`;
+    },
+    getRouteFromHash() {
+      const hash = window.location.hash.slice(2);
+      if (this.routes.includes(hash)) return hash;
+      return 'main';
+    },
+    navigate() {
+      const route = this.getRouteFromHash();
+      if (this.currentRoute === route) return;
+      const prevRoute = this.currentRoute;
+      this.currentRoute = route;
+      this.updateUI();
+      document.title = `${this.label(route)} — SQ Telemetry Console`;
+      if (window.SQ_ROUTER_CALLBACK) window.SQ_ROUTER_CALLBACK(route, prevRoute);
+    },
+    label(route) {
+      const labels = { main: 'Main', gaming: 'Gaming', storage: 'Storage' };
+      return labels[route] || 'Dashboard';
+    },
+    updateUI() {
+      document.querySelectorAll('.dash-tab').forEach(tab => {
+        const isActive = tab.dataset.route === this.currentRoute;
+        tab.classList.toggle('active', isActive);
+        if (isActive) {
+          tab.setAttribute('aria-current', 'page');
+        } else {
+          tab.removeAttribute('aria-current');
+        }
+      });
+    },
+    link(route) {
+      window.location.hash = '/' + route;
+    }
+  };
+
+  // Override SQ storage functions to use route-scoped keys
+  const originalLoad = SQ.loadDashboardState;
+  const originalSave = SQ.saveDashboardState;
+  SQ.loadDashboardState = function(storage) {
+    const key = ROUTER.storageKey();
+    try {
+      const raw = storage.getItem(key);
+      return raw ? SQ.normalizeDashboardState(JSON.parse(raw)) : SQ.defaultDashboardState();
+    } catch {
+      return SQ.defaultDashboardState();
+    }
+  };
+  SQ.saveDashboardState = function(storage, value) {
+    const key = ROUTER.storageKey();
+    const state = SQ.normalizeDashboardState(value);
+    if (storage && typeof storage.setItem === 'function')
+      storage.setItem(key, JSON.stringify(state));
+    return state;
+  };
+
   window.SQ = SQ;
+  window.ROUTER = ROUTER;
   if (!window.SQ_NO_BOOT) {
     const $ = s => document.querySelector(s);
     const STLABEL = { ok:'OK', warn:'WATCH', crit:'CRIT', info:'INFO', off:'IDLE' };
@@ -1009,5 +1076,22 @@
     paintGraphs();
     window.SQ._STLABEL = STLABEL;
     tick(true); schedule();
+
+    // Initialize router after initial render
+    ROUTER.init();
+
+    // Handle route changes with crossfade
+    window.SQ_ROUTER_CALLBACK = function(newRoute, prevRoute) {
+      const main = document.querySelector('main');
+      if (!main) return;
+      main.classList.add('route-changing');
+      setTimeout(() => {
+        state.dashboard = SQ.loadDashboardState(localStorage);
+        paintPause();
+        paintGraphs();
+        if (state.lastData) render(state.lastData);
+        setTimeout(() => main.classList.remove('route-changing'), 50);
+      }, 150);
+    };
   }
 })();
