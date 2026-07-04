@@ -139,7 +139,8 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   GPU Core Temp/Junction/Load/Package Power when a `gpu`-class (NVIDIA) sensor is present, overall
   RAM Load (the `Total Memory` node), the single hottest non-limit NVMe temperature, and — **fans
   first** (v2) — up to 4 active fans (`Type === 'Fan'`, `raw > 0`, sorted rpm-descending), with the
-  hero cap raised from 9 to **12** to fit them. Selection keys on standard LHM sensor names; a gauge
+  hero cap raised from 9 to **12**; on a maximal host (all 9 base heroes present) the slowest
+  active fan can still fall past the cap — pin it if you want it guaranteed. Selection keys on standard LHM sensor names; a gauge
   is simply omitted (no error) if a given host names that sensor differently. A fan that spun
   earlier this session but currently reads 0 rpm is a real reading and stays visible at 0 if already
   selected (that's signal, not noise, worth keeping); a `null` fan reading is never counted as
