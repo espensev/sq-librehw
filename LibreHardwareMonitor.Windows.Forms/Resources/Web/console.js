@@ -131,6 +131,43 @@
       $('#freshdot').className = 'lamp s-ok';
     }
 
+    const STGLYPH = { ok:'●', warn:'▲', crit:'✕', info:'·', off:'○' };
+    function arcSVG(frac) {
+      const R = 30, C = 2 * Math.PI * R, len = C * 0.75;
+      const off = len * (1 - Math.max(0, Math.min(1, frac)));
+      return `<svg class="arc" viewBox="0 0 78 78"><g transform="rotate(135 39 39)">
+        <circle cx="39" cy="39" r="${R}" fill="none" stroke="var(--line-soft)" stroke-width="6"
+          stroke-linecap="round" stroke-dasharray="${len} ${C}"/>
+        <circle cx="39" cy="39" r="${R}" fill="none" stroke="var(--c)" stroke-width="6" stroke-linecap="round"
+          stroke-dasharray="${len} ${C}" stroke-dashoffset="${off}"
+          style="transition:stroke-dashoffset .5s ease"/></g></svg>`;
+    }
+    window.renderPFD = function (sensors, limits) {
+      const H = SQ.pickHero(sensors, limits), pfd = document.querySelector('#pfd');
+      pfd.innerHTML = '';
+      H.forEach(h => {
+        const { n, unit } = SQ.splitValue(h.s.value);
+        const u = unit || h.unit || '';
+        const st = h.status;
+        let arc = '';
+        if (h.bounded) { const [lo, hi] = h.bounded; arc = arcSVG((h.s.raw - lo) / (hi - lo)); }
+        const rmin = SQ.splitValue(h.s.min).n, rmax = SQ.splitValue(h.s.max).n;
+        const range = (h.s.min != null && h.s.min !== '')
+          ? `<div class="range">min <b>${rmin}</b> &rarr; max <b>${rmax}</b> ${u}</div>` : '';
+        const cell = document.createElement('div');
+        cell.className = `cell s-${st}`;
+        cell.innerHTML =
+          `<div class="k"><span class="name">${h.label}</span><span class="src">${h.s.hw.split(' ').slice(0,2).join(' ')}</span></div>
+           <div class="body">${arc}<div class="readout">
+             <div class="big"><span class="v">${n}</span><span class="u">${u}</span></div>
+             ${range}
+             <div class="tags"><span class="tag-stat g-${st}">${STGLYPH[st]} ${(window.SQ._STLABEL)[st]}</span></div>
+           </div></div>`;
+        pfd.appendChild(cell);
+      });
+      document.querySelector('#pfdtag').textContent = `${H.length} auto-selected`;
+    };
+
     async function tick(force) {
       if (state.paused && !force) return;
       try {
