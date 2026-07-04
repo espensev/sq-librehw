@@ -20,7 +20,7 @@
 - Keyboard reorder must exist at all times: the drawer may only be deleted (Task C5) after expansion ▲▼ buttons work (C1).
 - Do NOT kill the operator's running LibreHardwareMonitor instance for builds — build to a temp output directory (`-o`) when the default output is locked; live relaunch is an operator step.
 - Commits: `feat(web): …` / `fix(web): …` / `docs(web): …`, one per task.
-- Phase A+B commit to branch `feature/web-dashboard-customization` (current trunk). Phase C on branch `feat/web-card-first`, Phase D on branch `feat/web-row-subgroup-order`, both cut from trunk after B2. Phase E does not exist in this plan (parked pending operator go — needs its own spec+plan because it regenerates the data.json golden).
+- Phase A+B commit to `master` — the trunk for this work since the concurrent 2026-07-04 merge `2128e33` (the former `feature/web-dashboard-customization` branch was merged in and deleted). Phase C on branch `feat/web-card-first`, Phase D on branch `feat/web-row-subgroup-order`, both cut from master after B2. Phase E does not exist in this plan (parked pending operator go — needs its own spec+plan because it regenerates the data.json golden).
 
 ---
 
