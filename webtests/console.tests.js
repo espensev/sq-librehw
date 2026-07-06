@@ -64,6 +64,23 @@
     S.resetSensorMotion();
     const explicitHidden = S.normalizeDashboardState({hiddenSensorIds:['/amdcpu/0/load/0']});
     eq('explicit hidden sensor removed', S.visibleSensors(sensors, explicitHidden).some(s => s.id === '/amdcpu/0/load/0'), false);
+
+    // --- Sensors popover model helpers (Phase B / Slice 4B) ---
+    S.resetSensorMotion();
+    const popState = S.normalizeDashboardState({
+      hiddenSensorIds: ['/amdcpu/0/load/0'],
+      sensorAliases: { '/amdcpu/0/temperature/2': 'Cpu Core Alias' }
+    });
+    const sst = S.sensorSearchText(byId('/amdcpu/0/temperature/2'), popState);
+    eq('sensorSearchText includes id', sst.includes('/amdcpu/0/temperature/2'), true);
+    eq('sensorSearchText includes alias (lowercased)', sst.includes('cpu core alias'), true);
+    eq('sensorSearchText is lowercased', sst === sst.toLowerCase(), true);
+    eq('sensorVisibility hidden', S.sensorVisibility(byId('/amdcpu/0/load/0'), popState), 'hidden');
+    eq('sensorVisibility visible', S.sensorVisibility(byId('/amdcpu/0/temperature/2'), popState), 'visible');
+    eq('sensorVisibility offscreen (static mb temp)', S.sensorVisibility(byId('/lpc/nct6701d/0/temperature/5'), popState), 'offscreen');
+    eq('hiddenSensorCount counts hidden+offscreen', S.hiddenSensorCount(sensors, popState) >= 2, true);
+    eq('hiddenSensorCount ignores plainly-visible-only list', S.hiddenSensorCount([byId('/amdcpu/0/temperature/2')], popState), 0);
+    S.resetSensorMotion();
     const pinned = S.normalizeDashboardState({pinnedCards:[
       {id:'/amdcpu/0/load/0', title:'CPU Work'},
       {id:'/missing/sensor', title:'Missing'}

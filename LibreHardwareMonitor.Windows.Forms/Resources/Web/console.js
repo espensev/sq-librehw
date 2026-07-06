@@ -259,6 +259,22 @@
   SQ.isDashboardSuppressedSensor = function (s, state) {
     return SQ.isSensorHidden(s, state) || SQ.isStaticDriveAuxTemp(s) || SQ.isStaticMbTemp(s);
   };
+  // --- Sensors popover model (Slice 4B): pure, DOM-free helpers ---
+  SQ.sensorSearchText = function (s, state) {
+    if (!s) return '';
+    const alias = SQ.sensorAlias(state, s.id);
+    const val = s.value != null ? s.value : '';
+    return `${s.hw || ''} ${s.text || ''} ${alias} ${s.type || ''} ${val} ${s.id || ''}`.toLowerCase();
+  };
+  SQ.sensorVisibility = function (s, state) {
+    if (SQ.isSensorHidden(s, state)) return 'hidden';
+    if (SQ.isStaticDriveAuxTemp(s) || SQ.isStaticMbTemp(s)) return 'offscreen';
+    return 'visible';
+  };
+  SQ.hiddenSensorCount = function (sensors, state) {
+    if (!Array.isArray(sensors)) return 0;
+    return sensors.reduce((n, s) => n + (SQ.sensorVisibility(s, state) !== 'visible' ? 1 : 0), 0);
+  };
   SQ.panelKey = function (hw, sensors) {
     const hwid = sensors && sensors.find(s => s.hwid)?.hwid;
     return hwid || ('hw:' + hw);
