@@ -974,8 +974,8 @@
         `<div class="k"><span class="name">${esc(label)}</span>${chip}</div>
          <div class="k2"><span class="src">${esc(source)}</span>${tIcon(kind)}</div>
          <div class="body">${arc}<div class="readout">
-           <div class="big"><span class="v">${esc(n)}</span><span class="u">${esc(u)}</span>${ceil}</div>
-           <div class="meta">${rangeMarkup(h.s) || '<div class="range"></div>'}${trendHtml}${ctrl ? `<span class="cmd">cmd ${esc(ctrl.value)}</span>` : ''}</div>
+           <div class="big"><span class="v">${esc(n)}</span><span class="u">${esc(u)}</span>${ceil}${ctrl ? `<span class="vcmd" title="commanded ${esc(ctrl.value)}">· ${esc(ctrl.value)}</span>` : ''}</div>
+           <div class="meta">${rangeMarkup(h.s) || '<div class="range"></div>'}${trendHtml}</div>
          </div></div>${fx.spark ? sparkAreaSVG(h.s, range) : ''}`;
       const showHide = !pinned;
       const ctl = document.createElement('div');
