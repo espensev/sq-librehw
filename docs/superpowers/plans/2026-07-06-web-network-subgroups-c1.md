@@ -1,5 +1,13 @@
 # C1 — Network Adapter Subgroups Implementation Plan
 
+> **STATUS: COMPLETE (2026-07-07).** Executed subagent-driven (TDD) on `feat/web-network-subgroups-c1`,
+> commits `e48173c..555e7ae` (merge pending final whole-branch review). All 7 tasks landed + task-reviewed
+> (0 Critical / 0 Important each). Gates: selftest 227/227, golden 42/42, `net472`+`net10.0-windows` Release
+> x64 builds 0/0, `git diff --check` clean. Live-verified in a real browser (dark+light, across reloads) on a
+> 37-NIC host: 5 active adapter panels, no-op guard holds, reorder/hide/restore all work, popover stays open on
+> Show, state persists, zero console errors. Follow-up candidate: idle-Show (see the card-truth verification log).
+> Execution ledger: `.superpowers/sdd/progress.md` (C1 section).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Break the single merged Network panel into one panel per network adapter, each reorderable (▲▼ + drag), hideable, and restorable from the masthead Sensors popover.

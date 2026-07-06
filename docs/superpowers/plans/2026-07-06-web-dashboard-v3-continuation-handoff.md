@@ -24,7 +24,17 @@
   `LibreHardwareMonitor.Windows.Forms/Resources/Web/{index.html,console.js,console.css}` —
   **rebuild the EXE for served changes to take effect, and stop the running EXE first (it locks the DLL/EXE).**
 
-**Next task: C1 — Network adapter subgroups.** Break the single merged Network panel into one subgroup per NIC.
+**C1 — Network adapter subgroups is DONE** (branch `feat/web-network-subgroups-c1`, `e48173c..555e7ae`,
+merge pending; execution record [`2026-07-06-web-network-subgroups-c1.md`](2026-07-06-web-network-subgroups-c1.md)).
+One panel per active adapter keyed by `s.hwid`, ▲▼/drag reorder (`netAdapterOrder`, no-op-guarded) + ⊘ hide
+(`hiddenNetAdapters`) + Sensors-popover restore (`showAdapter`), `panelOrder` kept nic-free, hidden-adapter
+sensors reported `offscreen`. selftest 227/227, golden 42/42, both Release x64 builds 0/0, live-verified both
+themes on a 37-NIC host (5 active panels), zero console errors. **Follow-up candidate:** idle-Show interaction
+(§11 C1 row). **Next task: D1 — card header grid + reserved action gutter** (v3-next-plan §4 row D1 / §5 Slice 6).
+
+<details><summary>C1 original brief (retained for reference)</summary>
+
+Break the single merged Network panel into one subgroup per NIC.
 
 - **Where:** `SQ.buildPanelItems` in `console.js:712`. It currently excludes NICs at `:716`
   (`if (s.cls === 'nic') return;`), then re-adds *all* active NIC sensors as one bucket at `:740`
@@ -72,6 +82,8 @@ labels/limits/sensor IDs in product code; raw LHM label + `SensorId` visible whe
 **Traps that will bite C1 specifically:** §12.2 reorder no-op guard (directly reusable), §12.3 inline-control
 keyboard reachability (adapter-header controls must be focusable or always-visible), §12.4 live-only
 ReferenceError gate, §12.5 the async-`<details>` / shared-expand-key / multi-tab-skew / MCP-lock gotchas.
+
+</details>
 
 ---
 
@@ -660,6 +672,7 @@ Reverse chronological; each phase has its own execution record in this folder.
 
 | Phase | What landed | Merge / commit |
 |---|---|---|
+| **C1** | Network adapter subgroups (Slice 5B). One subsystem panel per **active** adapter keyed by `s.hwid` (`SQ.netAdapterKey`/`SQ.buildNetAdapters`; `SQ.buildPanelItems` gained a `state` arg), deduped `#N` labels, own `#netsec`/`#netPanels` section. Always-visible ▲▼ (`moveAdapter`, no-op-guarded §12.2) + ⊘ hide; drag → `netAdapterOrder` via a new `endDrag` `#netPanels` branch; `movePanel` filtered to non-nic so `panelOrder` never absorbs adapter keys; hidden-adapter sensors report `offscreen`; hidden adapters restore from the Sensors popover (`showAdapter`, sig-gated). selftest 227/227 (+35), golden 42/42, both builds 0/0. Live-verified dark+light on a 37-NIC host (5 active panels), zero console errors. **Follow-up:** *idle-Show* — an adapter hidden while active then gone idle is un-hidden by Show but excluded from panels by the active filter until it transmits again (sensors stay in the popover; not a regression — idle adapters never rendered panels pre-C1). | `e48173c..555e7ae` (merge pending); `9443348` helpers + `cc156a5` grouping + `dfd0ddd` per-adapter items + `5b1dceb` offscreen + `b110b1a` render + `555e7ae` popover restore |
 | **B3** | Customize drawer removed after inline+popover parity. Parity re-assessment corrected the plan's gate: pinned-card reorder was **already** inline (expanded card `move-left`/`move-right` → `pinnedOrder`); only **panel** reorder was a real gap → added always-visible ▲▼ in the panel head + Subsystems "Reset order". Deleted `#customizeDrawer`/`#customizeScrim`/`#customize`, tabs, `renderCustomize`/`renderPinnedEditor`/`renderLayoutEditor`/`renderSensorRows`/`renamePinned`, drawer handlers, drawer CSS (shared `.iconbtn`/`.sensor-*` rules **split**, not deleted). | `e7ae6f0` (merge); `69252b4`+`f60fcda`+`4004822` |
 | **B2** | Explicit primary-card selection: `primaryCardsCustomized` boolean sentinel, seed-from-visible on first add, seeded heroes keep curated presentation, Auto reset in PFD header. | `106f91d` |
 | **B1** | Masthead Sensors popover: search (label/alias/hardware/type/`SensorId`), show/hide/pin/reset-hidden, hidden-count badge. Replaced drawer-only hidden discovery. | `8291c89` |
