@@ -53,8 +53,15 @@
     eq('CPU Temp bounded', !!hero.find(h => h.label === 'CPU Temp')?.bounded, true);
 
     eq('dashboard state bad json falls back', S.loadDashboardState(storage('{bad')).hiddenSensorIds, []);
-    const showDefault = S.normalizeDashboardState({shownDefaultHiddenSensorIds:['/lpc/nct6701d/0/temperature/5']});
-    eq('default hidden can be shown', S.visibleSensors(sensors, showDefault).some(s => s.id === '/lpc/nct6701d/0/temperature/5'), true);
+    S.resetSensorMotion();
+    for (let i = 0; i < 6; i++) S.trackSensorMotion([
+      { id: '/lpc/test/0/temperature/a', raw: [30,35,32,38,31,30][i] },
+      { id: '/lpc/test/0/temperature/b', raw: 50 }
+    ]);
+    eq('static mb temp suppressed', S.isStaticMbTemp({ cls: 'mb', type: 'Temperature', id: '/lpc/test/0/temperature/b' }), true);
+    eq('moving mb temp visible', S.isStaticMbTemp({ cls: 'mb', type: 'Temperature', id: '/lpc/test/0/temperature/a' }), false);
+    eq('non-mb temp unaffected', S.isStaticMbTemp({ cls: 'cpu', type: 'Temperature', id: '/x' }), false);
+    S.resetSensorMotion();
     const explicitHidden = S.normalizeDashboardState({hiddenSensorIds:['/amdcpu/0/load/0']});
     eq('explicit hidden sensor removed', S.visibleSensors(sensors, explicitHidden).some(s => s.id === '/amdcpu/0/load/0'), false);
     const pinned = S.normalizeDashboardState({pinnedCards:[

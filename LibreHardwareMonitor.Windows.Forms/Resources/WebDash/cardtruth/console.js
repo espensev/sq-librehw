@@ -2,11 +2,6 @@
 (function () {
   const SQ = {};
   const DASHBOARD_STORAGE_KEY = 'sq.dashboard.preview.cardtruth';
-  const DEFAULT_HIDDEN_SENSOR_IDS = new Set([
-    '/lpc/nct6701d/0/temperature/3',
-    '/lpc/nct6701d/0/temperature/5',
-    '/lpc/nct6701d/0/temperature/6',
-  ]);
   const SENSOR_MOTION = new Map();
   const SENSOR_HISTORY = new Map();
   const SMOOTH_FRACTIONS = new Map();
@@ -15,7 +10,6 @@
 
   SQ.RANK = { crit: 3, warn: 2, ok: 1, info: 0, off: -1 };
   SQ.DASHBOARD_STORAGE_KEY = DASHBOARD_STORAGE_KEY;
-  SQ.DEFAULT_HIDDEN_SENSOR_IDS = Array.from(DEFAULT_HIDDEN_SENSOR_IDS);
 
   SQ.classOf = function (sid) {
     if (!sid) return 'other';
@@ -109,7 +103,6 @@
     return {
       version: 1,
       hiddenSensorIds: [],
-      shownDefaultHiddenSensorIds: [],
       pinnedCards: [],
       panelOrder: [],
       pinnedOrder: [],
@@ -132,7 +125,6 @@
     return {
       version: 1,
       hiddenSensorIds: cleanStringList(value.hiddenSensorIds),
-      shownDefaultHiddenSensorIds: cleanStringList(value.shownDefaultHiddenSensorIds),
       pinnedCards: cleanPinnedCards(value.pinnedCards),
       panelOrder: cleanStringList(value.panelOrder),
       pinnedOrder: cleanStringList(value.pinnedOrder),
@@ -191,21 +183,16 @@
     const v = SQ.normalizeDashboardState(state).collapsedPanels[hw];
     return v == null ? !!defaultCollapsed : v === true;
   };
-  SQ.isDefaultHiddenSensorId = function (id) {
-    return DEFAULT_HIDDEN_SENSOR_IDS.has(id);
-  };
   SQ.isSensorHidden = function (s, state) {
     if (!s || !s.id) return false;
-    const cfg = SQ.normalizeDashboardState(state);
-    if (cfg.hiddenSensorIds.includes(s.id)) return true;
-    return DEFAULT_HIDDEN_SENSOR_IDS.has(s.id) && !cfg.shownDefaultHiddenSensorIds.includes(s.id);
+    return SQ.normalizeDashboardState(state).hiddenSensorIds.includes(s.id);
   };
   SQ.visibleSensors = function (sensors, state) {
     const cfg = SQ.normalizeDashboardState(state);
-    return sensors.filter(s => !SQ.isSensorHidden(s, cfg) && !SQ.isStaticDriveAuxTemp(s));
+    return sensors.filter(s => !SQ.isSensorHidden(s, cfg) && !SQ.isStaticDriveAuxTemp(s) && !SQ.isStaticMbTemp(s));
   };
   SQ.isDashboardSuppressedSensor = function (s, state) {
-    return SQ.isSensorHidden(s, state) || SQ.isStaticDriveAuxTemp(s);
+    return SQ.isSensorHidden(s, state) || SQ.isStaticDriveAuxTemp(s) || SQ.isStaticMbTemp(s);
   };
   SQ.panelKey = function (hw, sensors) {
     const hwid = sensors && sensors.find(s => s.hwid)?.hwid;
@@ -266,6 +253,11 @@
   };
   SQ.isStaticDriveAuxTemp = function (s) {
     if (!s || s.cls !== 'nvme' || s.type !== 'Temperature' || !/^temperature\s+#\d+$/i.test(s.text || '')) return false;
+    const m = SENSOR_MOTION.get(s.id);
+    return !m || m.count < 5 || (m.max - m.min) <= 1;
+  };
+  SQ.isStaticMbTemp = function (s) {
+    if (!s || s.cls !== 'mb' || s.type !== 'Temperature') return false;
     const m = SENSOR_MOTION.get(s.id);
     return !m || m.count < 5 || (m.max - m.min) <= 1;
   };
@@ -536,12 +528,7 @@
     function setSensorHidden(id, hidden) {
       const cfg = state.dashboard;
       cfg.hiddenSensorIds = cfg.hiddenSensorIds.filter(x => x !== id);
-      cfg.shownDefaultHiddenSensorIds = cfg.shownDefaultHiddenSensorIds.filter(x => x !== id);
-      if (hidden) {
-        if (!DEFAULT_HIDDEN_SENSOR_IDS.has(id)) cfg.hiddenSensorIds.push(id);
-      } else if (DEFAULT_HIDDEN_SENSOR_IDS.has(id)) {
-        cfg.shownDefaultHiddenSensorIds.push(id);
-      }
+      if (hidden) cfg.hiddenSensorIds.push(id);
       commitDashboard();
     }
     function pinSensor(id) {
@@ -811,14 +798,13 @@
         const pinned = state.dashboard.pinnedCards.some(c => c.id === s.id);
         const action = mode === 'cards' ? (pinned ? 'unpin' : 'pin') : (hidden ? 'show' : 'hide');
         const label = mode === 'cards' ? (pinned ? 'Unpin' : 'Pin') : sensorButtonLabel(s);
-        const badge = DEFAULT_HIDDEN_SENSOR_IDS.has(s.id) ? '<span class="mini-badge">default</span>' : '';
         const styleSel = mode === 'cards'
           ? `<select class="style-select" data-action="style" data-id="${esc(s.id)}">
               ${['auto','gauge','number','graph'].map(v =>
                 `<option value="${v}"${(state.dashboard.cardStyle[s.id] || 'auto') === v ? ' selected' : ''}>${v}</option>`).join('')}
             </select>` : '';
         return `<div class="sensor-choice ${hidden ? 'is-hidden' : ''}">
-          <div><b>${esc(s.text)}</b> ${badge}<span>${esc(s.hw)} · ${esc(s.type)} · ${esc(s.value ?? '-')}</span><code>${esc(s.id)}</code></div>
+          <div><b>${esc(s.text)}</b><span>${esc(s.hw)} · ${esc(s.type)} · ${esc(s.value ?? '-')}</span><code>${esc(s.id)}</code></div>
           ${styleSel}<button class="iconbtn" data-action="${action}" data-id="${esc(s.id)}">${label}</button>
         </div>`;
       }).join('') || '<div class="empty-note">No sensors</div>';
@@ -970,7 +956,6 @@
         }
         case 'reset-hidden':
           state.dashboard.hiddenSensorIds = [];
-          state.dashboard.shownDefaultHiddenSensorIds = [];
           commitDashboard();
           break;
         case 'reset-panels':
