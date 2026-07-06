@@ -8,6 +8,73 @@
 **Versioned-route spec:** [../../feature-web-dashboard-versioned-routes.md](../../feature-web-dashboard-versioned-routes.md)
 **Context-dashboard spec:** [../specs/2026-07-04-dashboard-templates.md](../specs/2026-07-04-dashboard-templates.md) (Main/Gaming/Storage — preserved coexist lane, see §3.1)
 
+## 0. Resume Brief — Start Here
+
+*Read this section alone to resume. §1–§12 below are reference detail.*
+
+**State (2026-07-06):**
+
+- `master` = `origin/master` = `adf1b13` (pushed, clean worktree). Product baseline is `e7ae6f0` (the B3
+  merge); `adf1b13` is this handoff refresh on top. No open branches or PRs.
+- Done + merged, keep as regression baseline: A1/A2 (suffix/fan clipping), **B1** masthead Sensors popover
+  (`8291c89`), **B2** explicit primary-card selection (`106f91d`), **B3** Customize drawer removal
+  (`e7ae6f0`). See §11 for the log.
+- App: `LibreHardwareMonitor.Windows.Forms.exe` serves `http://localhost:8085/` (stable) and
+  `/dash/cardtruth/` (temporary preview). Web assets are **embedded resources** in
+  `LibreHardwareMonitor.Windows.Forms/Resources/Web/{index.html,console.js,console.css}` —
+  **rebuild the EXE for served changes to take effect, and stop the running EXE first (it locks the DLL/EXE).**
+
+**Next task: C1 — Network adapter subgroups.** Break the single merged Network panel into one subgroup per NIC.
+
+- **Where:** `SQ.buildPanelItems` in `console.js:712`. It currently excludes NICs at `:716`
+  (`if (s.cls === 'nic') return;`), then re-adds *all* active NIC sensors as one bucket at `:740`
+  (`{ hw:'Network', key:'panel:network', ss: net }`); "active" = adapters that have a `Throughput` sensor
+  with `raw > 0` (`:738`).
+- **Do:** emit one panel item per adapter keyed by **`s.hwid`** — the stable per-NIC hardware id already
+  used at `:738-739`, *not* a re-parsed `/nic/{GUID}` string (this supersedes the older §5 "id prefix"
+  wording). Label from `s.hw`; dedupe duplicate adapter labels with the same `#N` pattern as `:727`. Apply
+  `netAdapterOrder` (order) and `hiddenNetAdapters` (hide) — both already normalized in state (`:151-152`
+  init, `:178-179` via `cleanStringList`). Hidden adapters must be restorable from the **Sensors popover**.
+- **Reuse, don't reinvent:** mirror the existing panel reorder plumbing — `moveKey`/`mergeOrder` +
+  `movePanel` (`console.js:846`) / `moveRow` (`:835`). **Carry the B3 no-op guard**
+  (`if (next === merged) return;`) into the adapter reorder mutator — per §12.2 this bug recurs on every new
+  reorder surface.
+- **Keep it testable:** `SQ.buildPanelItems` is a pure, DOM-free helper (in the `SQ.*` block above
+  `window.SQ = SQ` at `:744`; the selftest loads it with `SQ_NO_BOOT`). Add adapter-keying / order / hide as
+  pure `SQ.*` helpers and TDD them in `webtests/selftest.node.js`. Full C1 contract + acceptance: **§5 Slice 5B**.
+
+**Start:**
+
+```powershell
+git checkout master
+git pull --ff-only origin master
+git checkout -b feat/web-network-subgroups-c1
+```
+
+**Verify before closeout:**
+
+```powershell
+node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js
+node webtests\selftest.node.js                 # keep green (currently 192)
+dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -c Release -p:Platform=x64   # 42 golden
+dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
+```
+
+Then **stop the app → rebuild → restart** and live-smoke in a **real browser across poll ticks, in BOTH dark
+and light themes** — the light theme is a first-class constraint, and the DOM-less selftest cannot catch a
+dangling reference or a theme regression (§12.4–12.5).
+
+**Non-negotiables (§4 / §12.6):** no `data.json`/server/contract change (state stays browser-local under
+`sq.dashboard.v1`, multi-tab-safe via `SQ.saveTelemetryState`); vanilla JS/CSS/HTML only; no host-specific
+labels/limits/sensor IDs in product code; raw LHM label + `SensorId` visible wherever an alias shows; golden
+(42) + selftest (192) stay green; both themes deliberately styled.
+
+**Traps that will bite C1 specifically:** §12.2 reorder no-op guard (directly reusable), §12.3 inline-control
+keyboard reachability (adapter-header controls must be focusable or always-visible), §12.4 live-only
+ReferenceError gate, §12.5 the async-`<details>` / shared-expand-key / multi-tab-skew / MCP-lock gotchas.
+
+---
+
 ## 1. Purpose
 
 This document expands the remaining v3 work into implementation-ready detail and records a handoff
