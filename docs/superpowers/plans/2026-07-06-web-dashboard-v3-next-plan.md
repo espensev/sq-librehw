@@ -2,7 +2,7 @@
 
 **Plan ID:** web-dashboard-v3-next-2026-07-06
 **Date:** 2026-07-06
-**Status:** in progress on `master`. Merged: Slice 3 (`4310a8b`), A1/A2 fan + suffix clipping, **B1** masthead Sensors popover (`8291c89`), **B2** explicit primary-card selection (`106f91d`). **Next: B3** — Customize drawer removal, parity-gated (see §4 B3 gate).
+**Status:** in progress on `master`. Merged: Slice 3 (`4310a8b`), A1/A2 fan + suffix clipping, **B1** masthead Sensors popover (`8291c89`), **B2** explicit primary-card selection (`106f91d`). **B3** Customize drawer removal complete on `feat/web-drawer-removal-b3` (`69252b4` panel reorder + `f60fcda` drawer removal; plan `2026-07-06-web-drawer-removal-b3.md`), pending merge. **Next: C1** — network adapter subgroups.
 **Authoritative sequence:** the §4 A–F queue below. Where it disagrees with the older Slice numbering in the [continuation handoff](2026-07-06-web-dashboard-v3-continuation-handoff.md) §5/§10, this §4 queue wins (B2 before B3 was chosen deliberately).
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Predecessor plan:** [2026-07-04-web-dashboard-visible-correctness-plan.md](2026-07-04-web-dashboard-visible-correctness-plan.md)
@@ -69,11 +69,11 @@ subsections map on as noted in the "Maps to" column.
 | **A2** ✅ | Value/unit/ceiling suffix overflow sweep at ~300px | Slice 6 | Done. No right-edge clip on any card suffix in either theme. |
 | **B1** ✅ | Masthead Sensors popover (search/show/hide/pin/reset, hidden count) | Slice 4B | Done (`8291c89`; plan `2026-07-06-web-sensors-popover-b1.md`). Hidden/offscreen found + restored without the drawer. |
 | **B2** ✅ | Explicit primary-card selection (`primaryCardsCustomized` boolean sentinel; seed-from-visible; seeded heroes keep curated presentation) | Slice 5A | Done (`106f91d`; plan `2026-07-06-web-primary-card-selection-b2.md`). Auto heroes default; first show-as/remove-from-primary seeds the visible set + switches to custom; Auto reset in PFD header. |
-| **B3** ⬜ | Remove Customize drawer after B1+B2 parity | Slice 4C | **Parity gate (found in B2):** card + row keyboard reorder is already inline, but pinned-card (`pin-up`/`pin-down`) and panel (`panel-up`/`panel-down`) keyboard ordering live ONLY in the drawer (`renderPinnedEditor`/`renderLayoutEditor`). Add inline keyboard controls for those FIRST (e.g. on pinned cards + panel headers), verify, THEN delete drawer DOM/CSS/JS. Not a clean deletion. |
+| **B3** ✅ | Remove Customize drawer after B1+B2 parity | Slice 4C | Done (`69252b4` panel reorder + `f60fcda` drawer removal; plan `2026-07-06-web-drawer-removal-b3.md`). Parity re-assessment corrected the stated gate: pinned-card reorder was **already** inline (expanded card `move-left`/`move-right` → `pinnedOrder`); only **panel** keyboard reorder was missing — added as always-visible ▲▼ in the panel header + a Subsystems "Reset order". Drawer DOM/JS/CSS deleted after live parity verification (Sensors popover covers hidden/pin/reset; pinned-card `title` rename subsumed by alias). |
 | **C1** | Network adapter subgroups (per-NIC key, hide/reorder/restore) | Slice 5B | Network readable per-adapter; a row can't cross an adapter/type group. |
 | **D1** | Card header grid + reserved action gutter | Slice 6 | Controls never overlap chip/icon on hover/focus/touch. |
 | **D2** | Expansion multi-column layout (use horizontal space) | audit finding | Expanded detail fills width, not a tall narrow strip. |
-| **D3** | Full responsive/theme QA matrix | Slice 6 | 320/390/640/1440/wide × dark/light, zero overlap/clip. |
+| **D3** | Full responsive/theme QA matrix | Slice 6 | 320/390/640/1440/wide × dark/light, zero overlap/clip. **Re-check B3 additions at narrow widths:** always-visible panel-head ▲▼ and the extra `#panelsReset` button in the Subsystems `.sec-head` (which already has mobile tag-clamping). |
 | **E1** | Root `viewTheme: standard \| cardTruth` selector, route-namespace-ready | Slice 7 | Look selector persists; state plumbing ready for `sq.dashboard.{route}`. |
 | **E2** | Sync accepted deltas to `/`; retire `cardtruth` route + Pages entry | Slice 7 | One product surface, no dev/preview routes. |
 | **F1–F3** | Context dashboards (Main/Gaming/Storage): hash router + per-route state, switcher control, template defaults | new lane (§3.1) | Selectable context dashboards coexisting with `viewTheme`, each honest per card-truth. Separate campaign, gated behind Phase E; build on current baseline, not the stale branch. |
@@ -505,9 +505,11 @@ Stop and review before continuing if any of these happen:
 
 ## 11. First Next Step
 
-The multi-tab state merge guard, visible expansion/action patch, masthead Sensors popover (B1), and explicit primary-card selection (B2) are all implemented and merged. Stable `/` exposes raw label, `SensorId`, hardware id, range provenance, alias, style, max override, pin/hide, keyboard move, hidden/offscreen discovery via the Sensors popover, and operator-chosen primary cards with an Auto reset.
+The multi-tab state merge guard, visible expansion/action patch, masthead Sensors popover (B1), explicit primary-card selection (B2), and **Customize drawer removal (B3)** are all implemented (B3 on `feat/web-drawer-removal-b3`, pending merge). Stable `/` exposes raw label, `SensorId`, hardware id, range provenance, alias, style, max override, pin/hide, keyboard move (cards, rows, pinned cards, **and panels**), hidden/offscreen discovery via the Sensors popover, and operator-chosen primary cards with an Auto reset — **with no side drawer**.
 
-The next concrete patch is **B3 — Customize drawer removal**, but it is **not** a clean deletion. B2 verification found that pinned-card and panel keyboard reordering still live only inside the drawer. B3 must therefore: (1) add inline keyboard reorder controls for pinned cards and panel headers (cards + rows already have them), (2) verify every drawer-only workflow — hidden restore, pin, alias, style, override, all four ordering surfaces — has a visible/keyboard replacement, then (3) delete `#customizeDrawer`, `#customizeScrim`, `#customize`, the tabs, `renderCustomize`, drawer handlers, and drawer CSS.
+B3 was **not** a clean deletion, but the parity re-assessment found only one real keyboard gap: panel reorder (pinned-card reorder was already inline via the expanded card's `move-left`/`move-right`). Delivered as: (1) inline ▲▼ panel reorder + a Subsystems "Reset order"; (2) live verification that every drawer workflow has a visible/keyboard replacement (hidden/pin/reset → Sensors popover; alias/style/override/pin/hide/move → card/row expansion; pinned-title → alias, which renders on the card); (3) deletion of `#customizeDrawer`/`#customizeScrim`/`#customize`, tabs, `renderCustomize`/`renderPinnedEditor`/`renderLayoutEditor`/`renderSensorRows`/`renamePinned`, drawer handlers, and drawer CSS (shared `.iconbtn`/`.sensor-*` rules split, not deleted).
+
+The next concrete patch is **C1 — network adapter subgroups** (independent of B; see §5 Slice 5B).
 
 Do not make `/dash/cardtruth/` a permanent product tab; use it only as a temporary comparison route until accepted behavior is synced into the root dashboard.
 

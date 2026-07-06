@@ -36,7 +36,6 @@
         <div class="sensor-list" id="sensorsList"></div>
       </div>
     </details>
-    <button class="btn" id="customize">Customize</button>
   </div>
 </div></header>
 
@@ -51,7 +50,7 @@
   </section>
   <section id="placardsec" style="display:none"></section>
   <section>
-    <div class="sec-head"><h2>Subsystems</h2><div class="rule"></div><span class="tag" id="subtag"></span></div>
+    <div class="sec-head"><h2>Subsystems</h2><div class="rule"></div><span class="tag" id="subtag"></span><button class="iconbtn" id="panelsReset" style="display:none" title="Return panels to default order">Reset order</button></div>
     <div class="grid" id="panels"></div>
   </section>
   <footer>
@@ -63,38 +62,5 @@
     </span>
   </footer>
 </main>
-<div class="scrim" id="customizeScrim"></div>
-<aside class="drawer" id="customizeDrawer" aria-hidden="true" aria-label="Customize dashboard">
-  <div class="drawer-head">
-    <div><b>Customize</b><span>Browser-local dashboard state</span></div>
-    <button class="iconbtn" id="drawerClose" aria-label="Close customize panel">Close</button>
-  </div>
-  <div class="tabs" role="tablist">
-    <button class="tab active" data-tab="hidden" role="tab">Hidden</button>
-    <button class="tab" data-tab="cards" role="tab">Cards</button>
-    <button class="tab" data-tab="layout" role="tab">Layout</button>
-  </div>
-  <div class="pane" data-pane="hidden">
-    <div class="drawer-tools">
-      <input id="hiddenSearch" type="search" placeholder="Search sensors">
-      <button class="iconbtn" data-action="reset-hidden">Reset hidden</button>
-    </div>
-    <div class="sensor-list" id="hiddenList"></div>
-  </div>
-  <div class="pane" data-pane="cards" hidden>
-    <div class="drawer-tools">
-      <input id="cardSearch" type="search" placeholder="Search sensors">
-      <button class="iconbtn" data-action="clear-pinned">Clear pinned</button>
-    </div>
-    <div class="order-list" id="pinnedList"></div>
-    <div class="sensor-list" id="cardList"></div>
-  </div>
-  <div class="pane" data-pane="layout" hidden>
-    <div class="drawer-tools">
-      <button class="iconbtn" data-action="reset-panels">Reset panel order</button>
-    </div>
-    <div class="order-list" id="panelOrderList"></div>
-  </div>
-</aside>
 <script src="console.js"></script>
 </body></html>
