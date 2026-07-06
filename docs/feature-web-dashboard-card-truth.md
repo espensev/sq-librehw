@@ -3,12 +3,12 @@
 **Project:** LibreHardwareMonitor Sev IQ local fork
 **Status:** Draft — scope accepted; implementation started in isolated worktree `feat/web-card-truth-base` after the original 2026-07-04 stop-point
 **Updated:** 2026-07-04
-**Related docs:** [`feature-web-dashboard-customization.md`](feature-web-dashboard-customization.md) (v2, shipped on this branch), [`superpowers/specs/2026-07-04-web-dashboard-telemetry-console-design.md`](superpowers/specs/2026-07-04-web-dashboard-telemetry-console-design.md), implementation plan [`superpowers/plans/2026-07-04-web-dashboard-card-truth-plan.md`](superpowers/plans/2026-07-04-web-dashboard-card-truth-plan.md), execution campaign [`superpowers/plans/2026-07-04-web-dashboard-implementation-campaign.md`](superpowers/plans/2026-07-04-web-dashboard-implementation-campaign.md)
+**Related docs:** [`feature-web-dashboard-customization.md`](feature-web-dashboard-customization.md) (v2, shipped on this branch), [`superpowers/specs/2026-07-04-web-dashboard-telemetry-console-design.md`](superpowers/specs/2026-07-04-web-dashboard-telemetry-console-design.md), implementation plan [`superpowers/plans/2026-07-04-web-dashboard-card-truth-plan.md`](superpowers/plans/2026-07-04-web-dashboard-card-truth-plan.md), execution campaign [`superpowers/plans/2026-07-04-web-dashboard-implementation-campaign.md`](superpowers/plans/2026-07-04-web-dashboard-implementation-campaign.md), corrective visible plan [`superpowers/plans/2026-07-04-web-dashboard-visible-correctness-plan.md`](superpowers/plans/2026-07-04-web-dashboard-visible-correctness-plan.md), next v3 plan [`superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md`](superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md)
 **Evidence:** operator-annotated screenshot `Screenshot 2026-07-04 082637_edited.png`, desktop sensor tree screenshot `ui-needadj-textpng.png`, and follow-up clipboard screenshots reviewed 2026-07-04. The load-bearing screenshot notes are: the Customize drawer is browser-local dashboard state and should not be needed extensively; the visible card grid shows wrong maxima such as bare `/ 200` on GPU power and RPM ceilings on fans; the card header state chip overlaps the icon/control area. Third source: live `data.json` walk on SND-DESK 2026-07-04 (575 leaf sensors). Fourth source: live browser review of `http://localhost:8085/` and `https://telemetry.seviq.org/` in dark and light themes on 2026-07-04; both surfaces showed the same stale drawer, `/ 200` power ceilings, RPM fan ceilings, no general alias input, and clipped right-edge suffix text.
 
 ## 1. Summary
 
-Operator feedback on the shipped Console v2 boils down to one theme: **the dashboard must stop implying precision it does not have, and put control where the data is: on cards and rows, not in any side pane.** This spec covers: honest gauge ranges (real limit > user override > semantic band > clearly-labeled estimate), fan gauges driven by their paired Control % sensor, clean multi-GPU / duplicate-hardware identity, card-carried detail and actions replacing the Customize drawer, movable cards, panels, individual sensor rows, and network subgroups, and the state-chip/icon/value clipping fixes.
+Operator feedback on the shipped Console v2 boils down to two connected themes: **the dashboard must stop implying precision it does not have, and it should feel like a polished, modern, user-friendly monitoring app whose controls live where the operator is already looking.** This spec covers: honest gauge ranges (real limit > user override > semantic band > clearly-labeled estimate), fan gauges driven by their paired Control % sensor, clean multi-GPU / duplicate-hardware identity, card-carried detail and actions replacing the Customize drawer, movable cards, panels, individual sensor rows/lines, and network subgroups, cohesive card color/styling, customization ergonomics, and the state-chip/icon/value clipping fixes.
 
 ## 1.1 Current operator restatement (2026-07-04)
 
@@ -25,6 +25,8 @@ This is the governing review summary for implementation worktrees:
 - No right pane, side pane, or side drawer for normal dashboard work. Cards/rows carry the details and actions; only hidden/offscreen sensor search/restore may use a compact masthead popover.
 - Let cards and individual sensor rows carry detail and actions: source, unit, current value, range/limit provenance, status, raw sensor id, raw label, alias, style, pin/hide, max override, and move controls.
 - Allow moving the things the operator sees, from the UI: primary cards, pinned cards, subsystem panels, individual sensor rows, and network adapter groups. Ordering must not be drawer-only.
+- Existing row/line actions expose pin/hide but not reorder; row/line reorder must be available from the row surface itself, with keyboard fallback in row expansion.
+- The broader product goal is not only defect correction. The dashboard should look and feel modern, attractive, and easy to customize while remaining dense enough for repeated monitoring work.
 - Fix badge/icon/control overlap and right-edge unit/ceiling clipping with explicit header/value spacing rules.
 - Missing data or missing limits must render as missing, unknown, or estimated; the UI must never pretend a guessed value is exact.
 
@@ -86,7 +88,7 @@ This is the governing review summary for implementation worktrees:
 4. Persisted observed peak: `max(rawMax, session motion, observedMax[id])` → `niceCeil` → tagged `peak`; `observedMax[id]` is updated (throttled) in dashboard state. Applies to Power/Clock, and to Fan only when no Control pair exists.
 5. Otherwise `null` → number-only card; expansion shows "no known range".
 
-**Rendering per source:** `override`/`limit` ceilings render plain (`/ 575 W`, tooltip states origin, derived limits prefix `≈`); `peak` renders muted `≈` ceiling with tooltip "estimated from observed peak — click to set true max"; `band` shows no ceiling text (unchanged).
+**Rendering per source:** `override`/`limit` ceilings render plain (`/ 575 W`, tooltip states origin, derived limits prefix `≈`); `peak` is not gauge-eligible and must render as a number/sparkline only until the operator sets a true override or a real/derived limit is available; `band` shows no ceiling text (unchanged).
 
 **Fan pairing:** a Fan sensor with a Control sensor of identical `text` under the same `hwid` renders: arc = Control raw (0–100), big value = RPM, secondary meta line shows the %. Hero fan cells and pinned fan cards behave identically. Unpaired fans: RPM number card (fallback per range rule 4/5).
 
@@ -126,8 +128,8 @@ This is the governing review summary for implementation worktrees:
 
 ## 8. Acceptance criteria
 
-- [ ] No gauge anywhere renders an unlabeled invented ceiling: every arc is `band`, `limit`, `override`, or visibly `≈ est`.
-- [ ] 5090 power card: shows real/derived/override limit (≈575–600 W) or a marked estimate — never a bare "/ 200".
+- [ ] No gauge anywhere renders an unlabeled invented ceiling: every arc is `band`, `limit`, `override`, or a paired `control` percentage; `peak` ranges are number/sparkline only.
+- [ ] 5090 power card: shows real/derived/override limit (≈575–600 W) or number-only observed value — never a bare "/ 200" or peak-derived gauge.
 - [ ] Every fan with a Control pair: arc = %, number = RPM (heroes, pinned, rows).
 - [ ] Both GPUs appear as distinct panels and correctly-labeled heroes; three same-name NVMe drives render as three panels.
 - [ ] A user can set/clear a max override from the card itself and the gauge respects it after reload.
@@ -170,3 +172,6 @@ This is the governing review summary for implementation worktrees:
 | 2026-07-04 | Local worktree `.worktrees/card-truth` on `feat/web-card-truth-base` | pass | A0-A3 are committed there through `1acccc7`: range state schema, `SQ.rangeFor`, and fan Control %-based gauges. `node webtests/selftest.node.js` passed 100/100; net10.0-windows x64 build passed with 0 errors; data.json/golden untouched. Resume from plan Task A4 Step 1; visual/live pass still outstanding. |
 | 2026-07-04 | Live `http://localhost:8085/data.json` evidence check | pass | 575 live sensors. Board temps are named `Temperature #1`..`#6`; 9 fan/control pairs found (7 Nuvoton + 2 RTX 5090); RTX 5090 exposes `GPU Package` W plus `GPU Power` and `GPU Board Power` percent-of-limit inputs for derived power-limit work. |
 | 2026-07-04 | Live browser review of `http://localhost:8085/` and `https://telemetry.seviq.org/` in dark and light themes | follow-up required | Hosted matches local. Both still show Customize drawer subtitle `Browser-local dashboard state`, bare `/ 200` CPU/GPU power ceilings, RPM fan ceilings, no general alias input, and right-edge clipping on ceiling/unit suffixes. Fan #7 is visible as raw `Fan #7`; endpoint confirms paired Control `/lpc/nct6701d/0/control/6`, so `Pump` belongs as an operator alias, not a raw rename. |
+| 2026-07-04 | Follow-up screenshot review after `34e1f09` merge | follow-up required | Visible UI still fails the operator requirements: side Customize panel remains, power gauge ceilings still appear wrong/clipped, gauges lack clear provenance, card colors read as random, card detail/actions are missing, and reorder/alias workflows are not visible. Corrective campaign drafted in `docs/superpowers/plans/2026-07-04-web-dashboard-visible-correctness-plan.md`. |
+| 2026-07-06 | Screenshot-specific gauge correctness fix | partial pass | Peak-derived ranges are no longer gauge-eligible. `SQ.gaugeRangeFor` allows only semantic bands, explicit overrides, real/derived limits, or paired fan Control %. `node webtests\selftest.node.js` passes 106/106 and live `/console.js` contains the guard. Remaining v3 issues from the prior review still stand. |
+| 2026-07-06 | Next v3 execution plan | pending | `docs/superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md` breaks remaining work into machine-agnostic slices: range display, device identity, card/row expansion, drawer removal, visible ordering, responsive polish, and preview promotion. |

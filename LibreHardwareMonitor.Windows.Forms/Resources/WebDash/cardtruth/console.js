@@ -1,7 +1,7 @@
 // SQ Telemetry Console - pure model layer. Consumes the unchanged data.json.
 (function () {
   const SQ = {};
-  const DASHBOARD_STORAGE_KEY = 'sq.dashboard.v1';
+  const DASHBOARD_STORAGE_KEY = 'sq.dashboard.preview.cardtruth';
   const DEFAULT_HIDDEN_SENSOR_IDS = new Set([
     '/lpc/nct6701d/0/temperature/3',
     '/lpc/nct6701d/0/temperature/5',
@@ -517,6 +517,22 @@
       [next[i], next[j]] = [next[j], next[i]];
       return next;
     }
+    function rowGroupKey(panelKey, type) {
+      return `${panelKey}|${type}`;
+    }
+    function orderedRows(panelKey, type, rows) {
+      const key = rowGroupKey(panelKey, type);
+      return SQ.applyOrder(rows, state.dashboard.rowOrder[key] || [], s => s.id);
+    }
+    function moveRow(groupKey, id, delta) {
+      const group = Array.from(document.querySelectorAll('.row-group')).find(el => el.dataset.rowGroup === groupKey);
+      if (!group) return;
+      const rows = Array.from(group.querySelectorAll('.row'))
+        .map(el => el.dataset.key)
+        .filter(k => typeof k === 'string' && k.length);
+      state.dashboard.rowOrder[groupKey] = moveKey(mergeOrder(state.dashboard.rowOrder[groupKey], rows), id, delta);
+      commitDashboard();
+    }
     function setSensorHidden(id, hidden) {
       const cfg = state.dashboard;
       cfg.hiddenSensorIds = cfg.hiddenSensorIds.filter(x => x !== id);
@@ -689,19 +705,24 @@
           <span class="who">${esc(s.text)} <small>${esc(s.hw)}</small></span>
           <span class="val g-${s.status}">${esc(s.value)}</span></li>`).join('')}</ul></div>`;
     }
-    function rowEl(s, type) {
+    function rowEl(s, type, groupKey) {
       const st = s.status, showBar = (s.type === 'Load' || s.type === 'Level' || s.type === 'Control') && s.raw != null;
       const mm = (s.min != null && s.min !== '' && type === 'Temperature')
         ? (parseFloat(s.min) > 0 ? `<span class="mm">${esc(s.min)} / ${esc(s.max)}</span>` : `<span class="mm">peak ${esc(s.max)}</span>`)
         : '';
       const r = document.createElement('div'); r.className = `row ${st}`;
+      r.dataset.key = s.id;
+      r.dataset.rowGroup = groupKey;
       const fanCtl = s.type === 'Fan' ? SQ.fanControlFor(s, state.allSensors) : null;
-      r.innerHTML = `<span class="glyph-stat g-${st}" title="${STLABEL[st]}">${st === 'info' ? '' : STGLYPH[st]}</span>
+      r.innerHTML = `<button class="grip row-grip" aria-label="Drag to reorder ${esc(s.text)}" title="Drag to reorder">&#8942;&#8942;</button>
+        <span class="glyph-stat g-${st}" title="${STLABEL[st]}">${st === 'info' ? '' : STGLYPH[st]}</span>
         <span class="rn">${esc(s.text)}${mm}</span><span class="rv">${esc(s.raw == null ? '—' : (s.value ?? '-'))}${fanCtl ? ` <small class="rvcmd">· ${esc(fanCtl.value)}</small>` : ''}</span>
         ${showBar ? `<div class="bar ${st==='warn'?'warn':st==='crit'?'crit':''}"><i style="width:${Math.max(0,Math.min(100,s.raw))}%"></i></div>` : ''}`;
       const rctl = document.createElement('span');
       rctl.className = 'row-ctl';
-      rctl.innerHTML = ctlCluster(s.id, s.text, { hide: true });
+      rctl.innerHTML = `<button class="ctl" data-act="row-up" data-id="${esc(s.id)}" data-row-group="${esc(groupKey)}" aria-label="Move ${esc(s.text)} up" title="Move up">&#9650;</button>` +
+        `<button class="ctl" data-act="row-down" data-id="${esc(s.id)}" data-row-group="${esc(groupKey)}" aria-label="Move ${esc(s.text)} down" title="Move down">&#9660;</button>` +
+        ctlCluster(s.id, s.text, { hide: true });
       r.appendChild(rctl);
       return r;
     }
@@ -729,12 +750,18 @@
       const byType = new Map(); ss.forEach(s => { const t = SQ.displayType(s); (byType.get(t) || byType.set(t, []).get(t)).push(s); });
       [...byType.entries()].sort((a,b) => TORDER.indexOf(a[0]) - TORDER.indexOf(b[0])).forEach(([type, list]) => {
         body.appendChild(Object.assign(document.createElement('div'), { className: 'tg', textContent: type }));
+        list = orderedRows(item.key, type, list);
+        const groupKey = rowGroupKey(item.key, type);
+        const group = document.createElement('div');
+        group.className = 'row-group';
+        group.dataset.rowGroup = groupKey;
         const primary = [], extra = [];
         list.forEach(s => (cls === 'cpu' && isCoreRow(s) ? extra : primary).push(s));
-        primary.forEach(s => body.appendChild(rowEl(s, type)));
+        primary.forEach(s => group.appendChild(rowEl(s, type, groupKey)));
+        body.appendChild(group);
         if (extra.length) {
           const box = document.createElement('div'); box.className = 'extra';
-          extra.forEach(s => box.appendChild(rowEl(s, type)));
+          extra.forEach(s => box.appendChild(rowEl(s, type, groupKey)));
           const btn = document.createElement('button'); btn.className = 'morebtn';
           btn.textContent = `+ ${extra.length} per-core ${type.toLowerCase()}`;
           btn.onclick = e => { e.stopPropagation(); box.classList.toggle('open'); btn.textContent =
@@ -862,7 +889,7 @@
     async function tick(force) {
       if ((state.paused && !force) || state.dragging) return;
       try {
-        const r = await fetch('data.json', { cache: 'no-store' });
+        const r = await fetch('/data.json', { cache: 'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const data = await r.json();
         if (state.dragging) return;   // drag started during the fetch — don't render over it
@@ -963,11 +990,14 @@
       host && host.addEventListener('click', e => {
         const b = e.target.closest('.ctl');
         if (!b || !host.contains(b)) return;
+        if (b.dataset.act === 'row-up' || b.dataset.act === 'row-down') e.preventDefault();
         e.stopPropagation();
         const id = b.dataset.id;
         if (b.dataset.act === 'pin') pinSensor(id);
         else if (b.dataset.act === 'unpin') unpinSensor(id);
         else if (b.dataset.act === 'hide') setSensorHidden(id, true);
+        else if (b.dataset.act === 'row-up') moveRow(b.dataset.rowGroup, id, -1);
+        else if (b.dataset.act === 'row-down') moveRow(b.dataset.rowGroup, id, 1);
       });
     });
 
@@ -1001,7 +1031,7 @@
       const anchor = before || sibs[sibs.length - 1];
       const r = anchor.getBoundingClientRect();
       ind.style.display = 'block';
-      if (a.isPanel) {
+      if (a.isPanel || a.isRow) {
         // horizontal bar above the anchor (below the last panel for end-drop)
         ind.style.left = (r.left - crect.left) + 'px';
         ind.style.width = r.width + 'px';
@@ -1020,15 +1050,15 @@
       a.ghost.style.left = (ev.clientX + 12) + 'px';
       a.ghost.style.top = (ev.clientY + 12) + 'px';
       const sibs = dragSiblings(a.container, a.key);
-      a.dropIdx = dropIndex(sibs, ev.clientX, ev.clientY, a.isPanel);
+      a.dropIdx = dropIndex(sibs, ev.clientX, ev.clientY, a.isPanel || a.isRow);
       placeIndicator(a, sibs);
     }
     function startDrag(grip, ev) {
       if (drag.active) return;
-      const el = grip.closest('.panel') || grip.closest('.cell.pinned');
+      const el = grip.closest('.row') || grip.closest('.panel') || grip.closest('.cell.pinned');
       if (!el || !el.dataset.key) return;
       ev.preventDefault();
-      const nameEl = el.querySelector('.nm') || el.querySelector('.k .name');
+      const nameEl = el.querySelector('.rn') || el.querySelector('.nm') || el.querySelector('.k .name');
       state.dragging = true;
       const ghost = document.createElement('div');
       ghost.className = 'drag-ghost';
@@ -1037,8 +1067,9 @@
       const ind = document.createElement('div');
       ind.className = 'drop-ind';
       el.parentElement.appendChild(ind);
+      const isRow = el.classList.contains('row');
       drag.active = { container: el.parentElement, el, key: el.dataset.key,
-        isPanel: el.classList.contains('panel'), ghost, ind, grip, pointerId: ev.pointerId };
+        isPanel: el.classList.contains('panel'), isRow, rowGroup: el.dataset.rowGroup, ghost, ind, grip, pointerId: ev.pointerId };
       el.classList.add('dragging');
       moveGhost(ev);
       try { grip.setPointerCapture(ev.pointerId); } catch (e) {}
@@ -1051,7 +1082,9 @@
       try { a.grip.releasePointerCapture(a.pointerId); } catch (e) {}
       if (commit && typeof a.dropIdx === 'number') {
         const next = SQ.reorderByDrop(orderedKeysFor(a.container), a.key, a.dropIdx);
-        if (a.isPanel) state.dashboard.panelOrder = next; else state.dashboard.pinnedOrder = next;
+        if (a.isPanel) state.dashboard.panelOrder = next;
+        else if (a.isRow) state.dashboard.rowOrder[a.rowGroup] = next;
+        else state.dashboard.pinnedOrder = next;
         commitDashboard();
       } else {
         rerender();

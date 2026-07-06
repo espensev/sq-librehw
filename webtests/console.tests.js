@@ -126,6 +126,11 @@
     eq('cardStyleFor number keeps global spark', S.cardStyleFor('number', true, true), {arc:false, spark:true});
     eq('cardStyleFor graph forces spark', S.cardStyleFor('graph', false, false), {arc:false, spark:true});
     eq('cardStyleFor auto', S.cardStyleFor(undefined, true, true), {arc:true, spark:true});
+    eq('gauge rejects peak estimate', S.gaugeRangeFor({lo:0, hi:500, source:'peak'}, {id:'/p', type:'Power', raw:233}, null), null);
+    eq('gauge allows explicit override', S.gaugeRangeFor({lo:0, hi:575, source:'override'}, {id:'/p', type:'Power', raw:233}, null),
+      {lo:0, hi:575, source:'override'});
+    eq('gauge allows paired fan control', S.gaugeRangeFor({lo:0, hi:2000, source:'peak'}, {id:'/f', type:'Fan', raw:900}, {raw:45}),
+      {lo:0, hi:100, source:'control'});
 
     // --- v2: trend + hero fans ---
     S.resetSensorTrends();
