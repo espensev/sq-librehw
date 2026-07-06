@@ -231,6 +231,23 @@
     eq('non-nic sensors ignored', S.buildNetAdapters([{ cls: 'cpu', hw: 'X', hwid: '/c/0', type: 'Load', text: 't', raw: 1, id: '/c/0/l/0' }]), []);
     eq('buildNetAdapters tolerates junk', S.buildNetAdapters(null), []);
 
+    // --- C1 T3: per-adapter panel items ---
+    const nicState = patch => Object.assign(S.defaultDashboardState(), patch);
+    const netItems0 = S.buildPanelItems(nicSensors, S.defaultDashboardState());
+    eq('one panel item per active adapter', netItems0.map(i => i.key), ['/nic/%7BAAA%7D', '/nic/%7BBBB%7D', 'hw:TAP Adapter']);
+    eq('adapter items flagged net and collapsed', netItems0.every(i => i.net === true && i.collapsed === true), true);
+    eq('adapter item labels deduped', netItems0[0].label, 'Realtek Gaming 2.5GbE #1');
+    eq('idle adapter emits no panel', netItems0.some(i => i.key === '/nic/%7BCCC%7D'), false);
+    eq('hidden adapter excluded', S.buildPanelItems(nicSensors, nicState({ hiddenNetAdapters: ['/nic/%7BAAA%7D'] })).map(i => i.key), ['/nic/%7BBBB%7D', 'hw:TAP Adapter']);
+    eq('netAdapterOrder applies', S.buildPanelItems(nicSensors, nicState({ netAdapterOrder: ['hw:TAP Adapter', '/nic/%7BBBB%7D'] })).map(i => i.key), ['hw:TAP Adapter', '/nic/%7BBBB%7D', '/nic/%7BAAA%7D']);
+    eq('stale order keys ignored', S.buildPanelItems(nicSensors, nicState({ netAdapterOrder: ['panel:network', '/nic/%7BBBB%7D'] })).map(i => i.key)[0], '/nic/%7BBBB%7D');
+    eq('no-state call keeps active adapters (compat)', S.buildPanelItems(nicSensors).map(i => i.key), ['/nic/%7BAAA%7D', '/nic/%7BBBB%7D', 'hw:TAP Adapter']);
+    const mixedItems = S.buildPanelItems(sensors.concat(nicSensors), S.defaultDashboardState());
+    eq('nic panels trail non-nic panels', mixedItems.findIndex(i => i.net), mixedItems.filter(i => !i.net).length);
+    eq('mixed panel keys stay unique', new Set(mixedItems.map(i => i.key)).size, mixedItems.length);
+    eq('legacy merged network bucket gone', mixedItems.some(i => i.key === 'panel:network'), false);
+    eq('mixed items reindex contiguously', mixedItems.every((it, i) => it.index === i), true);
+
     // --- v2: kinds, niceCeil, speedoRange, cardStyle ---
     eq('kindOf temp', S.kindOf('Temperature'), 'temp');
     eq('kindOf load family', [S.kindOf('Load'), S.kindOf('Level'), S.kindOf('Control')], ['load','load','load']);

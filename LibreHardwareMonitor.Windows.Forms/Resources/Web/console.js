@@ -746,7 +746,7 @@
     return adapters;
   };
 
-  SQ.buildPanelItems = function (sensors) {
+  SQ.buildPanelItems = function (sensors, state) {
     if (!Array.isArray(sensors)) return [];
     const byId = new Map();
     sensors.forEach(s => {
@@ -771,10 +771,13 @@
         const ai = order.indexOf(a.ss[0].cls), bi = order.indexOf(b.ss[0].cls);
         return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.index - b.index;
       }).map((item, index) => Object.assign(item, { index }));
-    const nics = sensors.filter(s => s.cls === 'nic');
-    const active = new Set(nics.filter(s => s.type === 'Throughput' && s.raw > 0).map(s => s.hwid || s.hw));
-    const net = nics.filter(s => active.has(s.hwid || s.hw));
-    if (net.length) items.push({ hw: 'Network', label: 'Network', ss: net, key: 'panel:network', collapsed: true, index: items.length });
+    const cfg = state ? SQ.normalizeDashboardState(state) : null;
+    const hiddenNet = new Set(cfg ? cfg.hiddenNetAdapters : []);
+    let adapters = SQ.buildNetAdapters(sensors)
+      .filter(a => a.active && !hiddenNet.has(a.key))
+      .map((a, i) => ({ hw: a.hw, label: a.label, ss: a.ss, key: a.key, collapsed: true, net: true, index: i }));
+    adapters = SQ.applyOrder(adapters, cfg ? cfg.netAdapterOrder : [], a => a.key);
+    adapters.forEach(a => { a.index = items.length; items.push(a); });
     return items;
   };
 
