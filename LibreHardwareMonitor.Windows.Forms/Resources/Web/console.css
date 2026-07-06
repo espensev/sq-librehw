@@ -256,13 +256,12 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .ctl:hover{color:var(--cy);border-color:var(--cy)}
 .ctl.pin.on{color:var(--lime);border-color:color-mix(in srgb,var(--lime) 45%,var(--line))}
 .row-ctl{position:absolute;display:none;gap:4px;z-index:2}
-.cell-ctl{display:flex;gap:4px;visibility:hidden;align-self:center}
-.cell .cell-ctl .grip{display:inline-block}
+.cell-ctl{display:none;gap:4px;align-self:center}
 .row-ctl{top:50%;right:12px;transform:translateY(-50%);align-items:center;
   background:linear-gradient(90deg,transparent,var(--panel) 22%);padding-left:22px}
-.cell:hover .cell-ctl,.cell:focus-within .cell-ctl{visibility:visible}
+.cell:hover .cell-ctl,.cell:focus-within .cell-ctl{display:flex}
 .row:hover .row-ctl,.row:focus-within .row-ctl{display:flex}
-@media (hover:none){.cell-ctl{visibility:visible}.row-ctl{display:flex}}
+@media (hover:none){.cell-ctl{display:flex}.row-ctl{display:flex}}
 .panel-move{display:inline-flex;gap:3px;margin-right:2px}
 .panel-move .ctl{padding:2px 4px;font-size:10px}
 
