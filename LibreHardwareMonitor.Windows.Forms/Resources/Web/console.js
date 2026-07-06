@@ -1282,8 +1282,11 @@
       // intentionally frozen while the popover is open; it is a discovery/manage
       // surface, not a live monitor (the dashboard behind it keeps updating).
       const pinnedIds = new Set(state.dashboard.pinnedCards.map(c => c.id));
+      const hiddenNetKeys = new Set(state.dashboard.hiddenNetAdapters);
+      const hiddenAdapters = SQ.buildNetAdapters(state.allSensors).filter(a => hiddenNetKeys.has(a.key));
       const sig = (state.sensorsFilter || '') + '|' +
-        rows.map(r => `${r.id}:${r.visibility}:${pinnedIds.has(r.id) ? 1 : 0}`).join(',');
+        rows.map(r => `${r.id}:${r.visibility}:${pinnedIds.has(r.id) ? 1 : 0}`).join(',') +
+        '|net:' + hiddenAdapters.map(a => a.key).join(',');
       if (sig === state.sensorsSig) return;
       state.sensorsSig = sig;
       list.innerHTML = rows.map(r => {
@@ -1297,6 +1300,12 @@
           <button class="iconbtn" data-action="${hidden ? 'show' : 'hide'}" data-id="${esc(r.id)}">${hidden ? 'Show' : 'Hide'}</button>
         </div>`;
       }).join('') || '<div class="empty-note">No sensors</div>';
+      const restore = $('#netRestore');
+      restore.style.display = hiddenAdapters.length ? '' : 'none';
+      $('#netRestoreList').innerHTML = hiddenAdapters.map(a => `<div class="sensor-choice is-hidden">
+        <div><b>${esc(a.label)}</b><span>network adapter${a.active ? '' : ' · idle'}</span><code>${esc(a.key)}</code></div>
+        <button class="iconbtn" data-action="net-show" data-key="${esc(a.key)}">Show</button>
+      </div>`).join('');
     }
     function paintGraphs() {
       const btn = $('#graphs');
@@ -1368,6 +1377,12 @@
       commitDashboard();
       renderSensorsPopover();
     };
+    $('#netRestoreList').addEventListener('click', e => {
+      const btn = e.target.closest('[data-action="net-show"]');
+      if (!btn) return;
+      showAdapter(btn.dataset.key);
+      renderSensorsPopover();
+    });
     // Escape / click-outside close for masthead disclosure menus (Pages + Sensors)
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') document.querySelectorAll('details.page-menu[open], details.sensors-menu[open]').forEach(d => { d.open = false; });

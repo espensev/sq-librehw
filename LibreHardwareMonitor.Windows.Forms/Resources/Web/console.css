@@ -311,6 +311,8 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .vis-chip.vis-hidden{color:var(--cy);border-color:color-mix(in srgb,var(--cy) 30%,var(--line-soft))}
 .vis-chip.vis-offscreen{color:var(--muted)}
 .vis-chip.vis-visible{opacity:.6}
+.net-restore{margin-top:10px;padding-top:10px;border-top:1px solid var(--line-soft)}
+.net-restore-head{font:700 9px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 8px}
 
 /* --- Primary card selection (B2) --- */
 #pfdReset,#panelsReset{margin-left:8px}
