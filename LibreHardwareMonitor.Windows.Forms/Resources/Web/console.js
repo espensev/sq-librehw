@@ -270,6 +270,8 @@
   };
   SQ.sensorVisibility = function (s, state) {
     if (SQ.isSensorHidden(s, state)) return 'hidden';
+    if (s && s.cls === 'nic' &&
+        SQ.normalizeDashboardState(state).hiddenNetAdapters.includes(SQ.netAdapterKey(s))) return 'offscreen';
     if (SQ.isStaticDriveAuxTemp(s) || SQ.isStaticMbTemp(s)) return 'offscreen';
     return 'visible';
   };

@@ -248,6 +248,13 @@
     eq('legacy merged network bucket gone', mixedItems.some(i => i.key === 'panel:network'), false);
     eq('mixed items reindex contiguously', mixedItems.every((it, i) => it.index === i), true);
 
+    // --- C1 T4: hidden-adapter sensors are offscreen in the popover model ---
+    eq('nic sensor of hidden adapter is offscreen', S.sensorVisibility(nicSensors[0], nicState({ hiddenNetAdapters: ['/nic/%7BAAA%7D'] })), 'offscreen');
+    eq('nic sensor of visible adapter unaffected', S.sensorVisibility(nicSensors[0], S.defaultDashboardState()), 'visible');
+    eq('explicit sensor hide beats adapter hide', S.sensorVisibility(nicSensors[0], nicState({ hiddenSensorIds: [nicSensors[0].id], hiddenNetAdapters: ['/nic/%7BAAA%7D'] })), 'hidden');
+    eq('hiddenSensorCount includes adapter-hidden sensors', S.hiddenSensorCount(nicSensors, nicState({ hiddenNetAdapters: ['/nic/%7BAAA%7D'] })), 2);
+    eq('popover ranks adapter-hidden ahead of visible', S.sensorPopoverRows(nicSensors, nicState({ hiddenNetAdapters: ['/nic/%7BAAA%7D'] }), '')[0].visibility, 'offscreen');
+
     // --- v2: kinds, niceCeil, speedoRange, cardStyle ---
     eq('kindOf temp', S.kindOf('Temperature'), 'temp');
     eq('kindOf load family', [S.kindOf('Load'), S.kindOf('Level'), S.kindOf('Control')], ['load','load','load']);
