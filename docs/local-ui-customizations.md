@@ -386,8 +386,10 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   route/gauge verification for the in-flight dashboard work is recorded in
   [`feature-web-dashboard-versioned-routes.md`](feature-web-dashboard-versioned-routes.md) and
   [`reviews/review-2026-07-06-dashboard-menu-gauge-correctness.md`](reviews/review-2026-07-06-dashboard-menu-gauge-correctness.md).
-- 2026-07-06: Follow-up on `feat/web-dashboard-v3-card-first` resolved the stale dirty-state notes
-  and clarified that `/dash/cardtruth/` is a temporary dev surface. Stable `/` already carries the
-  route/menu, gauge guard, host-ID cleanup, and hardware-ID panel/hero work; the preview copy still
-  carries extra row-reorder work and an isolated `sq.dashboard.preview.cardtruth` namespace until it
-  is promoted or discarded.
+- 2026-07-06: Follow-up on the merged v3 dashboard branch resolved the stale dirty-state notes
+  and clarified that `/dash/cardtruth/` is a temporary dev surface. Stable `/` now carries the
+  route/menu, gauge guard, host-ID cleanup, hardware-ID panel/hero work, range truth, multi-tab
+  telemetry save guard, visible card/row expansion actions, primary-card order, and stable row
+  ordering. The preview copy remains only as an isolated `sq.dashboard.preview.cardtruth` comparison
+  namespace until it is retired or any surviving visual treatment is promoted into the root Theme/view
+  selector.

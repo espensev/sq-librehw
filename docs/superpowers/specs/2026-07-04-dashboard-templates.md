@@ -1,11 +1,23 @@
-# Feature Spec: Dashboard Preview Tabs (Secondary Multi-Route Lane)
+# Feature Spec: Context Dashboards — Main / Gaming / Storage (Selectable Dashboard Switcher)
 
 **Project:** LibreHardwareMonitor Sev IQ local fork
-**Status:** Draft / secondary UI preview lane
-**Updated:** 2026-07-04
-**Related specs:** [`feature-web-dashboard-customization.md`](../../feature-web-dashboard-customization.md), [`feature-web-dashboard-card-truth.md`](../../feature-web-dashboard-card-truth.md), [`2026-07-04-web-dashboard-telemetry-console-design.md`](2026-07-04-web-dashboard-telemetry-console-design.md)
+**Status:** Preserved / deferred — approved **coexist** lane (2026-07-06). Build after the v3 card-first baseline; do **not** conflate with the temporary `cardtruth` dev route.
+**Updated:** 2026-07-06 (reconciled with the v3 card-truth roadmap)
+**Related specs:** [`feature-web-dashboard-customization.md`](../../feature-web-dashboard-customization.md), [`feature-web-dashboard-card-truth.md`](../../feature-web-dashboard-card-truth.md), [`2026-07-04-web-dashboard-telemetry-console-design.md`](2026-07-04-web-dashboard-telemetry-console-design.md), v3 continuation handoff [`../plans/2026-07-06-web-dashboard-v3-continuation-handoff.md`](../plans/2026-07-06-web-dashboard-v3-continuation-handoff.md)
 
 ---
+
+> **2026-07-06 reconciliation (read first).** This spec was formerly titled *"Dashboard Preview Tabs (Secondary Multi-Route Lane)."* It is renamed so it is not confused with the temporary `/dash/cardtruth/` **dev/preview route**, which the v3 plan retires. These are two different things, and the operator confirmed they stay as **two orthogonal controls** ("coexist" decision, 2026-07-06):
+>
+> - **View-style selector** (v3): a root `viewTheme: standard | cardTruth` look/density toggle over the *same* single dashboard state (`sq.dashboard.v1`).
+> - **Context-dashboard switcher** (this spec): selectable **Main / Gaming / Storage** dashboards — different sensors shown, different pinned cards, different poll rate/theme — each with its **own** state namespace (`sq.dashboard.{route}`), navigated by client-side **hash routing** (`/#/gaming`).
+>
+> Constraints the v3 work must honor so this lane is not foreclosed:
+>
+> - Retiring the `cardtruth` **server route** does **not** retire this feature; hash routing is independent of the `/dash/` server routes.
+> - The v3 "one product dashboard" closeout means **no permanent dev/preview routes** — it does **not** mean "no context dashboards."
+> - The v3 root selector + state model must be built **route-namespace-ready** so this lane needs no retrofit later.
+> - **Preserve this spec, not the stale branch.** `worktree-dashboard-templates` (`4137cee`) predates hwid identity, range truth, and the multi-tab state-merge work; port ideas from this spec onto the current baseline instead of reviving that branch.
 
 ## 1. Summary
 

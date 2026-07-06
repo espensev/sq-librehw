@@ -12,6 +12,8 @@ The web server keeps `/` as the stable dashboard and adds explicit preview route
 
 Preview routes are temporary development surfaces, not permanent product navigation. The `cardtruth` route exists only while the v3 card-first work is being compared and promoted. Once the selected behavior is synced into `/`, the separate `cardtruth` route and Pages-menu entry should be retired; any surviving visual treatment belongs as a selectable root-dashboard theme/view option from the Theme dropdown, not as a second dashboard page.
 
+This route lane is distinct from the deferred **context-dashboard** feature (selectable Main / Gaming / Storage views; see [`superpowers/specs/2026-07-04-dashboard-templates.md`](superpowers/specs/2026-07-04-dashboard-templates.md)). That feature is a *preserved coexist lane* using client-side **hash routing** (`/#/gaming`) and per-route `sq.dashboard.{route}` state — independent of these `/dash/` server routes. Retiring the `cardtruth` server route does not retire it.
+
 Example routes:
 
 - `/` - stable dashboard, unchanged by experiments.

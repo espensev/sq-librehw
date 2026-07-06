@@ -2,10 +2,11 @@
 
 **Plan ID:** web-dashboard-v3-next-2026-07-06
 **Date:** 2026-07-06
-**Status:** in progress (Slice 0, C1 host-ID removal, and Slice 2 hardware identity done on `feat/web-dashboard-v3-card-first`)
+**Status:** in progress on `master` (merged through Slice 3 visible expansion/actions at `4310a8b`)
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Predecessor plan:** [2026-07-04-web-dashboard-visible-correctness-plan.md](2026-07-04-web-dashboard-visible-correctness-plan.md)
 **Recent review:** [../../reviews/review-2026-07-06-web-dashboard-v3-independent-verification.md](../../reviews/review-2026-07-06-web-dashboard-v3-independent-verification.md)
+**Continuation handoff:** [2026-07-06-web-dashboard-v3-continuation-handoff.md](2026-07-06-web-dashboard-v3-continuation-handoff.md)
 
 ## 1. Current Baseline
 
@@ -16,7 +17,7 @@ The dashboard now has two important guardrails in place:
 
 Those fixes close the immediate screenshot failure, but they are only a partial v3 foundation. The v3 product goal remains: a machine-agnostic, card-first dashboard where trustworthy telemetry is visually clear, customization is local to the card/row/header being used, and normal workflows no longer depend on the old Customize side drawer.
 
-This plan was drafted from the live `http://localhost:8085/` state on 2026-07-06 and now continues from the committed `feat/web-dashboard-v3-card-first` branch. It intentionally avoids host-specific assumptions. SND-DESK examples are acceptance fixtures only, not hardcoded behavior.
+This plan was drafted from the live `http://localhost:8085/` state on 2026-07-06 and now continues from `master` after the Slice 3 branch was merged through PR #25. It intentionally avoids host-specific assumptions. SND-DESK examples are acceptance fixtures only, not hardcoded behavior.
 
 ## 2. Non-Negotiables
 
@@ -27,6 +28,7 @@ This plan was drafted from the live `http://localhost:8085/` state on 2026-07-06
 - The dashboard remains read-only. No `/Sensor?action=Set` or hardware write UI is introduced.
 - Stable `/` remains usable. Risky UI work can be staged in `/dash/cardtruth/` until promotion is explicit.
 - `/dash/cardtruth/` is a temporary dev route only. Once selected changes are synced into `/`, retire the route and expose any surviving visual treatment as a root Theme dropdown/view option.
+- Retiring `/dash/cardtruth/` retires a **dev/preview route**, not the deferred **context-dashboard** feature. Main/Gaming/Storage selectable dashboards remain an intended, separate future lane (own `sq.dashboard.{route}` namespaces, hash routing); the "one dashboard" closeout must not foreclose it, and the root view selector must be built route-namespace-ready. See the [context-dashboard spec](../specs/2026-07-04-dashboard-templates.md) and [continuation handoff §3.1](2026-07-06-web-dashboard-v3-continuation-handoff.md).
 
 ## 3. Target User Experience
 
@@ -42,21 +44,47 @@ The first viewport is an operational dashboard, not a configuration surface.
 
 ## 4. Remaining Execution Queue
 
-This is the current queue after the 2026-07-06 alignment pass.
+This queue was **re-sequenced on 2026-07-06 after the live browser audit** (recorded in the card-truth
+verification log). Completed model/identity/range work stays as regression history; the remaining work
+is regrouped into dependency-ordered phases that fold in the audit's concrete defects and the preserved
+context-dashboard lane (continuation handoff §3.1).
 
-| Order | Slice | Status | Work to post/execute next |
-|---:|---|---|---|
-| 0 | Stabilize current worktree | done | Keep as baseline; rerun smoke after any rebuild. |
-| C1 | Remove host-specific hidden-sensor IDs | done | Keep regression coverage; no host sensor IDs in product code. |
-| 2 | Hardware identity and multi-device rendering | done | Keep tests for duplicate NVMe/GPU and `hwid` keyed panels/heroes. |
-| 1 | Range truth and machine-agnostic limit derivation | done | Keep regression coverage for range labels, observed peaks, and GPU watt + percent derived limits without drawing peak gauges. |
-| 3 | Card and row expansion + ordering contract | in progress | First visible expansion/action patch is implemented; finish explicit primary card selection and remaining parity gaps before drawer removal. |
-| 4 | Masthead sensor popover and drawer removal | next | Add compact Sensors popover for hidden/offscreen discovery, then remove the Customize drawer after parity. |
-| 5 | Visible ordering everywhere | remaining | Stable row ordering is promoted; finish network subgroup ordering and any remaining card-selection/order polish. |
-| 6 | Modern UI polish and responsive QA | remaining | Fix overlap/clipping and theme quality across dark/light and narrow/wide viewports. |
-| 7 | Preview promotion and closeout | remaining | Sync accepted changes into `/`; retire `/dash/cardtruth/`; expose surviving visual treatment via root Theme dropdown/view selector. |
+**Completed (through Slice 3) — keep as regression baseline:**
 
-Do not treat the existing `/dash/cardtruth/` preview as a product destination. It is a temporary place to test unsynced UI work. Today its extra delta over stable `/` is mainly row-reorder behavior plus isolated preview state; once a delta is accepted, promote it into stable assets or discard it.
+| Done | Coverage to keep |
+|---|---|
+| Slice 0 — stabilize worktree | Rerun smoke after any rebuild. |
+| Slice C1 — remove host-specific hidden-sensor IDs | No host sensor IDs in product code. |
+| Slice 1 — range truth + machine-agnostic limit derivation | Range labels, observed peaks, GPU watt+percent derived limits, no peak gauges. |
+| Slice 2 — hardware identity + multi-device rendering | Duplicate NVMe/GPU and `hwid`-keyed panels/heroes. |
+| Slice 3 — card/row expansion + ordering contract (partial) | Visible expansion/actions, alias, override, keyboard move, `cardOrder`, `rowOrder[panelKey\|type]`, multi-tab save guard. |
+
+**Remaining — re-sequenced phases.** These supersede the old Slice 4–7 numbering; the §5 detail
+subsections map on as noted in the "Maps to" column.
+
+| Phase | Item | Maps to | Exit |
+|---|---|---|---|
+| **A1** | Fan-card `cmd %` right-edge clipping fix | Slice 6 (pulled fwd) | Full `cmd XX.X %` visible on every fan hero at desktop card width, dark+light. |
+| **A2** | Value/unit/ceiling suffix overflow sweep at ~300px | Slice 6 | No right-edge clip on any card suffix in either theme. |
+| **B1** | Masthead Sensors popover (search/show/hide/pin/reset, hidden count) | Slice 4 | Hidden/offscreen sensor found + restored without the drawer. |
+| **B2** | Explicit primary-card selection surfaced (`primaryCardsMode` sentinel) | Slice 3 / 5A | Operator picks/removes primary cards; auto-heroes stay default until first pick. |
+| **B3** | Remove Customize drawer after B1+B2 parity verified | Slice 4 | No normal workflow needs the drawer; no keyboard path lost. |
+| **C1** | Network adapter subgroups (per-NIC key, hide/reorder/restore) | Slice 5B | Network readable per-adapter; a row can't cross an adapter/type group. |
+| **D1** | Card header grid + reserved action gutter | Slice 6 | Controls never overlap chip/icon on hover/focus/touch. |
+| **D2** | Expansion multi-column layout (use horizontal space) | audit finding | Expanded detail fills width, not a tall narrow strip. |
+| **D3** | Full responsive/theme QA matrix | Slice 6 | 320/390/640/1440/wide × dark/light, zero overlap/clip. |
+| **E1** | Root `viewTheme: standard \| cardTruth` selector, route-namespace-ready | Slice 7 | Look selector persists; state plumbing ready for `sq.dashboard.{route}`. |
+| **E2** | Sync accepted deltas to `/`; retire `cardtruth` route + Pages entry | Slice 7 | One product surface, no dev/preview routes. |
+| **F1–F3** | Context dashboards (Main/Gaming/Storage): hash router + per-route state, switcher control, template defaults | new lane (§3.1) | Selectable context dashboards coexisting with `viewTheme`, each honest per card-truth. Separate campaign, gated behind Phase E; build on current baseline, not the stale branch. |
+| **X1** | Planning-doc consolidation (one authoritative plan+spec; archive superseded 2026-07-04 set) | new | Sprawl reduced; verification log remains the evidence trail. |
+
+**Critical path:** A → B → C → D → E, then F as its own campaign. A and X1 can start immediately and
+in parallel with anything; C is independent of B and can interleave.
+
+Do not treat the existing `/dash/cardtruth/` preview as a product destination. It is a temporary place
+to test unsynced UI work; once a delta is accepted, promote it into stable assets or discard it.
+Retiring that route (Phase E2) does **not** retire the context-dashboard lane (Phase F) — see §2 and the
+continuation handoff §3.1.
 
 ## 5. Implementation Slices
 
@@ -329,7 +357,7 @@ Tasks:
 - Keep risky UI work available under `/dash/cardtruth/` until accepted.
 - When accepted, promote by copying/wiring selected assets into `Resources/Web/`.
 - After sync/promotion, remove the temporary `cardtruth` route and Pages-menu entry unless a new active comparison needs it.
-- If the card-truth visual treatment survives as an alternate style, expose it from the root Theme dropdown/view selector using stable `sq.dashboard.v1` state instead of a separate route namespace.
+- If the card-truth visual treatment survives as an alternate style, expose it from the root Theme dropdown/view selector using stable `sq.dashboard.v1` state instead of a separate route namespace. This `viewTheme` selector is the *look* control only; it is distinct from the deferred **context-dashboard** switcher (Main/Gaming/Storage), which stays a separate future lane with its own `sq.dashboard.{route}` namespaces. Build the selector route-namespace-ready — do not merge the two controls.
 - Verify stable `/` and preview route independently.
 - Update spec verification logs and review notes.
 
@@ -349,7 +377,7 @@ Exit:
 
 ## 6. Data and State Model
 
-All state remains browser-local under `sq.dashboard.v1` unless a preview route intentionally uses its own namespace.
+All state remains browser-local under `sq.dashboard.v1` unless a preview route intentionally uses its own namespace. The deferred **context-dashboard** lane (Main/Gaming/Storage; see the [context-dashboard spec](../specs/2026-07-04-dashboard-templates.md)) uses per-route namespaces `sq.dashboard.{route}`. When Slice 7 adds the root view selector, keep the selector and state plumbing **route-namespace-ready** so that lane needs no retrofit — the `viewTheme` look-selector and the context-dashboard switcher are two orthogonal controls that coexist, not one merged control.
 
 Additive fields:
 
@@ -439,13 +467,15 @@ Browser/live tests:
 
 ## 9. Branching Recommendation
 
-Preferred:
+Preferred for the next product branch:
 
 ```powershell
-git checkout -b feat/web-dashboard-v3-card-first
+git checkout master
+git pull --ff-only origin master
+git checkout -b feat/web-dashboard-v3-popover-promotion
 ```
 
-The baseline route/menu/gauge and hardware-identity work is committed on `feat/web-dashboard-v3-card-first`. If new dirty work appears, commit or park that baseline before starting another parallel route/UI slice.
+The baseline route/menu/gauge, hardware-identity, range-truth, state-merge, and visible expansion/action work is merged on `master` through `4310a8b`. If new dirty work appears, commit or park it before starting another route/UI slice.
 
 Avoid parallel branches for `console.js`. The file is too central and the slices depend on one another.
 
