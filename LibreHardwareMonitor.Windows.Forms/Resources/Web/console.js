@@ -371,6 +371,14 @@
       return { s, label: card.title || s.text, status: SQ.statusOf(s, limits || {}), bounded: SQ.visualRangeForSensor(s, limits || {}) };
     }).filter(Boolean);
   };
+  SQ.primaryCardIds = function (sensors, state) {
+    const cfg = SQ.normalizeDashboardState(state);
+    if (cfg.primaryCardsCustomized) return cfg.primaryCards.slice();
+    return Array.isArray(sensors) ? SQ.pickHero(sensors, {}).map(h => h.s.id) : [];
+  };
+  SQ.isPrimaryCard = function (state, id, sensors) {
+    return SQ.primaryCardIds(sensors, state).includes(id);
+  };
 
   SQ.isLimitSensor = function (s) {
     const t = (s.text || '').toLowerCase();

@@ -105,6 +105,12 @@
     eq('default primaryCardsCustomized false', S.defaultDashboardState().primaryCardsCustomized, false);
     eq('normalize primaryCardsCustomized true', S.normalizeDashboardState({primaryCardsCustomized:true}).primaryCardsCustomized, true);
     eq('normalize primaryCardsCustomized junk -> false', S.normalizeDashboardState({primaryCardsCustomized:1}).primaryCardsCustomized, false);
+    const autoIds = S.pickHero(sensors, limits).map(h => h.s.id);
+    const nonHeroId = sensors.map(s => s.id).find(id => !autoIds.includes(id));
+    eq('primaryCardIds auto mode = hero ids', S.primaryCardIds(sensors, S.defaultDashboardState()), autoIds);
+    eq('primaryCardIds non-array safe', S.primaryCardIds(null, S.defaultDashboardState()), []);
+    eq('isPrimaryCard true for auto hero', S.isPrimaryCard(S.defaultDashboardState(), autoIds[0], sensors), true);
+    eq('isPrimaryCard false for non-hero', S.isPrimaryCard(S.defaultDashboardState(), nonHeroId, sensors), false);
 
     // --- Tier 3: schema + migration ---
     eq('default has consolidated fields', (() => { const d = S.defaultDashboardState();
