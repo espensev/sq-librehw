@@ -259,6 +259,41 @@
   SQ.isDashboardSuppressedSensor = function (s, state) {
     return SQ.isSensorHidden(s, state) || SQ.isStaticDriveAuxTemp(s) || SQ.isStaticMbTemp(s);
   };
+  // --- Sensors popover model (Slice 4B): pure, DOM-free helpers ---
+  SQ.sensorSearchText = function (s, state) {
+    if (!s) return '';
+    const alias = SQ.sensorAlias(state, s.id);
+    const val = s.value != null ? s.value : '';
+    return `${s.hw || ''} ${s.text || ''} ${alias} ${s.type || ''} ${val} ${s.id || ''}`.toLowerCase();
+  };
+  SQ.sensorVisibility = function (s, state) {
+    if (SQ.isSensorHidden(s, state)) return 'hidden';
+    if (SQ.isStaticDriveAuxTemp(s) || SQ.isStaticMbTemp(s)) return 'offscreen';
+    return 'visible';
+  };
+  SQ.hiddenSensorCount = function (sensors, state) {
+    if (!Array.isArray(sensors)) return 0;
+    return sensors.reduce((n, s) => n + (SQ.sensorVisibility(s, state) !== 'visible' ? 1 : 0), 0);
+  };
+  SQ.sensorPopoverRows = function (sensors, state, query) {
+    if (!Array.isArray(sensors)) return [];
+    const q = (query || '').trim().toLowerCase();
+    const rank = { hidden: 0, offscreen: 1, visible: 2 };
+    return sensors
+      .filter(s => s && s.id && (!q || SQ.sensorSearchText(s, state).includes(q)))
+      .map((s, i) => ({ s, i, vis: SQ.sensorVisibility(s, state) }))
+      .sort((a, b) => (rank[a.vis] - rank[b.vis]) || (a.i - b.i))
+      .slice(0, 200)
+      .map(({ s, vis }) => ({
+        id: s.id,
+        label: SQ.sensorDisplayText(s, state, s.text),
+        rawLabel: s.text || '',
+        hw: s.hw || '',
+        type: s.type || '',
+        value: s.value != null ? s.value : '—',
+        visibility: vis
+      }));
+  };
   SQ.panelKey = function (hw, sensors) {
     const hwid = sensors && sensors.find(s => s.hwid)?.hwid;
     return hwid || ('hw:' + hw);
@@ -829,6 +864,7 @@
       renderPlacard(alarm);
       renderPanels(sensors);
       renderCustomize();
+      renderSensorsPopover();
       $('#host').textContent = host;
       $('#foot-left').textContent = `LibreHardwareMonitor ${data.Version} · host ${host} · GET /data.json · ${state.rate}s poll`;
       if (!state.paused) {
@@ -1176,6 +1212,38 @@
         <button class="iconbtn" data-action="panel-down" data-id="${esc(item.key)}" ${i >= panels.length - 1 ? 'disabled' : ''}>Down</button>
       </div>`).join('');
     }
+    function renderSensorsPopover() {
+      const countEl = $('#sensorsCount');
+      if (countEl) {
+        const n = SQ.hiddenSensorCount(state.allSensors, state.dashboard);
+        countEl.textContent = n ? String(n) : '';
+      }
+      const list = $('#sensorsList');
+      const menu = $('#sensorsMenu');
+      if (!list || !menu || !menu.open) { state.sensorsSig = null; return; } // list renders only while open; clear sig so reopen rebuilds
+      const rows = SQ.sensorPopoverRows(state.allSensors, state.dashboard, state.sensorsFilter || '');
+      // Rebuild the list only when the filter or the row set / visibility / pin
+      // state changes — NOT on every poll tick — so an in-progress text selection
+      // (e.g. copying a SensorId) and search typing survive. Row values are
+      // intentionally frozen while the popover is open; it is a discovery/manage
+      // surface, not a live monitor (the dashboard behind it keeps updating).
+      const pinnedIds = new Set(state.dashboard.pinnedCards.map(c => c.id));
+      const sig = (state.sensorsFilter || '') + '|' +
+        rows.map(r => `${r.id}:${r.visibility}:${pinnedIds.has(r.id) ? 1 : 0}`).join(',');
+      if (sig === state.sensorsSig) return;
+      state.sensorsSig = sig;
+      list.innerHTML = rows.map(r => {
+        const hidden = r.visibility === 'hidden';
+        const pinned = pinnedIds.has(r.id);
+        const alias = r.label !== r.rawLabel ? ` · ${esc(r.rawLabel)}` : '';
+        return `<div class="sensor-choice ${hidden ? 'is-hidden' : ''}">
+          <div><b>${esc(r.label)}</b><span>${esc(r.hw)} · ${esc(r.type)} · ${esc(r.value)}${alias}</span><code>${esc(r.id)}</code></div>
+          <span class="vis-chip vis-${r.visibility}">${r.visibility}</span>
+          <button class="iconbtn" data-action="${pinned ? 'unpin' : 'pin'}" data-id="${esc(r.id)}">${pinned ? 'Unpin' : 'Pin'}</button>
+          <button class="iconbtn" data-action="${hidden ? 'show' : 'hide'}" data-id="${esc(r.id)}">${hidden ? 'Show' : 'Hide'}</button>
+        </div>`;
+      }).join('') || '<div class="empty-note">No sensors</div>';
+    }
     function renderCustomize() {
       const drawer = $('#customizeDrawer');
       const scrim = $('#customizeScrim');
@@ -1251,6 +1319,36 @@
     $('#customizeScrim').onclick = () => { state.customizeOpen = false; renderCustomize(); };
     $('#hiddenSearch').oninput = e => { state.hiddenFilter = e.target.value; renderCustomize(); };
     $('#cardSearch').oninput = e => { state.cardFilter = e.target.value; renderCustomize(); };
+    $('#sensorsSearch').oninput = e => { state.sensorsFilter = e.target.value; renderSensorsPopover(); };
+    $('#sensorsMenu').addEventListener('toggle', () => { if ($('#sensorsMenu').open) renderSensorsPopover(); });
+    $('#sensorsList').addEventListener('click', e => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      switch (btn.dataset.action) {
+        case 'hide': setSensorHidden(id, true); break;
+        case 'show': setSensorHidden(id, false); break;
+        case 'pin': pinSensor(id); break;
+        case 'unpin': unpinSensor(id); break;
+      }
+      renderSensorsPopover();
+    });
+    $('#sensorsMenu').querySelector('[data-action="reset-hidden"]').onclick = () => {
+      state.dashboard.hiddenSensorIds = [];
+      commitDashboard();
+      renderSensorsPopover();
+    };
+    // Escape / click-outside close for masthead disclosure menus (Pages + Sensors)
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') document.querySelectorAll('details.page-menu[open], details.sensors-menu[open]').forEach(d => { d.open = false; });
+    });
+    // Capture phase: this must observe e.target BEFORE the #sensorsList action
+    // handler (bubble phase) rebuilds the list and detaches the clicked button —
+    // otherwise the orphaned target reads as "outside" and closes the popover on
+    // every Pin/Hide/Show click.
+    document.addEventListener('click', e => {
+      document.querySelectorAll('details.page-menu[open], details.sensors-menu[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
+    }, true);
     document.querySelectorAll('[data-tab]').forEach(btn => btn.onclick = () => { state.customizeTab = btn.dataset.tab; renderCustomize(); });
     $('#customizeDrawer').addEventListener('change', e => {
       const input = e.target.closest('[data-action="rename"]');
