@@ -80,6 +80,18 @@
     eq('sensorVisibility offscreen (static mb temp)', S.sensorVisibility(byId('/lpc/nct6701d/0/temperature/5'), popState), 'offscreen');
     eq('hiddenSensorCount counts hidden+offscreen', S.hiddenSensorCount(sensors, popState) >= 2, true);
     eq('hiddenSensorCount ignores plainly-visible-only list', S.hiddenSensorCount([byId('/amdcpu/0/temperature/2')], popState), 0);
+    const popRows = S.sensorPopoverRows(sensors, popState, '');
+    eq('sensorPopoverRows returns rows', popRows.length > 0, true);
+    eq('sensorPopoverRows row shape', Object.keys(popRows[0]).sort(),
+      ['hw','id','label','rawLabel','type','value','visibility']);
+    eq('sensorPopoverRows hidden sorted before visible',
+      popRows.findIndex(r => r.visibility === 'hidden') < popRows.findIndex(r => r.visibility === 'visible'), true);
+    const loadRows = S.sensorPopoverRows(sensors, popState, 'load');
+    eq('sensorPopoverRows query returns a narrowed subset', loadRows.length > 0 && loadRows.length < popRows.length, true);
+    eq('sensorPopoverRows query includes the matching load sensor', loadRows.some(r => r.id === '/amdcpu/0/load/0'), true);
+    eq('sensorPopoverRows keeps raw label under alias',
+      S.sensorPopoverRows([byId('/amdcpu/0/temperature/2')], popState, '')[0].rawLabel, byId('/amdcpu/0/temperature/2').text);
+    eq('sensorPopoverRows non-array safe', S.sensorPopoverRows(null, popState, ''), []);
     S.resetSensorMotion();
     const pinned = S.normalizeDashboardState({pinnedCards:[
       {id:'/amdcpu/0/load/0', title:'CPU Work'},

@@ -275,6 +275,25 @@
     if (!Array.isArray(sensors)) return 0;
     return sensors.reduce((n, s) => n + (SQ.sensorVisibility(s, state) !== 'visible' ? 1 : 0), 0);
   };
+  SQ.sensorPopoverRows = function (sensors, state, query) {
+    if (!Array.isArray(sensors)) return [];
+    const q = (query || '').trim().toLowerCase();
+    const rank = { hidden: 0, offscreen: 1, visible: 2 };
+    return sensors
+      .filter(s => s && s.id && (!q || SQ.sensorSearchText(s, state).includes(q)))
+      .map((s, i) => ({ s, i, vis: SQ.sensorVisibility(s, state) }))
+      .sort((a, b) => (rank[a.vis] - rank[b.vis]) || (a.i - b.i))
+      .slice(0, 200)
+      .map(({ s, vis }) => ({
+        id: s.id,
+        label: SQ.sensorDisplayText(s, state, s.text),
+        rawLabel: s.text || '',
+        hw: s.hw || '',
+        type: s.type || '',
+        value: s.value != null ? s.value : '—',
+        visibility: vis
+      }));
+  };
   SQ.panelKey = function (hw, sensors) {
     const hwid = sensors && sensors.find(s => s.hwid)?.hwid;
     return hwid || ('hw:' + hw);
