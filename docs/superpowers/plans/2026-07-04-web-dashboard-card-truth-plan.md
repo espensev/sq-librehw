@@ -10,10 +10,18 @@
 
 **Spec:** [`docs/feature-web-dashboard-card-truth.md`](../../feature-web-dashboard-card-truth.md)
 **Execution campaign:** [`2026-07-04-web-dashboard-implementation-campaign.md`](2026-07-04-web-dashboard-implementation-campaign.md)
+**Corrective current plan:** [`2026-07-04-web-dashboard-visible-correctness-plan.md`](2026-07-04-web-dashboard-visible-correctness-plan.md)
+
+> Current status note, 2026-07-04: the A0-A3 base branch was merged into
+> `master` as `34e1f09`; `.worktrees/card-truth` and the local
+> `feat/web-card-truth-base` branch were removed. The detailed task recipe
+> below is still useful, but new implementation should start from current
+> `master` and follow the corrective visible plan linked above.
 
 ## Current Worktree Status (2026-07-04)
 
-The isolated worktree `.worktrees/card-truth` is on branch `feat/web-card-truth-base` at commit `1acccc7`. Round 1 completed A0-A3 there:
+The former isolated worktree `.worktrees/card-truth` was merged to `master` as
+`34e1f09` and removed. Round 1 completed A0-A3 before merge:
 
 - A0 preflight/build baseline recorded, with live relaunch deferred to the operator.
 - A1 `rangeOverrides`, `observedMax`, `rowOrder`, `netAdapterOrder`, and `hiddenNetAdapters` state fields plus normalizers.
@@ -25,7 +33,9 @@ The isolated worktree `.worktrees/card-truth` is on branch `feat/web-card-truth-
 - Follow-up live browser review on `http://localhost:8085/` and `https://telemetry.seviq.org/` in dark/light themes found the hosted page matches local: bare `/ 200` power ceilings, RPM fan ceilings, stale `Browser-local dashboard state` drawer, no general alias input, and clipped right-edge unit/ceiling suffixes.
 - Ordering scope is broader than pinned cards. Primary cards, pinned cards, subsystem panels, individual sensor rows, and network adapter groups all need direct visible UI order controls plus keyboard/button fallback; no ordering capability may remain drawer-only.
 
-Resume implementation at **Task A4 Step 1** in that worktree. Do not start the card-first or row/subgroup worktrees until A4, A5, B1, and B2 are green and the Phase A/B live gates have been recorded.
+Resume implementation from current `master`, not from the removed worktree.
+The next concrete code step from this recipe is still **Task A4 Step 1**, but
+the corrective visible plan controls branch strategy and live acceptance.
 
 ## Execution Status (2026-07-04 — round 1, stopped on operator order)
 

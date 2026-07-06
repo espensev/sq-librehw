@@ -2,8 +2,23 @@
 
 This fork ("Sev IQ") carries local changes on top of upstream LibreHardwareMonitor that are
 **not** covered by [`feature-graph-menu.md`](feature-graph-menu.md). They were delivered in the
-same commits (`7b0e079`, `1f4225c`, `bb432e1`, `dc424c5`) and are recorded here for traceability so future
-upstream merges and reviewers know they are intentional.
+initial graph-menu series (`7b0e079`, `1f4225c`, `bb432e1`, `dc424c5`) and later fork work. They
+are recorded here for traceability so future upstream merges and reviewers know they are
+intentional. This catalog was re-audited on 2026-07-06 against `upstream/master` `9837983` and local
+`HEAD` `34e1f09`; in-flight working-tree items are labeled as such.
+
+## Current audit snapshot (2026-07-06)
+
+- `git rev-list --left-right --count HEAD...upstream/master` reports `108 11` from merge-base
+  `abfc4f5705419d62cd6000f45a92563415c165fc`: this fork has a large intentional local feature/fix
+  stack, and upstream has 11 commits not literally present in this checkout.
+- Upstream #2382, #2384, #2386, #2390, and #2411 are content-covered or superseded locally even
+  though `git cherry -v HEAD upstream/master` shows them as not patch-identical. Treat the next
+  upstream sync as a conflict-reviewed merge/cherry-pick, not a blind "missing fixes" import.
+- Sync-sensitive local areas are: `HttpServer.cs` (JSON contract, resource serving, preview routes),
+  `MainForm.cs` (PawnIO resource extraction and UI wiring), `.github/workflows/master.yml` (fork-safe
+  publish behavior), project/package files (`Directory.Packages.props` central package management),
+  web dashboard assets/tests, and the local feature-spec docs.
 
 ## Sensor tree
 
@@ -85,7 +100,9 @@ upstream merges and reviewers know they are intentional.
   css, js, icons) returned `404`; only `data.json` (a separate path) worked. Switched to
   `Assembly.GetExecutingAssembly().GetName().Name + ".Resources."`. The **same latent hardcoded prefix
   in `MainForm.ExtractPawnIO`** (PawnIO_setup.exe extraction) was fixed too — that twin is a local
-  addition beyond upstream #2382. No `data.json`/contract change.
+  addition beyond upstream #2382. As of upstream `9837983` (#2411), upstream has also fixed the
+  PawnIO manifest-resource lookup; the local fork already had equivalent content. No
+  `data.json`/contract change.
 
 ## Web dashboard: SQ Telemetry Console (replaces the legacy jQuery/Knockout UI)
 
@@ -264,6 +281,24 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   which `eval`s `console.js` under a minimal `window.SQ_NO_BOOT` shim — this is the entry point used
   for command-line/agent verification.
 
+## Web dashboard: versioned preview routes (in-flight working tree, 2026-07-06)
+
+- **Preview route server support** (`HttpServer.cs`, spec:
+  [`feature-web-dashboard-versioned-routes.md`](feature-web-dashboard-versioned-routes.md)). The
+  stable dashboard remains at `GET /`; preview dashboards are served under explicit roots such as
+  `GET /dash/cardtruth/`. Missing preview roots return `404` instead of falling back to `/`.
+- **Separate preview assets** live under
+  `LibreHardwareMonitor.Windows.Forms/Resources/WebDash/cardtruth/`, with the stable dashboard still
+  using `Resources/Web/`. The root dashboard now exposes a compact Pages menu linking the preview,
+  `/data.json`, and `/metrics`.
+- **No telemetry contract change.** Preview pages must fetch root-absolute APIs such as
+  `/data.json`; `/dash/<version>/data.json` is a static-asset path, not a new API. Stable dashboard
+  state remains `sq.dashboard.v1`; the current preview uses `sq.dashboard.preview.cardtruth` so test
+  layouts cannot corrupt the stable dashboard.
+- **Route regression tests** are in `LibreHardwareMonitor.Tests/HttpServerRouteTests.cs`, covering
+  root, preview HTML/CSS/JS, root API paths, and missing preview routes. This route work was present
+  in the dirty working tree during the 2026-07-06 audit; do not treat it as shipped until committed.
+
 ## Modernization (traceable to `discovery-librehw-sync-upgrade.md`)
 
 - **High DPI**: `Program.cs` `Application.SetHighDpiMode(SystemAware)` (under `NETCOREAPP`),
@@ -337,3 +372,12 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   sparkline, masthead verdict/census removal) is self-test-adjacent but not itself unit-tested —
   confirmed by direct reading of the shipped `console.js`/`console.css`/`index.html` against the
   spec; live-browser E2E remains a user follow-up per the spec's Verification section.
+- 2026-07-06: Upstream/customization audit updated this catalog and
+  [`discovery-librehw-sync-upgrade.md`](discovery-librehw-sync-upgrade.md). No product build/test was
+  run for the docs-only audit. Evidence commands: `git fetch upstream --prune`, `git fetch origin
+  --prune`, `git rev-list --left-right --count HEAD...upstream/master` (`108 11`), `git diff --stat
+  upstream/master...HEAD` (109 committed local-change paths), `git diff --stat` (10 dirty tracked
+  paths), and `git ls-files --others --exclude-standard` (9 untracked working-tree paths). Existing
+  route/gauge verification for the in-flight dashboard work is recorded in
+  [`feature-web-dashboard-versioned-routes.md`](feature-web-dashboard-versioned-routes.md) and
+  [`reviews/review-2026-07-06-dashboard-menu-gauge-correctness.md`](reviews/review-2026-07-06-dashboard-menu-gauge-correctness.md).

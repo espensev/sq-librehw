@@ -5,6 +5,12 @@
 **Status:** draft
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Task recipe:** [2026-07-04-web-dashboard-card-truth-plan.md](2026-07-04-web-dashboard-card-truth-plan.md)
+**Continued by:** [2026-07-04-web-dashboard-visible-correctness-plan.md](2026-07-04-web-dashboard-visible-correctness-plan.md)
+
+> Current status note, 2026-07-04: the original `.worktrees/card-truth`
+> branch was merged to `master` as `34e1f09` and the worktree was removed.
+> This draft remains useful background, but active implementation planning now
+> lives in the corrective visible plan above.
 
 This is the execution-level campaign plan for the v3 web dashboard work. The
 repo does not currently contain `.codex/skills/project.toml` or
@@ -22,8 +28,8 @@ contract do not change.
 
 ## 2. Exit Criteria
 
-- [ ] Existing `.worktrees/card-truth` is finished through A5, B1, and B2, with `node webtests/selftest.node.js` passing.
-- [ ] `master` receives the model-truth work before UI branches are cut.
+- [ ] Current `master` or the implementation branch is finished through the remaining range, identity, and UI tasks, with `node webtests/selftest.node.js` passing.
+- [ ] The merged model-truth base from `34e1f09` is treated as partial groundwork, not a complete visible fix.
 - [ ] Card-first UI branch removes the Customize drawer and keeps normal details/actions on cards, rows, and headers.
 - [ ] The only surviving non-card surface is a compact masthead popover for hidden/offscreen sensor search and restore.
 - [ ] Primary cards, pinned cards, panels, sensor rows, and network adapter groups are orderable from their visible surfaces with keyboard/button fallback.
@@ -55,7 +61,7 @@ manager registry. These are work packages, not launched agents yet.
 
 | Letter | Name | Scope | Deps | Files Owned | Group | Complexity |
 |---|---|---|---|---|---:|---|
-| `sq-a` | `finish-model-truth` | Finish A4/A5/B1/B2 in `.worktrees/card-truth`: persisted peaks, honest ceilings, derived NVIDIA power limit, hardware identity, duplicate-name panels, per-device heroes. | - | `console.js`, `webtests/console.tests.js`, docs log | 0 | high |
+| `sq-a` | `finish-model-truth` | Finish A4/A5/B1/B2 from current `master`: persisted peaks, honest ceilings, derived NVIDIA power limit, hardware identity, duplicate-name panels, per-device heroes. | - | `console.js`, `webtests/console.tests.js`, docs log | 0 | high |
 | `sq-b` | `card-surface-ui` | Build card/row/header interaction surface: expansion details, alias, card order, masthead hidden-sensor popover, header/readout clipping fix, delete drawer. | `sq-a` | `console.js`, `console.css`, `index.html`, `webtests/console.tests.js` | 1 | high |
 | `sq-c` | `row-network-order` | Add visible ordering for rows and network adapter groups using the card/row detail contract from `sq-b`. | `sq-b` | `console.js`, `console.css`, `webtests/console.tests.js` | 2 | medium |
 | `sq-d` | `verify-live-docs` | Run build/test/live dark-light verification, compare local vs hosted, and update spec/plan verification logs. | `sq-c` | docs only, no product source | 3 | medium |
@@ -157,20 +163,11 @@ Live checks after `sq-b` and `sq-c`:
 ## 13. Worktree Commands Draft
 
 ```powershell
-# Existing model-truth worktree:
-git -C .worktrees/card-truth status --short
-git -C .worktrees/card-truth log --oneline -5
-
-# After sq-a passes and is merged to master:
+# Current model-truth base is already merged to master:
 git checkout master
-git pull --ff-only
-git checkout -b feat/web-card-first
-
-# After sq-b lands:
-git checkout master
-git pull --ff-only
-git checkout -b feat/web-row-subgroup-order
+git checkout -b feat/web-visible-correctness
 ```
 
 Use `git worktree add` instead of switching branches in this checkout if the
-main working tree remains dirty with docs.
+main working tree remains dirty with docs. Keep the secondary
+`worktree-dashboard-templates` branch parked unless explicitly resumed.
