@@ -50,9 +50,9 @@ This is the current queue after the 2026-07-06 alignment pass.
 | C1 | Remove host-specific hidden-sensor IDs | done | Keep regression coverage; no host sensor IDs in product code. |
 | 2 | Hardware identity and multi-device rendering | done | Keep tests for duplicate NVMe/GPU and `hwid` keyed panels/heroes. |
 | 1 | Range truth and machine-agnostic limit derivation | done | Keep regression coverage for range labels, observed peaks, and GPU watt + percent derived limits without drawing peak gauges. |
-| 3 | Card and row expansion + ordering contract | in progress | Multi-tab state merging is fixed; next move alias, raw label, `SensorId`, style, override, pin/hide, choose/reorder, and drag/drop controls onto cards/rows. |
-| 4 | Masthead sensor popover and drawer removal | remaining | Add compact Sensors popover for hidden/offscreen discovery, then remove the Customize drawer after parity. |
-| 5 | Visible ordering everywhere | remaining | Promote row ordering from the preview where accepted; finish card, panel, row, and network subgroup ordering from visible surfaces. |
+| 3 | Card and row expansion + ordering contract | in progress | First visible expansion/action patch is implemented; finish explicit primary card selection and remaining parity gaps before drawer removal. |
+| 4 | Masthead sensor popover and drawer removal | next | Add compact Sensors popover for hidden/offscreen discovery, then remove the Customize drawer after parity. |
+| 5 | Visible ordering everywhere | remaining | Stable row ordering is promoted; finish network subgroup ordering and any remaining card-selection/order polish. |
 | 6 | Modern UI polish and responsive QA | remaining | Fix overlap/clipping and theme quality across dark/light and narrow/wide viewports. |
 | 7 | Preview promotion and closeout | remaining | Sync accepted changes into `/`; retire `/dash/cardtruth/`; expose surviving visual treatment via root Theme dropdown/view selector. |
 
@@ -473,14 +473,16 @@ Stop and review before continuing if any of these happen:
 
 ## 11. First Next Step
 
-The multi-tab state merge guard is implemented. The next concrete patch should add the shared card/row expansion model and the first direct card/row detail actions: raw label, `SensorId`, hardware id, range provenance, alias field, style selector, max override field, pin/hide, and keyboard move buttons.
+The multi-tab state merge guard and first visible expansion/action patch are implemented. Stable `/` and preview `/dash/cardtruth/` now expose raw label, `SensorId`, hardware id, range provenance, alias, style, max override, pin/hide, and keyboard move controls from the visible card/row surface, and stable `/` has the accepted row-order contract promoted from the preview.
 
-While adding expansion, promote or replace the `/dash/cardtruth/` row-order behavior in stable `/`. Do not make `/dash/cardtruth/` a permanent product tab; use it only as a temporary comparison route until accepted behavior is synced into the root dashboard.
+The next concrete patch should close the remaining parity gap before drawer deletion: compact masthead Sensors popover for hidden/offscreen discovery, explicit primary-card selection where needed, and final checks that all drawer-only workflows have a visible replacement.
+
+Do not make `/dash/cardtruth/` a permanent product tab; use it only as a temporary comparison route until accepted behavior is synced into the root dashboard.
 
 Acceptance for the next patch:
 
-- `node webtests\selftest.node.js` adds and passes expansion/action model tests.
-- Card and row expansion state is transient per tab unless explicitly persisted.
-- Expanded details include raw LibreHardwareMonitor label and `SensorId`.
-- Alias, style, max override, pin/hide, and keyboard move actions are reachable from the visible card/row surface.
+- `node webtests\selftest.node.js` adds and passes popover/drawer-removal model tests where practical.
+- Hidden/offscreen sensor discovery is available from one compact masthead popover.
+- No normal card/row detail workflow remains drawer-only.
+- Drawer DOM/CSS/handlers are removed only after parity is verified.
 - No product code mentions this machine's sensor IDs or device names.

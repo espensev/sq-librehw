@@ -4,7 +4,7 @@
 **Surface:** `feat/web-dashboard-v3-card-first` working tree after Slice 3 pre-flight state merge guard
 **Spec source:** [`../feature-web-dashboard-card-truth.md`](../feature-web-dashboard-card-truth.md), [`../superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md`](../superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md)
 **Standards sources:** maintainer-provided `AGENTS.md` instructions, [`../feature-workflow.md`](../feature-workflow.md)
-**Verdict:** PASS WITH NOTES. The original Slice 3 blocker was reproduced and fixed; expansion/drag-drop UI work is still not implemented.
+**Verdict:** PASS WITH NOTES. The original Slice 3 blocker was reproduced and fixed; the first visible expansion/action patch is implemented, while drawer removal, the Sensors popover, explicit primary-card selection, and network subgroup ordering remain open.
 
 ## Findings
 
@@ -27,6 +27,8 @@ Resolved in this pass:
 
 No current low findings. Review-time docs drift around the derived-limit sample gate was aligned in this pass: the accepted spec now matches the implemented 5% idle floor, 8-sample minimum, median ratio, and 25 W bucket behavior.
 
+Post-review update: stable `/` and preview `/dash/cardtruth/` now include visible card/row expansion with alias, raw label, `SensorId`, range provenance, style, override, pin/hide, keyboard move controls, card order via `cardOrder`, stable row ordering via `rowOrder[panelKey|type]`, and an inline-edit guard for active alias/range inputs.
+
 ## Verification
 
 - `node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js` - pass
@@ -40,16 +42,18 @@ No current low findings. Review-time docs drift around the derived-limit sample 
 - `git diff --check` - pass; CRLF normalization warnings only
 - `git diff --check origin/master...HEAD` - pass
 - `git diff --check origin/master` - pass; CRLF normalization warnings only
+- Slice 3 visible expansion/action follow-up: `node webtests\selftest.node.js` - pass, `SELFTEST PASS 156/156`; `dotnet test` - pass, 42/42; `net472` and `net10.0-windows` Release x64 builds - pass; rebuilt live app PID 12204 served `/`, `/dash/cardtruth`, `/data.json`, and `/metrics`; headless Chrome smoke verified expansion/actions on stable and preview, including alias and max override save plus a 390 px viewport.
 
 ## Coverage Notes
 
 - Deep-reviewed files: stable and preview `console.js`, `webtests/console.tests.js`, `docs/feature-web-dashboard-card-truth.md`, `docs/superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md`.
 - Sampled files: route and preview docs for storage namespace/lifecycle consistency.
-- Browser drag/drop E2E remains out of scope because expansion/drag-drop UI is planned, not implemented.
+- Browser drag/drop E2E remains partial: headless Chrome smoke covered expansion, alias, range override, row expansion, and card-order persistence; full pointer drag/drop gesture coverage is still pending.
 
 ## Slice 3 Planning Notes
 
-- Slice 3 started with state safety; that pre-flight guard is now implemented.
+- Slice 3 started with state safety; that pre-flight guard is implemented.
+- First card/row expansion and row-order promotion are implemented in stable and preview assets.
 - User selection and order must be first-class: visible cards/rows/panels get direct drag/drop where reliable, plus keyboard move controls.
 - `/dash/cardtruth/` remains a temporary comparison subsite. Accepted row-order behavior must be promoted into stable `/` or discarded; it should not become the only place where the feature works.
 - Browser tabs on the same route are the real concurrency problem; stable `/` and preview `/dash/cardtruth/` already use separate storage keys and should keep doing so until explicit promotion/import.

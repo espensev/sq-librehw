@@ -248,6 +248,31 @@
     eq('default has v3 fields', (() => { const d = S.defaultDashboardState();
       return [d.rangeOverrides, d.observedMax, d.powerLimitSamples, d.sensorAliases, d.primaryCards, d.cardOrder, d.rowOrder, d.netAdapterOrder, d.hiddenNetAdapters]; })(),
       [{}, {}, {}, {}, [], [], {}, [], []]);
+    eq('sensorDisplayText prefers alias then fallback then raw text', [
+      S.sensorDisplayText({id:'/fan', text:'Fan #7'}, {sensorAliases:{'/fan':'Pump'}}, 'Fan card'),
+      S.sensorDisplayText({id:'/fan', text:'Fan #7'}, {}, 'Fan card'),
+      S.sensorDisplayText({id:'/fan', text:'Fan #7'}, {}, '')
+    ], ['Pump', 'Fan card', 'Fan #7']);
+    eq('updateSensorAlias trims sets and clears', (() => {
+      const set = S.updateSensorAlias({}, '/fan', '  Pump  ');
+      const cleared = S.updateSensorAlias(set, '/fan', ' ');
+      return [set.sensorAliases, cleared.sensorAliases];
+    })(), [{'/fan':'Pump'}, {}]);
+    eq('updateRangeOverride sets max', S.updateRangeOverride({}, '/p', '575', ''), {'/p':{max:575}});
+    eq('updateRangeOverride sets min+max', S.updateRangeOverride({}, '/p', '575', '50'), {'/p':{max:575, min:50}});
+    eq('updateRangeOverride ignores min >= max', S.updateRangeOverride({}, '/p', '575', '600'), {'/p':{max:575}});
+    eq('updateRangeOverride empty max clears', S.updateRangeOverride({'/p':{max:575}}, '/p', '', ''), {});
+    eq('updateRangeOverride junk max clears', S.updateRangeOverride({'/p':{max:575}}, '/p', 'abc', ''), {});
+    eq('updateRangeOverride keeps other ids', S.updateRangeOverride({'/q':{max:100}}, '/p', '575', ''), {'/q':{max:100}, '/p':{max:575}});
+    eq('rangeSourceLabel per source', [
+      S.rangeSourceLabel({lo:0, hi:575, source:'override'}),
+      S.rangeSourceLabel({lo:0, hi:575, source:'limit', derived:true}),
+      S.rangeSourceLabel({lo:0, hi:89, source:'limit'}),
+      S.rangeSourceLabel({lo:0, hi:100, source:'band'}),
+      S.rangeSourceLabel({lo:0, hi:100, source:'control'}),
+      S.rangeSourceLabel({lo:0, hi:178.5, source:'peak'}),
+      S.rangeSourceLabel(null)
+    ], ['operator override', 'derived hardware limit', 'hardware limit', 'semantic band', 'paired control %', 'observed peak', 'no known range']);
 
     // --- Slice 3 pre-flight: telemetry saves must not clobber user state ---
     const freshUserState = S.normalizeDashboardState({
