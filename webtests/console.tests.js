@@ -101,6 +101,11 @@
     eq('resolve pinned ignores missing', cards.map(c => c.label), ['CPU Work']);
     eq('apply panel order', S.applyOrder([{key:'a',index:0},{key:'b',index:1}], ['b'], x => x.key).map(x => x.key), ['b','a']);
 
+    // --- Explicit primary card selection (Slice 5A) ---
+    eq('default primaryCardsCustomized false', S.defaultDashboardState().primaryCardsCustomized, false);
+    eq('normalize primaryCardsCustomized true', S.normalizeDashboardState({primaryCardsCustomized:true}).primaryCardsCustomized, true);
+    eq('normalize primaryCardsCustomized junk -> false', S.normalizeDashboardState({primaryCardsCustomized:1}).primaryCardsCustomized, false);
+
     // --- Tier 3: schema + migration ---
     eq('default has consolidated fields', (() => { const d = S.defaultDashboardState();
       return [d.paused, d.rate, d.theme, JSON.stringify(d.collapsedPanels)]; })(), [false, 2, 'dark', '{}']);
