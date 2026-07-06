@@ -104,6 +104,23 @@
     eq('collapse absent uses default true', S.isPanelCollapsed({collapsedPanels:{}}, 'Network', true), true);
     eq('collapse absent uses default false', S.isPanelCollapsed({collapsedPanels:{}}, 'CPU', false), false);
 
+    // --- Slice 2: hardware identity (hwid grouping) ---
+    const nvmeSensors = sensors.filter(s => s.cls === 'nvme');
+    const nvmePanels = S.buildPanelItems(nvmeSensors);
+    eq('three same-name NVMe produce three panels', nvmePanels.length, 3);
+    eq('NVMe panel keys are hwids', nvmePanels.every(p => /^\/nvme\//.test(p.key)), true);
+    eq('NVMe duplicate labels get #N suffix', nvmePanels.every(p => /#\d+$/.test(p.label)), true);
+    const panelKeys = S.buildPanelItems(sensors).map(p => p.key);
+    eq('no panel merges two hwids', new Set(panelKeys).size, panelKeys.length);
+    eq('panelKey returns hwid not text', S.panelKey('Samename', [{hwid:'/x/0'}]), '/x/0');
+    const hero2 = S.pickHero(sensors, limits);
+    const gpuHeroSensors = hero2.filter(h => /^GPU/.test(h.label)).map(h => h.s);
+    const gpuHeroHwids = [...new Set(gpuHeroSensors.map(s => s.hwid))];
+    eq('hero covers all distinct GPU hwids', gpuHeroHwids.length >= 2, true);
+    eq('collapse dual-read: hwid key wins', S.isPanelCollapsed({collapsedPanels:{'/nvme/0':true,'KINGSTON':false}}, '/nvme/0', 'KINGSTON', false), true);
+    eq('collapse dual-read: text fallback applies', S.isPanelCollapsed({collapsedPanels:{'KINGSTON':true}}, '/nvme/0', 'KINGSTON', false), true);
+    eq('collapse dual-read: absent uses default', S.isPanelCollapsed({collapsedPanels:{}}, '/nvme/0', 'KINGSTON', true), true);
+
     // --- Tier 3: reorder + isPinned ---
     eq('reorder move to end', S.reorderByDrop(['a','b','c'], 'a', 2), ['b','c','a']);
     eq('reorder move to front', S.reorderByDrop(['a','b','c'], 'c', 0), ['c','a','b']);

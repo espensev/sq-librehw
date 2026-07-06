@@ -179,8 +179,11 @@
     }
     return cfg;
   };
-  SQ.isPanelCollapsed = function (state, hw, defaultCollapsed) {
-    const v = SQ.normalizeDashboardState(state).collapsedPanels[hw];
+  SQ.isPanelCollapsed = function (state, key, fallbackKey, defaultCollapsed) {
+    const cp = SQ.normalizeDashboardState(state).collapsedPanels;
+    let v = cp[key];
+    if (v == null && typeof fallbackKey === 'string') v = cp[fallbackKey];
+    if (typeof fallbackKey === 'boolean') defaultCollapsed = fallbackKey;
     return v == null ? !!defaultCollapsed : v === true;
   };
   SQ.isSensorHidden = function (s, state) {
@@ -421,19 +424,58 @@
       add(c.find(s => s.type === 'Load' && /CPU Total/i.test(s.text)), 'CPU Load', { bounded: [0, 100], unit: '%' });
       add(c.find(s => s.type === 'Power' && /^Package/i.test(s.text)), 'CPU Power', { unit: 'W' });
     }
-    if (sensors.some(s => s.cls === 'gpu')) {
-      const g = sensors.filter(s => s.cls === 'gpu');
-      add(g.find(s => s.type === 'Temperature' && /^GPU Core/i.test(s.text)), 'GPU Temp', { bounded: [25, 92], unit: '°C' });
-      add(g.find(s => s.type === 'Temperature' && /Junction/i.test(s.text)), 'GPU Mem Jct', { bounded: [25, 105], unit: '°C' });
-      add(g.find(s => s.type === 'Load' && /^GPU Core/i.test(s.text)), 'GPU Load', { bounded: [0, 100], unit: '%' });
-      add(g.find(s => s.type === 'Power' && /Package/i.test(s.text)), 'GPU Power', { unit: 'W' });
+    if (sensors.some(s => s.cls === 'gpu' || s.cls === 'igpu')) {
+      const gpuSensors = sensors.filter(s => s.cls === 'gpu' || s.cls === 'igpu');
+      const gpuHwids = [];
+      gpuSensors.forEach(s => { if (s.hwid && !gpuHwids.includes(s.hwid)) gpuHwids.push(s.hwid); });
+      const multi = gpuHwids.length > 1;
+      gpuHwids.forEach((hwid, gi) => {
+        const g = gpuSensors.filter(s => s.hwid === hwid);
+        const tag = multi ? ` ${gi + 1}` : '';
+        add(g.find(s => s.type === 'Temperature' && /^GPU Core/i.test(s.text)), `GPU Temp${tag}`, { bounded: [25, 92], unit: '°C' });
+        add(g.find(s => s.type === 'Temperature' && /Junction/i.test(s.text)), `GPU Mem Jct${tag}`, { bounded: [25, 105], unit: '°C' });
+        add(g.find(s => s.type === 'Load' && /^GPU Core/i.test(s.text)), `GPU Load${tag}`, { bounded: [0, 100], unit: '%' });
+        add(g.find(s => s.type === 'Power' && /Package/i.test(s.text)), `GPU Power${tag}`, { unit: 'W' });
+      });
     }
     add(find(s => s.cls === 'mem' && s.hw === 'Total Memory' && s.type === 'Load'), 'RAM Used', { bounded: [0, 100], unit: '%' });
     const drives = sensors.filter(SQ.isPrimaryDriveTemp).sort((a, b) => b.raw - a.raw);
     add(drives[0], 'Drive Temp', { bounded: [25, 80], unit: '°C' });
     sensors.filter(s => s.type === 'Fan' && s.raw > 0).sort((a, b) => b.raw - a.raw).slice(0, 4)
       .forEach(f => add(f, f.text, { unit: 'rpm' }));
-    return H.slice(0, 12);
+    return H.slice(0, 14);
+  };
+
+  SQ.buildPanelItems = function (sensors) {
+    if (!Array.isArray(sensors)) return [];
+    const byId = new Map();
+    sensors.forEach(s => {
+      if (s.cls === 'nic') return;
+      const key = s.hwid || ('hw:' + s.hw);
+      if (!byId.has(key)) byId.set(key, { hw: s.hw, ss: [], key });
+      byId.get(key).ss.push(s);
+    });
+    const byLabel = new Map();
+    [...byId.values()].forEach(item => {
+      if (!byLabel.has(item.hw)) byLabel.set(item.hw, []);
+      byLabel.get(item.hw).push(item);
+    });
+    [...byLabel.values()].forEach(group => {
+      if (group.length > 1) group.forEach((item, i) => { item.label = `${item.hw} #${i + 1}`; });
+      else group[0].label = group[0].hw;
+    });
+    const order = ['cpu','gpu','igpu','mem','dimm','nvme','disk','mb','other'];
+    const items = [...byId.values()].map((item, index) =>
+      ({ hw: item.hw, label: item.label, ss: item.ss, key: item.key, collapsed: false, index }))
+      .sort((a,b) => {
+        const ai = order.indexOf(a.ss[0].cls), bi = order.indexOf(b.ss[0].cls);
+        return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.index - b.index;
+      }).map((item, index) => Object.assign(item, { index }));
+    const nics = sensors.filter(s => s.cls === 'nic');
+    const active = new Set(nics.filter(s => s.type === 'Throughput' && s.raw > 0).map(s => s.hwid || s.hw));
+    const net = nics.filter(s => active.has(s.hwid || s.hw));
+    if (net.length) items.push({ hw: 'Network', label: 'Network', ss: net, key: 'panel:network', collapsed: true, index: items.length });
+    return items;
   };
 
   window.SQ = SQ;
@@ -714,22 +756,22 @@
       return r;
     }
     function panelEl(item) {
-      const { hw, ss, collapsed } = item;
+      const { hw, label, ss, collapsed } = item;
       let worst = 'info'; ss.forEach(s => { if (SQ.RANK[s.status] > SQ.RANK[worst]) worst = s.status; });
       const cls = ss[0].cls;
-      const startCollapsed = SQ.isPanelCollapsed(state.dashboard, hw, collapsed);
+      const startCollapsed = SQ.isPanelCollapsed(state.dashboard, item.key, hw, collapsed);
       const p = document.createElement('div'); p.className = 'panel' + (startCollapsed ? ' collapsed' : '');
       p.dataset.key = item.key;
       const temps = ss.filter(s => s.type === 'Temperature' && s.raw != null && !SQ.isLimitSensor(s)).sort((a,b)=>b.raw-a.raw);
       const head = temps[0] ? temps[0].value : (ss.find(s => s.type === 'Load')?.value || '');
       const h = document.createElement('div'); h.className = 'panel-head';
-      h.innerHTML = `<button class="grip" aria-label="Drag to reorder ${esc(hw)}" title="Drag to reorder">&#8942;&#8942;</button>` +
-        `<span class="lamp s-${worst}"></span><span class="nm">${esc(hw)}</span>` +
+      h.innerHTML = `<button class="grip" aria-label="Drag to reorder ${esc(label)}" title="Drag to reorder">&#8942;&#8942;</button>` +
+        `<span class="lamp s-${worst}"></span><span class="nm">${esc(label)}</span>` +
         `<span class="cls">${CLASSLABEL[cls] || ''}</span>` +
         `<span class="head-stat">${esc(head)}<span class="chev">&#9656;</span></span>`;
       h.onclick = () => {
         p.classList.toggle('collapsed');
-        state.dashboard.collapsedPanels[hw] = p.classList.contains('collapsed');
+        state.dashboard.collapsedPanels[item.key] = p.classList.contains('collapsed');
         saveDashboard();
       };
       p.appendChild(h);
@@ -758,25 +800,10 @@
       });
       p.appendChild(body); return p;
     }
-    function buildPanelItems(sensors) {
-      const byHw = new Map();
-      sensors.forEach(s => { if (s.cls === 'nic') return; (byHw.get(s.hw) || byHw.set(s.hw, []).get(s.hw)).push(s); });
-      const order = ['cpu','gpu','igpu','mem','dimm','nvme','disk','mb','other'];
-      const items = [...byHw.entries()].map(([hw, ss], index) => ({ hw, ss, key: SQ.panelKey(hw, ss), collapsed: false, index }))
-        .sort((a,b) => {
-          const ai = order.indexOf(a.ss[0].cls), bi = order.indexOf(b.ss[0].cls);
-          return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.index - b.index;
-        }).map((item, index) => Object.assign(item, { index }));
-      const nics = sensors.filter(s => s.cls === 'nic');
-      const active = new Set(nics.filter(s => s.type === 'Throughput' && s.raw > 0).map(s => s.hw));
-      const net = nics.filter(s => active.has(s.hw));
-      if (net.length) items.push({ hw: 'Network', ss: net, key: 'panel:network', collapsed: true, index: items.length });
-      return items;
-    }
     function renderPanels(sensors) {
       const panels = $('#panels');
       panels.innerHTML = '';
-      state.panelItems = buildPanelItems(sensors);
+      state.panelItems = SQ.buildPanelItems(sensors);
       const ordered = SQ.applyOrder(state.panelItems, state.dashboard.panelOrder, item => item.key);
       ordered.forEach(item => panels.appendChild(panelEl(item)));
       $('#subtag').textContent = `${ordered.length} components`;
