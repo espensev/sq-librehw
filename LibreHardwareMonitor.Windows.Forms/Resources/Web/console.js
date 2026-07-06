@@ -1334,9 +1334,13 @@
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') document.querySelectorAll('details.page-menu[open], details.sensors-menu[open]').forEach(d => { d.open = false; });
     });
+    // Capture phase: this must observe e.target BEFORE the #sensorsList action
+    // handler (bubble phase) rebuilds the list and detaches the clicked button —
+    // otherwise the orphaned target reads as "outside" and closes the popover on
+    // every Pin/Hide/Show click.
     document.addEventListener('click', e => {
       document.querySelectorAll('details.page-menu[open], details.sensors-menu[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
-    });
+    }, true);
     document.querySelectorAll('[data-tab]').forEach(btn => btn.onclick = () => { state.customizeTab = btn.dataset.tab; renderCustomize(); });
     $('#customizeDrawer').addEventListener('change', e => {
       const input = e.target.closest('[data-action="rename"]');
