@@ -847,6 +847,15 @@
       state.dashboard.rowOrder[groupKey] = moveKey(mergeOrder(state.dashboard.rowOrder[groupKey], rows), id, delta);
       commitDashboard();
     }
+    function movePanel(key, delta) {
+      const keys = state.panelItems.map(i => i.key);
+      state.dashboard.panelOrder = moveKey(mergeOrder(state.dashboard.panelOrder, keys), key, delta);
+      commitDashboard();
+    }
+    function resetPanelOrder() {
+      state.dashboard.panelOrder = [];
+      commitDashboard();
+    }
     function setSensorHidden(id, hidden) {
       const cfg = state.dashboard;
       cfg.hiddenSensorIds = cfg.hiddenSensorIds.filter(x => x !== id);
@@ -1158,10 +1167,15 @@
       const temps = ss.filter(s => s.type === 'Temperature' && s.raw != null && !SQ.isLimitSensor(s)).sort((a,b)=>b.raw-a.raw);
       const head = temps[0] ? temps[0].value : (ss.find(s => s.type === 'Load')?.value || '');
       const h = document.createElement('div'); h.className = 'panel-head';
-      h.innerHTML = `<button class="grip" aria-label="Drag to reorder ${esc(label)}" title="Drag to reorder">&#8942;&#8942;</button>` +
+      h.innerHTML = `<span class="panel-move"><button class="ctl" data-mv="up" aria-label="Move ${esc(label)} up" title="Move up">&#9650;</button><button class="ctl" data-mv="down" aria-label="Move ${esc(label)} down" title="Move down">&#9660;</button></span>` +
+        `<button class="grip" aria-label="Drag to reorder ${esc(label)}" title="Drag to reorder">&#8942;&#8942;</button>` +
         `<span class="lamp s-${worst}"></span><span class="nm">${esc(label)}</span>` +
         `<span class="cls">${CLASSLABEL[cls] || ''}</span>` +
         `<span class="head-stat">${esc(head)}<span class="chev">&#9656;</span></span>`;
+      h.querySelectorAll('.panel-move .ctl').forEach(b => b.onclick = e => {
+        e.stopPropagation();
+        movePanel(item.key, b.dataset.mv === 'up' ? -1 : 1);
+      });
       h.onclick = () => {
         p.classList.toggle('collapsed');
         state.dashboard.collapsedPanels[item.key] = p.classList.contains('collapsed');
@@ -1200,6 +1214,8 @@
       const ordered = SQ.applyOrder(state.panelItems, state.dashboard.panelOrder, item => item.key);
       ordered.forEach(item => panels.appendChild(panelEl(item)));
       $('#subtag').textContent = `${ordered.length} components`;
+      const preset = $('#panelsReset');
+      if (preset) preset.style.display = state.dashboard.panelOrder.length ? '' : 'none';
     }
 
     function sensorSearchText(s) {
@@ -1368,6 +1384,7 @@
     $('#graphs').onclick = () => { state.dashboard.graphsEnabled = !state.dashboard.graphsEnabled; commitDashboard(); };
     $('#customize').onclick = () => { state.customizeOpen = true; renderCustomize(); };
     $('#pfdReset').onclick = resetPrimaryCardsState;
+    $('#panelsReset').onclick = resetPanelOrder;
     $('#drawerClose').onclick = () => { state.customizeOpen = false; renderCustomize(); };
     $('#customizeScrim').onclick = () => { state.customizeOpen = false; renderCustomize(); };
     $('#hiddenSearch').oninput = e => { state.hiddenFilter = e.target.value; renderCustomize(); };

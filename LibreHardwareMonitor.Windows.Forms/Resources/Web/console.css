@@ -276,6 +276,8 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .cell:hover .cell-ctl,.cell:focus-within .cell-ctl,
 .row:hover .row-ctl,.row:focus-within .row-ctl{display:flex}
 @media (hover:none){.cell-ctl,.row-ctl{display:flex}}
+.panel-move{display:inline-flex;gap:3px;margin-right:2px}
+.panel-move .ctl{padding:2px 4px;font-size:10px}
 
 /* card & row expansion - detail and actions live on the visible item */
 .cell{cursor:pointer}
@@ -330,4 +332,4 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .vis-chip.vis-visible{opacity:.6}
 
 /* --- Primary card selection (B2) --- */
-#pfdReset{margin-left:8px}
+#pfdReset,#panelsReset{margin-left:8px}
