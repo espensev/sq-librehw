@@ -956,9 +956,17 @@
       const chip = isHealth && (st === 'ok' || st === 'warn' || st === 'crit')
         ? `<span class="chip-state g-${st}">${STGLYPH[st]} ${STLABEL[st]}</span>` : '';
       const trend = SQ.trendFor(h.s.id, kind);
-      const trendHtml = trend
-        ? `<span class="trend">${trend.direction === 'rising' ? '&#8599;' : '&#8600;'} ${Math.abs(trend.rate).toFixed(Math.abs(trend.rate) >= 10 ? 0 : 2)} ${esc(trend.rateUnit)}</span>`
-        : '<span class="trend"></span>';
+      let trendHtml = '<span class="trend"></span>';
+      if (trend) {
+        const trendArrow = trend.direction === 'rising' ? '&#8599;' : '&#8600;';
+        const trendRate = `${Math.abs(trend.rate).toFixed(Math.abs(trend.rate) >= 10 ? 0 : 2)} ${esc(trend.rateUnit)}`;
+        // Arc cards have a narrow readout (the arc takes ~half the card), so range + full rate can
+        // clip: show the direction arrow only, with the rate in a tooltip. Number-only cards have the
+        // full card width, so keep the inline rate there.
+        trendHtml = fx.arc
+          ? `<span class="trend" title="${trendArrow} ${trendRate}">${trendArrow}</span>`
+          : `<span class="trend">${trendArrow} ${trendRate}</span>`;
+      }
       const ceilLabel = fx.arc && !ctrl ? SQ.rangeLabelFor(gaugeRange, h.s) : null;
       const ceil = ceilLabel ? `<span class="ceil">/ ${esc(ceilLabel)}</span>` : '';
       const cell = document.createElement('div');
