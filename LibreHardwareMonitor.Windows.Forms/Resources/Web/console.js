@@ -393,6 +393,15 @@
     cfg.primaryCards = [];
     return cfg;
   };
+  SQ.resolvePrimaryCards = function (sensors, state, limits) {
+    const byId = new Map(sensors.map(s => [s.id, s]));
+    const cfg = SQ.normalizeDashboardState(state);
+    return cfg.primaryCards.map(id => {
+      const s = byId.get(id);
+      if (!s) return null;
+      return { s, label: s.text, status: SQ.statusOf(s, limits || {}), bounded: SQ.visualRangeForSensor(s, limits || {}) };
+    }).filter(Boolean);
+  };
 
   SQ.isLimitSensor = function (s) {
     const t = (s.text || '').toLowerCase();

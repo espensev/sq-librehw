@@ -122,6 +122,15 @@
       S.setPrimaryCard(addState, nonHeroId, true, sensors).primaryCards.filter(x => x === nonHeroId).length, 1);
     eq('resetPrimaryCards returns to auto', S.primaryCardIds(sensors, S.resetPrimaryCards(addState)), autoIds);
     eq('resetPrimaryCards clears list', S.resetPrimaryCards(addState).primaryCards, []);
+    const custPrim = S.normalizeDashboardState({primaryCardsCustomized:true, primaryCards:[autoIds[0], '/missing/x']});
+    const primCards = S.resolvePrimaryCards(sensors, custPrim, limits);
+    eq('resolvePrimaryCards keeps present sensor', primCards.some(c => c.s.id === autoIds[0]), true);
+    eq('resolvePrimaryCards drops missing sensor from render', primCards.some(c => c.s.id === '/missing/x'), false);
+    eq('resolvePrimaryCards row shape', Object.keys(primCards[0]).sort(), ['bounded','label','s','status']);
+    eq('missing primary id preserved in state', custPrim.primaryCards.includes('/missing/x'), true);
+    const primMerge = S.mergeTelemetryState(custPrim, S.defaultDashboardState());
+    eq('telemetry preserves primary sentinel + list',
+      [primMerge.primaryCardsCustomized, primMerge.primaryCards], [true, [autoIds[0], '/missing/x']]);
 
     // --- Tier 3: schema + migration ---
     eq('default has consolidated fields', (() => { const d = S.defaultDashboardState();
