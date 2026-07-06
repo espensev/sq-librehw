@@ -145,6 +145,7 @@
       powerLimitSamples: {},
       sensorAliases: {},
       primaryCards: [],
+      primaryCardsCustomized: false,
       cardOrder: [],
       rowOrder: {},
       netAdapterOrder: [],
@@ -171,6 +172,7 @@
       powerLimitSamples: cleanPowerSamples(value.powerLimitSamples),
       sensorAliases: cleanAliasMap(value.sensorAliases),
       primaryCards: cleanStringList(value.primaryCards),
+      primaryCardsCustomized: value.primaryCardsCustomized === true,
       cardOrder: cleanStringList(value.cardOrder),
       rowOrder: cleanOrderMap(value.rowOrder),
       netAdapterOrder: cleanStringList(value.netAdapterOrder),
@@ -367,6 +369,41 @@
       const s = byId.get(card.id);
       if (!s) return null;
       return { s, label: card.title || s.text, status: SQ.statusOf(s, limits || {}), bounded: SQ.visualRangeForSensor(s, limits || {}) };
+    }).filter(Boolean);
+  };
+  SQ.primaryCardIds = function (sensors, state) {
+    const cfg = SQ.normalizeDashboardState(state);
+    if (cfg.primaryCardsCustomized) return cfg.primaryCards.slice();
+    return Array.isArray(sensors) ? SQ.pickHero(sensors, {}).map(h => h.s.id) : [];
+  };
+  SQ.isPrimaryCard = function (state, id, sensors) {
+    return SQ.primaryCardIds(sensors, state).includes(id);
+  };
+  SQ.setPrimaryCard = function (state, id, enabled, sensors) {
+    const cfg = SQ.normalizeDashboardState(state);
+    const ids = SQ.primaryCardIds(sensors, cfg).filter(x => x !== id);
+    if (enabled) ids.push(id);
+    cfg.primaryCardsCustomized = true;
+    cfg.primaryCards = ids;
+    return cfg;
+  };
+  SQ.resetPrimaryCards = function (state) {
+    const cfg = SQ.normalizeDashboardState(state);
+    cfg.primaryCardsCustomized = false;
+    cfg.primaryCards = [];
+    return cfg;
+  };
+  SQ.resolvePrimaryCards = function (sensors, state, limits) {
+    const byId = new Map(sensors.map(s => [s.id, s]));
+    // Seeded heroes keep their curated pickHero presentation (label/band/unit); only
+    // genuine non-hero promotions fall back to raw sensor text.
+    const heroById = new Map(SQ.pickHero(sensors, limits || {}).map(h => [h.s.id, h]));
+    const cfg = SQ.normalizeDashboardState(state);
+    return cfg.primaryCards.map(id => {
+      const s = byId.get(id);
+      if (!s) return null;
+      return heroById.get(id) ||
+        { s, label: s.text, status: SQ.statusOf(s, limits || {}), bounded: SQ.visualRangeForSensor(s, limits || {}) };
     }).filter(Boolean);
   };
 
@@ -828,6 +865,14 @@
       state.dashboard.pinnedOrder = state.dashboard.pinnedOrder.filter(x => x !== id);
       commitDashboard();
     }
+    function setPrimaryCardState(id, enabled) {
+      state.dashboard = SQ.setPrimaryCard(state.dashboard, id, enabled, state.allSensors);
+      commitDashboard();
+    }
+    function resetPrimaryCardsState() {
+      state.dashboard = SQ.resetPrimaryCards(state.dashboard);
+      commitDashboard();
+    }
     function renamePinned(id, title) {
       const card = state.dashboard.pinnedCards.find(c => c.id === id);
       if (card) card.title = title.slice(0, 80);
@@ -933,6 +978,7 @@
       const ov = state.dashboard.rangeOverrides[s.id];
       const alias = SQ.sensorAlias(state.dashboard, s.id);
       const pinned = SQ.isPinned(state.dashboard, s.id);
+      const isPrimary = SQ.isPrimaryCard(state.dashboard, s.id, state.allSensors);
       const rawMin = s.min == null || s.min === '' ? '—' : s.min;
       const rawMax = s.max == null || s.max === '' ? '—' : s.max;
       const value = s.value ?? '—';
@@ -962,6 +1008,7 @@
           <label class="alias">alias <input class="alias-input" data-act="alias" data-id="${esc(s.id)}" value="${esc(alias)}" placeholder="${esc(s.text)}"></label>
           <button class="iconbtn" data-act="alias-clear" data-id="${esc(s.id)}" ${alias ? '' : 'disabled'}>Clear alias</button>
           <button class="iconbtn" data-act="${pinned ? 'unpin' : 'pin'}" data-id="${esc(s.id)}">${pinned ? 'Unpin' : 'Pin'}</button>
+          <button class="iconbtn" data-act="${isPrimary ? 'primary-remove' : 'primary-add'}" data-id="${esc(s.id)}">${isPrimary ? 'Remove from primary' : 'Show as primary'}</button>
           <button class="iconbtn" data-act="hide" data-id="${esc(s.id)}">Hide</button>
           ${styleSel}
           <label class="ov">max <input class="ov-max" inputmode="decimal" value="${ov ? esc(String(ov.max)) : ''}" placeholder="${rr && rr.source !== 'override' ? esc(String(rr.hi)) : 'max'}"></label>
@@ -1042,13 +1089,18 @@
       $('#pinnedtag').textContent = `${cards.length} pinned`;
     }
     function renderPFD(sensors, limits) {
+      const custom = state.dashboard.primaryCardsCustomized;
+      const base = custom ? SQ.resolvePrimaryCards(sensors, state.dashboard, limits)
+                          : SQ.pickHero(sensors, limits);
       const H = SQ.applyOrder(
-        SQ.pickHero(sensors, limits).map((h, index) => Object.assign(h, { index })),
+        base.map((h, index) => Object.assign(h, { index })),
         state.dashboard.cardOrder, h => h.s.id);
       const pfd = $('#pfd');
       pfd.innerHTML = '';
       H.forEach(h => pfd.appendChild(cardEl(h, false)));
-      $('#pfdtag').textContent = `${H.length} auto-selected`;
+      const reset = $('#pfdReset');
+      if (reset) reset.style.display = custom ? '' : 'none';
+      $('#pfdtag').textContent = custom ? `${H.length} selected` : `${H.length} auto-selected`;
     }
     function renderPlacard(alarm) {
       const flagged = alarm.filter(s => s.status === 'warn' || s.status === 'crit')
@@ -1315,6 +1367,7 @@
     };
     $('#graphs').onclick = () => { state.dashboard.graphsEnabled = !state.dashboard.graphsEnabled; commitDashboard(); };
     $('#customize').onclick = () => { state.customizeOpen = true; renderCustomize(); };
+    $('#pfdReset').onclick = resetPrimaryCardsState;
     $('#drawerClose').onclick = () => { state.customizeOpen = false; renderCustomize(); };
     $('#customizeScrim').onclick = () => { state.customizeOpen = false; renderCustomize(); };
     $('#hiddenSearch').oninput = e => { state.hiddenFilter = e.target.value; renderCustomize(); };
@@ -1409,6 +1462,8 @@
       switch (btn.dataset.act) {
         case 'pin': pinSensor(id); break;
         case 'unpin': unpinSensor(id); break;
+        case 'primary-add': setPrimaryCardState(id, true); break;
+        case 'primary-remove': setPrimaryCardState(id, false); break;
         case 'hide': setSensorHidden(id, true); break;
         case 'alias-clear':
           state.dashboard = SQ.updateSensorAlias(state.dashboard, id, '');

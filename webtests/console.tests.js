@@ -101,6 +101,44 @@
     eq('resolve pinned ignores missing', cards.map(c => c.label), ['CPU Work']);
     eq('apply panel order', S.applyOrder([{key:'a',index:0},{key:'b',index:1}], ['b'], x => x.key).map(x => x.key), ['b','a']);
 
+    // --- Explicit primary card selection (Slice 5A) ---
+    eq('default primaryCardsCustomized false', S.defaultDashboardState().primaryCardsCustomized, false);
+    eq('normalize primaryCardsCustomized true', S.normalizeDashboardState({primaryCardsCustomized:true}).primaryCardsCustomized, true);
+    eq('normalize primaryCardsCustomized junk -> false', S.normalizeDashboardState({primaryCardsCustomized:1}).primaryCardsCustomized, false);
+    const autoIds = S.pickHero(sensors, limits).map(h => h.s.id);
+    const nonHeroId = sensors.map(s => s.id).find(id => !autoIds.includes(id));
+    eq('primaryCardIds auto mode = hero ids', S.primaryCardIds(sensors, S.defaultDashboardState()), autoIds);
+    eq('primaryCardIds non-array safe', S.primaryCardIds(null, S.defaultDashboardState()), []);
+    eq('isPrimaryCard true for auto hero', S.isPrimaryCard(S.defaultDashboardState(), autoIds[0], sensors), true);
+    eq('isPrimaryCard false for non-hero', S.isPrimaryCard(S.defaultDashboardState(), nonHeroId, sensors), false);
+    const addState = S.setPrimaryCard(S.defaultDashboardState(), nonHeroId, true, sensors);
+    eq('setPrimaryCard switches to custom', addState.primaryCardsCustomized, true);
+    eq('setPrimaryCard seeds visible set + adds id',
+      addState.primaryCards.includes(nonHeroId) && autoIds.every(id => addState.primaryCards.includes(id)), true);
+    const remState = S.setPrimaryCard(addState, nonHeroId, false, sensors);
+    eq('setPrimaryCard remove keeps custom', remState.primaryCardsCustomized, true);
+    eq('setPrimaryCard remove drops id', remState.primaryCards.includes(nonHeroId), false);
+    eq('setPrimaryCard no duplicate on re-add',
+      S.setPrimaryCard(addState, nonHeroId, true, sensors).primaryCards.filter(x => x === nonHeroId).length, 1);
+    eq('resetPrimaryCards returns to auto', S.primaryCardIds(sensors, S.resetPrimaryCards(addState)), autoIds);
+    eq('resetPrimaryCards clears list', S.resetPrimaryCards(addState).primaryCards, []);
+    const custPrim = S.normalizeDashboardState({primaryCardsCustomized:true, primaryCards:[autoIds[0], '/missing/x']});
+    const primCards = S.resolvePrimaryCards(sensors, custPrim, limits);
+    eq('resolvePrimaryCards keeps present sensor', primCards.some(c => c.s.id === autoIds[0]), true);
+    eq('resolvePrimaryCards drops missing sensor from render', primCards.some(c => c.s.id === '/missing/x'), false);
+    eq('missing primary id preserved in state', custPrim.primaryCards.includes('/missing/x'), true);
+    // curated hero presentation survives promotion; genuine non-heroes fall back to raw text
+    const heroSample = S.pickHero(sensors, limits).find(h => h.label === 'CPU Temp');
+    const custHero = S.normalizeDashboardState({primaryCardsCustomized:true, primaryCards:[heroSample.s.id]});
+    eq('resolvePrimaryCards preserves curated hero label', S.resolvePrimaryCards(sensors, custHero, limits)[0].label, 'CPU Temp');
+    const custNon = S.normalizeDashboardState({primaryCardsCustomized:true, primaryCards:[nonHeroId]});
+    const nonRow = S.resolvePrimaryCards(sensors, custNon, limits)[0];
+    eq('resolvePrimaryCards non-hero uses raw text', nonRow.label, sensors.find(s => s.id === nonHeroId).text);
+    eq('resolvePrimaryCards non-hero row shape', Object.keys(nonRow).sort(), ['bounded','label','s','status']);
+    const primMerge = S.mergeTelemetryState(custPrim, S.defaultDashboardState());
+    eq('telemetry preserves primary sentinel + list',
+      [primMerge.primaryCardsCustomized, primMerge.primaryCards], [true, [autoIds[0], '/missing/x']]);
+
     // --- Tier 3: schema + migration ---
     eq('default has consolidated fields', (() => { const d = S.defaultDashboardState();
       return [d.paused, d.rate, d.theme, JSON.stringify(d.collapsedPanels)]; })(), [false, 2, 'dark', '{}']);
