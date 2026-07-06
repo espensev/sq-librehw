@@ -1075,13 +1075,18 @@
       $('#pinnedtag').textContent = `${cards.length} pinned`;
     }
     function renderPFD(sensors, limits) {
+      const custom = state.dashboard.primaryCardsCustomized;
+      const base = custom ? SQ.resolvePrimaryCards(sensors, state.dashboard, limits)
+                          : SQ.pickHero(sensors, limits);
       const H = SQ.applyOrder(
-        SQ.pickHero(sensors, limits).map((h, index) => Object.assign(h, { index })),
+        base.map((h, index) => Object.assign(h, { index })),
         state.dashboard.cardOrder, h => h.s.id);
       const pfd = $('#pfd');
       pfd.innerHTML = '';
       H.forEach(h => pfd.appendChild(cardEl(h, false)));
-      $('#pfdtag').textContent = `${H.length} auto-selected`;
+      const reset = $('#pfdReset');
+      if (reset) reset.style.display = custom ? '' : 'none';
+      $('#pfdtag').textContent = custom ? `${H.length} selected` : `${H.length} auto-selected`;
     }
     function renderPlacard(alarm) {
       const flagged = alarm.filter(s => s.status === 'warn' || s.status === 'crit')
