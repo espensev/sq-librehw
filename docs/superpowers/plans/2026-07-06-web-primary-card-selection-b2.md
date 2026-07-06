@@ -232,3 +232,17 @@ case 'primary-remove': setPrimaryCardState(id, false); break;
 1. **Spec coverage (handoff Slice 5A):** state contract ✓ (Task 1, sentinel); `primaryCardIds`/`setPrimaryCard`/`resetPrimaryCards`/`isPrimaryCard` ✓ (Tasks 2-3); card + row expansion actions ✓ (Task 6); primary grid drag/keyboard ✓ (already exists — `movable:true` on cards); the 7 Slice 5A tests are covered (auto default, add→custom, remove keeps custom, reset→auto, order applies, missing preserved, telemetry-safe). Popover primary action **deliberately deferred** (decision 4) — documented, not dropped.
 2. **Placeholder scan:** every code step shows real code; no TBD/TODO.
 3. **Type consistency:** `setPrimaryCard(state, id, enabled, sensors)` and `isPrimaryCard(state, id, sensors)` share arg order; `resolvePrimaryCards` returns `{s,label,status,bounded}` — the exact shape `cardEl` consumes (`h.s`, `h.label`, `h.status`, `h.bounded`), matching `resolvePinnedCards`.
+
+## Execution notes (2026-07-06, inline)
+
+**Result:** All 6 tasks executed via strict TDD (RED→GREEN→commit). Web selftest 185→**190/190**; C# golden **42/42** (contract untouched, as predicted for a browser-local change). No console errors/warnings. Dark + light both clean (screenshots in scratchpad).
+
+**Deviations from the handoff sketch:** `setPrimaryCard`/`isPrimaryCard` take a 4th `sensors` arg (decision 2) so the first edit seeds from the live auto-hero set. Popover primary action deferred (decision 4). Both intentional and documented above.
+
+**Live verification (chrome-devtools, real browser across poll ticks — the node harness cannot cover DOM/event/persistence):**
+- Auto→promote→demote→reset cycle: all 6 verdicts pass. Promoting a non-hero subsystem row yields **auto-count + 1** cards ("15 selected"), NOT a collapse to one card — the seed-from-visible design (decision 2) works. Expansion button flips auto: "Show as primary" ⇄ "Remove from primary" on both the row (`.rowxp`) and the PFD card (`.xp`). `#pfdReset` ("Auto") shows only in custom mode; clicking returns to the exact auto hero set.
+- Persistence across reload confirmed (isolated single tab): custom set + sentinel survive reload.
+
+**Two findings (neither a B2 product bug):**
+1. **Version-skew multi-tab clobber (test artifact, inherent limitation).** First reload test showed the custom set lost — root-caused to two *stale pre-B2 browser tabs* still running the old `console.js` (rebuild embeds new assets, but already-open tabs keep old JS until reloaded). The old `normalizeDashboardState` doesn't know `primaryCardsCustomized`, so its telemetry poll-save **strips the unknown flag while keeping the known `primaryCards` list** (signature: `customized:false` + list preserved). Verified by inspecting the stale tab (`SQ.setPrimaryCard` absent). After closing the stale tabs, persistence works. This affects *every* browser-local field ever added, not B2 — `mergeTelemetryState` protects concurrent same-version tabs, and cannot protect against genuinely older code. No fix warranted; recorded as a live-testing gotcha.
+2. **`.rowxp` is a SIBLING of `.row`, not a child** (`appendRow`, console.js:1141-1145 appends `xpEl` to the container after the row; rows also get no `.expanded` class — only cards do). Initial live test queried inside `.row` and wrongly reported the button missing; the code was correct. Testing gotcha worth remembering.
