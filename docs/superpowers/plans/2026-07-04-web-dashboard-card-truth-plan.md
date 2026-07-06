@@ -2,13 +2,48 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** honest gauge ranges (override > limit > band > labeled estimate), fan gauges from paired Control %, clean multi-GPU/duplicate-hardware identity, card-carried detail/actions replacing the Customize drawer, movable rows and network subgroups, and the header overlap fix.
+**Goal:** honest gauge ranges (override > limit > band > labeled estimate), fan gauges from paired Control %, clean multi-GPU/duplicate-hardware identity, card-carried detail/actions replacing side/drawer UI, dashboard-local alias/rename, visible-surface ordering for cards/panels/rows/network groups, and the header/value clipping fix.
 
 **Architecture:** all changes live in the client console (`Resources/Web/console.js` model + boot, `console.css`, `index.html`) plus `webtests/`. Model logic is added as pure `SQ.*` functions tested by the Node self-test; DOM wiring follows the existing render/delegate patterns. No server, no `data.json` change, golden tests must stay green untouched (phases A–D).
 
 **Tech Stack:** vanilla JS (no framework/build step), embedded resources, Node for self-tests, .NET 10 build for smoke.
 
 **Spec:** [`docs/feature-web-dashboard-card-truth.md`](../../feature-web-dashboard-card-truth.md)
+**Execution campaign:** [`2026-07-04-web-dashboard-implementation-campaign.md`](2026-07-04-web-dashboard-implementation-campaign.md)
+**Current plan (authoritative):** [`2026-07-06-web-dashboard-v3-next-plan.md`](2026-07-06-web-dashboard-v3-next-plan.md) (supersedes the visible-correctness plan and the A4-onwards task recipe below)
+
+> Current status note, 2026-07-04: the A0-A3 base branch was merged into
+> `master` as `34e1f09`; `.worktrees/card-truth` and the local
+> `feat/web-card-truth-base` branch were removed. The detailed task recipe
+> below is still useful, but new implementation should start from current
+> `master` and follow the corrective visible plan linked above.
+
+## Current Worktree Status (2026-07-04)
+
+The former isolated worktree `.worktrees/card-truth` was merged to `master` as
+`34e1f09` and removed. Round 1 completed A0-A3 before merge:
+
+- A0 preflight/build baseline recorded, with live relaunch deferred to the operator.
+- A1 `rangeOverrides`, `observedMax`, `rowOrder`, `netAdapterOrder`, and `hiddenNetAdapters` state fields plus normalizers.
+- A2 `SQ.rangeFor` range-provenance resolver and `speedoRange` wrapper.
+- A3 fan cards/rows use paired Control % for the gauge while RPM remains the numeric value.
+- Live endpoint check on `http://localhost:8085/data.json` found 575 sensors, 9 fan/control pairs (7 Nuvoton + 2 RTX 5090), and RTX 5090 `GPU Package` W plus `GPU Power` / `GPU Board Power` percent-of-limit inputs.
+- Preserve raw LibreHardwareMonitor labels in details and source views. Motherboard/Nuvoton entries such as `Temperature #1`, `Temperature #2`, and `Temperature #5` are expected LibreHW/board labels, not dashboard bugs to rename away.
+- Add a dashboard-local alias/rename option per sensor. Use the alias as the friendly display label when present, but always show the raw LibreHardwareMonitor label and `SensorId` in detail/search so the alias never becomes fake hardware truth. Concrete current-host example: raw `Fan #7` `/lpc/nct6701d/0/fan/6` has paired Control `/lpc/nct6701d/0/control/6`; the UI may alias it to `Pump`, but must not rewrite the raw LibreHW label.
+- Follow-up live browser review on `http://localhost:8085/` and `https://telemetry.seviq.org/` in dark/light themes found the hosted page matches local: bare `/ 200` power ceilings, RPM fan ceilings, stale `Browser-local dashboard state` drawer, no general alias input, and clipped right-edge unit/ceiling suffixes.
+- Ordering scope is broader than pinned cards. Primary cards, pinned cards, subsystem panels, individual sensor rows, and network adapter groups all need direct visible UI order controls plus keyboard/button fallback; no ordering capability may remain drawer-only.
+
+Resume implementation from current `master`, not from the removed worktree.
+Historically the next concrete code step from this recipe was **Task A4 Step 1**;
+that instruction is now **superseded** — see the warning below.
+
+> **⚠️ Superseded, 2026-07-06:** A2 and A3 are committed (`13fbd6b`, `a6af9e1`).
+> The `SQ.gaugeRangeFor` guard now exists (commit `47aa6f3`) and **rejects
+> `source:'peak'` at render** — peak-derived ranges are no longer gauge-eligible.
+> Do NOT follow the A4 peak→arc recipe below; it would re-introduce fake gauges.
+> New work follows the slices in
+> [`2026-07-06-web-dashboard-v3-next-plan.md`](2026-07-06-web-dashboard-v3-next-plan.md).
+> The recipe text below is retained as historical reference only.
 
 ## Execution Status (2026-07-04 — round 1, stopped on operator order)
 
@@ -18,7 +53,7 @@ Executed on branch **`feat/web-card-truth-base`** in worktree `.worktrees/card-t
 - ✅ **A1** `6ee50c5` — v3 state schema: `rangeOverrides`/`observedMax`/`rowOrder`/`netAdapterOrder`/`hiddenNetAdapters` + cleaners (selftest 90/90)
 - ✅ **A2** `13fbd6b` — `SQ.rangeFor` provenance resolver, `speedoRange` kept as wrapper, `cardEl` consumes `rr` (96/96)
 - ✅ **A3** `a6af9e1` — `SQ.fanControlFor` (hwid+text); fan card arc = Control %, RPM stays the number, `cmd N %` card meta, `· N %` on fan rows (100/100)
-- ⏭ **RESUME AT: Task A4 Step 1** (failing test for `SQ.mergeObservedPeaks`), then A5 → B1 → B2 → cut `feat/web-card-first` for Phase C. No UI/visual verification yet — do the Phase A live gate after A5.
+- ⏭ **HISTORICAL — superseded 2026-07-06.** The original "RESUME AT: Task A4 Step 1" instruction is no longer live. A2/A3 are committed; `gaugeRangeFor` (commit `47aa6f3`) now gates arcs and rejects `source:'peak'`. Resume instead from Slice 1 of the [v3-next plan](2026-07-06-web-dashboard-v3-next-plan.md), starting with the range-label/derived-limit work that respects the guard.
 - Handoff: [`2026-07-04-web-dashboard-card-truth-HANDOFF.md`](2026-07-04-web-dashboard-card-truth-HANDOFF.md)
 
 ## Global Constraints
@@ -29,9 +64,11 @@ Executed on branch **`feat/web-card-truth-base`** in worktree `.worktrees/card-t
 - After every task: `node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js` and `node webtests\selftest.node.js` → `SELFTEST PASS n/n` (n grows; 0 FAIL).
 - `sq.dashboard.v1` stays `version: 1`; new fields are additive and cleaned by a `cleanX` normalizer like the existing ones.
 - Keyboard reorder must exist at all times: the drawer may only be deleted (Task C5) after expansion ▲▼ buttons work (C1).
+- Aliases and ordering are dashboard-local presentation only. They never mutate raw LibreHardwareMonitor `Text`, `SensorId`, hardware identity, or `data.json` order.
+- Cards/rows/headers are the interaction surface. Do not replace the Customize drawer with another side pane; the only allowed non-card surface is the compact masthead sensor popover for hidden/offscreen sensor search and restore.
 - Do NOT kill the operator's running LibreHardwareMonitor instance for builds — build to a temp output directory (`-o`) when the default output is locked; live relaunch is an operator step.
 - Commits: `feat(web): …` / `fix(web): …` / `docs(web): …`, one per task.
-- Phase A+B commit to `master` — the trunk for this work since the concurrent 2026-07-04 merge `2128e33` (the former `feature/web-dashboard-customization` branch was merged in and deleted). Phase C on branch `feat/web-card-first`, Phase D on branch `feat/web-row-subgroup-order`, both cut from master after B2. Phase E does not exist in this plan (parked pending operator go — needs its own spec+plan because it regenerates the data.json golden).
+- Phase A+B commit to `master` — the trunk for this work since the concurrent 2026-07-04 merge `2128e33` (the former `feature/web-dashboard-customization` branch was merged in and deleted). Phase C runs on branch `feat/web-card-first` after B2 is merged. Phase D defaults to branch `feat/web-row-subgroup-order` after Phase C lands, because row-detail buttons and no-side-pane contracts come from C. Parallel C/D is allowed only if C2's row-detail contract is frozen and an explicit integrator owns the merge. Phase E does not exist in this plan (parked pending operator go — needs its own spec+plan because it regenerates the data.json golden).
 
 ---
 
@@ -170,6 +207,8 @@ const range = rr ? [rr.lo, rr.hi] : null;
 
 (`ceil` markup keeps using `range[1]` for now; A4 switches it to `rr.source`-aware rendering.)
 
+> **Note, 2026-07-06:** the `rr.source`-aware rendering is now implemented differently than A4 prescribes. `SQ.gaugeRangeFor` (commit `47aa6f3`) is the single arc-eligibility gate: it rejects `source:'peak'`, so peak-derived ranges render number-only with no arc and no ceiling. Do not follow the A4 ceil recipe below.
+
 - [ ] **Step 4:** self-test → PASS (including the four pre-existing `speedoRange` cases).
 - [ ] **Step 5:** `git commit -m "feat(web): SQ.rangeFor - range provenance resolver (override>limit>band>peak)"`
 
@@ -222,6 +261,13 @@ then arc/ceil selection becomes: if `ctrl` → `arc = arcSVG(h.s.id, ctrl.raw / 
 - [ ] **Step 5:** `git commit -m "feat(web): fan cards - arc from paired Control %, RPM stays the number"`
 
 ### Task A4: Persisted peaks + honest `≈` ceilings
+
+> **⚠️ SUPERSEDED 2026-07-06.** The peak→arc path described in this task is
+> no longer valid. `SQ.gaugeRangeFor` (commit `47aa6f3`) now rejects
+> `source:'peak'` at render time, so peak-derived ranges render number-only.
+> Persisted peaks (`mergeObservedPeaks`) and `rangeLabelFor` are still
+> unimplemented Slice 1 to-dos in the v3-next plan, but they must NOT feed
+> arc rendering. Follow the v3-next slices, not this task recipe.
 
 **Files:**
 - Modify: `console.js` (render loop + `cardEl` ceil markup), `console.css`
@@ -283,7 +329,7 @@ const ceil = !fx.arc || !rr || rr.source === 'band' ? '' :
 
 **Interfaces:**
 - Produces: `SQ.trackPowerLimits(sensors)` (call each render), real `SQ.derivedPowerLimit(hwid) → W|null` replacing the A2 stub; `SQ.resetPowerLimits()` for tests.
-- Grounding: live 5090 exposes `Powers/GPU Package` (W) and `Load/GPU Power` (% of limit) — 81.2 W @ 13.5 % ⇒ ≈575–600 W.
+- Grounding: live 5090 exposes `Powers/GPU Package` (W) and `Load/GPU Power` / `Load/GPU Board Power` (% of limit). 2026-07-04 checks saw 85.6 W @ 14.0 % and 14.2 % board power, enough to derive a roughly 600 W class limit without hardcoding.
 
 - [ ] **Step 1: failing tests**
 
@@ -502,10 +548,11 @@ Cut: `git checkout -b feat/web-card-first` from trunk after B2.
 - Modify: `console.js` (boot: `detailEl`, `cardEl` click-to-expand, delegated actions incl. `override-max`), `console.css`
 
 **Interfaces:**
-- Produces: clicking a card toggles `.cell-detail` showing: sensor id, hardware, type, now/min/max, gauge-range provenance line, style select, max-override input (+ clear), rename (pinned), hide/pin, ▲▼ move (pinned). Transient `state.openDetails = new Set()`.
+- Produces: clicking a card toggles `.cell-detail` showing: sensor id, hardware, raw LibreHW label, optional alias/rename input (+ clear), type, now/min/max, gauge-range provenance line, style select, max-override input (+ clear), hide/pin, ▲▼ move. Adds `sensorAliases {id:string}` and `cardOrder [cardKey]` to dashboard state. Transient `state.openDetails = new Set()`.
 - Consumes: `SQ.rangeFor` provenance (A2/A4), `rangeOverrides` (A1).
 
-- [ ] **Step 1:** add `openDetails: new Set()` to boot `state`; in `rerender()` add a focus guard: `if (document.activeElement && document.activeElement.closest && document.activeElement.closest('.cell-detail')) return;`.
+- [ ] **Step 1:** add `openDetails: new Set()` to boot `state`; add/normalize `sensorAliases` as a string map and `cardOrder` as a string list on `sq.dashboard.v1`; in `rerender()` add a focus guard: `if (document.activeElement && document.activeElement.closest && document.activeElement.closest('.cell-detail')) return;`.
+- [ ] **Step 1b:** route all primary/PFD cards through `SQ.applyOrder(cards, state.dashboard.cardOrder, h => h.s.id)` before rendering. Existing `pinnedOrder` still controls the separate pinned list/rail; `cardOrder` controls the visible automatic card grid order.
 - [ ] **Step 2: implement `detailEl`** (boot, after `cardEl`):
 
 ```js
@@ -519,25 +566,26 @@ function detailEl(s, opts) {
   d.className = 'cell-detail';
   d.innerHTML =
     `<div class="detail-facts"><code>${esc(s.id)}</code>
-      <span>${esc(s.hw)} · ${esc(s.type)}</span>
+      <span>${esc(s.hw)} · ${esc(s.type)} · raw label ${esc(s.text)}</span>
       <span>now ${esc(s.value ?? '—')} · min ${esc(s.min ?? '—')} · max ${esc(s.max ?? '—')}</span>
       <span>gauge: ${esc(rangeLine)}</span></div>
      <div class="detail-controls">
       <label>style <select data-action="style" data-id="${esc(s.id)}">${['auto','gauge','number','graph'].map(v =>
         `<option value="${v}"${(state.dashboard.cardStyle[s.id] || 'auto') === v ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label>alias <input class="title-input" data-action="alias" data-id="${esc(s.id)}"
+        value="${esc((state.dashboard.sensorAliases || {})[s.id] || '')}" placeholder="${esc(s.text)}"></label>
+      <button class="iconbtn" data-action="alias-clear" data-id="${esc(s.id)}" aria-label="Clear alias">clear alias</button>
       <label>max <input type="number" step="any" inputmode="decimal" data-action="override-max" data-id="${esc(s.id)}"
         value="${ov ? esc(String(ov.max)) : ''}" placeholder="auto"></label>
-      ${opts.pinned ? `<label>name <input class="title-input" data-action="rename" data-id="${esc(s.id)}"
-          value="${esc(opts.title || '')}" placeholder="${esc(s.text)}"></label>
-        <button class="iconbtn" data-action="pin-up" data-id="${esc(s.id)}" aria-label="Move earlier">&#9650;</button>
-        <button class="iconbtn" data-action="pin-down" data-id="${esc(s.id)}" aria-label="Move later">&#9660;</button>` : ''}
+      ${opts.moveable ? `<button class="iconbtn" data-action="${opts.moveAction || 'card'}-up" data-id="${esc(s.id)}" aria-label="Move earlier">&#9650;</button>
+        <button class="iconbtn" data-action="${opts.moveAction || 'card'}-down" data-id="${esc(s.id)}" aria-label="Move later">&#9660;</button>` : ''}
       ${ctlCluster(s.id, s.text, { hide: !opts.pinned })}
      </div>`;
   return d;
 }
 ```
 
-- [ ] **Step 3:** in `cardEl`, after building `cell`: if `state.openDetails.has(h.s.id)` → `cell.classList.add('open'); cell.appendChild(detailEl(h.s, { pinned, title: …pinned card title…, range: rr }));` and add the toggle listener:
+- [ ] **Step 3:** in `cardEl`, after building `cell`: if `state.openDetails.has(h.s.id)` → `cell.classList.add('open'); cell.appendChild(detailEl(h.s, { pinned, title: …pinned card title…, range: rr, moveable:true, moveAction:pinned ? 'pin' : 'card' }));` and add the toggle listener:
 
 ```js
 cell.addEventListener('click', e => {
@@ -547,7 +595,7 @@ cell.addEventListener('click', e => {
 });
 ```
 
-Move the drawer's `change` handling for `rename`/`style` to a `document`-level delegated listener (works for both drawer and detail while both exist), and add:
+Move the drawer's `change` handling for `style` to a `document`-level delegated listener (works for both drawer and detail while both exist), and add:
 
 ```js
 if (e.target.matches('[data-action="override-max"]')) {
@@ -556,12 +604,19 @@ if (e.target.matches('[data-action="override-max"]')) {
   else state.dashboard.rangeOverrides[id] = { max: n };
   commitDashboard();
 }
+if (e.target.matches('[data-action="alias"]')) {
+  const id = e.target.dataset.id, v = e.target.value.trim();
+  state.dashboard.sensorAliases = state.dashboard.sensorAliases || {};
+  if (v) state.dashboard.sensorAliases[id] = v;
+  else delete state.dashboard.sensorAliases[id];
+  commitDashboard();
+}
 ```
 
-`pin-up`/`pin-down` clicks are already handled by the drawer listener — move that `switch` to the same document-level delegate so detail buttons share it.
+`alias-clear`, `card-up`, `card-down`, `pin-up`, and `pin-down` clicks are handled in the same document-level delegate. `card-up/down` rewrites `state.dashboard.cardOrder = moveKey(mergeOrder(state.dashboard.cardOrder, currentCardIds), id, delta)`; pinned move keeps using `pinnedOrder`. Use `sensorAliases[id] || s.text` for display labels, but keep raw `s.text` visible in detail/search. Manual current-host check: alias `Fan #7` to `Pump`; card shows `Pump`, expansion/search still show raw `Fan #7` and `/lpc/nct6701d/0/fan/6`.
 - [ ] **Step 4:** CSS: `.cell.open{height:auto}` (v2 fixed heights must yield), `.cell-detail{margin-top:8px;border-top:1px solid var(--line-soft);padding-top:8px;font:11px var(--mono);display:flex;flex-direction:column;gap:6px}`, `.detail-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}`.
-- [ ] **Step 5:** self-test (unchanged model) + manual fixture: open card, set max 575 on GPU power → arc ceiling flips to `/ 575` plain; clear → back to `≈`. Reload keeps it.
-- [ ] **Step 6:** `git commit -m "feat(web): card expansion - detail, provenance, style, rename, max override, move on the card"`
+- [ ] **Step 5:** self-test + manual fixture: open card, set max 575 on GPU power → arc ceiling flips to `/ 575` plain; clear → back to `≈`; alias a fan card and clear it; move two primary cards with ▲▼; reload keeps alias/order.
+- [ ] **Step 6:** `git commit -m "feat(web): card expansion - detail, provenance, style, alias, max override, move on the card"`
 
 ### Task C2: Row expansion parity
 
@@ -572,20 +627,20 @@ if (e.target.matches('[data-action="override-max"]')) {
 - [ ] **Step 3:** manual fixture check (keyboard: row focusable `tabindex="0"`, Enter toggles — add `keydown` Enter/Space handler alongside click).
 - [ ] **Step 4:** `git commit -m "feat(web): row expansion with same detail/actions as cards"`
 
-### Task C3: Masthead "Sensors — N hidden" popover (search / restore / pin anything)
+### Task C3: Masthead "Sensors — N hidden" popover (hidden/offscreen search only)
 
 **Files:** `index.html`, `console.js`, `console.css`
 
 **Interfaces:**
-- Produces: `#sensorsBtn` in `.controls` + anchored `#sensorsPop` panel: search input over ALL sensors (incl. hidden/suppressed/idle-NIC), each row shows Hide/Show + Pin/Unpin, plus `Reset hidden`. This is the only list UI that survives C5.
+- Produces: `#sensorsBtn` in `.controls` + compact masthead-anchored `#sensorsPop`: search input over ALL sensors (incl. hidden/suppressed/idle-NIC), each row shows Hide/Show + Pin/Unpin, plus `Reset hidden`. This is the only list UI that survives C5. It must not become a side pane and must not contain normal sensor detail, alias, style, max override, or reorder controls; those stay on cards/rows/headers.
 
 - [ ] **Step 1:** `index.html`: before the Customize button add `<button class="btn" id="sensorsBtn" aria-haspopup="true" aria-expanded="false">Sensors</button>` and after `</header>` add `<div class="pop" id="sensorsPop" hidden><div class="drawer-tools"><input id="popSearch" type="search" placeholder="Search all sensors"><button class="iconbtn" data-action="reset-hidden">Reset hidden</button></div><div class="sensor-list" id="popList"></div></div>`.
 - [ ] **Step 2:** `console.js`: extend `renderSensorRows(container, filter, mode)` with mode `'all'` that renders BOTH the pin/unpin and hide/show buttons per row (reuse the existing per-mode button builders side by side). Boot state gains `popOpen:false, popFilter:''`; `#sensorsBtn.onclick` toggles, button text painted each render: `` `Sensors${hidden ? ` — ${hidden} hidden` : ''}` `` where `hidden = state.allSensors.filter(s => SQ.isSensorHidden(s, state.dashboard)).length``. Outside-click + Escape close it.
-- [ ] **Step 3:** CSS: `.pop{position:fixed;top:64px;right:18px;width:min(420px,92vw);max-height:70vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;z-index:40;box-shadow:0 12px 40px rgba(0,0,0,.45)}`.
+- [ ] **Step 3:** CSS: `.pop{position:fixed;top:64px;right:18px;width:min(420px,92vw);max-height:min(70vh,520px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;z-index:40;box-shadow:0 12px 40px rgba(0,0,0,.45)}`. Keep it visually a masthead popover, not a full-height/right-side drawer.
 - [ ] **Step 4:** manual: hide a sensor from a row → count ticks up; restore from popover; pin an idle NIC sensor from the popover → pinned card appears.
 - [ ] **Step 5:** `git commit -m "feat(web): masthead sensors popover - search all, restore hidden, pin anything"`
 
-### Task C4: Header layout — kill the chip/icon/controls overlap
+### Task C4: Header layout — kill chip/icon/control overlap and value suffix clipping
 
 **Files:** `console.js` (`cardEl` markup order), `console.css` (`.k`, `.k2`, `.cell-ctl`, `.row-ctl`)
 
@@ -605,23 +660,24 @@ if (e.target.matches('[data-action="override-max"]')) {
 ```
 
 (`.row-ctl` keeps its right-anchored position but now floats over reserved padding, not content.)
-- [ ] **Step 3:** verify at 320 px, 768 px, desktop, and with DevTools touch emulation: chip, ticon, and controls never overlap; long names ellipsize.
-- [ ] **Step 4:** `git commit -m "fix(web): card header grid + reserved control gutter - no chip/icon/control overlap"`
+- [ ] **Step 3:** add readout CSS constraints so `.readout` reserves width for `.u` and `.ceil` and cannot clip `/ 200`, `%`, or `RPM` at the card edge in dark or light theme. Prefer grid/flex minmax rules over absolute positioning; do not shrink the numeric value below legibility.
+- [ ] **Step 4:** verify at 320 px, 768 px, desktop, and with DevTools touch emulation in both themes: chip, ticon, controls, unit, and ceiling suffix never overlap or clip; long names ellipsize.
+- [ ] **Step 5:** `git commit -m "fix(web): card header/readout layout - no chip overlap or unit clipping"`
 
 ### Task C5: Delete the Customize drawer
 
 **Files:** `index.html` (drop `<aside>`, scrim, `#customize` button), `console.js` (drop `renderCustomize`, tab state/handlers, drawer listeners, `renderPinnedEditor`, `renderLayoutEditor`, scrim/close handlers), `console.css` (drawer/tabs/order-list blocks — keep `.sensor-list`, `.sensor-choice`, `.drawer-tools`, `.iconbtn`, `.style-select`, `.title-input` which the popover/detail reuse)
 
-- [ ] **Step 1: parity checklist first (blocker):** hide ✓ rows/cards + popover; show ✓ popover; pin/unpin ✓ everywhere; rename ✓ card detail; style ✓ card/row detail; pinned reorder ✓ drag + ▲▼ in detail; panel reorder ✓ drag (keyboard: panel-head gets ▲▼ in a mini-detail — add small `panel-up`/`panel-down` buttons next to the grip, reusing the existing switch actions); reset-hidden ✓ popover; clear-pinned + reset-panels → add both as small buttons at the bottom of the popover (`data-action` already handled).
+- [ ] **Step 1: parity checklist first (blocker):** hide ✓ rows/cards + popover; show ✓ popover; pin/unpin ✓ everywhere; rename ✓ card/detail for all sensors; style ✓ card/row detail; primary card reorder ✓ ▲▼ + drag; pinned reorder ✓ drag + ▲▼ in detail; panel reorder ✓ drag + panel-head ▲▼; row reorder ✓ drag + row-detail ▲▼; network subgroup reorder ✓ drag + subgroup-head ▲▼; reset-hidden ✓ popover; clear-pinned + reset-panels → add small masthead/popover commands only if they do not turn the popover into a side management pane.
 - [ ] **Step 2:** delete the DOM/JS/CSS listed above; keep the shared classes; `panel-up/pin-up/...` switch moves intact to the document-level delegate (done in C1).
 - [ ] **Step 3:** `node --check` + self-test PASS; manual keyboard-only pass: Tab to a pinned card → open detail (Enter) → ▲▼ reorders; panel head buttons reorder panels.
-- [ ] **Step 4:** `git commit -m "feat(web): remove Customize drawer - cards, rows, and sensors popover carry all controls"`
+- [ ] **Step 4:** `git commit -m "feat(web): remove Customize drawer - cards and rows carry controls"`
 
 **Phase C gate:** build + dotnet test green; live A/B by operator vs trunk build.
 
 ---
 
-## Phase D — row & subgroup arranging (branch `feat/web-row-subgroup-order`, cut from trunk after B2, parallel to C)
+## Phase D — row & subgroup arranging (branch `feat/web-row-subgroup-order`, cut after Phase C by default)
 
 ### Task D1: Drag-reorder individual rows within their type group
 
@@ -630,7 +686,7 @@ if (e.target.matches('[data-action="override-max"]')) {
 - Test: `webtests/console.tests.js`
 
 **Interfaces:**
-- Produces: `SQ.rowGroupKey(panelKey, displayType) → panelKey + '|' + displayType`; rows ordered by `state.rowOrder[groupKey]` via existing `applyOrder`; row grips drag within the group only; drop persists via existing `reorderByDrop`.
+- Produces: `SQ.rowGroupKey(panelKey, displayType) → panelKey + '|' + displayType`; rows ordered by `state.rowOrder[groupKey]` via existing `applyOrder`; row grips drag within the group only; row-detail ▲▼ buttons provide keyboard order; drop/buttons persist via existing `reorderByDrop`/`moveKey`.
 
 - [ ] **Step 1: failing tests**
 
@@ -651,8 +707,8 @@ const orderedRows = SQ.applyOrder(list.map((s, i) => ({ s, key: s.id, index: i }
   state.dashboard.rowOrder[gk] || [], x => x.key).map(x => x.s);
 ```
 
-  rows get `r.dataset.key = s.id` and a leading grip button (same `.grip` class). Drag machinery: in `startDrag`, add `|| grip.closest('.row')`; set `a.mode = el.classList.contains('row') ? 'list' : (el.classList.contains('panel') ? 'panel' : 'cards')`; in `dropIndex`, `list` mode uses the vertical midpoint rule: `if (clientY < r.top + r.height / 2) return i;`. In `endDrag`, `list` mode writes `state.dashboard.rowOrder[a.container.dataset.group] = next` (container = the `.tgroup`). The per-core `extra` box keeps its own group key (`… + '|core'`) or is excluded from dragging — exclude (no grips inside `.extra`) to stay simple.
-- [ ] **Step 4:** self-test PASS; manual: drag a fan row above another inside Board panel Fans group, reload → order kept; dragging cannot cross into another group.
+  rows get `r.dataset.key = s.id` and a leading grip button (same `.grip` class). Drag machinery: in `startDrag`, add `|| grip.closest('.row')`; set `a.mode = el.classList.contains('row') ? 'list' : (el.classList.contains('panel') ? 'panel' : 'cards')`; in `dropIndex`, `list` mode uses the vertical midpoint rule: `if (clientY < r.top + r.height / 2) return i;`. In `endDrag`, `list` mode writes `state.dashboard.rowOrder[a.container.dataset.group] = next` (container = the `.tgroup`). Row detail from C2 adds `row-up`/`row-down` buttons; delegate resolves the containing `.tgroup`, merges current sensor ids, moves the selected id, and writes the same `rowOrder[group]`. The per-core `extra` box keeps its own group key (`… + '|core'`) or is excluded from dragging — exclude (no grips inside `.extra`) to stay simple.
+- [ ] **Step 4:** self-test PASS; manual: drag a fan row above another inside Board panel Fans group, then repeat using ▲▼ from row detail; reload → order kept; dragging/buttons cannot cross into another group.
 - [ ] **Step 5:** `git commit -m "feat(web): drag-reorder individual sensor rows within their type group, persisted"`
 
 ### Task D2: Network panel — per-adapter subgroups (label, hide, reorder)
@@ -662,7 +718,7 @@ const orderedRows = SQ.applyOrder(list.map((s, i) => ({ s, key: s.id, index: i }
 - Test: `webtests/console.tests.js`
 
 **Interfaces:**
-- Produces: `SQ.nicKey(sensorId) → '/nic/{GUID}' | null`; `SQ.networkSubgroups(ss, state) → [{key, name, rows, index}]` (hidden adapters filtered by `hiddenNetAdapters`, ordered by `netAdapterOrder`); Network panel renders one labeled subgroup per adapter with hide button + grip; an in-panel `n adapters hidden — restore` chip lists hidden ones (keeps D independent of C's popover).
+- Produces: `SQ.nicKey(sensorId) → '/nic/{GUID}' | null`; `SQ.networkSubgroups(ss, state) → [{key, name, rows, index}]` (hidden adapters filtered by `hiddenNetAdapters`, ordered by `netAdapterOrder`); Network panel renders one labeled subgroup per adapter with hide button + grip + ▲▼ buttons; an in-panel `n adapters hidden — restore` chip lists hidden ones (keeps D independent of C's popover).
 
 - [ ] **Step 1: failing tests**
 
@@ -698,8 +754,8 @@ SQ.networkSubgroups = function (ss, state) {
 };
 ```
 
-  `panelEl`: when `item.key === 'panel:network'`, skip the type-group loop; instead for each subgroup render `<div class="subgrp" data-key>` with a head (grip + name + hide button `data-action="nic-hide"`) and its rows (typed order inside: Load, Throughput, Data). Hidden count chip when `hiddenNetAdapters` non-empty: click renders an inline restore list (`data-action="nic-show"`). Delegate actions in the existing document-level switch: `nic-hide` pushes the key, `nic-show` removes it, both `commitDashboard()`. Drag: subgroup grips reuse the `list` mode from D1 with container `.panel-body` and commit target `netAdapterOrder`; distinguish via `el.classList.contains('subgrp')`.
-- [ ] **Step 4:** self-test PASS; manual: adapters labeled, hide one, reorder others, reload persists; idle-adapter auto-filter unchanged.
+  `panelEl`: when `item.key === 'panel:network'`, skip the type-group loop; instead for each subgroup render `<div class="subgrp" data-key>` with a head (grip + name + hide button `data-action="nic-hide"` + `nic-up`/`nic-down`) and its rows (typed order inside: Load, Throughput, Data). Hidden count chip when `hiddenNetAdapters` non-empty: click renders an inline restore list (`data-action="nic-show"`). Delegate actions in the existing document-level switch: `nic-hide` pushes the key, `nic-show` removes it, both `commitDashboard()`. Drag: subgroup grips reuse the `list` mode from D1 with container `.panel-body` and commit target `netAdapterOrder`; distinguish via `el.classList.contains('subgrp')`. Buttons write the same `netAdapterOrder` with `moveKey`.
+- [ ] **Step 4:** self-test PASS; manual: adapters labeled, hide one, reorder others via drag and ▲▼, reload persists; idle-adapter auto-filter unchanged.
 - [ ] **Step 5:** `git commit -m "feat(web): network panel per-adapter subgroups - label, hide, drag order"`
 
 **Phase D gate:** build + dotnet test green; live check on the real ~30-NIC host.
@@ -712,6 +768,6 @@ Real NVML `EnforcedPowerLimit` / temperature-threshold sensors would put true li
 
 ## Self-review (writing-plans checklist)
 
-- Spec coverage: feedback items 1/2/4 → A1–A5; 5 → A3; 3/3b → B1–B2; 6 → C1–C3+C5; 9 → C4; 7 → D1; 8 → D2; 10 → A2 (`null` range) + C1 (provenance line "no known range"). Enhancement opinions #2/#4/#5 → A4/A5/C3. Export/import + arc band-ticks intentionally deferred (listed in spec §3.10, not tasked — cut line, revisit after operator A/B).
+- Spec coverage: feedback items 1/2/4 → A1–A5; 5 → A3; 3/3b → B1–B2; 6 → C1–C3+C5; 9 plus value/unit clipping → C4; 7 → D1; 8 → D2; 10 → A2 (`null` range) + C1 (provenance line "no known range"); alias/rename including Fan #7 → C1; all-surface ordering → C1/C5/D1/D2. Enhancement opinions #2/#4/#5 → A4/A5/C3. Export/import + arc band-ticks intentionally deferred (listed in spec §3.10, not tasked — cut line, revisit after operator A/B).
 - Placeholders: none — every code step carries the code; C-phase DOM steps include exact markup/CSS; the only deliberate stub is `derivedPowerLimit → null` (A2) with its real body in A5.
-- Type consistency: `rangeFor` return shape `{lo,hi,source,derived?}` used in A4 ceil, C1 detail; state keys `rangeOverrides/observedMax/rowOrder/netAdapterOrder/hiddenNetAdapters` consistent across A1/C1/D1/D2; `SQ.groupPanels` item shape `{hw,ss,key,collapsed,index}` matches existing `panelEl`/`applyOrder` consumers.
+- Type consistency: `rangeFor` return shape `{lo,hi,source,derived?}` used in A4 ceil, C1 detail; state keys `rangeOverrides/observedMax/sensorAliases/cardOrder/rowOrder/netAdapterOrder/hiddenNetAdapters` consistent across A1/C1/D1/D2; `SQ.groupPanels` item shape `{hw,ss,key,collapsed,index}` matches existing `panelEl`/`applyOrder` consumers.

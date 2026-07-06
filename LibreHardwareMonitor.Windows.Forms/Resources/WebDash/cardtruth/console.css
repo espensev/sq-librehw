@@ -185,13 +185,13 @@ body.stale main{opacity:.55;filter:saturate(.6);transition:opacity .3s}
 .panel.collapsed .chev{transform:rotate(-90deg)}
 .panel-body{padding:4px 0}
 .tg{padding:8px 15px 3px;font-family:var(--mono);font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
-.row{display:grid;grid-template-columns:14px 1fr auto;gap:9px;align-items:center;padding:5px 15px}
+.row{display:grid;grid-template-columns:24px 14px minmax(0,1fr) auto;gap:9px;align-items:center;padding:5px 15px}
 .row:hover{background:rgba(255,255,255,.02)}
 .row .rn{font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .rn .mm{color:var(--dim);font-family:var(--mono);font-size:10.5px;margin-left:7px}
 .row .rv{font-family:var(--mono);font-size:12.5px;font-weight:600;text-align:right;white-space:nowrap}
 .row.info .rv{color:var(--ink)} .row.ok .rv{color:var(--ok)} .row.warn .rv{color:var(--warn)} .row.crit .rv{color:var(--crit)} .row.off .rv{color:var(--dim)}
-.bar{grid-column:2/4;height:5px;border-radius:999px;background:var(--line-soft);overflow:hidden;margin-top:2px}
+.bar{grid-column:3/5;height:5px;border-radius:999px;background:var(--line-soft);overflow:hidden;margin-top:2px}
 .bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--cy),var(--lime))}
 .bar.warn i{background:var(--warn)} .bar.crit i{background:var(--crit)}
 
@@ -281,7 +281,8 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .grip{font:11px var(--mono);letter-spacing:-2px;line-height:1;padding:2px 4px;margin-right:2px;
   border:1px solid var(--line-soft);border-radius:5px;background:var(--panel-2);color:var(--dim);
   cursor:grab;display:none;touch-action:none}
-.panel-head:hover .grip,.panel-head:focus-within .grip,.cell:hover .grip,.cell:focus-within .grip{display:inline-block}
+.panel-head:hover .grip,.panel-head:focus-within .grip,.cell:hover .grip,.cell:focus-within .grip,
+.row:hover .grip,.row:focus-within .grip{display:inline-block}
 @media (hover:none){.grip{display:inline-block}}
 .grip:hover{color:var(--cy);border-color:var(--cy)}
 .grip:active{cursor:grabbing}

@@ -438,27 +438,34 @@ public class HttpServer
                     }
                 case "GET":
                     {
-                        string requestedFile = request.RawUrl.Substring(1);
+                        string path = request.Url.AbsolutePath;
+                        string requestedFile = path.TrimStart('/');
 
-                        if (requestedFile == "data.json")
+                        if (TryMapDashboardPreviewResource(path, out string previewResource, out string previewExt))
+                        {
+                            await ServeResourceFileAsync(context.Response, previewResource, previewExt);
+                            return;
+                        }
+
+                        if (string.Equals(path, "/data.json", StringComparison.OrdinalIgnoreCase))
                         {
                             await SendJsonAsync(context.Response, request);
                             return;
                         }
 
-                        if (requestedFile.Contains("images_icon"))
+                        if (path.StartsWith("/images_icon/", StringComparison.OrdinalIgnoreCase))
                         {
-                            await ServeResourceImageAsync(context.Response, requestedFile.Replace("images_icon/", string.Empty));
+                            await ServeResourceImageAsync(context.Response, requestedFile.Substring("images_icon/".Length));
                             return;
                         }
 
-                        if (requestedFile.StartsWith("metrics?") || requestedFile == "metrics")
+                        if (string.Equals(path, "/metrics", StringComparison.OrdinalIgnoreCase))
                         {
                             await SendPrometheusAsync(context.Response, request);
                             return;
                         }
 
-                        if (requestedFile.Contains("Sensor"))
+                        if (string.Equals(path, "/Sensor", StringComparison.OrdinalIgnoreCase))
                         {
                             var sensorResult = new Dictionary<string, object>();
 
@@ -477,7 +484,7 @@ public class HttpServer
                             return;
                         }
 
-                        if (requestedFile.Contains("ResetAllMinMax"))
+                        if (string.Equals(path, "/ResetAllMinMax", StringComparison.OrdinalIgnoreCase))
                         {
                             _rootElement.Accept(new SensorVisitor(delegate (ISensor sensor)
                             {
@@ -517,6 +524,84 @@ public class HttpServer
 
             await SendResponseAsync(context.Response, responseString, "text/html");
         }
+    }
+
+    internal static bool TryMapDashboardPreviewResource(string absolutePath, out string resourcePath, out string ext)
+    {
+        resourcePath = null;
+        ext = null;
+
+        if (string.IsNullOrEmpty(absolutePath))
+            return false;
+
+        string path = absolutePath.Trim('/');
+        if (!path.StartsWith("dash/", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        string[] parts = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+            return false;
+
+        string slug = parts[1];
+        if (!string.Equals(slug, "cardtruth", StringComparison.OrdinalIgnoreCase))
+        {
+            resourcePath = "WebDash.__missing__.index.html";
+            ext = "html";
+            return true;
+        }
+
+        slug = "cardtruth";
+
+        for (int i = 0; i < slug.Length; i++)
+        {
+            char c = slug[i];
+            if (!char.IsLetterOrDigit(c) && c != '_')
+            {
+                resourcePath = "WebDash.__missing__.index.html";
+                ext = "html";
+                return true;
+            }
+        }
+
+        string assetPath;
+        if (parts.Length == 2)
+        {
+            assetPath = "index.html";
+        }
+        else
+        {
+            assetPath = string.Join("/", parts.Skip(2));
+            if (string.IsNullOrWhiteSpace(assetPath) || assetPath.EndsWith("/", StringComparison.Ordinal))
+                assetPath = "index.html";
+        }
+
+        string[] pathParts = assetPath.Split('/');
+        for (int i = 0; i < pathParts.Length; i++)
+        {
+            string part = pathParts[i];
+            if (string.IsNullOrEmpty(part) || part == "." || part == "..")
+            {
+                resourcePath = "WebDash.__missing__.index.html";
+                ext = "html";
+                return true;
+            }
+
+            for (int j = 0; j < part.Length; j++)
+            {
+                char c = part[j];
+                if (!char.IsLetterOrDigit(c) && c != '_' && c != '.')
+                {
+                    resourcePath = "WebDash.__missing__.index.html";
+                    ext = "html";
+                    return true;
+                }
+            }
+        }
+
+        string[] assetParts = assetPath.Split('.');
+        ext = assetParts[assetParts.Length - 1];
+        resourcePath = "WebDash." + slug + "." + assetPath.Replace('/', '.');
+        return true;
     }
 
     private async Task ServeResourceFileAsync(HttpListenerResponse response, string name, string ext)

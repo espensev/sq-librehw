@@ -2,7 +2,7 @@
 
 **Project:** LibreHardwareMonitor Sev IQ local fork  
 **Status:** Accepted  
-**Updated:** 2026-06-06  
+**Updated:** 2026-07-06
 **Purpose:** define how new features are specified, implemented, and verified in this fork.
 
 ## 1. Purpose
@@ -83,7 +83,9 @@ Existing docs:
 - `feature-unique-gpu-sensor-ids.md` is the implemented spec for unique NVIDIA GPU sensor identifiers (12VHPWR voltage collision) and the CSV logger one-column guard.
 - `feature-graph-ui-review-fixes.md` is the implemented spec for five review-sweep fixes (column-width persistence, BindingList leak, plot recompute coalescing, time-axis label resolution, axis-step tie-break).
 - `feature-sensor-list-bulk-selection.md` is the implemented spec for bulk multi-select context-menu actions, type-group actions, keyboard verbs, and Graph Inputs multi-row toggling.
-- `feature-web-dashboard-customization.md` is a draft spec for dashboard-local sensor hiding, pinned/custom cards, drag reordering, and layout/background customization.
+- `feature-web-dashboard-customization.md` is the shipped v2 spec for dashboard-local sensor hiding, pinned/custom cards, drag reordering, and layout/background customization. Its drawer/list UI is transitional and superseded by the card-first v3 follow-up.
+- `feature-web-dashboard-card-truth.md` is the draft v3 spec for honest gauge ranges, real/derived limits, fan percent gauges with RPM readouts, duplicate hardware identity, two-GPU display, dashboard-local aliases/renames, card-carried details/actions, and visible UI ordering for cards, panels, rows, and network subgroups.
+- `feature-web-dashboard-versioned-routes.md` is the verified spec for serving dashboard preview versions under `/dash/<version>/` while keeping `/` stable.
 - `review-sensor-list-bulk-selection-follow-up.md` records the corrected post-implementation review and ranked remediation plan for the bulk-selection feature.
 - `local-ui-customizations.md` records additional local changes that shipped with the same work.
 

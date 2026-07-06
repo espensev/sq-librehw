@@ -9,6 +9,15 @@ const runConsoleTests = require('./console.tests.js');
 const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture.data.json'), 'utf8'));
 const storage = value => { let slot = value; return { getItem: () => slot, setItem: (k, v) => { slot = v; } }; };
 const { pass, fail, log } = runConsoleTests(global.window.SQ, data, storage);
+const indexHtml = fs.readFileSync(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/Web/index.html'), 'utf8');
+const menuChecks = [
+  ['root menu links card-truth preview', indexHtml.includes('href="/dash/cardtruth/"')],
+  ['root menu links data.json', indexHtml.includes('href="/data.json"')],
+  ['root menu links metrics', indexHtml.includes('href="/metrics"')]
+];
+for (const [name, ok] of menuChecks) log.push(`${ok ? 'ok  ' : 'FAIL'}  ${name}  got=${ok} want=true`);
+const totalPass = pass + menuChecks.filter(([, ok]) => ok).length;
+const totalFail = fail + menuChecks.filter(([, ok]) => !ok).length;
 console.log(log.join('\n'));
-console.log(`\nSELFTEST ${fail === 0 ? 'PASS' : 'FAIL'} ${pass}/${pass + fail}`);
-process.exit(fail === 0 ? 0 : 1);
+console.log(`\nSELFTEST ${totalFail === 0 ? 'PASS' : 'FAIL'} ${totalPass}/${totalPass + totalFail}`);
+process.exit(totalFail === 0 ? 0 : 1);

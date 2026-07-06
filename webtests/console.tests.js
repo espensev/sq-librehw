@@ -53,8 +53,15 @@
     eq('CPU Temp bounded', !!hero.find(h => h.label === 'CPU Temp')?.bounded, true);
 
     eq('dashboard state bad json falls back', S.loadDashboardState(storage('{bad')).hiddenSensorIds, []);
-    const showDefault = S.normalizeDashboardState({shownDefaultHiddenSensorIds:['/lpc/nct6701d/0/temperature/5']});
-    eq('default hidden can be shown', S.visibleSensors(sensors, showDefault).some(s => s.id === '/lpc/nct6701d/0/temperature/5'), true);
+    S.resetSensorMotion();
+    for (let i = 0; i < 6; i++) S.trackSensorMotion([
+      { id: '/lpc/test/0/temperature/a', raw: [30,35,32,38,31,30][i] },
+      { id: '/lpc/test/0/temperature/b', raw: 50 }
+    ]);
+    eq('static mb temp suppressed', S.isStaticMbTemp({ cls: 'mb', type: 'Temperature', id: '/lpc/test/0/temperature/b' }), true);
+    eq('moving mb temp visible', S.isStaticMbTemp({ cls: 'mb', type: 'Temperature', id: '/lpc/test/0/temperature/a' }), false);
+    eq('non-mb temp unaffected', S.isStaticMbTemp({ cls: 'cpu', type: 'Temperature', id: '/x' }), false);
+    S.resetSensorMotion();
     const explicitHidden = S.normalizeDashboardState({hiddenSensorIds:['/amdcpu/0/load/0']});
     eq('explicit hidden sensor removed', S.visibleSensors(sensors, explicitHidden).some(s => s.id === '/amdcpu/0/load/0'), false);
     const pinned = S.normalizeDashboardState({pinnedCards:[
@@ -97,6 +104,23 @@
     eq('collapse absent uses default true', S.isPanelCollapsed({collapsedPanels:{}}, 'Network', true), true);
     eq('collapse absent uses default false', S.isPanelCollapsed({collapsedPanels:{}}, 'CPU', false), false);
 
+    // --- Slice 2: hardware identity (hwid grouping) ---
+    const nvmeSensors = sensors.filter(s => s.cls === 'nvme');
+    const nvmePanels = S.buildPanelItems(nvmeSensors);
+    eq('three same-name NVMe produce three panels', nvmePanels.length, 3);
+    eq('NVMe panel keys are hwids', nvmePanels.every(p => /^\/nvme\//.test(p.key)), true);
+    eq('NVMe duplicate labels get #N suffix', nvmePanels.every(p => /#\d+$/.test(p.label)), true);
+    const panelKeys = S.buildPanelItems(sensors).map(p => p.key);
+    eq('no panel merges two hwids', new Set(panelKeys).size, panelKeys.length);
+    eq('panelKey returns hwid not text', S.panelKey('Samename', [{hwid:'/x/0'}]), '/x/0');
+    const hero2 = S.pickHero(sensors, limits);
+    const gpuHeroSensors = hero2.filter(h => /^GPU/.test(h.label)).map(h => h.s);
+    const gpuHeroHwids = [...new Set(gpuHeroSensors.map(s => s.hwid))];
+    eq('hero covers all distinct GPU hwids', gpuHeroHwids.length >= 2, true);
+    eq('collapse dual-read: hwid key wins', S.isPanelCollapsed({collapsedPanels:{'/nvme/0':true,'KINGSTON':false}}, '/nvme/0', 'KINGSTON', false), true);
+    eq('collapse dual-read: text fallback applies', S.isPanelCollapsed({collapsedPanels:{'KINGSTON':true}}, '/nvme/0', 'KINGSTON', false), true);
+    eq('collapse dual-read: absent uses default', S.isPanelCollapsed({collapsedPanels:{}}, '/nvme/0', 'KINGSTON', true), true);
+
     // --- Tier 3: reorder + isPinned ---
     eq('reorder move to end', S.reorderByDrop(['a','b','c'], 'a', 2), ['b','c','a']);
     eq('reorder move to front', S.reorderByDrop(['a','b','c'], 'c', 0), ['c','a','b']);
@@ -126,6 +150,11 @@
     eq('cardStyleFor number keeps global spark', S.cardStyleFor('number', true, true), {arc:false, spark:true});
     eq('cardStyleFor graph forces spark', S.cardStyleFor('graph', false, false), {arc:false, spark:true});
     eq('cardStyleFor auto', S.cardStyleFor(undefined, true, true), {arc:true, spark:true});
+    eq('gauge rejects peak estimate', S.gaugeRangeFor({lo:0, hi:500, source:'peak'}, {id:'/p', type:'Power', raw:233}, null), null);
+    eq('gauge allows explicit override', S.gaugeRangeFor({lo:0, hi:575, source:'override'}, {id:'/p', type:'Power', raw:233}, null),
+      {lo:0, hi:575, source:'override'});
+    eq('gauge allows paired fan control', S.gaugeRangeFor({lo:0, hi:2000, source:'peak'}, {id:'/f', type:'Fan', raw:900}, {raw:45}),
+      {lo:0, hi:100, source:'control'});
 
     // --- v2: trend + hero fans ---
     S.resetSensorTrends();

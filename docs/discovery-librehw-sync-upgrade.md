@@ -2,10 +2,16 @@
 
 **Goal:** Evaluate this copied LibreHardwareMonitor checkout as the new local home, set up sync against the upstream repository, and identify .NET/package upgrade options.
 **Date:** 2026-05-20
-**Status:** complete; upstream sync applied; local modernization notes updated 2026-06-06; fork now has an `origin` remote + fresh upstream triage — see "Update 2026-06-25" at end
-**Recommended next:** Decide whether the preserved `amd.png` deletion should be reapplied to `LibreHardwareMonitor.Windows.Forms/Resources/amd.png`, then keep the `net10.0-windows` and `net472` app builds clean while feature specs move forward.
+**Status:** complete historical sync; local modernization notes updated 2026-06-06; fork now has an `origin` remote and was re-audited against upstream on 2026-07-06 — see updates at end.
+**Recommended next:** Save the current dirty dashboard-route work before any upstream integration, then merge or cherry-pick upstream in a review branch because this fork has intentional local changes in the same web-server, PawnIO, workflow, and package files.
 
 ---
+
+> Current-state note: the Q1-Q6 findings below are the 2026-05-20 discovery record, with
+> modernization follow-up through 2026-06-06. They are retained as historical evidence. Use the
+> 2026-06-25 and 2026-07-06 update sections, plus
+> [`local-ui-customizations.md`](local-ui-customizations.md), for current remotes, test projects,
+> upstream delta, and fork-divergence status.
 
 ## Questions
 
@@ -22,7 +28,7 @@
 
 ### Q1: What repository/remotes/branch state does this copy have?
 
-**Answer:** The checkout is on `master`, tracks `upstream/master`, and is now even with upstream at `abfc4f5`. The only pre-sync worktree change was a local deletion of `LibreHardwareMonitor/Resources/amd.png`; that deletion was preserved in a Git stash before fast-forwarding.
+**Historical answer:** The checkout was on `master`, tracked `upstream/master`, and was then even with upstream at `abfc4f5`. The only pre-sync worktree change was a local deletion of `LibreHardwareMonitor/Resources/amd.png`; that deletion was preserved in a Git stash before fast-forwarding.
 
 **Evidence:**
 - Pre-sync `git status --short --branch` reported `## master...upstream/master [behind 35]` and `D LibreHardwareMonitor/Resources/amd.png`.
@@ -86,7 +92,7 @@
 
 ### Q5: What build/test baseline exists locally?
 
-**Answer:** The synced local solution initially built successfully in Debug x64 on SDK `10.0.300` with modernization warnings. Subsequent local work cleared those warnings by multi-targeting `Aga.Controls`, removing the Framework-only web/install references from the modern app target, and moving high-DPI configuration into project/runtime setup. No C# test projects were found.
+**Historical answer:** The synced local solution initially built successfully in Debug x64 on SDK `10.0.300` with modernization warnings. Subsequent local work cleared those warnings by multi-targeting `Aga.Controls`, removing the Framework-only web/install references from the modern app target, and moving high-DPI configuration into project/runtime setup. At this discovery point, no C# test projects were found. Current fork work has since added `LibreHardwareMonitor.Tests`; see the 2026-07-06 update and [`local-ui-customizations.md`](local-ui-customizations.md).
 
 **Evidence:**
 - Post-sync `dotnet build LibreHardwareMonitor.sln -c Debug -p:Platform=x64` completed with `Build succeeded`, `0 Error(s)`, and `5 Warning(s)`.
@@ -172,3 +178,35 @@ This does not need a multi-agent campaign. Upstream sync is complete. The practi
   Also backported earlier the same day: #2390 (web-server password double-encoding auth fix).
 - See [`local-ui-customizations.md`](local-ui-customizations.md) for the catalog of intentional local
   divergences (now including local build version stamping and the NuGet fork guard).
+
+## Update 2026-07-06
+
+- **Fresh fetch status.** `git fetch upstream --prune` moved `upstream/master` from `0c05d35` to
+  `9837983`; `git fetch origin --prune` moved `origin/master` from `db1d2d5` to `a134b54`.
+  Current local `HEAD` is `34e1f09` on `feat/web-dashboard-versioned-routes` with a dirty working
+  tree. `git rev-list --left-right --count HEAD...upstream/master` reports `108 11`, with merge-base
+  `abfc4f5705419d62cd6000f45a92563415c165fc`. `git rev-list --left-right --count HEAD...origin/master`
+  reports `2 1`, so the fork remote also has one merge commit not in this checkout.
+- **Incoming upstream queue.** The 11 upstream commits not literally present in this branch are:
+  #2382 resource names for renamed assemblies, #2385 DiskInfoToolkit update, #2386 NuGet publish
+  fork guard, #2384 NaN web-server crash fix, #2389 README nightly-link fix, #2390 auth
+  double-encoding fix, #2397/#2405/e8a6249 package bumps, `0c05d35` Dependabot directory update, and
+  #2411 PawnIO manifest-resource lookup.
+- **Already covered or superseded locally.** The local fork already carries content-equivalent or
+  stronger versions of #2382, #2384, #2386, #2390, and #2411. Evidence: `HttpServer.cs` uses the
+  executing assembly resource prefix and maps non-finite JSON values to `null`; the workflow guards
+  NuGet publishing to the upstream repository; auth password setting avoids the restart
+  double-encoding path; `MainForm.ExtractPawnIO` uses `typeof(MainForm).Assembly.GetName().Name +
+  ".Resources.PawnIO_setup.exe"`.
+- **Package/dependency posture.** Upstream package commits are not a straight fast-forward because
+  this fork uses central package management in `Directory.Packages.props`. Current local package
+  versions are already ahead for several relevant packages (`DiskInfoToolkit` `2.1.1`,
+  `System.IO.Ports`/`System.Management`/`System.Resources.Extensions`/`System.Threading.AccessControl`
+  `10.0.9`, `Microsoft.Windows.CsWin32` `0.3.298`). Still compare upstream project files during the
+  next sync because upstream edited package references and Dependabot configuration directly.
+- **Integration guidance.** Do not pull into the current dirty checkout. Save or commit the existing
+  dashboard route/spec work first, then integrate upstream in a branch and expect conflict review in
+  `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs`,
+  `LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs`, `.github/workflows/master.yml`, project/package
+  files, and web-dashboard docs/tests. After any integration, run the data.json golden tests and both
+  app target builds from `AGENTS.md`.

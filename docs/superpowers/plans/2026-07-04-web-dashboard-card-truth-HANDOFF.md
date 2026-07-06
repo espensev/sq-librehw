@@ -1,5 +1,14 @@
 # HANDOFF — Web Dashboard Card Truth (round 1 stopped 2026-07-04)
 
+> **⚠️ SUPERSEDED 2026-07-06.** This handoff is retained for history only.
+> Round 1 (A0–A3) was merged to master as `34e1f09`; the `.worktrees/card-truth`
+> worktree and `feat/web-card-truth-base` branch were removed. The "Resume point"
+> below (Task A4 Step 1) is **invalid**: `SQ.gaugeRangeFor` (commit `47aa6f3`)
+> now rejects `source:'peak'` at render, so the A4 peak→arc recipe would
+> re-introduce fake gauges. Active work is on branch `feat/web-dashboard-v3-card-first`
+> following [`2026-07-06-web-dashboard-v3-next-plan.md`](2026-07-06-web-dashboard-v3-next-plan.md).
+> **Do not follow the instructions below.**
+
 **For the next session/agent.** Operator ordered: one round, then stop. Round 1 = Tasks A0–A3, done and committed. Nothing pushed.
 
 ## Where everything is
