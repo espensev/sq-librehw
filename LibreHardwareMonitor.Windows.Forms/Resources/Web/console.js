@@ -300,6 +300,20 @@
     const hwid = sensors && sensors.find(s => s.hwid)?.hwid;
     return hwid || ('hw:' + hw);
   };
+  SQ.mergeOrder = function (saved, keys) {
+    const set = new Set(keys);
+    const merged = cleanStringList(saved).filter(k => set.has(k));
+    keys.forEach(k => { if (!merged.includes(k)) merged.push(k); });
+    return merged;
+  };
+  SQ.moveKey = function (list, key, delta) {
+    const i = list.indexOf(key);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= list.length) return list;
+    const next = list.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    return next;
+  };
   SQ.applyOrder = function (items, order, getKey) {
     const pos = new Map(cleanStringList(order).map((id, i) => [id, i]));
     return items.slice().sort((a, b) => {
@@ -811,20 +825,6 @@
       saveDashboard();
       rerender();
     }
-    function mergeOrder(saved, keys) {
-      const set = new Set(keys);
-      const merged = cleanStringList(saved).filter(k => set.has(k));
-      keys.forEach(k => { if (!merged.includes(k)) merged.push(k); });
-      return merged;
-    }
-    function moveKey(list, key, delta) {
-      const i = list.indexOf(key);
-      const j = i + delta;
-      if (i < 0 || j < 0 || j >= list.length) return list;
-      const next = list.slice();
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    }
     function rowGroupKey(panelKey, type) {
       return `${panelKey}|${type}`;
     }
@@ -840,12 +840,12 @@
       const rows = Array.from(group.querySelectorAll('.row'))
         .map(el => el.dataset.key)
         .filter(k => typeof k === 'string' && k.length);
-      state.dashboard.rowOrder[groupKey] = moveKey(mergeOrder(state.dashboard.rowOrder[groupKey], rows), id, delta);
+      state.dashboard.rowOrder[groupKey] = SQ.moveKey(SQ.mergeOrder(state.dashboard.rowOrder[groupKey], rows), id, delta);
       commitDashboard();
     }
     function movePanel(key, delta) {
-      const merged = mergeOrder(state.dashboard.panelOrder, state.panelItems.map(i => i.key));
-      const next = moveKey(merged, key, delta);
+      const merged = SQ.mergeOrder(state.dashboard.panelOrder, state.panelItems.map(i => i.key));
+      const next = SQ.moveKey(merged, key, delta);
       if (next === merged) return;   // out-of-bounds (top ▲ / bottom ▼): don't dirty panelOrder
       state.dashboard.panelOrder = next;
       commitDashboard();
@@ -1359,7 +1359,7 @@
           const container = cell?.parentElement;
           if (!container) break;
           const keys = orderedKeysFor(container);
-          const next = moveKey(mergeOrder(container.id === 'pinned' ? state.dashboard.pinnedOrder : state.dashboard.cardOrder, keys),
+          const next = SQ.moveKey(SQ.mergeOrder(container.id === 'pinned' ? state.dashboard.pinnedOrder : state.dashboard.cardOrder, keys),
             cell.dataset.key, btn.dataset.act === 'move-left' ? -1 : 1);
           if (container.id === 'pinned') state.dashboard.pinnedOrder = next;
           else if (container.id === 'pfd') state.dashboard.cardOrder = next;

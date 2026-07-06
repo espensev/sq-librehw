@@ -198,6 +198,15 @@
     eq('isPinned true', S.isPinned({pinnedCards:[{id:'/x',title:''}]}, '/x'), true);
     eq('isPinned false', S.isPinned({pinnedCards:[]}, '/x'), false);
 
+    // --- C1 T1: exposed order helpers (mergeOrder/moveKey no-op contract) ---
+    eq('mergeOrder keeps saved-first then appends missing', S.mergeOrder(['b'], ['a','b','c']), ['b','a','c']);
+    eq('mergeOrder drops unknown saved keys', S.mergeOrder(['zz','c'], ['a','b','c']), ['c','a','b']);
+    eq('mergeOrder empty saved materializes keys', S.mergeOrder([], ['a','b']), ['a','b']);
+    eq('moveKey swaps within bounds', S.moveKey(['a','b','c'], 'b', 1), ['a','c','b']);
+    eq('moveKey OOB returns same reference (no-op guard)', (() => { const m = S.mergeOrder([], ['a','b']); return S.moveKey(m, 'a', -1) === m; })(), true);
+    eq('moveKey bottom-down returns same reference', (() => { const m = ['a','b']; return S.moveKey(m, 'b', 1) === m; })(), true);
+    eq('moveKey missing key returns same reference', (() => { const m = ['a','b']; return S.moveKey(m, 'zz', 1) === m; })(), true);
+
     // --- v2: kinds, niceCeil, speedoRange, cardStyle ---
     eq('kindOf temp', S.kindOf('Temperature'), 'temp');
     eq('kindOf load family', [S.kindOf('Load'), S.kindOf('Level'), S.kindOf('Control')], ['load','load','load']);
