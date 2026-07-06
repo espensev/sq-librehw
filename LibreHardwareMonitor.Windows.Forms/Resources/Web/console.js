@@ -7,6 +7,13 @@
   const SMOOTH_FRACTIONS = new Map();
   const MAX_HISTORY_POINTS = 90;
   const TEMPBANDS = { cpu: [85, 95], gpu: [83, 92], igpu: [83, 92], nvme: [70, 80], dimm: [55, 85], mb: null, mem: null };
+  // Derived GPU power-limit knobs. Conservative on purpose: peaks/spikes must
+  // not produce a guessed ceiling, so a card only earns an approximate limit
+  // after enough idle-gated watt/percent samples converge on a stable ratio.
+  SQ.POWER_LIMIT_MAX_SAMPLES = 30;     // ring buffer per hwid
+  SQ.POWER_LIMIT_MIN_SAMPLES = 8;      // below this no limit is derived
+  SQ.POWER_LIMIT_IDLE_FLOOR = 5;       // percent-of-limit below which a sample is ignored as idle noise
+  SQ.POWER_LIMIT_BUCKET = 25;          // watt rounding for "approximate" ceilings
 
   SQ.RANK = { crit: 3, warn: 2, ok: 1, info: 0, off: -1 };
   SQ.DASHBOARD_STORAGE_KEY = DASHBOARD_STORAGE_KEY;
@@ -93,6 +100,18 @@
       Object.keys(value).forEach(k => { const n = Number(value[k]); if (k && Number.isFinite(n)) out[k] = n; });
     return out;
   }
+  // Persisted watt/percent ratios used to derive GPU power limits. Each hwid
+  // keeps a bounded ring of finite, idle-gated ratios; never blocks rendering.
+  function cleanPowerSamples(value) {
+    const out = {};
+    if (value && typeof value === 'object' && !Array.isArray(value))
+      Object.keys(value).forEach(k => {
+        if (!k || !Array.isArray(value[k])) return;
+        const xs = value[k].filter(x => Number.isFinite(x) && x > 0).slice(-SQ.POWER_LIMIT_MAX_SAMPLES);
+        if (xs.length) out[k] = xs;
+      });
+    return out;
+  }
   function cleanOrderMap(value) {
     const out = {};
     if (value && typeof value === 'object' && !Array.isArray(value))
@@ -114,6 +133,7 @@
       cardStyle: {},
       rangeOverrides: {},
       observedMax: {},
+      powerLimitSamples: {},
       rowOrder: {},
       netAdapterOrder: [],
       hiddenNetAdapters: []
@@ -136,6 +156,7 @@
       cardStyle: cleanCardStyleMap(value.cardStyle),
       rangeOverrides: cleanRangeOverrides(value.rangeOverrides),
       observedMax: cleanNumberMap(value.observedMax),
+      powerLimitSamples: cleanPowerSamples(value.powerLimitSamples),
       rowOrder: cleanOrderMap(value.rowOrder),
       netAdapterOrder: cleanStringList(value.netAdapterOrder),
       hiddenNetAdapters: cleanStringList(value.hiddenNetAdapters)
@@ -254,6 +275,23 @@
       SENSOR_MOTION.set(s.id, m);
     });
   };
+  // Pure merge of observed peaks into a persisted observedMax map. Returns a new
+  // object; only finite values that exceed the prior peak are recorded. Used by
+  // the throttled persist path so peaks survive reloads without per-tick writes.
+  SQ.mergeObservedPeaks = function (sensors, observedMax) {
+    const out = {};
+    const src = observedMax && typeof observedMax === 'object' ? observedMax : {};
+    Object.keys(src).forEach(k => { if (Number.isFinite(src[k])) out[k] = src[k]; });
+    if (Array.isArray(sensors)) {
+      sensors.forEach(s => {
+        if (!s || s.raw == null || !Number.isFinite(s.raw) || s.raw <= 0) return;
+        if (s.type === 'Temperature' || s.type === 'Level') return;   // health, not a peak metric
+        const prev = out[s.id] ?? -Infinity;
+        if (s.raw > prev) out[s.id] = s.raw;
+      });
+    }
+    return out;
+  };
   SQ.isStaticDriveAuxTemp = function (s) {
     if (!s || s.cls !== 'nvme' || s.type !== 'Temperature' || !/^temperature\s+#\d+$/i.test(s.text || '')) return false;
     const m = SENSOR_MOTION.get(s.id);
@@ -370,14 +408,70 @@
     for (const f of [1, 2, 5, 10]) { if (x <= f * m + 1e-9) return f * m; }
     return 10 * m;
   };
-  SQ.derivedPowerLimit = function () { return null; };   // real implementation lands with power-limit tracking
+  // --- Derived GPU power limit (machine-agnostic) -------------------------
+  // Pair a GPU watt sensor with a percent-of-limit sensor on the same hwid and
+  // record watt/(pct/100) as one observed implied-limit sample. Conservative:
+  // idle samples (< POWER_LIMIT_IDLE_FLOOR %) and non-finite values are dropped,
+  // and only POWER_LIMIT_MAX_SAMPLES most recent ratios are kept per hwid.
+  // Pure: returns a new samples object; never throws, never blocks rendering.
+  SQ.trackPowerSamples = function (sensors, samples) {
+    if (!Array.isArray(sensors)) return samples || {};
+    const next = {};
+    Object.keys(samples || {}).forEach(k => { if (Array.isArray(samples[k])) next[k] = samples[k].slice(); });
+    const gpus = sensors.filter(s => (s.cls === 'gpu' || s.cls === 'igpu') && s.hwid);
+    const seen = new Set();
+    gpus.forEach(s => {
+      if (seen.has(s.hwid)) return;
+      seen.add(s.hwid);
+      const fam = sensors.filter(x => x.hwid === s.hwid);
+      const watt = fam.find(x => x.type === 'Power' && /^GPU Package/i.test(x.text || '') && Number.isFinite(x.raw) && x.raw > 0);
+      if (!watt) return;
+      const pct = fam.find(x => x.type === 'Load' && /^(GPU Power|GPU Board Power)$/i.test(x.text || '') && Number.isFinite(x.raw));
+      if (!pct) return;
+      if (pct.raw < SQ.POWER_LIMIT_IDLE_FLOOR) return;   // idle noise — skip
+      const implied = watt.raw / (pct.raw / 100);
+      if (!Number.isFinite(implied) || implied <= 0) return;
+      const arr = next[s.hwid] || [];
+      arr.push(implied);
+      if (arr.length > SQ.POWER_LIMIT_MAX_SAMPLES) arr.shift();
+      next[s.hwid] = arr;
+    });
+    return next;
+  };
+  SQ.median = function (xs) {
+    if (!Array.isArray(xs) || !xs.length) return null;
+    const a = xs.slice().sort((p, q) => p - q), n = a.length;
+    return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
+  };
+  // Shallow compare two {key: number[]} sample maps (length + contents).
+  SQ.shallowEqualArrays = function (a, b) {
+    const ak = Object.keys(a || {}), bk = Object.keys(b || {});
+    if (ak.length !== bk.length) return false;
+    for (const k of ak) {
+      const xa = a[k], xb = b[k];
+      if (!Array.isArray(xa) || !Array.isArray(xb) || xa.length !== xb.length) return false;
+      for (let i = 0; i < xa.length; i++) if (xa[i] !== xb[i]) return false;
+    }
+    return true;
+  };
+  // Derive an approximate power-limit ceiling for a GPU hwid from accumulated
+  // samples. Returns a finite watt ceiling (already bucketed to 25 W) or null.
+  SQ.derivedPowerLimit = function (hwid, state) {
+    if (!hwid) return null;
+    const cfg = SQ.normalizeDashboardState(state);
+    const xs = cfg.powerLimitSamples[hwid];
+    if (!Array.isArray(xs) || xs.length < SQ.POWER_LIMIT_MIN_SAMPLES) return null;
+    const med = SQ.median(xs);
+    if (!Number.isFinite(med) || med <= 0) return null;
+    return SQ.roundPowerBucket(med);
+  };
   SQ.rangeFor = function (s, limits, state) {
     if (!s) return null;
     const cfg = SQ.normalizeDashboardState(state);
     const ov = cfg.rangeOverrides[s.id];
     if (ov) return { lo: ov.min ?? 0, hi: ov.max, source: 'override' };
     if (s.type === 'Power' && /^GPU Package/i.test(s.text || '')) {
-      const d = SQ.derivedPowerLimit(s.hwid);
+      const d = SQ.derivedPowerLimit(s.hwid, cfg);
       if (d) return { lo: 0, hi: d, source: 'limit', derived: true };
     }
     const band = SQ.visualRangeForSensor(s, limits || {});
@@ -401,6 +495,24 @@
     if (!rangeInfo || !sensor || sensor.raw == null) return null;
     if (rangeInfo.source === 'peak') return null;
     return rangeInfo;
+  };
+  // Display-model helper: maps a rangeFor result to a short ceiling label.
+  // Peak/unknown return null (no label) so peak-derived cards stay number/sparkline-only.
+  SQ.rangeLabelFor = function (rangeInfo, sensor) {
+    if (!rangeInfo || !sensor || sensor.raw == null) return null;
+    const hi = rangeInfo.hi;
+    if (!Number.isFinite(hi)) return null;
+    switch (rangeInfo.source) {
+      case 'override': return String(hi);
+      case 'limit':    return rangeInfo.derived ? `~${SQ.roundPowerBucket(hi)}` : String(hi);
+      case 'band':     return String(hi);
+      default:         return null;   // peak/unknown: no ceiling label
+    }
+  };
+  // Round a watt value down to a stable 25 W bucket for "approximate" derived ceilings.
+  SQ.roundPowerBucket = function (w) {
+    if (!Number.isFinite(w) || w <= 0) return null;
+    return Math.max(25, Math.floor(w / 25) * 25);
   };
   SQ.cardStyleFor = function (styleValue, hasRange, graphsEnabled) {
     if (styleValue === 'gauge') return { arc: !!hasRange, spark: !!graphsEnabled };
@@ -582,6 +694,13 @@
       const allSensors = SQ.flatten(root);
       SQ.trackSensorMotion(allSensors);
       SQ.trackSensorHistory(allSensors);
+      // Machine-agnostic truth accumulation: observed peaks + GPU power-limit
+      // samples. Pure merges run every tick (cheap); persistence is throttled.
+      state.dashboard.observedMax = SQ.mergeObservedPeaks(allSensors, state.dashboard.observedMax);
+      const newSamples = SQ.trackPowerSamples(allSensors, state.dashboard.powerLimitSamples);
+      const samplesChanged = !SQ.shallowEqualArrays(newSamples, state.dashboard.powerLimitSamples);
+      state.dashboard.powerLimitSamples = newSamples;
+      state.tickCount = (state.tickCount || 0) + 1;
       const sensors = SQ.visibleSensors(allSensors, state.dashboard);
       const limits = SQ.deriveLimits(sensors);
       sensors.forEach(s => s.status = SQ.statusOf(s, limits));
@@ -600,6 +719,11 @@
         $('#freshtxt').textContent = 'updated ' + new Date().toLocaleTimeString();
         $('#freshdot').className = 'lamp s-ok';
       }
+      // Throttled persistence so peaks/derived limits survive reloads without
+      // per-tick localStorage writes. Power samples (needed to derive a limit)
+      // flush more often than peaks (which only grow).
+      if (samplesChanged && state.tickCount % 5 === 0) saveDashboard();
+      else if (state.tickCount % 30 === 0) saveDashboard();
     }
 
     function smoothFraction(id, target) {
@@ -669,7 +793,8 @@
       const trendHtml = trend
         ? `<span class="trend">${trend.direction === 'rising' ? '&#8599;' : '&#8600;'} ${Math.abs(trend.rate).toFixed(Math.abs(trend.rate) >= 10 ? 0 : 2)} ${esc(trend.rateUnit)}</span>`
         : '<span class="trend"></span>';
-      const ceil = fx.arc && !ctrl && gaugeRange && gaugeRange.source !== 'band' ? `<span class="ceil">/ ${esc(String(gaugeRange.hi))}</span>` : '';
+      const ceilLabel = fx.arc && !ctrl ? SQ.rangeLabelFor(gaugeRange, h.s) : null;
+      const ceil = ceilLabel ? `<span class="ceil">/ ${esc(ceilLabel)}</span>` : '';
       const cell = document.createElement('div');
       cell.className = `cell s-${st}${pinned ? ' pinned' : ''}${fx.spark ? ' graph-on' : ''}`;
       cell.style.setProperty('--tc', `var(--t-${kind})`);

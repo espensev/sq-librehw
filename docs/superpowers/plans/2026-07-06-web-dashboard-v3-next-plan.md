@@ -82,7 +82,7 @@ Exit:
 - Current baseline is committed on `feat/web-dashboard-v3-card-first`.
 - No stale executable is mistaken for the current source.
 
-### Slice 1 - Range Truth and Machine-Agnostic Limit Derivation
+### Slice 1 - Range Truth and Machine-Agnostic Limit Derivation (done)
 
 Goal: finish the truth model without hardcoding this machine.
 

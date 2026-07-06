@@ -156,6 +156,52 @@
     eq('gauge allows paired fan control', S.gaugeRangeFor({lo:0, hi:2000, source:'peak'}, {id:'/f', type:'Fan', raw:900}, {raw:45}),
       {lo:0, hi:100, source:'control'});
 
+    // --- Slice 1: range truth + machine-agnostic limit derivation ---
+    const sPwr = {id:'/gpu-nvidia/0/power/0', type:'Power', raw:233};
+    eq('rangeLabelFor override', S.rangeLabelFor({lo:0, hi:575, source:'override'}, sPwr), '575');
+    eq('rangeLabelFor derived limit is approximate', S.rangeLabelFor({lo:0, hi:599, source:'limit', derived:true}, sPwr), '~575');
+    eq('rangeLabelFor real limit', S.rangeLabelFor({lo:0, hi:575, source:'limit'}, sPwr), '575');
+    eq('rangeLabelFor band', S.rangeLabelFor({lo:25, hi:95, source:'band'}, sPwr), '95');
+    eq('rangeLabelFor peak -> null', S.rangeLabelFor({lo:0, hi:500, source:'peak'}, sPwr), null);
+    eq('rangeLabelFor unknown -> null', S.rangeLabelFor({lo:0, hi:500, source:'weird'}, sPwr), null);
+    eq('rangeLabelFor null sensor -> null', S.rangeLabelFor({lo:0, hi:500, source:'override'}, {id:'/x', type:'Power', raw:null}), null);
+    eq('roundPowerBucket floors to 25W', [S.roundPowerBucket(599), S.roundPowerBucket(24), S.roundPowerBucket(50)], [575, 25, 50]);
+    eq('median odd/even', [S.median([3,1,2]), S.median([4,1,2,3])], [2, 2.5]);
+    eq('median empty -> null', S.median([]), null);
+    // derived GPU limit: synthetic watt + percent sensors under one hwid
+    const gpuWattPct = (watt, pct) => [
+      {id:'/g/0/power/0', hwid:'/g/0', cls:'gpu', type:'Power', text:'GPU Package', raw:watt},
+      {id:'/g/0/load/0',  hwid:'/g/0', cls:'gpu', type:'Load',   text:'GPU Power',  raw:pct}
+    ];
+    // accumulate enough non-idle samples to clear the min-sample gate
+    let samples = {};
+    for (let i = 0; i < S.POWER_LIMIT_MIN_SAMPLES; i++) samples = S.trackPowerSamples(gpuWattPct(150, 30), samples);
+    eq('trackPowerSamples collected min count', samples['/g/0'].length >= S.POWER_LIMIT_MIN_SAMPLES, true);
+    eq('derivedPowerLimit from watt/pct ratio (~500W, bucketed)', S.derivedPowerLimit('/g/0', {powerLimitSamples: samples}), 500);
+    // idle percent (below floor) must not produce a sample
+    const idleOnly = S.trackPowerSamples(gpuWattPct(20, 1), {});
+    eq('trackPowerSamples drops idle pct', idleOnly['/g/0'], undefined);
+    // too few samples -> no limit derived
+    const tooFew = S.trackPowerSamples(gpuWattPct(150, 30), {});
+    eq('derivedPowerLimit refuses too few samples', S.derivedPowerLimit('/g/0', {powerLimitSamples: tooFew}), null);
+    // AMD-style iGPU: watt present but no power-percent sensor -> no samples, no limit
+    const amdIgpu = [{id:'/a/0/power/0', hwid:'/a/0', cls:'igpu', type:'Power', text:'GPU Core', raw:45}];
+    eq('trackPowerSamples no pct sensor -> no samples', S.trackPowerSamples(amdIgpu, {})['/a/0'], undefined);
+    eq('derivedPowerLimit null without pct sensor', S.derivedPowerLimit('/a/0', {powerLimitSamples: {}}), null);
+    // CPU power stays number-only: no derivation path, rangeFor gives peak, gauge rejects it
+    const cpuPkg = sensors.find(s => s.type === 'Power' && /package/i.test(s.text));
+    if (cpuPkg) {
+      const r = S.rangeFor(cpuPkg, {}, undefined);
+      eq('CPU power range is peak (no derivation)', r && r.source, 'peak');
+      eq('CPU power gauge rejects peak', S.gaugeRangeFor(r, cpuPkg, null), null);
+    }
+    // mergeObservedPeaks keeps running max, ignores temp/level, tolerates junk
+    const peakSensors = [{id:'/f1', type:'Fan', raw:1200}, {id:'/f1', type:'Fan', raw:1500}, {id:'/t1', type:'Temperature', raw:90}];
+    eq('mergeObservedPeaks keeps running max', S.mergeObservedPeaks(peakSensors, {'/f1': 1000})['/f1'], 1500);
+    eq('mergeObservedPeaks ignores temperature', S.mergeObservedPeaks(peakSensors, {})['/t1'], undefined);
+    eq('mergeObservedPeaks tolerates junk input', S.mergeObservedPeaks(null, 'junk'), {});
+    eq('mergeObservedPeaks preserves prior peak when lower', S.mergeObservedPeaks([{id:'/f1', type:'Fan', raw:900}], {'/f1': 2000})['/f1'], 2000);
+
     // --- v2: trend + hero fans ---
     S.resetSensorTrends();
     const seedHist = (id, pts) => pts.forEach(([t, raw]) => S.trackSensorHistory([{id, raw}], t));
