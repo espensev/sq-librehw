@@ -379,6 +379,20 @@
   SQ.isPrimaryCard = function (state, id, sensors) {
     return SQ.primaryCardIds(sensors, state).includes(id);
   };
+  SQ.setPrimaryCard = function (state, id, enabled, sensors) {
+    const cfg = SQ.normalizeDashboardState(state);
+    const ids = SQ.primaryCardIds(sensors, cfg).filter(x => x !== id);
+    if (enabled) ids.push(id);
+    cfg.primaryCardsCustomized = true;
+    cfg.primaryCards = ids;
+    return cfg;
+  };
+  SQ.resetPrimaryCards = function (state) {
+    const cfg = SQ.normalizeDashboardState(state);
+    cfg.primaryCardsCustomized = false;
+    cfg.primaryCards = [];
+    return cfg;
+  };
 
   SQ.isLimitSensor = function (s) {
     const t = (s.text || '').toLowerCase();

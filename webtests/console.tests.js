@@ -111,6 +111,17 @@
     eq('primaryCardIds non-array safe', S.primaryCardIds(null, S.defaultDashboardState()), []);
     eq('isPrimaryCard true for auto hero', S.isPrimaryCard(S.defaultDashboardState(), autoIds[0], sensors), true);
     eq('isPrimaryCard false for non-hero', S.isPrimaryCard(S.defaultDashboardState(), nonHeroId, sensors), false);
+    const addState = S.setPrimaryCard(S.defaultDashboardState(), nonHeroId, true, sensors);
+    eq('setPrimaryCard switches to custom', addState.primaryCardsCustomized, true);
+    eq('setPrimaryCard seeds visible set + adds id',
+      addState.primaryCards.includes(nonHeroId) && autoIds.every(id => addState.primaryCards.includes(id)), true);
+    const remState = S.setPrimaryCard(addState, nonHeroId, false, sensors);
+    eq('setPrimaryCard remove keeps custom', remState.primaryCardsCustomized, true);
+    eq('setPrimaryCard remove drops id', remState.primaryCards.includes(nonHeroId), false);
+    eq('setPrimaryCard no duplicate on re-add',
+      S.setPrimaryCard(addState, nonHeroId, true, sensors).primaryCards.filter(x => x === nonHeroId).length, 1);
+    eq('resetPrimaryCards returns to auto', S.primaryCardIds(sensors, S.resetPrimaryCards(addState)), autoIds);
+    eq('resetPrimaryCards clears list', S.resetPrimaryCards(addState).primaryCards, []);
 
     // --- Tier 3: schema + migration ---
     eq('default has consolidated fields', (() => { const d = S.defaultDashboardState();
