@@ -328,3 +328,6 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .vis-chip.vis-hidden{color:var(--cy);border-color:color-mix(in srgb,var(--cy) 30%,var(--line-soft))}
 .vis-chip.vis-offscreen{color:var(--muted)}
 .vis-chip.vis-visible{opacity:.6}
+
+/* --- Primary card selection (B2) --- */
+#pfdReset{margin-left:8px}
