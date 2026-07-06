@@ -373,6 +373,18 @@ git branch -d feat/web-sensors-popover
 
 ## Self-Review
 
-1. **Spec coverage (handoff §4B):** search all sensors ✓ (Task 1 query + Task 2 input), show/hide ✓ (Task 4 actions), pin ✓ (Task 4), reset hidden ✓ (Task 2 button + Task 4 handler), hidden count badge ✓ (`hiddenSensorCount`, Task 3), anchored/compact/not-a-side-pane ✓ (Task 5), raw label + SensorId preserved ✓ (Task 3 row shape shows `rawLabel` + `id`), escape/click-outside close ✓ (Task 4), does-not-pause-polling ✓ (render loop unaffected; list only re-renders when open and guards focus). Offscreen restore of network adapters is deferred to Phase C (network subgroups) — noted, not in scope.
+1. **Spec coverage (handoff §4B):** search all sensors ✓ (Task 1 query + Task 2 input), show/hide ✓ (Task 4 actions), pin ✓ (Task 4), reset hidden ✓ (Task 2 button + Task 4 handler), hidden count badge ✓ (`hiddenSensorCount`, Task 3), anchored/compact/not-a-side-pane ✓ (Task 5), raw label + SensorId preserved ✓ (Task 3 row shape shows `rawLabel` + `id`), escape/click-outside close ✓ (Task 4), does-not-pause-polling ✓ (render loop unaffected; the list rebuilds **only on structural change** — a signature of filter + each row's id/visibility/pin — not every poll tick, so values freeze while open and text selection/typing survive; the count badge still updates live). Offscreen restore of network adapters is deferred to Phase C (network subgroups) — noted, not in scope.
 2. **Placeholder scan:** none — every code step shows complete code.
 3. **Type consistency:** `SQ.sensorPopoverRows` row keys `{id,label,rawLabel,hw,type,value,visibility}` are produced in Task 1 and consumed verbatim in Task 3; `state.sensorsFilter` set in Task 4, read in Task 3; reused functions (`setSensorHidden`, `pinSensor`, `unpinSensor`, `commitDashboard`) verified present at `console.js:778/1289-1290/commit`.
+
+## Execution notes (2026-07-06, inline)
+
+Executed inline via executing-plans. Two deviations from the written plan, both driven by evidence during execution:
+
+- **Task 1 test split (170→171 selftests):** the planned `'load'` filter assertion wrongly assumed the query could only match `id`/`type`; substring search legitimately matches `up`**`load`**`ed`/`down`**`load`**`ed`. Replaced with two clearer assertions (narrowed-subset + includes-known-`/amdcpu/0/load/0`).
+- **Task 5 CSS:** the drawer's `.sensor-choice` is a 3-column grid; the popover adds a 4th item (the `vis-chip`), so added a scoped `.sensors-panel .sensor-choice{grid-template-columns:minmax(0,1fr) auto auto auto}` override + a background on the sticky `.sensors-tools`.
+
+Two bugs found in Task 6 live verification (neither unit-testable via the DOM-less node harness), fixed and re-verified live:
+
+1. **Action clicks closed the popover** — the bubble-phase click-outside handler saw the clicked button *after* the list rebuild detached it, so it read as "outside." Fixed by moving the handler to the **capture phase** (`3233a19`'s parent `f7a9a7d`).
+2. **Every-tick rebuild destroyed text selection** — the focus guard was dead code (`#sensorsList` has no INPUT/SELECT), so the list rebuilt each 1s tick, wiping an in-progress SensorId selection. Fixed by **signature-gating** the rebuild (`3233a19`).
