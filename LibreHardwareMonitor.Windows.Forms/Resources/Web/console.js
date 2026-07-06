@@ -1220,13 +1220,21 @@
       }
       const list = $('#sensorsList');
       const menu = $('#sensorsMenu');
-      if (!list || !menu || !menu.open) return; // only render the list while the popover is open
-      const ae = document.activeElement;
-      if (ae && list.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT')) return;
+      if (!list || !menu || !menu.open) { state.sensorsSig = null; return; } // list renders only while open; clear sig so reopen rebuilds
       const rows = SQ.sensorPopoverRows(state.allSensors, state.dashboard, state.sensorsFilter || '');
+      // Rebuild the list only when the filter or the row set / visibility / pin
+      // state changes — NOT on every poll tick — so an in-progress text selection
+      // (e.g. copying a SensorId) and search typing survive. Row values are
+      // intentionally frozen while the popover is open; it is a discovery/manage
+      // surface, not a live monitor (the dashboard behind it keeps updating).
+      const pinnedIds = new Set(state.dashboard.pinnedCards.map(c => c.id));
+      const sig = (state.sensorsFilter || '') + '|' +
+        rows.map(r => `${r.id}:${r.visibility}:${pinnedIds.has(r.id) ? 1 : 0}`).join(',');
+      if (sig === state.sensorsSig) return;
+      state.sensorsSig = sig;
       list.innerHTML = rows.map(r => {
         const hidden = r.visibility === 'hidden';
-        const pinned = state.dashboard.pinnedCards.some(c => c.id === r.id);
+        const pinned = pinnedIds.has(r.id);
         const alias = r.label !== r.rawLabel ? ` · ${esc(r.rawLabel)}` : '';
         return `<div class="sensor-choice ${hidden ? 'is-hidden' : ''}">
           <div><b>${esc(r.label)}</b><span>${esc(r.hw)} · ${esc(r.type)} · ${esc(r.value)}${alias}</span><code>${esc(r.id)}</code></div>
