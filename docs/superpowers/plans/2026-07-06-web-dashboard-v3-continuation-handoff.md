@@ -1,8 +1,8 @@
 # Web Dashboard v3 Continuation Plan and Handoff
 
 **Date:** 2026-07-06
-**Status:** ready for next implementation branch
-**Baseline:** `master` / `origin/master` at `4310a8b` (`Merge web dashboard Slice 3 expansion actions`)
+**Status:** B1 (Slice 4B — masthead Sensors popover) and B2 (Slice 5A — explicit primary-card selection) are now MERGED to `master`. Next: **B3 / Slice 4C — Customize drawer removal**, parity-gated (see §10 and the [v3-next-plan §4](2026-07-06-web-dashboard-v3-next-plan.md) B3 gate). **The v3-next-plan §4 A–F queue is the authoritative sequence** wherever it disagrees with the Slice numbering in §5/§10 below (B2 was deliberately done before B3).
+**Baseline:** `master` / `origin/master` at `106f91d` (`Merge primary card selection (Phase B2)`); was `4310a8b` when this handoff was first written.
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Active plan:** [2026-07-06-web-dashboard-v3-next-plan.md](2026-07-06-web-dashboard-v3-next-plan.md)
 **Versioned-route spec:** [../../feature-web-dashboard-versioned-routes.md](../../feature-web-dashboard-versioned-routes.md)
@@ -572,15 +572,23 @@ first popover implementation unless the route delta audit proves the preview is 
 
 ## 10. Immediate Next Step
 
-Start Slice 4A and 4B:
+**Superseded by progress.** Slice 4B (masthead Sensors popover = **B1**) and Slice 5A (explicit
+primary-card selection = **B2**) are done and merged (`8291c89`, `106f91d`). Execution records:
+[`2026-07-06-web-sensors-popover-b1.md`](2026-07-06-web-sensors-popover-b1.md) and
+[`2026-07-06-web-primary-card-selection-b2.md`](2026-07-06-web-primary-card-selection-b2.md).
 
-1. Create `feat/web-dashboard-v3-popover-promotion`.
-2. Run the preview/stable delta audit.
-3. Add model tests for Sensors popover rows/count/search/actions.
-4. Implement the masthead popover in stable `/`.
-5. Mirror to preview only if the route remains active for comparison.
-6. Verify hidden restore, pin, and primary-card action decisions.
-7. Only then remove the drawer in Slice 4C.
+Next is **Slice 4C / Phase B3 — Customize drawer removal**. B2 verification showed it is **not** a clean
+deletion:
 
-This keeps the product usable while replacing the old drawer and avoids turning the temporary
-card-truth route into a permanent second dashboard.
+1. Card and row keyboard reorder are already inline, but pinned-card (`pin-up`/`pin-down`) and panel
+   (`panel-up`/`panel-down`) keyboard ordering live ONLY in the drawer (`renderPinnedEditor` /
+   `renderLayoutEditor`).
+2. First add inline keyboard reorder controls for pinned cards and panel headers, and verify every
+   drawer-only workflow (hidden restore, pin, alias, style, override, and all four ordering surfaces)
+   has a visible/keyboard replacement.
+3. Only then delete `#customize`, `#customizeDrawer`, `#customizeScrim`, the tabs, `renderCustomize`,
+   drawer handlers, and drawer CSS.
+
+Slice 5B (network adapter subgroups = **Phase C**) is independent of B3 and can interleave. This keeps
+the product usable while replacing the old drawer and avoids turning the temporary card-truth route into
+a permanent second dashboard.

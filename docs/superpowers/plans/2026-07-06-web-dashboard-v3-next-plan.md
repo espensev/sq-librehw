@@ -2,7 +2,8 @@
 
 **Plan ID:** web-dashboard-v3-next-2026-07-06
 **Date:** 2026-07-06
-**Status:** in progress on `master` (merged through Slice 3 visible expansion/actions at `4310a8b`)
+**Status:** in progress on `master`. Merged: Slice 3 (`4310a8b`), A1/A2 fan + suffix clipping, **B1** masthead Sensors popover (`8291c89`), **B2** explicit primary-card selection (`106f91d`). **Next: B3** — Customize drawer removal, parity-gated (see §4 B3 gate).
+**Authoritative sequence:** the §4 A–F queue below. Where it disagrees with the older Slice numbering in the [continuation handoff](2026-07-06-web-dashboard-v3-continuation-handoff.md) §5/§10, this §4 queue wins (B2 before B3 was chosen deliberately).
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Predecessor plan:** [2026-07-04-web-dashboard-visible-correctness-plan.md](2026-07-04-web-dashboard-visible-correctness-plan.md)
 **Recent review:** [../../reviews/review-2026-07-06-web-dashboard-v3-independent-verification.md](../../reviews/review-2026-07-06-web-dashboard-v3-independent-verification.md)
@@ -64,11 +65,11 @@ subsections map on as noted in the "Maps to" column.
 
 | Phase | Item | Maps to | Exit |
 |---|---|---|---|
-| **A1** | Fan-card `cmd %` right-edge clipping fix | Slice 6 (pulled fwd) | Full `cmd XX.X %` visible on every fan hero at desktop card width, dark+light. |
-| **A2** | Value/unit/ceiling suffix overflow sweep at ~300px | Slice 6 | No right-edge clip on any card suffix in either theme. |
-| **B1** | Masthead Sensors popover (search/show/hide/pin/reset, hidden count) | Slice 4 | Hidden/offscreen sensor found + restored without the drawer. |
-| **B2** | Explicit primary-card selection surfaced (`primaryCardsMode` sentinel) | Slice 3 / 5A | Operator picks/removes primary cards; auto-heroes stay default until first pick. |
-| **B3** | Remove Customize drawer after B1+B2 parity verified | Slice 4 | No normal workflow needs the drawer; no keyboard path lost. |
+| **A1** ✅ | Fan-card `cmd %` right-edge clipping fix | Slice 6 (pulled fwd) | Done. Full `cmd XX.X %` visible on every fan hero, dark+light. |
+| **A2** ✅ | Value/unit/ceiling suffix overflow sweep at ~300px | Slice 6 | Done. No right-edge clip on any card suffix in either theme. |
+| **B1** ✅ | Masthead Sensors popover (search/show/hide/pin/reset, hidden count) | Slice 4B | Done (`8291c89`; plan `2026-07-06-web-sensors-popover-b1.md`). Hidden/offscreen found + restored without the drawer. |
+| **B2** ✅ | Explicit primary-card selection (`primaryCardsCustomized` boolean sentinel; seed-from-visible; seeded heroes keep curated presentation) | Slice 5A | Done (`106f91d`; plan `2026-07-06-web-primary-card-selection-b2.md`). Auto heroes default; first show-as/remove-from-primary seeds the visible set + switches to custom; Auto reset in PFD header. |
+| **B3** ⬜ | Remove Customize drawer after B1+B2 parity | Slice 4C | **Parity gate (found in B2):** card + row keyboard reorder is already inline, but pinned-card (`pin-up`/`pin-down`) and panel (`panel-up`/`panel-down`) keyboard ordering live ONLY in the drawer (`renderPinnedEditor`/`renderLayoutEditor`). Add inline keyboard controls for those FIRST (e.g. on pinned cards + panel headers), verify, THEN delete drawer DOM/CSS/JS. Not a clean deletion. |
 | **C1** | Network adapter subgroups (per-NIC key, hide/reorder/restore) | Slice 5B | Network readable per-adapter; a row can't cross an adapter/type group. |
 | **D1** | Card header grid + reserved action gutter | Slice 6 | Controls never overlap chip/icon on hover/focus/touch. |
 | **D2** | Expansion multi-column layout (use horizontal space) | audit finding | Expanded detail fills width, not a tall narrow strip. |
@@ -387,7 +388,8 @@ Additive fields:
 | `observedMax` | 1 | Historical observed peak, not gauge-eligible by itself. |
 | `powerLimitSamples` | 1 | Telemetry-only GPU implied-limit samples, scoped by `hwid`. |
 | `sensorAliases` | 3 | Display alias while preserving raw label. |
-| `primaryCards` or equivalent | 3, 5 | Explicit user-selected primary card list; absent means current auto hero defaults. |
+| `primaryCards` | 3, B2 | Explicit user-selected primary card ids; seeded from the visible hero set on first edit. Missing ids preserved so layout recovers. |
+| `primaryCardsCustomized` | B2 | Boolean sentinel: `false` = auto (`SQ.pickHero`); `true` = operator owns the set (even if empty). Distinguishes "chose nothing" from "never chose". |
 | `cardOrder` | 3, 5 | Primary/pinned card order if split from existing pinned order. |
 | `rowOrder` | 3, 5 | Row order per panel/type group. |
 | `netAdapterOrder` | 5 | Network adapter subgroup order. |
@@ -503,9 +505,9 @@ Stop and review before continuing if any of these happen:
 
 ## 11. First Next Step
 
-The multi-tab state merge guard and first visible expansion/action patch are implemented. Stable `/` and preview `/dash/cardtruth/` now expose raw label, `SensorId`, hardware id, range provenance, alias, style, max override, pin/hide, and keyboard move controls from the visible card/row surface, and stable `/` has the accepted row-order contract promoted from the preview.
+The multi-tab state merge guard, visible expansion/action patch, masthead Sensors popover (B1), and explicit primary-card selection (B2) are all implemented and merged. Stable `/` exposes raw label, `SensorId`, hardware id, range provenance, alias, style, max override, pin/hide, keyboard move, hidden/offscreen discovery via the Sensors popover, and operator-chosen primary cards with an Auto reset.
 
-The next concrete patch should close the remaining parity gap before drawer deletion: compact masthead Sensors popover for hidden/offscreen discovery, explicit primary-card selection where needed, and final checks that all drawer-only workflows have a visible replacement.
+The next concrete patch is **B3 — Customize drawer removal**, but it is **not** a clean deletion. B2 verification found that pinned-card and panel keyboard reordering still live only inside the drawer. B3 must therefore: (1) add inline keyboard reorder controls for pinned cards and panel headers (cards + rows already have them), (2) verify every drawer-only workflow — hidden restore, pin, alias, style, override, all four ordering surfaces — has a visible/keyboard replacement, then (3) delete `#customizeDrawer`, `#customizeScrim`, `#customize`, the tabs, `renderCustomize`, drawer handlers, and drawer CSS.
 
 Do not make `/dash/cardtruth/` a permanent product tab; use it only as a temporary comparison route until accepted behavior is synced into the root dashboard.
 
