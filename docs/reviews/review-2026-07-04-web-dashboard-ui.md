@@ -1,9 +1,9 @@
 # Review - Web Dashboard UI
 
-**Date:** 2026-07-04  
-**Surface:** `origin/master...HEAD` branch review, with dirty working-tree docs noted separately  
-**Spec source:** `docs/feature-web-dashboard-card-truth.md`, `docs/superpowers/plans/2026-07-04-web-dashboard-visible-correctness-plan.md`  
-**Standards sources:** `AGENTS.md`  
+**Date:** 2026-07-04
+**Surface:** `origin/master...HEAD` branch review, with dirty working-tree docs noted separately
+**Spec source:** `docs/feature-web-dashboard-card-truth.md`, `docs/superpowers/plans/2026-07-04-web-dashboard-visible-correctness-plan.md`
+**Standards sources:** `AGENTS.md`
 **Verdict:** FAIL
 
 ## Findings

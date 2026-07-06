@@ -3,7 +3,7 @@
 **Goal:** Evaluate this copied LibreHardwareMonitor checkout as the new local home, set up sync against the upstream repository, and identify .NET/package upgrade options.
 **Date:** 2026-05-20
 **Status:** complete historical sync; local modernization notes updated 2026-06-06; fork now has an `origin` remote and was re-audited against upstream on 2026-07-06 — see updates at end.
-**Recommended next:** Save the current dirty dashboard-route work before any upstream integration, then merge or cherry-pick upstream in a review branch because this fork has intentional local changes in the same web-server, PawnIO, workflow, and package files.
+**Recommended next:** Continue upstream integration from a clean review branch. The former dirty dashboard-route work is now committed on the dashboard branch, but this fork still has intentional local changes in the same web-server, PawnIO, workflow, and package files, so merge or cherry-pick upstream with conflict review.
 
 ---
 
@@ -183,8 +183,8 @@ This does not need a multi-agent campaign. Upstream sync is complete. The practi
 
 - **Fresh fetch status.** `git fetch upstream --prune` moved `upstream/master` from `0c05d35` to
   `9837983`; `git fetch origin --prune` moved `origin/master` from `db1d2d5` to `a134b54`.
-  Current local `HEAD` is `34e1f09` on `feat/web-dashboard-versioned-routes` with a dirty working
-  tree. `git rev-list --left-right --count HEAD...upstream/master` reports `108 11`, with merge-base
+  At audit time, local `HEAD` was `34e1f09` on `feat/web-dashboard-versioned-routes` with a dirty working
+  tree; that route work was later committed on `feat/web-dashboard-v3-card-first`. `git rev-list --left-right --count HEAD...upstream/master` reported `108 11`, with merge-base
   `abfc4f5705419d62cd6000f45a92563415c165fc`. `git rev-list --left-right --count HEAD...origin/master`
   reports `2 1`, so the fork remote also has one merge commit not in this checkout.
 - **Incoming upstream queue.** The 11 upstream commits not literally present in this branch are:
@@ -204,8 +204,8 @@ This does not need a multi-agent campaign. Upstream sync is complete. The practi
   `System.IO.Ports`/`System.Management`/`System.Resources.Extensions`/`System.Threading.AccessControl`
   `10.0.9`, `Microsoft.Windows.CsWin32` `0.3.298`). Still compare upstream project files during the
   next sync because upstream edited package references and Dependabot configuration directly.
-- **Integration guidance.** Do not pull into the current dirty checkout. Save or commit the existing
-  dashboard route/spec work first, then integrate upstream in a branch and expect conflict review in
+- **Integration guidance.** Do not pull upstream into unrelated dirty product work. The dashboard
+  route/spec work has been committed on its feature branch; integrate upstream in a branch and expect conflict review in
   `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs`,
   `LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs`, `.github/workflows/master.yml`, project/package
   files, and web-dashboard docs/tests. After any integration, run the data.json golden tests and both

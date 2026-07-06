@@ -1,11 +1,11 @@
 # Web Dashboard v3 Next Plan - Card-First, Machine-Agnostic
 
-**Plan ID:** web-dashboard-v3-next-2026-07-06  
-**Date:** 2026-07-06  
-**Status:** in progress (Slice 0 done, C1 host-ID removal done; on branch `feat/web-dashboard-v3-card-first`)  
-**Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)  
-**Predecessor plan:** [2026-07-04-web-dashboard-visible-correctness-plan.md](2026-07-04-web-dashboard-visible-correctness-plan.md)  
-**Recent review:** [../../reviews/review-2026-07-06-dashboard-menu-gauge-correctness.md](../../reviews/review-2026-07-06-dashboard-menu-gauge-correctness.md)  
+**Plan ID:** web-dashboard-v3-next-2026-07-06
+**Date:** 2026-07-06
+**Status:** in progress (Slice 0, C1 host-ID removal, and Slice 2 hardware identity done on `feat/web-dashboard-v3-card-first`)
+**Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
+**Predecessor plan:** [2026-07-04-web-dashboard-visible-correctness-plan.md](2026-07-04-web-dashboard-visible-correctness-plan.md)
+**Recent review:** [../../reviews/review-2026-07-06-web-dashboard-v3-independent-verification.md](../../reviews/review-2026-07-06-web-dashboard-v3-independent-verification.md)
 
 ## 1. Current Baseline
 
@@ -16,7 +16,7 @@ The dashboard now has two important guardrails in place:
 
 Those fixes close the immediate screenshot failure, but they are only a partial v3 foundation. The v3 product goal remains: a machine-agnostic, card-first dashboard where trustworthy telemetry is visually clear, customization is local to the card/row/header being used, and normal workflows no longer depend on the old Customize side drawer.
 
-This plan starts from the current dirty working tree and live `http://localhost:8085/` state on 2026-07-06. It intentionally avoids host-specific assumptions. SND-DESK examples are acceptance fixtures only, not hardcoded behavior.
+This plan was drafted from the live `http://localhost:8085/` state on 2026-07-06 and now continues from the committed `feat/web-dashboard-v3-card-first` branch. It intentionally avoids host-specific assumptions. SND-DESK examples are acceptance fixtures only, not hardcoded behavior.
 
 ## 2. Non-Negotiables
 
@@ -26,6 +26,7 @@ This plan starts from the current dirty working tree and live `http://localhost:
 - `data.json` remains unchanged in this v3 client campaign. Server-side limit sensors are a separate gated feature.
 - The dashboard remains read-only. No `/Sensor?action=Set` or hardware write UI is introduced.
 - Stable `/` remains usable. Risky UI work can be staged in `/dash/cardtruth/` until promotion is explicit.
+- `/dash/cardtruth/` is a temporary dev route only. Once selected changes are synced into `/`, retire the route and expose any surviving visual treatment as a root Theme dropdown/view option.
 
 ## 3. Target User Experience
 
@@ -39,9 +40,27 @@ The first viewport is an operational dashboard, not a configuration surface.
 - Reordering is visible where the item lives: cards, panels, rows, and network adapter groups.
 - Dark and light themes use the same semantic rules: status color communicates health, type color communicates sensor kind, and unknown/estimated states are muted.
 
-## 4. Implementation Slices
+## 4. Remaining Execution Queue
 
-### Slice 0 - Stabilize Current Worktree
+This is the current queue after the 2026-07-06 alignment pass.
+
+| Order | Slice | Status | Work to post/execute next |
+|---:|---|---|---|
+| 0 | Stabilize current worktree | done | Keep as baseline; rerun smoke after any rebuild. |
+| C1 | Remove host-specific hidden-sensor IDs | done | Keep regression coverage; no host sensor IDs in product code. |
+| 2 | Hardware identity and multi-device rendering | done | Keep tests for duplicate NVMe/GPU and `hwid` keyed panels/heroes. |
+| 1 | Range truth and machine-agnostic limit derivation | next | Add range display/provenance helper, observed peaks, and GPU watt + percent derived limits without drawing peak gauges. |
+| 3 | Card and row expansion | remaining | Move alias, raw label, `SensorId`, style, override, pin/hide, and move controls onto cards/rows. |
+| 4 | Masthead sensor popover and drawer removal | remaining | Add compact Sensors popover for hidden/offscreen discovery, then remove the Customize drawer after parity. |
+| 5 | Visible ordering everywhere | remaining | Promote row ordering from the preview where accepted; finish card, panel, row, and network subgroup ordering from visible surfaces. |
+| 6 | Modern UI polish and responsive QA | remaining | Fix overlap/clipping and theme quality across dark/light and narrow/wide viewports. |
+| 7 | Preview promotion and closeout | remaining | Sync accepted changes into `/`; retire `/dash/cardtruth/`; expose surviving visual treatment via root Theme dropdown/view selector. |
+
+Do not treat the existing `/dash/cardtruth/` preview as a product destination. It is a temporary place to test unsynced UI work. Today its extra delta over stable `/` is mainly row-reorder behavior plus isolated preview state; once a delta is accepted, promote it into stable assets or discard it.
+
+## 5. Implementation Slices
+
+### Slice 0 - Stabilize Current Worktree (done)
 
 Goal: make the repo state explicit before deeper changes.
 
@@ -60,7 +79,7 @@ Verification:
 
 Exit:
 
-- Current baseline is committed or deliberately carried forward as dirty work.
+- Current baseline is committed on `feat/web-dashboard-v3-card-first`.
 - No stale executable is mistaken for the current source.
 
 ### Slice 1 - Range Truth and Machine-Agnostic Limit Derivation
@@ -96,7 +115,7 @@ Exit:
 - No power card can render a bare guessed ceiling.
 - Any derived limit is explainable from live input sensors and marked approximate.
 
-### Slice 2 - Hardware Identity and Multi-Device Rendering
+### Slice 2 - Hardware Identity and Multi-Device Rendering (done)
 
 Goal: stop merging devices by display text.
 
@@ -282,6 +301,8 @@ Tasks:
 
 - Keep risky UI work available under `/dash/cardtruth/` until accepted.
 - When accepted, promote by copying/wiring selected assets into `Resources/Web/`.
+- After sync/promotion, remove the temporary `cardtruth` route and Pages-menu entry unless a new active comparison needs it.
+- If the card-truth visual treatment survives as an alternate style, expose it from the root Theme dropdown/view selector using stable `sq.dashboard.v1` state instead of a separate route namespace.
 - Verify stable `/` and preview route independently.
 - Update spec verification logs and review notes.
 
@@ -299,7 +320,7 @@ Exit:
 - Stable route and preview route both behave intentionally.
 - Verification log records exact commands and live URL results.
 
-## 5. Data and State Model
+## 6. Data and State Model
 
 All state remains browser-local under `sq.dashboard.v1` unless a preview route intentionally uses its own namespace.
 
@@ -323,7 +344,7 @@ Normalizer rules:
 - Preserve missing-sensor references where useful so layout can recover if hardware returns.
 - Never let invalid state prevent rendering.
 
-## 6. Component Structure
+## 7. Component Structure
 
 This is still vanilla HTML/CSS/JS. Do not introduce a frontend framework for v3.
 
@@ -353,7 +374,7 @@ Recommended internal render structure:
 
 The goal is not abstraction for its own sake. The goal is to keep state derivation separate from DOM string assembly so tests can cover behavior without a browser.
 
-## 7. Test Plan
+## 8. Test Plan
 
 Model tests in `webtests/console.tests.js` should grow before or with each slice.
 
@@ -382,7 +403,7 @@ Browser/live tests:
 - reorders persist after reload;
 - narrow viewports do not clip controls.
 
-## 8. Branching Recommendation
+## 9. Branching Recommendation
 
 Preferred:
 
@@ -390,7 +411,7 @@ Preferred:
 git checkout -b feat/web-dashboard-v3-card-first
 ```
 
-If the current working tree remains dirty with baseline route/menu changes, either commit that baseline first or create a dedicated worktree after deciding what belongs in the baseline commit.
+The baseline route/menu/gauge and hardware-identity work is committed on `feat/web-dashboard-v3-card-first`. If new dirty work appears, commit or park that baseline before starting another parallel route/UI slice.
 
 Avoid parallel branches for `console.js`. The file is too central and the slices depend on one another.
 
@@ -405,7 +426,7 @@ Recommended commit grouping:
 7. `fix(web): refine dashboard card layout and responsive controls`
 8. `docs(web): record v3 verification and promotion decision`
 
-## 9. Stop Conditions
+## 10. Stop Conditions
 
 Stop and review before continuing if any of these happen:
 
@@ -416,7 +437,7 @@ Stop and review before continuing if any of these happen:
 - Live dashboard cannot be restarted after a build.
 - A visual fix makes the default dashboard less readable or more cluttered.
 
-## 10. First Next Step
+## 11. First Next Step
 
 Start with Slice 1 in `/dash/cardtruth/` or a branch that can be served as a preview. The first concrete patch should add a tested display-model helper for range provenance and observed peaks, not a broad UI rewrite.
 
