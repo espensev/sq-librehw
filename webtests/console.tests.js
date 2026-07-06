@@ -234,11 +234,93 @@
     eq('normalize rangeOverrides', S.normalizeDashboardState({rangeOverrides:{'/a':{max:575},'/b':{max:-1},'/c':{max:200,min:50},'':{max:5},'/d':'x'}}).rangeOverrides,
       {'/a':{max:575},'/c':{max:200,min:50}});
     eq('normalize observedMax', S.normalizeDashboardState({observedMax:{'/a':150.9,'/b':'nope'}}).observedMax, {'/a':150.9});
+    eq('normalize aliases and card order', (() => {
+      const d = S.normalizeDashboardState({
+        sensorAliases:{'/fan':'Pump','/bad':'','/long':'x'.repeat(120), '':'Nope'},
+        primaryCards:['/cpu','/cpu','/gpu'],
+        cardOrder:['/gpu','/cpu','/gpu']
+      });
+      return [d.sensorAliases, d.primaryCards, d.cardOrder];
+    })(), [{'/fan':'Pump','/long':'x'.repeat(80)}, ['/cpu','/gpu'], ['/gpu','/cpu']]);
     eq('normalize rowOrder', S.normalizeDashboardState({rowOrder:{'k|Fan':['/f1','/f2'],'bad':[],7:'x'}}).rowOrder, {'k|Fan':['/f1','/f2']});
     eq('normalize net lists', (() => { const d = S.normalizeDashboardState({netAdapterOrder:['/nic/a','/nic/a'], hiddenNetAdapters:['/nic/b']});
       return [d.netAdapterOrder, d.hiddenNetAdapters]; })(), [['/nic/a'], ['/nic/b']]);
     eq('default has v3 fields', (() => { const d = S.defaultDashboardState();
-      return [d.rangeOverrides, d.observedMax, d.rowOrder, d.netAdapterOrder, d.hiddenNetAdapters]; })(), [{}, {}, {}, [], []]);
+      return [d.rangeOverrides, d.observedMax, d.powerLimitSamples, d.sensorAliases, d.primaryCards, d.cardOrder, d.rowOrder, d.netAdapterOrder, d.hiddenNetAdapters]; })(),
+      [{}, {}, {}, {}, [], [], {}, [], []]);
+
+    // --- Slice 3 pre-flight: telemetry saves must not clobber user state ---
+    const freshUserState = S.normalizeDashboardState({
+      hiddenSensorIds:['/new-hidden'],
+      pinnedCards:[{id:'/new-pin', title:'Keep Me'}],
+      pinnedOrder:['/new-pin'],
+      panelOrder:['/panel-new'],
+      collapsedPanels:{'/panel-new':true},
+      cardStyle:{'/new-pin':'graph'},
+      rangeOverrides:{'/gpu/power':{max:575}},
+      sensorAliases:{'/fan':'Pump'},
+      primaryCards:['/cpu/temp','/gpu/power'],
+      cardOrder:['/gpu/power','/cpu/temp'],
+      rowOrder:{'/panel-new|Fan':['/fan2','/fan1']},
+      netAdapterOrder:['/nic/a'],
+      hiddenNetAdapters:['/nic/b'],
+      graphsEnabled:true,
+      paused:true,
+      rate:5,
+      theme:'light',
+      observedMax:{'/fan':1200},
+      powerLimitSamples:{'/gpu/0':[100,110,120,130,140,150,160,170,180]}
+    });
+    const staleTelemetryState = S.normalizeDashboardState({
+      hiddenSensorIds:['/old-hidden'],
+      pinnedCards:[{id:'/old-pin', title:'Lose Me'}],
+      pinnedOrder:['/old-pin'],
+      panelOrder:['/panel-old'],
+      collapsedPanels:{'/panel-old':true},
+      cardStyle:{'/old-pin':'number'},
+      rangeOverrides:{'/gpu/power':{max:200}},
+      sensorAliases:{'/fan':'Old Pump'},
+      primaryCards:['/old/card'],
+      cardOrder:['/old/card'],
+      rowOrder:{'/panel-old|Fan':['/fan1','/fan2']},
+      netAdapterOrder:['/nic/old'],
+      hiddenNetAdapters:['/nic/old-hidden'],
+      graphsEnabled:false,
+      paused:false,
+      rate:1,
+      theme:'dark',
+      observedMax:{'/fan':1500, '/pump':900},
+      powerLimitSamples:{'/gpu/0':[900], '/gpu/1':[500,525,550,575,600,625,650,675,700,725]}
+    });
+    const mergedTelemetry = S.mergeTelemetryState(freshUserState, staleTelemetryState);
+    eq('telemetry merge preserves fresh user layout', [
+      mergedTelemetry.hiddenSensorIds, mergedTelemetry.pinnedCards, mergedTelemetry.pinnedOrder,
+      mergedTelemetry.panelOrder, mergedTelemetry.collapsedPanels, mergedTelemetry.cardStyle,
+      mergedTelemetry.rangeOverrides, mergedTelemetry.sensorAliases, mergedTelemetry.primaryCards,
+      mergedTelemetry.cardOrder, mergedTelemetry.rowOrder, mergedTelemetry.netAdapterOrder,
+      mergedTelemetry.hiddenNetAdapters, mergedTelemetry.graphsEnabled, mergedTelemetry.paused,
+      mergedTelemetry.rate, mergedTelemetry.theme
+    ], [
+      ['/new-hidden'], [{id:'/new-pin', title:'Keep Me'}], ['/new-pin'],
+      ['/panel-new'], {'/panel-new':true}, {'/new-pin':'graph'},
+      {'/gpu/power':{max:575}}, {'/fan':'Pump'}, ['/cpu/temp','/gpu/power'],
+      ['/gpu/power','/cpu/temp'], {'/panel-new|Fan':['/fan2','/fan1']}, ['/nic/a'],
+      ['/nic/b'], true, true, 5, 'light'
+    ]);
+    eq('telemetry merge combines telemetry accumulators',
+      [mergedTelemetry.observedMax, mergedTelemetry.powerLimitSamples],
+      [{'/fan':1500,'/pump':900}, {'/gpu/0':[100,110,120,130,140,150,160,170,180], '/gpu/1':[500,525,550,575,600,625,650,675,700,725]}]);
+    const telemetryStore = (() => { let slot = JSON.stringify(freshUserState); return {
+      getItem:k => slot, setItem:(k, v) => { slot = v; }, read:() => JSON.parse(slot)
+    }; })();
+    const savedTelemetry = S.saveTelemetryState(telemetryStore, staleTelemetryState);
+    eq('saveTelemetryState writes merged state', [savedTelemetry.sensorAliases, savedTelemetry.hiddenSensorIds, savedTelemetry.observedMax],
+      [{'/fan':'Pump'}, ['/new-hidden'], {'/fan':1500,'/pump':900}]);
+    eq('user save can intentionally replace layout', (() => {
+      S.saveDashboardState(telemetryStore, staleTelemetryState);
+      const saved = S.loadDashboardState(telemetryStore);
+      return [saved.hiddenSensorIds, saved.sensorAliases, saved.rangeOverrides];
+    })(), [['/old-hidden'], {'/fan':'Old Pump'}, {'/gpu/power':{max:200}}]);
 
     // --- v3: rangeFor provenance ---
     S.resetSensorMotion();

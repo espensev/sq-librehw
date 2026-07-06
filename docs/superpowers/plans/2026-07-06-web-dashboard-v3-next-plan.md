@@ -49,8 +49,8 @@ This is the current queue after the 2026-07-06 alignment pass.
 | 0 | Stabilize current worktree | done | Keep as baseline; rerun smoke after any rebuild. |
 | C1 | Remove host-specific hidden-sensor IDs | done | Keep regression coverage; no host sensor IDs in product code. |
 | 2 | Hardware identity and multi-device rendering | done | Keep tests for duplicate NVMe/GPU and `hwid` keyed panels/heroes. |
-| 1 | Range truth and machine-agnostic limit derivation | next | Add range display/provenance helper, observed peaks, and GPU watt + percent derived limits without drawing peak gauges. |
-| 3 | Card and row expansion | remaining | Move alias, raw label, `SensorId`, style, override, pin/hide, and move controls onto cards/rows. |
+| 1 | Range truth and machine-agnostic limit derivation | done | Keep regression coverage for range labels, observed peaks, and GPU watt + percent derived limits without drawing peak gauges. |
+| 3 | Card and row expansion + ordering contract | in progress | Multi-tab state merging is fixed; next move alias, raw label, `SensorId`, style, override, pin/hide, choose/reorder, and drag/drop controls onto cards/rows. |
 | 4 | Masthead sensor popover and drawer removal | remaining | Add compact Sensors popover for hidden/offscreen discovery, then remove the Customize drawer after parity. |
 | 5 | Visible ordering everywhere | remaining | Promote row ordering from the preview where accepted; finish card, panel, row, and network subgroup ordering from visible surfaces. |
 | 6 | Modern UI polish and responsive QA | remaining | Fix overlap/clipping and theme quality across dark/light and narrow/wide viewports. |
@@ -141,9 +141,15 @@ Exit:
 - Panels and heroes can be traced to one hardware id.
 - Duplicate device names are readable, not merged.
 
-### Slice 3 - Card and Row Expansion
+### Slice 3 - Card and Row Expansion + Ordering Contract (next)
 
-Goal: move normal details/actions onto the visible item.
+Goal: move normal details/actions onto the visible item and define the user-owned selection/order contract before drawer removal.
+
+Pre-flight:
+
+- Done: fixed the Slice 1 multi-tab state-write risk. Background telemetry accumulator saves now merge into fresh same-route layout/customization state through `SQ.saveTelemetryState`, so a passive browser tab cannot overwrite active-tab aliases, order, overrides, hidden state, or card selection.
+- Audit the current `/dash/cardtruth/` row-order delta. Promote accepted behavior into stable `/` or explicitly discard it; do not leave a product capability available only in the preview route.
+- Keep stable `/` as the product target. `/dash/cardtruth/` and any future `/dash/<version>/` route are temporary comparison subsites with separate storage keys, not permanent dashboard tabs. If a visual treatment survives, expose it from the root Theme/view control during promotion.
 
 Tasks:
 
@@ -151,6 +157,11 @@ Tasks:
   - expanded card id;
   - expanded row id;
   - expanded panel/network group as needed.
+- Add explicit card selection/order state:
+  - default to the current auto-selected heroes when no user card selection exists;
+  - allow the operator to choose which sensors become visible dashboard cards;
+  - persist card order separately from raw sensor order;
+  - keep pinned-card behavior compatible with existing `pinnedCards`/`pinnedOrder`.
 - Card expansion shows:
   - raw LibreHardwareMonitor label;
   - operator alias input and clear;
@@ -165,12 +176,23 @@ Tasks:
   - hide/show;
   - move up/down buttons.
 - Row expansion uses the same details and actions, adapted to row layout.
+- Pointer drag/drop belongs on the visible surface where reliable:
+  - cards drag within their card group;
+  - pinned cards keep existing drag behavior;
+  - rows drag within their panel/type group;
+  - panel drag remains on the panel header;
+  - keyboard move controls remain available in expansion even when drag is unavailable.
 - Aliases are display-only. Raw labels remain visible in expansion/search.
 - Max override validation is strict: numeric, finite, max > min.
+- Cross-panel row moves remain pin/promote actions, not raw row migration. Raw `data.json` order and sensor ids are never changed.
 - Keyboard behavior:
   - expansion toggles with Enter/Space on the row/card button target;
   - controls have labels;
   - move buttons work without drag.
+- Multi-tab/subsite behavior:
+  - two browser tabs on `/` must not clobber each other's persisted edits;
+  - stable `/` and `/dash/cardtruth/` keep separate localStorage namespaces until promotion;
+  - expansion open/closed state is per-tab/transient unless persistence is deliberately chosen.
 
 Tests:
 
@@ -179,10 +201,15 @@ Tests:
 - Invalid override is rejected or ignored without corrupting state.
 - Expanded detail contains raw label and `SensorId`.
 - Keyboard move helper changes order.
+- Drag/drop helper changes order for card, panel, and row containers without crossing row group boundaries.
+- Multi-tab save test: a telemetry-only/background save cannot overwrite a fresh alias/order/override edit from another same-route tab.
+- Preview namespace test: stable `/` and `/dash/cardtruth/` do not read or write each other's dashboard state.
 
 Exit:
 
 - The old drawer is no longer the only way to rename, style, override, pin, hide, or reorder.
+- The operator can choose and reorder visible cards/rows directly, with drag/drop plus keyboard fallback.
+- No accepted ordering capability remains only on `/dash/cardtruth/`.
 
 ### Slice 4 - Masthead Sensor Popover and Drawer Removal
 
@@ -330,9 +357,11 @@ Additive fields:
 |---|---:|---|
 | `rangeOverrides` | 1, 3 | User-set true min/max for sensors. |
 | `observedMax` | 1 | Historical observed peak, not gauge-eligible by itself. |
+| `powerLimitSamples` | 1 | Telemetry-only GPU implied-limit samples, scoped by `hwid`. |
 | `sensorAliases` | 3 | Display alias while preserving raw label. |
-| `cardOrder` | 5 | Primary/pinned card order if split from existing pinned order. |
-| `rowOrder` | 5 | Row order per panel/type group. |
+| `primaryCards` or equivalent | 3, 5 | Explicit user-selected primary card list; absent means current auto hero defaults. |
+| `cardOrder` | 3, 5 | Primary/pinned card order if split from existing pinned order. |
+| `rowOrder` | 3, 5 | Row order per panel/type group. |
 | `netAdapterOrder` | 5 | Network adapter subgroup order. |
 | `hiddenNetAdapters` | 5 | Network adapter visibility. |
 | `expanded` or equivalent transient state | 3 | Runtime only unless persistence is intentionally chosen. |
@@ -343,6 +372,8 @@ Normalizer rules:
 - Deduplicate arrays.
 - Preserve missing-sensor references where useful so layout can recover if hardware returns.
 - Never let invalid state prevent rendering.
+- Background telemetry writes use `SQ.saveTelemetryState` to merge `observedMax`/`powerLimitSamples` into fresh same-route persisted state before saving. User-driven commits still write the intended full dashboard state.
+- Stable `/` uses `sq.dashboard.v1`; preview routes use separate namespaces until promotion. Cross-route state import/export is explicit only.
 
 ## 7. Component Structure
 
@@ -399,6 +430,9 @@ Browser/live tests:
 - no side drawer after Slice 4;
 - card expansion works by mouse and keyboard;
 - row expansion works by mouse and keyboard;
+- card and row drag/drop persists without crossing row group boundaries;
+- two browser tabs on the same route do not overwrite each other's aliases/order/overrides through background telemetry saves;
+- stable `/` and `/dash/cardtruth/` state namespaces stay isolated until an explicit promotion/import path exists;
 - hidden sensor can be restored;
 - reorders persist after reload;
 - narrow viewports do not clip controls.
@@ -439,12 +473,14 @@ Stop and review before continuing if any of these happen:
 
 ## 11. First Next Step
 
-Start with Slice 1 in `/dash/cardtruth/` or a branch that can be served as a preview. The first concrete patch should add a tested display-model helper for range provenance and observed peaks, not a broad UI rewrite.
+The multi-tab state merge guard is implemented. The next concrete patch should add the shared card/row expansion model and the first direct card/row detail actions: raw label, `SensorId`, hardware id, range provenance, alias field, style selector, max override field, pin/hide, and keyboard move buttons.
 
-Acceptance for that first patch:
+While adding expansion, promote or replace the `/dash/cardtruth/` row-order behavior in stable `/`. Do not make `/dash/cardtruth/` a permanent product tab; use it only as a temporary comparison route until accepted behavior is synced into the root dashboard.
 
-- `node webtests\selftest.node.js` adds and passes range display tests.
-- CPU power remains number-only without override/limit.
-- GPU power with valid watt+percent fixture gets an approximate derived limit.
-- GPU power without percent fixture remains number-only or explicitly unknown.
+Acceptance for the next patch:
+
+- `node webtests\selftest.node.js` adds and passes expansion/action model tests.
+- Card and row expansion state is transient per tab unless explicitly persisted.
+- Expanded details include raw LibreHardwareMonitor label and `SensorId`.
+- Alias, style, max override, pin/hide, and keyboard move actions are reachable from the visible card/row surface.
 - No product code mentions this machine's sensor IDs or device names.

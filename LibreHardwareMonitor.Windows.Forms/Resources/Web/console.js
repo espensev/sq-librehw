@@ -80,6 +80,15 @@
       });
     return out;
   }
+  function cleanAliasMap(value) {
+    const out = {};
+    if (value && typeof value === 'object' && !Array.isArray(value))
+      Object.keys(value).forEach(k => {
+        const v = typeof value[k] === 'string' ? value[k].trim().slice(0, 80) : '';
+        if (k && v) out[k] = v;
+      });
+    return out;
+  }
   function cleanRangeOverrides(value) {
     const out = {};
     if (value && typeof value === 'object' && !Array.isArray(value))
@@ -134,6 +143,9 @@
       rangeOverrides: {},
       observedMax: {},
       powerLimitSamples: {},
+      sensorAliases: {},
+      primaryCards: [],
+      cardOrder: [],
       rowOrder: {},
       netAdapterOrder: [],
       hiddenNetAdapters: []
@@ -157,6 +169,9 @@
       rangeOverrides: cleanRangeOverrides(value.rangeOverrides),
       observedMax: cleanNumberMap(value.observedMax),
       powerLimitSamples: cleanPowerSamples(value.powerLimitSamples),
+      sensorAliases: cleanAliasMap(value.sensorAliases),
+      primaryCards: cleanStringList(value.primaryCards),
+      cardOrder: cleanStringList(value.cardOrder),
       rowOrder: cleanOrderMap(value.rowOrder),
       netAdapterOrder: cleanStringList(value.netAdapterOrder),
       hiddenNetAdapters: cleanStringList(value.hiddenNetAdapters)
@@ -176,6 +191,32 @@
     if (storage && typeof storage.setItem === 'function')
       storage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(state));
     return state;
+  };
+  function mergeNumberMaxMap(a, b) {
+    const out = Object.assign({}, cleanNumberMap(a));
+    const next = cleanNumberMap(b);
+    Object.keys(next).forEach(k => { if (!Number.isFinite(out[k]) || next[k] > out[k]) out[k] = next[k]; });
+    return out;
+  }
+  function mergePowerSampleMap(a, b) {
+    const aa = cleanPowerSamples(a), bb = cleanPowerSamples(b), out = Object.assign({}, aa);
+    Object.keys(bb).forEach(k => {
+      const current = out[k] || [];
+      out[k] = (bb[k].length > current.length ? bb[k] : current).slice(-SQ.POWER_LIMIT_MAX_SAMPLES);
+    });
+    return out;
+  }
+  SQ.mergeTelemetryState = function (persisted, telemetry) {
+    const base = SQ.normalizeDashboardState(persisted);
+    const t = SQ.normalizeDashboardState(telemetry);
+    const merged = SQ.normalizeDashboardState(base);
+    merged.observedMax = mergeNumberMaxMap(base.observedMax, t.observedMax);
+    merged.powerLimitSamples = mergePowerSampleMap(base.powerLimitSamples, t.powerLimitSamples);
+    return merged;
+  };
+  SQ.saveTelemetryState = function (storage, telemetry) {
+    const persisted = SQ.loadDashboardState(storage);
+    return SQ.saveDashboardState(storage, SQ.mergeTelemetryState(persisted, telemetry));
   };
   SQ.migrateLegacyState = function (storage, state) {
     const cfg = SQ.normalizeDashboardState(state);
@@ -641,6 +682,10 @@
       state.dashboard = SQ.saveDashboardState(localStorage, state.dashboard);
       paintGraphs();
     }
+    function saveTelemetryDashboard() {
+      state.dashboard = SQ.saveTelemetryState(localStorage, state.dashboard);
+      paintGraphs();
+    }
     function rerender() {
       if (state.dragging) return;
       if (state.lastData) render(state.lastData);
@@ -722,8 +767,8 @@
       // Throttled persistence so peaks/derived limits survive reloads without
       // per-tick localStorage writes. Power samples (needed to derive a limit)
       // flush more often than peaks (which only grow).
-      if (samplesChanged && state.tickCount % 5 === 0) saveDashboard();
-      else if (state.tickCount % 30 === 0) saveDashboard();
+      if (samplesChanged && state.tickCount % 5 === 0) saveTelemetryDashboard();
+      else if (state.tickCount % 30 === 0) saveTelemetryDashboard();
     }
 
     function smoothFraction(id, target) {
