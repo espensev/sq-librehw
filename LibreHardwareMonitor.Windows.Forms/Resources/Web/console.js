@@ -844,8 +844,10 @@
       commitDashboard();
     }
     function movePanel(key, delta) {
-      const keys = state.panelItems.map(i => i.key);
-      state.dashboard.panelOrder = moveKey(mergeOrder(state.dashboard.panelOrder, keys), key, delta);
+      const merged = mergeOrder(state.dashboard.panelOrder, state.panelItems.map(i => i.key));
+      const next = moveKey(merged, key, delta);
+      if (next === merged) return;   // out-of-bounds (top ▲ / bottom ▼): don't dirty panelOrder
+      state.dashboard.panelOrder = next;
       commitDashboard();
     }
     function resetPanelOrder() {

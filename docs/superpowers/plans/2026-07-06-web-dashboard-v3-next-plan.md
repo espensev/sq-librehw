@@ -73,7 +73,7 @@ subsections map on as noted in the "Maps to" column.
 | **C1** | Network adapter subgroups (per-NIC key, hide/reorder/restore) | Slice 5B | Network readable per-adapter; a row can't cross an adapter/type group. |
 | **D1** | Card header grid + reserved action gutter | Slice 6 | Controls never overlap chip/icon on hover/focus/touch. |
 | **D2** | Expansion multi-column layout (use horizontal space) | audit finding | Expanded detail fills width, not a tall narrow strip. |
-| **D3** | Full responsive/theme QA matrix | Slice 6 | 320/390/640/1440/wide × dark/light, zero overlap/clip. |
+| **D3** | Full responsive/theme QA matrix | Slice 6 | 320/390/640/1440/wide × dark/light, zero overlap/clip. **Re-check B3 additions at narrow widths:** always-visible panel-head ▲▼ and the extra `#panelsReset` button in the Subsystems `.sec-head` (which already has mobile tag-clamping). |
 | **E1** | Root `viewTheme: standard \| cardTruth` selector, route-namespace-ready | Slice 7 | Look selector persists; state plumbing ready for `sq.dashboard.{route}`. |
 | **E2** | Sync accepted deltas to `/`; retire `cardtruth` route + Pages entry | Slice 7 | One product surface, no dev/preview routes. |
 | **F1–F3** | Context dashboards (Main/Gaming/Storage): hash router + per-route state, switcher control, template defaults | new lane (§3.1) | Selectable context dashboards coexisting with `viewTheme`, each honest per card-truth. Separate campaign, gated behind Phase E; build on current baseline, not the stale branch. |
