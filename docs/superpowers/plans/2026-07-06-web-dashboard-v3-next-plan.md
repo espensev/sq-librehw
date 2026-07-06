@@ -2,7 +2,7 @@
 
 **Plan ID:** web-dashboard-v3-next-2026-07-06
 **Date:** 2026-07-06
-**Status:** in progress on `master`. Merged: Slice 3 (`4310a8b`), A1/A2 fan + suffix clipping, **B1** masthead Sensors popover (`8291c89`), **B2** explicit primary-card selection (`106f91d`). **B3** Customize drawer removal complete on `feat/web-drawer-removal-b3` (`69252b4` panel reorder + `f60fcda` drawer removal; plan `2026-07-06-web-drawer-removal-b3.md`), pending merge. **Next: C1** — network adapter subgroups.
+**Status:** in progress on `master`. Merged: Slice 3 (`4310a8b`), A1/A2 fan + suffix clipping, **B1** masthead Sensors popover (`8291c89`), **B2** explicit primary-card selection (`106f91d`). **B3** Customize drawer removal **merged to `master` (`e7ae6f0`)**, `feat/web-drawer-removal-b3` deleted (`69252b4` panel reorder + `f60fcda` drawer removal + `4004822` no-op guard; plan `2026-07-06-web-drawer-removal-b3.md`). **Next: C1** — network adapter subgroups.
 **Authoritative sequence:** the §4 A–F queue below. Where it disagrees with the older Slice numbering in the [continuation handoff](2026-07-06-web-dashboard-v3-continuation-handoff.md) §5/§10, this §4 queue wins (B2 before B3 was chosen deliberately).
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Predecessor plan:** [2026-07-04-web-dashboard-visible-correctness-plan.md](2026-07-04-web-dashboard-visible-correctness-plan.md)
@@ -505,7 +505,7 @@ Stop and review before continuing if any of these happen:
 
 ## 11. First Next Step
 
-The multi-tab state merge guard, visible expansion/action patch, masthead Sensors popover (B1), explicit primary-card selection (B2), and **Customize drawer removal (B3)** are all implemented (B3 on `feat/web-drawer-removal-b3`, pending merge). Stable `/` exposes raw label, `SensorId`, hardware id, range provenance, alias, style, max override, pin/hide, keyboard move (cards, rows, pinned cards, **and panels**), hidden/offscreen discovery via the Sensors popover, and operator-chosen primary cards with an Auto reset — **with no side drawer**.
+The multi-tab state merge guard, visible expansion/action patch, masthead Sensors popover (B1), explicit primary-card selection (B2), and **Customize drawer removal (B3)** are all implemented and merged to `master` (B3 at `e7ae6f0`; `feat/web-drawer-removal-b3` deleted). Stable `/` exposes raw label, `SensorId`, hardware id, range provenance, alias, style, max override, pin/hide, keyboard move (cards, rows, pinned cards, **and panels**), hidden/offscreen discovery via the Sensors popover, and operator-chosen primary cards with an Auto reset — **with no side drawer**.
 
 B3 was **not** a clean deletion, but the parity re-assessment found only one real keyboard gap: panel reorder (pinned-card reorder was already inline via the expanded card's `move-left`/`move-right`). Delivered as: (1) inline ▲▼ panel reorder + a Subsystems "Reset order"; (2) live verification that every drawer workflow has a visible/keyboard replacement (hidden/pin/reset → Sensors popover; alias/style/override/pin/hide/move → card/row expansion; pinned-title → alias, which renders on the card); (3) deletion of `#customizeDrawer`/`#customizeScrim`/`#customize`, tabs, `renderCustomize`/`renderPinnedEditor`/`renderLayoutEditor`/`renderSensorRows`/`renamePinned`, drawer handlers, and drawer CSS (shared `.iconbtn`/`.sensor-*` rules split, not deleted).
 

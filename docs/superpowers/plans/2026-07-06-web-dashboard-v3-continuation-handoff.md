@@ -1,8 +1,8 @@
 # Web Dashboard v3 Continuation Plan and Handoff
 
-**Date:** 2026-07-06
-**Status:** B1 (Slice 4B — masthead Sensors popover) and B2 (Slice 5A — explicit primary-card selection) are now MERGED to `master`. Next: **B3 / Slice 4C — Customize drawer removal**, parity-gated (see §10 and the [v3-next-plan §4](2026-07-06-web-dashboard-v3-next-plan.md) B3 gate). **The v3-next-plan §4 A–F queue is the authoritative sequence** wherever it disagrees with the Slice numbering in §5/§10 below (B2 was deliberately done before B3).
-**Baseline:** `master` / `origin/master` at `106f91d` (`Merge primary card selection (Phase B2)`); was `4310a8b` when this handoff was first written.
+**Date:** 2026-07-06 (updated after B3 merge)
+**Status:** B1 (masthead Sensors popover), B2 (explicit primary-card selection), and **B3 (Customize drawer removal)** are all MERGED to `master`. Next: **C1 / Slice 5B — network adapter subgroups** (independent of B; see §5 Slice 5B, the [v3-next-plan §4](2026-07-06-web-dashboard-v3-next-plan.md) queue, and §10–§12 below). **The v3-next-plan §4 A–F queue is the authoritative sequence** wherever it disagrees with the Slice numbering in §5 below.
+**Baseline:** `master` / `origin/master` at `e7ae6f0` (`Merge Customize drawer removal (Phase B3)`); was `106f91d` after B2 and `4310a8b` when this handoff was first written.
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Active plan:** [2026-07-06-web-dashboard-v3-next-plan.md](2026-07-06-web-dashboard-v3-next-plan.md)
 **Versioned-route spec:** [../../feature-web-dashboard-versioned-routes.md](../../feature-web-dashboard-versioned-routes.md)
@@ -572,23 +572,66 @@ first popover implementation unless the route delta audit proves the preview is 
 
 ## 10. Immediate Next Step
 
-**Superseded by progress.** Slice 4B (masthead Sensors popover = **B1**) and Slice 5A (explicit
-primary-card selection = **B2**) are done and merged (`8291c89`, `106f91d`). Execution records:
-[`2026-07-06-web-sensors-popover-b1.md`](2026-07-06-web-sensors-popover-b1.md) and
-[`2026-07-06-web-primary-card-selection-b2.md`](2026-07-06-web-primary-card-selection-b2.md).
+**Superseded by progress.** B1 (masthead Sensors popover = Slice 4B, `8291c89`), B2 (explicit
+primary-card selection = Slice 5A, `106f91d`), and B3 (Customize drawer removal = Slice 4C, merge
+`e7ae6f0`) are all done and merged; the `feat/web-drawer-removal-b3` branch is deleted. Execution
+records: [`2026-07-06-web-sensors-popover-b1.md`](2026-07-06-web-sensors-popover-b1.md),
+[`2026-07-06-web-primary-card-selection-b2.md`](2026-07-06-web-primary-card-selection-b2.md), and
+[`2026-07-06-web-drawer-removal-b3.md`](2026-07-06-web-drawer-removal-b3.md).
 
-Next is **Slice 4C / Phase B3 — Customize drawer removal**. B2 verification showed it is **not** a clean
-deletion:
+Next is **C1 / Slice 5B — network adapter subgroups**: one subgroup per adapter, keyed from the stable
+NIC id prefix (`/nic/{GUID}`-style, not the display label), each reorderable / hideable / restorable,
+with `netAdapterOrder` + `hiddenNetAdapters` (both already normalized in state) driving the render, and
+hidden adapters restorable from the Sensors popover. C1 is **independent of B** and proceeds directly off
+`e7ae6f0`. See §5 Slice 5B for the full contract, and §12 below for the reorder no-op guard and
+inline-control-reachability lessons that apply directly to it. Keeps the product usable and avoids turning
+the temporary card-truth route into a permanent second dashboard.
 
-1. Card and row keyboard reorder are already inline, but pinned-card (`pin-up`/`pin-down`) and panel
-   (`panel-up`/`panel-down`) keyboard ordering live ONLY in the drawer (`renderPinnedEditor` /
-   `renderLayoutEditor`).
-2. First add inline keyboard reorder controls for pinned cards and panel headers, and verify every
-   drawer-only workflow (hidden restore, pin, alias, style, override, and all four ordering surfaces)
-   has a visible/keyboard replacement.
-3. Only then delete `#customize`, `#customizeDrawer`, `#customizeScrim`, the tabs, `renderCustomize`,
-   drawer handlers, and drawer CSS.
+## 11. Progress Log (A → B, on `master`)
 
-Slice 5B (network adapter subgroups = **Phase C**) is independent of B3 and can interleave. This keeps
-the product usable while replacing the old drawer and avoids turning the temporary card-truth route into
-a permanent second dashboard.
+Reverse chronological; each phase has its own execution record in this folder.
+
+| Phase | What landed | Merge / commit |
+|---|---|---|
+| **B3** | Customize drawer removed after inline+popover parity. Parity re-assessment corrected the plan's gate: pinned-card reorder was **already** inline (expanded card `move-left`/`move-right` → `pinnedOrder`); only **panel** reorder was a real gap → added always-visible ▲▼ in the panel head + Subsystems "Reset order". Deleted `#customizeDrawer`/`#customizeScrim`/`#customize`, tabs, `renderCustomize`/`renderPinnedEditor`/`renderLayoutEditor`/`renderSensorRows`/`renamePinned`, drawer handlers, drawer CSS (shared `.iconbtn`/`.sensor-*` rules **split**, not deleted). | `e7ae6f0` (merge); `69252b4`+`f60fcda`+`4004822` |
+| **B2** | Explicit primary-card selection: `primaryCardsCustomized` boolean sentinel, seed-from-visible on first add, seeded heroes keep curated presentation, Auto reset in PFD header. | `106f91d` |
+| **B1** | Masthead Sensors popover: search (label/alias/hardware/type/`SensorId`), show/hide/pin/reset-hidden, hidden-count badge. Replaced drawer-only hidden discovery. | `8291c89` |
+| **A1/A2** | Fan-card `cmd %` right-edge clip fix + value/unit/ceiling suffix overflow sweep (~300px), both themes. | merged pre-B1 |
+
+## 12. Lessons & Gotchas Carried Forward
+
+Cross-cutting lessons from A→B3 that the next phases (C1 first) should apply. These are also mirrored in
+the maintainer's `~/.claude` auto-memory; they live here so the repo carries them too.
+
+1. **Re-verify parity gates against the code, not the plan.** The plan asserted pinned-card *and* panel
+   reorder were drawer-only; reading the actual handlers showed pinned-card reorder was already inline, so
+   B3's real scope was "add panel reorder, then delete." Before scoping any deletion, read the live handler
+   code and confirm each claimed gap.
+2. **Reorder no-op guard (directly relevant to C1's adapter reorder).** `moveKey(list, key, delta)` returns
+   the **same array reference** on out-of-bounds, and `mergeOrder([], keys)` materializes the *full* order
+   from an empty saved order. So clicking ▲ on the top item (or ▼ on the bottom) from the default empty
+   order would otherwise dirty the order list to a full N-key array and spuriously show a "Reset order"
+   affordance. Guard every reorder mutator with reference-equality: `if (next === merged) return;`. Test the
+   **no-op** path (top-▲ / bottom-▼ from default), not just a real move.
+3. **Inline-control reachability.** `.cell-ctl`/`.row-ctl`/`.grip` are `display:none`, revealed on
+   `:hover`/`:focus-within`, and are keyboard-reachable **only** because the parent `.cell`/`.row` carries
+   `tabindex=0`. Panel heads have **no** tabindex, which is why panel reorder buttons had to be
+   always-visible. **C1:** if an adapter subgroup header is not focusable, its reorder/hide controls must be
+   always-visible, or add `tabindex=0` to the header.
+4. **The ReferenceError gate — live-only.** After deleting functions, `node --check` + zero-residual greps +
+   `selftest` passing do **not** prove the app runs; only a live browser console-clean check across several
+   poll ticks catches a dangling call to a deleted function. The DOM-less node selftest cannot see it.
+5. **Live-verification gotchas** (see the per-topic `~/.claude` memories): `<details>` `toggle` fires
+   **async** (a synchronous eval right after `menu.open = true` reads the popover empty — re-inspect in a
+   later call); a PFD card and its pinned twin **share** the expand key `c:<sensorId>` (toggling one toggles
+   both); stale pre-rebuild browser tabs run OLD `console.js` and **strip** newly-added `sq.dashboard.v1`
+   fields on save (multi-tab version skew — close/reload other tabs before trusting a persistence failure);
+   the chrome-devtools MCP browser can lock mid-session (`already running for chrome-profile`) — kill the
+   stale MCP chrome procs and reopen.
+6. **Standing constraints (unchanged — re-apply to C1 and every later phase):** no `data.json`/server/
+   contract change (state stays browser-local under `sq.dashboard.v1`); C# golden tests green (42/42) and
+   web `selftest` green (currently 192); vanilla JS/CSS/HTML only, no framework; no host-specific labels/
+   limits/sensor IDs in product code, and the raw LibreHardwareMonitor label + `SensorId` stay visible
+   wherever an alias shows; build requires `-p:Platform=x64`; the running EXE locks the DLL/EXE so **stop the
+   app before rebuilding**; all user-owned state writes go through the multi-tab-safe `SQ.saveTelemetryState`
+   path; build stamp format `0.9.6+<sha>.<date>`.
