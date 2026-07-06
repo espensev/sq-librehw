@@ -723,6 +723,29 @@
     return H.slice(0, 14);
   };
 
+  SQ.netAdapterKey = function (s) {
+    return (s && s.hwid) || ('hw:' + ((s && s.hw) || ''));
+  };
+  SQ.buildNetAdapters = function (sensors) {
+    if (!Array.isArray(sensors)) return [];
+    const byKey = new Map();
+    sensors.forEach(s => {
+      if (!s || s.cls !== 'nic') return;
+      const key = SQ.netAdapterKey(s);
+      if (!byKey.has(key)) byKey.set(key, { key, hw: s.hw, ss: [] });
+      byKey.get(key).ss.push(s);
+    });
+    const adapters = [...byKey.values()];
+    const byLabel = new Map();
+    adapters.forEach(a => { (byLabel.get(a.hw) || byLabel.set(a.hw, []).get(a.hw)).push(a); });
+    [...byLabel.values()].forEach(group => {
+      if (group.length > 1) group.forEach((a, i) => { a.label = `${a.hw} #${i + 1}`; });
+      else group[0].label = group[0].hw;
+    });
+    adapters.forEach(a => { a.active = a.ss.some(s => s.type === 'Throughput' && s.raw > 0); });
+    return adapters;
+  };
+
   SQ.buildPanelItems = function (sensors) {
     if (!Array.isArray(sensors)) return [];
     const byId = new Map();

@@ -207,6 +207,30 @@
     eq('moveKey bottom-down returns same reference', (() => { const m = ['a','b']; return S.moveKey(m, 'b', 1) === m; })(), true);
     eq('moveKey missing key returns same reference', (() => { const m = ['a','b']; return S.moveKey(m, 'zz', 1) === m; })(), true);
 
+    // --- C1 T2: network adapter grouping ---
+    const mkNic = (g, hw, type, text, raw, n) => {
+      const s = { cls: 'nic', hw, type, text, raw, value: String(raw), id: (g || 'hw') + '/x/' + n };
+      if (g) s.hwid = g;
+      return s;
+    };
+    const nicSensors = [
+      mkNic('/nic/%7BAAA%7D', 'Realtek Gaming 2.5GbE', 'Throughput', 'Upload Speed', 100, 1),
+      mkNic('/nic/%7BAAA%7D', 'Realtek Gaming 2.5GbE', 'Load', 'Network Utilization', 1, 2),
+      mkNic('/nic/%7BBBB%7D', 'Realtek Gaming 2.5GbE', 'Throughput', 'Download Speed', 900, 3),
+      mkNic('/nic/%7BCCC%7D', 'Wi-Fi', 'Throughput', 'Upload Speed', 0, 4),
+      mkNic(null, 'TAP Adapter', 'Throughput', 'Upload Speed', 5, 5)
+    ];
+    eq('netAdapterKey uses hwid', S.netAdapterKey(nicSensors[0]), '/nic/%7BAAA%7D');
+    eq('netAdapterKey falls back to hw label', S.netAdapterKey(nicSensors[4]), 'hw:TAP Adapter');
+    const adapters = S.buildNetAdapters(nicSensors);
+    eq('adapters group by hwid', adapters.map(a => a.key), ['/nic/%7BAAA%7D', '/nic/%7BBBB%7D', '/nic/%7BCCC%7D', 'hw:TAP Adapter']);
+    eq('duplicate adapter labels get #N', adapters.slice(0, 2).map(a => a.label), ['Realtek Gaming 2.5GbE #1', 'Realtek Gaming 2.5GbE #2']);
+    eq('unique adapter label stays plain', adapters[2].label, 'Wi-Fi');
+    eq('adapter activity needs Throughput raw>0', adapters.map(a => a.active), [true, true, false, true]);
+    eq('adapter keeps its own sensors', adapters[0].ss.map(s => s.id), ['/nic/%7BAAA%7D/x/1', '/nic/%7BAAA%7D/x/2']);
+    eq('non-nic sensors ignored', S.buildNetAdapters([{ cls: 'cpu', hw: 'X', hwid: '/c/0', type: 'Load', text: 't', raw: 1, id: '/c/0/l/0' }]), []);
+    eq('buildNetAdapters tolerates junk', S.buildNetAdapters(null), []);
+
     // --- v2: kinds, niceCeil, speedoRange, cardStyle ---
     eq('kindOf temp', S.kindOf('Temperature'), 'temp');
     eq('kindOf load family', [S.kindOf('Load'), S.kindOf('Level'), S.kindOf('Control')], ['load','load','load']);
