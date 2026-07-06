@@ -1311,6 +1311,32 @@
     $('#customizeScrim').onclick = () => { state.customizeOpen = false; renderCustomize(); };
     $('#hiddenSearch').oninput = e => { state.hiddenFilter = e.target.value; renderCustomize(); };
     $('#cardSearch').oninput = e => { state.cardFilter = e.target.value; renderCustomize(); };
+    $('#sensorsSearch').oninput = e => { state.sensorsFilter = e.target.value; renderSensorsPopover(); };
+    $('#sensorsMenu').addEventListener('toggle', () => { if ($('#sensorsMenu').open) renderSensorsPopover(); });
+    $('#sensorsList').addEventListener('click', e => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      switch (btn.dataset.action) {
+        case 'hide': setSensorHidden(id, true); break;
+        case 'show': setSensorHidden(id, false); break;
+        case 'pin': pinSensor(id); break;
+        case 'unpin': unpinSensor(id); break;
+      }
+      renderSensorsPopover();
+    });
+    $('#sensorsMenu').querySelector('[data-action="reset-hidden"]').onclick = () => {
+      state.dashboard.hiddenSensorIds = [];
+      commitDashboard();
+      renderSensorsPopover();
+    };
+    // Escape / click-outside close for masthead disclosure menus (Pages + Sensors)
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') document.querySelectorAll('details.page-menu[open], details.sensors-menu[open]').forEach(d => { d.open = false; });
+    });
+    document.addEventListener('click', e => {
+      document.querySelectorAll('details.page-menu[open], details.sensors-menu[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
+    });
     document.querySelectorAll('[data-tab]').forEach(btn => btn.onclick = () => { state.customizeTab = btn.dataset.tab; renderCustomize(); });
     $('#customizeDrawer').addEventListener('change', e => {
       const input = e.target.closest('[data-action="rename"]');
