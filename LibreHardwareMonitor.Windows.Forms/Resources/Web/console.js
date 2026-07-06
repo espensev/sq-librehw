@@ -864,6 +864,7 @@
       renderPlacard(alarm);
       renderPanels(sensors);
       renderCustomize();
+      renderSensorsPopover();
       $('#host').textContent = host;
       $('#foot-left').textContent = `LibreHardwareMonitor ${data.Version} · host ${host} · GET /data.json · ${state.rate}s poll`;
       if (!state.paused) {
@@ -1210,6 +1211,30 @@
         <button class="iconbtn" data-action="panel-up" data-id="${esc(item.key)}" ${i <= 0 ? 'disabled' : ''}>Up</button>
         <button class="iconbtn" data-action="panel-down" data-id="${esc(item.key)}" ${i >= panels.length - 1 ? 'disabled' : ''}>Down</button>
       </div>`).join('');
+    }
+    function renderSensorsPopover() {
+      const countEl = $('#sensorsCount');
+      if (countEl) {
+        const n = SQ.hiddenSensorCount(state.allSensors, state.dashboard);
+        countEl.textContent = n ? String(n) : '';
+      }
+      const list = $('#sensorsList');
+      const menu = $('#sensorsMenu');
+      if (!list || !menu || !menu.open) return; // only render the list while the popover is open
+      const ae = document.activeElement;
+      if (ae && list.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT')) return;
+      const rows = SQ.sensorPopoverRows(state.allSensors, state.dashboard, state.sensorsFilter || '');
+      list.innerHTML = rows.map(r => {
+        const hidden = r.visibility === 'hidden';
+        const pinned = state.dashboard.pinnedCards.some(c => c.id === r.id);
+        const alias = r.label !== r.rawLabel ? ` · ${esc(r.rawLabel)}` : '';
+        return `<div class="sensor-choice ${hidden ? 'is-hidden' : ''}">
+          <div><b>${esc(r.label)}</b><span>${esc(r.hw)} · ${esc(r.type)} · ${esc(r.value)}${alias}</span><code>${esc(r.id)}</code></div>
+          <span class="vis-chip vis-${r.visibility}">${r.visibility}</span>
+          <button class="iconbtn" data-action="${pinned ? 'unpin' : 'pin'}" data-id="${esc(r.id)}">${pinned ? 'Unpin' : 'Pin'}</button>
+          <button class="iconbtn" data-action="${hidden ? 'show' : 'hide'}" data-id="${esc(r.id)}">${hidden ? 'Show' : 'Hide'}</button>
+        </div>`;
+      }).join('') || '<div class="empty-note">No sensors</div>';
     }
     function renderCustomize() {
       const drawer = $('#customizeDrawer');
