@@ -10,7 +10,7 @@
 
 **Spec:** [`docs/feature-web-dashboard-card-truth.md`](../../feature-web-dashboard-card-truth.md)
 **Execution campaign:** [`2026-07-04-web-dashboard-implementation-campaign.md`](2026-07-04-web-dashboard-implementation-campaign.md)
-**Corrective current plan:** [`2026-07-04-web-dashboard-visible-correctness-plan.md`](2026-07-04-web-dashboard-visible-correctness-plan.md)
+**Current plan (authoritative):** [`2026-07-06-web-dashboard-v3-next-plan.md`](2026-07-06-web-dashboard-v3-next-plan.md) (supersedes the visible-correctness plan and the A4-onwards task recipe below)
 
 > Current status note, 2026-07-04: the A0-A3 base branch was merged into
 > `master` as `34e1f09`; `.worktrees/card-truth` and the local
@@ -34,8 +34,16 @@ The former isolated worktree `.worktrees/card-truth` was merged to `master` as
 - Ordering scope is broader than pinned cards. Primary cards, pinned cards, subsystem panels, individual sensor rows, and network adapter groups all need direct visible UI order controls plus keyboard/button fallback; no ordering capability may remain drawer-only.
 
 Resume implementation from current `master`, not from the removed worktree.
-The next concrete code step from this recipe is still **Task A4 Step 1**, but
-the corrective visible plan controls branch strategy and live acceptance.
+Historically the next concrete code step from this recipe was **Task A4 Step 1**;
+that instruction is now **superseded** — see the warning below.
+
+> **⚠️ Superseded, 2026-07-06:** A2 and A3 are committed (`13fbd6b`, `a6af9e1`).
+> The `SQ.gaugeRangeFor` guard now exists (commit `47aa6f3`) and **rejects
+> `source:'peak'` at render** — peak-derived ranges are no longer gauge-eligible.
+> Do NOT follow the A4 peak→arc recipe below; it would re-introduce fake gauges.
+> New work follows the slices in
+> [`2026-07-06-web-dashboard-v3-next-plan.md`](2026-07-06-web-dashboard-v3-next-plan.md).
+> The recipe text below is retained as historical reference only.
 
 ## Execution Status (2026-07-04 — round 1, stopped on operator order)
 
@@ -45,7 +53,7 @@ Executed on branch **`feat/web-card-truth-base`** in worktree `.worktrees/card-t
 - ✅ **A1** `6ee50c5` — v3 state schema: `rangeOverrides`/`observedMax`/`rowOrder`/`netAdapterOrder`/`hiddenNetAdapters` + cleaners (selftest 90/90)
 - ✅ **A2** `13fbd6b` — `SQ.rangeFor` provenance resolver, `speedoRange` kept as wrapper, `cardEl` consumes `rr` (96/96)
 - ✅ **A3** `a6af9e1` — `SQ.fanControlFor` (hwid+text); fan card arc = Control %, RPM stays the number, `cmd N %` card meta, `· N %` on fan rows (100/100)
-- ⏭ **RESUME AT: Task A4 Step 1** (failing test for `SQ.mergeObservedPeaks`), then A5 → B1 → B2 → cut `feat/web-card-first` for Phase C. No UI/visual verification yet — do the Phase A live gate after A5.
+- ⏭ **HISTORICAL — superseded 2026-07-06.** The original "RESUME AT: Task A4 Step 1" instruction is no longer live. A2/A3 are committed; `gaugeRangeFor` (commit `47aa6f3`) now gates arcs and rejects `source:'peak'`. Resume instead from Slice 1 of the [v3-next plan](2026-07-06-web-dashboard-v3-next-plan.md), starting with the range-label/derived-limit work that respects the guard.
 - Handoff: [`2026-07-04-web-dashboard-card-truth-HANDOFF.md`](2026-07-04-web-dashboard-card-truth-HANDOFF.md)
 
 ## Global Constraints
@@ -199,6 +207,8 @@ const range = rr ? [rr.lo, rr.hi] : null;
 
 (`ceil` markup keeps using `range[1]` for now; A4 switches it to `rr.source`-aware rendering.)
 
+> **Note, 2026-07-06:** the `rr.source`-aware rendering is now implemented differently than A4 prescribes. `SQ.gaugeRangeFor` (commit `47aa6f3`) is the single arc-eligibility gate: it rejects `source:'peak'`, so peak-derived ranges render number-only with no arc and no ceiling. Do not follow the A4 ceil recipe below.
+
 - [ ] **Step 4:** self-test → PASS (including the four pre-existing `speedoRange` cases).
 - [ ] **Step 5:** `git commit -m "feat(web): SQ.rangeFor - range provenance resolver (override>limit>band>peak)"`
 
@@ -251,6 +261,13 @@ then arc/ceil selection becomes: if `ctrl` → `arc = arcSVG(h.s.id, ctrl.raw / 
 - [ ] **Step 5:** `git commit -m "feat(web): fan cards - arc from paired Control %, RPM stays the number"`
 
 ### Task A4: Persisted peaks + honest `≈` ceilings
+
+> **⚠️ SUPERSEDED 2026-07-06.** The peak→arc path described in this task is
+> no longer valid. `SQ.gaugeRangeFor` (commit `47aa6f3`) now rejects
+> `source:'peak'` at render time, so peak-derived ranges render number-only.
+> Persisted peaks (`mergeObservedPeaks`) and `rangeLabelFor` are still
+> unimplemented Slice 1 to-dos in the v3-next plan, but they must NOT feed
+> arc rendering. Follow the v3-next slices, not this task recipe.
 
 **Files:**
 - Modify: `console.js` (render loop + `cardEl` ceil markup), `console.css`

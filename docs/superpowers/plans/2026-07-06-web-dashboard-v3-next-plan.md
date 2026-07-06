@@ -2,7 +2,7 @@
 
 **Plan ID:** web-dashboard-v3-next-2026-07-06  
 **Date:** 2026-07-06  
-**Status:** ready for implementation  
+**Status:** in progress (Slice 0 done, C1 host-ID removal done; on branch `feat/web-dashboard-v3-card-first`)  
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)  
 **Predecessor plan:** [2026-07-04-web-dashboard-visible-correctness-plan.md](2026-07-04-web-dashboard-visible-correctness-plan.md)  
 **Recent review:** [../../reviews/review-2026-07-06-dashboard-menu-gauge-correctness.md](../../reviews/review-2026-07-06-dashboard-menu-gauge-correctness.md)  

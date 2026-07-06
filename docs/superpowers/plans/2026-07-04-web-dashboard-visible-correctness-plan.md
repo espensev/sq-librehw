@@ -2,7 +2,7 @@
 
 **Plan ID:** web-dashboard-visible-correctness-2026-07-04
 **Date:** 2026-07-04
-**Status:** ready for implementation
+**Status:** superseded by [2026-07-06-web-dashboard-v3-next-plan.md](2026-07-06-web-dashboard-v3-next-plan.md)
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Earlier recipe:** [2026-07-04-web-dashboard-card-truth-plan.md](2026-07-04-web-dashboard-card-truth-plan.md)
 **Blocking review:** [../../reviews/review-2026-07-04-web-dashboard-ui.md](../../reviews/review-2026-07-04-web-dashboard-ui.md)
