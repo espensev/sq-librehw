@@ -308,3 +308,23 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
   text-transform:uppercase;color:var(--ink);background:linear-gradient(180deg,var(--panel),var(--panel-2));
   border:1px solid var(--cy);border-radius:7px;padding:7px 11px;box-shadow:0 12px 30px -14px rgba(0,0,0,.9)}
 .drop-ind{position:absolute;display:none;pointer-events:none;z-index:5;background:var(--cy);box-shadow:0 0 8px var(--cy);border-radius:2px}
+
+/* --- Masthead Sensors popover (B1) --- */
+.sensors-menu{position:relative}
+.sensors-menu>summary{list-style:none;cursor:pointer}
+.sensors-menu>summary::-webkit-details-marker{display:none}
+.sensors-menu[open]>summary{border-color:var(--cy);color:var(--cy)}
+.sensors-menu .count{display:inline-block;min-width:16px;padding:0 5px;margin-left:5px;border-radius:999px;
+  background:color-mix(in srgb,var(--cy) 18%,var(--panel-2));color:var(--cy);font:600 10px var(--mono);text-align:center}
+.sensors-panel{position:absolute;top:calc(100% + 8px);right:0;z-index:40;width:min(420px,92vw);
+  max-height:min(70vh,560px);overflow:auto;padding:10px;border:1px solid var(--line);border-radius:10px;
+  background:var(--panel);box-shadow:0 12px 32px -8px rgba(0,0,0,.5)}
+.sensors-tools{display:flex;gap:8px;margin-bottom:8px;position:sticky;top:0;z-index:1;
+  background:var(--panel);padding-bottom:8px}
+.sensors-tools input{flex:1 1 auto;min-width:0}
+.sensors-panel .sensor-choice{grid-template-columns:minmax(0,1fr) auto auto auto}
+.vis-chip{align-self:center;white-space:nowrap;font:700 9px var(--mono);letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 6px;border-radius:999px;border:1px solid var(--line-soft);color:var(--muted)}
+.vis-chip.vis-hidden{color:var(--cy);border-color:color-mix(in srgb,var(--cy) 30%,var(--line-soft))}
+.vis-chip.vis-offscreen{color:var(--muted)}
+.vis-chip.vis-visible{opacity:.6}
