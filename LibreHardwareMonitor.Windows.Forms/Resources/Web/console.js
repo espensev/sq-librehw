@@ -773,11 +773,7 @@
       limits: {},
       expanded: new Set(),
       inlineEditing: false,
-      inlineEditingUntil: 0,
-      customizeOpen: false,
-      customizeTab: 'hidden',
-      hiddenFilter: '',
-      cardFilter: ''
+      inlineEditingUntil: 0
     };
 
     function esc(v) {
@@ -882,12 +878,6 @@
       state.dashboard = SQ.resetPrimaryCards(state.dashboard);
       commitDashboard();
     }
-    function renamePinned(id, title) {
-      const card = state.dashboard.pinnedCards.find(c => c.id === id);
-      if (card) card.title = title.slice(0, 80);
-      commitDashboard();
-    }
-
     function render(data) {
       state.lastData = data;
       const ae = document.activeElement;
@@ -917,7 +907,6 @@
       renderPFD(sensors, limits);
       renderPlacard(alarm);
       renderPanels(sensors);
-      renderCustomize();
       renderSensorsPopover();
       $('#host').textContent = host;
       $('#foot-left').textContent = `LibreHardwareMonitor ${data.Version} · host ${host} · GET /data.json · ${state.rate}s poll`;
@@ -1218,68 +1207,6 @@
       if (preset) preset.style.display = state.dashboard.panelOrder.length ? '' : 'none';
     }
 
-    function sensorSearchText(s) {
-      return `${s.hw} ${s.text} ${SQ.sensorAlias(state.dashboard, s.id)} ${s.type} ${s.value} ${s.id}`.toLowerCase();
-    }
-    function sensorButtonLabel(s) {
-      return SQ.isSensorHidden(s, state.dashboard) ? 'Show' : 'Hide';
-    }
-    function renderSensorRows(container, filter, mode) {
-      const ae = document.activeElement;
-      if (ae && container.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA')) return;
-      const q = filter.trim().toLowerCase();
-      const rows = state.allSensors.filter(s => !q || sensorSearchText(s).includes(q)).slice(0, 220);
-      container.innerHTML = rows.map(s => {
-        const hidden = SQ.isSensorHidden(s, state.dashboard);
-        const pinned = state.dashboard.pinnedCards.some(c => c.id === s.id);
-        const action = mode === 'cards' ? (pinned ? 'unpin' : 'pin') : (hidden ? 'show' : 'hide');
-        const label = mode === 'cards' ? (pinned ? 'Unpin' : 'Pin') : sensorButtonLabel(s);
-        const styleSel = mode === 'cards'
-          ? `<select class="style-select" data-action="style" data-id="${esc(s.id)}">
-              ${['auto','gauge','number','graph'].map(v =>
-                `<option value="${v}"${(state.dashboard.cardStyle[s.id] || 'auto') === v ? ' selected' : ''}>${v}</option>`).join('')}
-            </select>` : '';
-        return `<div class="sensor-choice ${hidden ? 'is-hidden' : ''}">
-          <div><b>${esc(s.text)}</b><span>${esc(s.hw)} · ${esc(s.type)} · ${esc(s.value ?? '-')}</span><code>${esc(s.id)}</code></div>
-          ${styleSel}<button class="iconbtn" data-action="${action}" data-id="${esc(s.id)}">${label}</button>
-        </div>`;
-      }).join('') || '<div class="empty-note">No sensors</div>';
-    }
-    function renderPinnedEditor() {
-      const box = $('#pinnedList');
-      const ae = document.activeElement;
-      if (ae && box.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA')) return;
-      const sensors = state.allSensors;
-      const resolved = SQ.resolvePinnedCards(sensors, state.dashboard, {});
-      const currentOrder = mergeOrder(state.dashboard.pinnedOrder, state.dashboard.pinnedCards.map(c => c.id));
-      box.innerHTML = resolved.map(h => {
-        const id = h.s.id;
-        const card = state.dashboard.pinnedCards.find(c => c.id === id);
-        const i = currentOrder.indexOf(id);
-        return `<div class="order-row">
-          <div><b>${esc(card?.title || h.s.text)}</b><span>${esc(h.s.hw)} · ${esc(h.s.value ?? '-')}</span></div>
-          <input class="title-input" data-action="rename" data-id="${esc(id)}" value="${esc(card?.title || '')}" placeholder="${esc(h.s.text)}">
-          <select class="style-select" data-action="style" data-id="${esc(id)}">
-            ${['auto','gauge','number','graph'].map(v =>
-              `<option value="${v}"${(state.dashboard.cardStyle[id] || 'auto') === v ? ' selected' : ''}>${v}</option>`).join('')}
-          </select>
-          <button class="iconbtn" data-action="pin-up" data-id="${esc(id)}" ${i <= 0 ? 'disabled' : ''}>Up</button>
-          <button class="iconbtn" data-action="pin-down" data-id="${esc(id)}" ${i >= currentOrder.length - 1 ? 'disabled' : ''}>Down</button>
-          <button class="iconbtn" data-action="unpin" data-id="${esc(id)}">Remove</button>
-        </div>`;
-      }).join('') || '<div class="empty-note">No pinned cards</div>';
-    }
-    function renderLayoutEditor() {
-      const box = $('#panelOrderList');
-      const keys = state.panelItems.map(i => i.key);
-      const order = mergeOrder(state.dashboard.panelOrder, keys);
-      const panels = SQ.applyOrder(state.panelItems, order, item => item.key);
-      box.innerHTML = panels.map((item, i) => `<div class="order-row">
-        <div><b>${esc(item.hw)}</b><span>${esc(CLASSLABEL[item.ss[0].cls] || 'MISC')} · ${item.ss.length} sensors</span></div>
-        <button class="iconbtn" data-action="panel-up" data-id="${esc(item.key)}" ${i <= 0 ? 'disabled' : ''}>Up</button>
-        <button class="iconbtn" data-action="panel-down" data-id="${esc(item.key)}" ${i >= panels.length - 1 ? 'disabled' : ''}>Down</button>
-      </div>`).join('');
-    }
     function renderSensorsPopover() {
       const countEl = $('#sensorsCount');
       if (countEl) {
@@ -1311,27 +1238,6 @@
           <button class="iconbtn" data-action="${hidden ? 'show' : 'hide'}" data-id="${esc(r.id)}">${hidden ? 'Show' : 'Hide'}</button>
         </div>`;
       }).join('') || '<div class="empty-note">No sensors</div>';
-    }
-    function renderCustomize() {
-      const drawer = $('#customizeDrawer');
-      const scrim = $('#customizeScrim');
-      if (!drawer || !scrim) return;
-      drawer.classList.toggle('open', state.customizeOpen);
-      scrim.classList.toggle('open', state.customizeOpen);
-      drawer.setAttribute('aria-hidden', state.customizeOpen ? 'false' : 'true');
-      document.querySelectorAll('[data-tab]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tab === state.customizeTab);
-      });
-      document.querySelectorAll('[data-pane]').forEach(pane => {
-        pane.hidden = pane.dataset.pane !== state.customizeTab;
-      });
-      if (!state.customizeOpen) return;
-      $('#hiddenSearch').value = state.hiddenFilter;
-      $('#cardSearch').value = state.cardFilter;
-      renderSensorRows($('#hiddenList'), state.hiddenFilter, 'hidden');
-      renderSensorRows($('#cardList'), state.cardFilter, 'cards');
-      renderPinnedEditor();
-      renderLayoutEditor();
     }
     function paintGraphs() {
       const btn = $('#graphs');
@@ -1382,13 +1288,8 @@
       if (!state.paused) tick();
     };
     $('#graphs').onclick = () => { state.dashboard.graphsEnabled = !state.dashboard.graphsEnabled; commitDashboard(); };
-    $('#customize').onclick = () => { state.customizeOpen = true; renderCustomize(); };
     $('#pfdReset').onclick = resetPrimaryCardsState;
     $('#panelsReset').onclick = resetPanelOrder;
-    $('#drawerClose').onclick = () => { state.customizeOpen = false; renderCustomize(); };
-    $('#customizeScrim').onclick = () => { state.customizeOpen = false; renderCustomize(); };
-    $('#hiddenSearch').oninput = e => { state.hiddenFilter = e.target.value; renderCustomize(); };
-    $('#cardSearch').oninput = e => { state.cardFilter = e.target.value; renderCustomize(); };
     $('#sensorsSearch').oninput = e => { state.sensorsFilter = e.target.value; renderSensorsPopover(); };
     $('#sensorsMenu').addEventListener('toggle', () => { if ($('#sensorsMenu').open) renderSensorsPopover(); });
     $('#sensorsList').addEventListener('click', e => {
@@ -1419,57 +1320,6 @@
     document.addEventListener('click', e => {
       document.querySelectorAll('details.page-menu[open], details.sensors-menu[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
     }, true);
-    document.querySelectorAll('[data-tab]').forEach(btn => btn.onclick = () => { state.customizeTab = btn.dataset.tab; renderCustomize(); });
-    $('#customizeDrawer').addEventListener('change', e => {
-      const input = e.target.closest('[data-action="rename"]');
-      if (input) renamePinned(input.dataset.id, input.value);
-      const sel = e.target.closest('[data-action="style"]');
-      if (sel) {
-        const v = sel.value;
-        if (v === 'auto') delete state.dashboard.cardStyle[sel.dataset.id];
-        else state.dashboard.cardStyle[sel.dataset.id] = v;
-        commitDashboard();
-      }
-    });
-    $('#customizeDrawer').addEventListener('click', e => {
-      const btn = e.target.closest('[data-action]');
-      if (!btn) return;
-      const id = btn.dataset.id;
-      switch (btn.dataset.action) {
-        case 'hide': setSensorHidden(id, true); break;
-        case 'show': setSensorHidden(id, false); break;
-        case 'pin': pinSensor(id); break;
-        case 'unpin': unpinSensor(id); break;
-        case 'pin-up':
-        case 'pin-down': {
-          const keys = mergeOrder(state.dashboard.pinnedOrder, state.dashboard.pinnedCards.map(c => c.id));
-          state.dashboard.pinnedOrder = moveKey(keys, id, btn.dataset.action === 'pin-up' ? -1 : 1);
-          commitDashboard();
-          break;
-        }
-        case 'panel-up':
-        case 'panel-down': {
-          const keys = mergeOrder(state.dashboard.panelOrder, state.panelItems.map(i => i.key));
-          state.dashboard.panelOrder = moveKey(keys, id, btn.dataset.action === 'panel-up' ? -1 : 1);
-          commitDashboard();
-          break;
-        }
-        case 'reset-hidden':
-          state.dashboard.hiddenSensorIds = [];
-          commitDashboard();
-          break;
-        case 'reset-panels':
-          state.dashboard.panelOrder = [];
-          commitDashboard();
-          break;
-        case 'clear-pinned':
-          state.dashboard.pinnedCards = [];
-          state.dashboard.pinnedOrder = [];
-          commitDashboard();
-          break;
-      }
-    });
-
     function toggleExpand(key) {
       if (state.expanded.has(key)) state.expanded.delete(key); else state.expanded.add(key);
       rerender();
