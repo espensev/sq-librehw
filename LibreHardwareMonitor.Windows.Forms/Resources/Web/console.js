@@ -395,11 +395,15 @@
   };
   SQ.resolvePrimaryCards = function (sensors, state, limits) {
     const byId = new Map(sensors.map(s => [s.id, s]));
+    // Seeded heroes keep their curated pickHero presentation (label/band/unit); only
+    // genuine non-hero promotions fall back to raw sensor text.
+    const heroById = new Map(SQ.pickHero(sensors, limits || {}).map(h => [h.s.id, h]));
     const cfg = SQ.normalizeDashboardState(state);
     return cfg.primaryCards.map(id => {
       const s = byId.get(id);
       if (!s) return null;
-      return { s, label: s.text, status: SQ.statusOf(s, limits || {}), bounded: SQ.visualRangeForSensor(s, limits || {}) };
+      return heroById.get(id) ||
+        { s, label: s.text, status: SQ.statusOf(s, limits || {}), bounded: SQ.visualRangeForSensor(s, limits || {}) };
     }).filter(Boolean);
   };
 

@@ -126,8 +126,15 @@
     const primCards = S.resolvePrimaryCards(sensors, custPrim, limits);
     eq('resolvePrimaryCards keeps present sensor', primCards.some(c => c.s.id === autoIds[0]), true);
     eq('resolvePrimaryCards drops missing sensor from render', primCards.some(c => c.s.id === '/missing/x'), false);
-    eq('resolvePrimaryCards row shape', Object.keys(primCards[0]).sort(), ['bounded','label','s','status']);
     eq('missing primary id preserved in state', custPrim.primaryCards.includes('/missing/x'), true);
+    // curated hero presentation survives promotion; genuine non-heroes fall back to raw text
+    const heroSample = S.pickHero(sensors, limits).find(h => h.label === 'CPU Temp');
+    const custHero = S.normalizeDashboardState({primaryCardsCustomized:true, primaryCards:[heroSample.s.id]});
+    eq('resolvePrimaryCards preserves curated hero label', S.resolvePrimaryCards(sensors, custHero, limits)[0].label, 'CPU Temp');
+    const custNon = S.normalizeDashboardState({primaryCardsCustomized:true, primaryCards:[nonHeroId]});
+    const nonRow = S.resolvePrimaryCards(sensors, custNon, limits)[0];
+    eq('resolvePrimaryCards non-hero uses raw text', nonRow.label, sensors.find(s => s.id === nonHeroId).text);
+    eq('resolvePrimaryCards non-hero row shape', Object.keys(nonRow).sort(), ['bounded','label','s','status']);
     const primMerge = S.mergeTelemetryState(custPrim, S.defaultDashboardState());
     eq('telemetry preserves primary sentinel + list',
       [primMerge.primaryCardsCustomized, primMerge.primaryCards], [true, [autoIds[0], '/missing/x']]);
