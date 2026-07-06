@@ -872,7 +872,7 @@
       commitDashboard();
     }
     function movePanel(key, delta) {
-      const merged = SQ.mergeOrder(state.dashboard.panelOrder, state.panelItems.map(i => i.key));
+      const merged = SQ.mergeOrder(state.dashboard.panelOrder, state.panelItems.filter(i => !i.net).map(i => i.key));
       const next = SQ.moveKey(merged, key, delta);
       if (next === merged) return;   // out-of-bounds (top ▲ / bottom ▼): don't dirty panelOrder
       state.dashboard.panelOrder = next;
@@ -880,6 +880,22 @@
     }
     function resetPanelOrder() {
       state.dashboard.panelOrder = [];
+      commitDashboard();
+    }
+    function moveAdapter(key, delta) {
+      const merged = SQ.mergeOrder(state.dashboard.netAdapterOrder, state.panelItems.filter(i => i.net).map(i => i.key));
+      const next = SQ.moveKey(merged, key, delta);
+      if (next === merged) return;   // §12.2: top-▲ / bottom-▼ must not dirty netAdapterOrder
+      state.dashboard.netAdapterOrder = next;
+      commitDashboard();
+    }
+    function hideAdapter(key) {
+      if (state.dashboard.hiddenNetAdapters.includes(key)) return;
+      state.dashboard.hiddenNetAdapters = state.dashboard.hiddenNetAdapters.concat(key);
+      commitDashboard();
+    }
+    function showAdapter(key) {
+      state.dashboard.hiddenNetAdapters = state.dashboard.hiddenNetAdapters.filter(k => k !== key);
       commitDashboard();
     }
     function setSensorHidden(id, hidden) {
@@ -1186,14 +1202,18 @@
       const temps = ss.filter(s => s.type === 'Temperature' && s.raw != null && !SQ.isLimitSensor(s)).sort((a,b)=>b.raw-a.raw);
       const head = temps[0] ? temps[0].value : (ss.find(s => s.type === 'Load')?.value || '');
       const h = document.createElement('div'); h.className = 'panel-head';
-      h.innerHTML = `<span class="panel-move"><button class="ctl" data-mv="up" aria-label="Move ${esc(label)} up" title="Move up">&#9650;</button><button class="ctl" data-mv="down" aria-label="Move ${esc(label)} down" title="Move down">&#9660;</button></span>` +
+      const netHide = item.net
+        ? `<button class="ctl" data-mv="hide" aria-label="Hide adapter ${esc(label)}" title="Hide adapter">&#8856;</button>`
+        : '';
+      h.innerHTML = `<span class="panel-move"><button class="ctl" data-mv="up" aria-label="Move ${esc(label)} up" title="Move up">&#9650;</button><button class="ctl" data-mv="down" aria-label="Move ${esc(label)} down" title="Move down">&#9660;</button>${netHide}</span>` +
         `<button class="grip" aria-label="Drag to reorder ${esc(label)}" title="Drag to reorder">&#8942;&#8942;</button>` +
         `<span class="lamp s-${worst}"></span><span class="nm">${esc(label)}</span>` +
         `<span class="cls">${CLASSLABEL[cls] || ''}</span>` +
         `<span class="head-stat">${esc(head)}<span class="chev">&#9656;</span></span>`;
       h.querySelectorAll('.panel-move .ctl').forEach(b => b.onclick = e => {
         e.stopPropagation();
-        movePanel(item.key, b.dataset.mv === 'up' ? -1 : 1);
+        if (b.dataset.mv === 'hide') { hideAdapter(item.key); return; }
+        (item.net ? moveAdapter : movePanel)(item.key, b.dataset.mv === 'up' ? -1 : 1);
       });
       h.onclick = () => {
         p.classList.toggle('collapsed');
@@ -1229,12 +1249,21 @@
     function renderPanels(sensors) {
       const panels = $('#panels');
       panels.innerHTML = '';
-      state.panelItems = SQ.buildPanelItems(sensors);
-      const ordered = SQ.applyOrder(state.panelItems, state.dashboard.panelOrder, item => item.key);
+      state.panelItems = SQ.buildPanelItems(sensors, state.dashboard);
+      const hwItems = state.panelItems.filter(i => !i.net);
+      const netItems = state.panelItems.filter(i => i.net);
+      const ordered = SQ.applyOrder(hwItems, state.dashboard.panelOrder, item => item.key);
       ordered.forEach(item => panels.appendChild(panelEl(item)));
       $('#subtag').textContent = `${ordered.length} components`;
       const preset = $('#panelsReset');
       if (preset) preset.style.display = state.dashboard.panelOrder.length ? '' : 'none';
+      const netPanels = $('#netPanels');
+      netPanels.innerHTML = '';
+      netItems.forEach(item => netPanels.appendChild(panelEl(item)));   // already ordered by netAdapterOrder
+      const hiddenNet = new Set(state.dashboard.hiddenNetAdapters);
+      const hiddenCount = SQ.buildNetAdapters(state.allSensors).filter(a => hiddenNet.has(a.key)).length;
+      $('#netsec').style.display = (netItems.length || hiddenCount) ? '' : 'none';
+      $('#nettag').textContent = `${netItems.length} adapters` + (hiddenCount ? ` · ${hiddenCount} hidden` : '');
     }
 
     function renderSensorsPopover() {
@@ -1523,6 +1552,7 @@
       if (commit && typeof a.dropIdx === 'number') {
         const next = SQ.reorderByDrop(orderedKeysFor(a.container), a.key, a.dropIdx);
         if (a.container.id === 'panels') state.dashboard.panelOrder = next;
+        else if (a.container.id === 'netPanels') state.dashboard.netAdapterOrder = next;
         else if (a.container.id === 'pinned') state.dashboard.pinnedOrder = next;
         else if (a.container.id === 'pfd') state.dashboard.cardOrder = next;
         else if (a.isRow) state.dashboard.rowOrder[a.rowGroup] = next;
