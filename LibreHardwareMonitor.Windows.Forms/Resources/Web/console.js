@@ -270,6 +270,8 @@
   };
   SQ.sensorVisibility = function (s, state) {
     if (SQ.isSensorHidden(s, state)) return 'hidden';
+    if (s && s.cls === 'nic' &&
+        SQ.normalizeDashboardState(state).hiddenNetAdapters.includes(SQ.netAdapterKey(s))) return 'offscreen';
     if (SQ.isStaticDriveAuxTemp(s) || SQ.isStaticMbTemp(s)) return 'offscreen';
     return 'visible';
   };
@@ -299,6 +301,20 @@
   SQ.panelKey = function (hw, sensors) {
     const hwid = sensors && sensors.find(s => s.hwid)?.hwid;
     return hwid || ('hw:' + hw);
+  };
+  SQ.mergeOrder = function (saved, keys) {
+    const set = new Set(keys);
+    const merged = cleanStringList(saved).filter(k => set.has(k));
+    keys.forEach(k => { if (!merged.includes(k)) merged.push(k); });
+    return merged;
+  };
+  SQ.moveKey = function (list, key, delta) {
+    const i = list.indexOf(key);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= list.length) return list;
+    const next = list.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    return next;
   };
   SQ.applyOrder = function (items, order, getKey) {
     const pos = new Map(cleanStringList(order).map((id, i) => [id, i]));
@@ -709,7 +725,30 @@
     return H.slice(0, 14);
   };
 
-  SQ.buildPanelItems = function (sensors) {
+  SQ.netAdapterKey = function (s) {
+    return (s && s.hwid) || ('hw:' + ((s && s.hw) || ''));
+  };
+  SQ.buildNetAdapters = function (sensors) {
+    if (!Array.isArray(sensors)) return [];
+    const byKey = new Map();
+    sensors.forEach(s => {
+      if (!s || s.cls !== 'nic') return;
+      const key = SQ.netAdapterKey(s);
+      if (!byKey.has(key)) byKey.set(key, { key, hw: s.hw, ss: [] });
+      byKey.get(key).ss.push(s);
+    });
+    const adapters = [...byKey.values()];
+    const byLabel = new Map();
+    adapters.forEach(a => { (byLabel.get(a.hw) || byLabel.set(a.hw, []).get(a.hw)).push(a); });
+    [...byLabel.values()].forEach(group => {
+      if (group.length > 1) group.forEach((a, i) => { a.label = `${a.hw} #${i + 1}`; });
+      else group[0].label = group[0].hw;
+    });
+    adapters.forEach(a => { a.active = a.ss.some(s => s.type === 'Throughput' && s.raw > 0); });
+    return adapters;
+  };
+
+  SQ.buildPanelItems = function (sensors, state) {
     if (!Array.isArray(sensors)) return [];
     const byId = new Map();
     sensors.forEach(s => {
@@ -734,10 +773,13 @@
         const ai = order.indexOf(a.ss[0].cls), bi = order.indexOf(b.ss[0].cls);
         return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.index - b.index;
       }).map((item, index) => Object.assign(item, { index }));
-    const nics = sensors.filter(s => s.cls === 'nic');
-    const active = new Set(nics.filter(s => s.type === 'Throughput' && s.raw > 0).map(s => s.hwid || s.hw));
-    const net = nics.filter(s => active.has(s.hwid || s.hw));
-    if (net.length) items.push({ hw: 'Network', label: 'Network', ss: net, key: 'panel:network', collapsed: true, index: items.length });
+    const cfg = state ? SQ.normalizeDashboardState(state) : null;
+    const hiddenNet = new Set(cfg ? cfg.hiddenNetAdapters : []);
+    let adapters = SQ.buildNetAdapters(sensors)
+      .filter(a => a.active && !hiddenNet.has(a.key))
+      .map((a, i) => ({ hw: a.hw, label: a.label, ss: a.ss, key: a.key, collapsed: true, net: true, index: i }));
+    adapters = SQ.applyOrder(adapters, cfg ? cfg.netAdapterOrder : [], a => a.key);
+    adapters.forEach(a => { a.index = items.length; items.push(a); });
     return items;
   };
 
@@ -811,20 +853,6 @@
       saveDashboard();
       rerender();
     }
-    function mergeOrder(saved, keys) {
-      const set = new Set(keys);
-      const merged = cleanStringList(saved).filter(k => set.has(k));
-      keys.forEach(k => { if (!merged.includes(k)) merged.push(k); });
-      return merged;
-    }
-    function moveKey(list, key, delta) {
-      const i = list.indexOf(key);
-      const j = i + delta;
-      if (i < 0 || j < 0 || j >= list.length) return list;
-      const next = list.slice();
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    }
     function rowGroupKey(panelKey, type) {
       return `${panelKey}|${type}`;
     }
@@ -840,18 +868,34 @@
       const rows = Array.from(group.querySelectorAll('.row'))
         .map(el => el.dataset.key)
         .filter(k => typeof k === 'string' && k.length);
-      state.dashboard.rowOrder[groupKey] = moveKey(mergeOrder(state.dashboard.rowOrder[groupKey], rows), id, delta);
+      state.dashboard.rowOrder[groupKey] = SQ.moveKey(SQ.mergeOrder(state.dashboard.rowOrder[groupKey], rows), id, delta);
       commitDashboard();
     }
     function movePanel(key, delta) {
-      const merged = mergeOrder(state.dashboard.panelOrder, state.panelItems.map(i => i.key));
-      const next = moveKey(merged, key, delta);
+      const merged = SQ.mergeOrder(state.dashboard.panelOrder, state.panelItems.filter(i => !i.net).map(i => i.key));
+      const next = SQ.moveKey(merged, key, delta);
       if (next === merged) return;   // out-of-bounds (top ▲ / bottom ▼): don't dirty panelOrder
       state.dashboard.panelOrder = next;
       commitDashboard();
     }
     function resetPanelOrder() {
       state.dashboard.panelOrder = [];
+      commitDashboard();
+    }
+    function moveAdapter(key, delta) {
+      const merged = SQ.mergeOrder(state.dashboard.netAdapterOrder, state.panelItems.filter(i => i.net).map(i => i.key));
+      const next = SQ.moveKey(merged, key, delta);
+      if (next === merged) return;   // §12.2: top-▲ / bottom-▼ must not dirty netAdapterOrder
+      state.dashboard.netAdapterOrder = next;
+      commitDashboard();
+    }
+    function hideAdapter(key) {
+      if (state.dashboard.hiddenNetAdapters.includes(key)) return;
+      state.dashboard.hiddenNetAdapters = state.dashboard.hiddenNetAdapters.concat(key);
+      commitDashboard();
+    }
+    function showAdapter(key) {
+      state.dashboard.hiddenNetAdapters = state.dashboard.hiddenNetAdapters.filter(k => k !== key);
       commitDashboard();
     }
     function setSensorHidden(id, hidden) {
@@ -1158,14 +1202,18 @@
       const temps = ss.filter(s => s.type === 'Temperature' && s.raw != null && !SQ.isLimitSensor(s)).sort((a,b)=>b.raw-a.raw);
       const head = temps[0] ? temps[0].value : (ss.find(s => s.type === 'Load')?.value || '');
       const h = document.createElement('div'); h.className = 'panel-head';
-      h.innerHTML = `<span class="panel-move"><button class="ctl" data-mv="up" aria-label="Move ${esc(label)} up" title="Move up">&#9650;</button><button class="ctl" data-mv="down" aria-label="Move ${esc(label)} down" title="Move down">&#9660;</button></span>` +
+      const netHide = item.net
+        ? `<button class="ctl" data-mv="hide" aria-label="Hide adapter ${esc(label)}" title="Hide adapter">&#8856;</button>`
+        : '';
+      h.innerHTML = `<span class="panel-move"><button class="ctl" data-mv="up" aria-label="Move ${esc(label)} up" title="Move up">&#9650;</button><button class="ctl" data-mv="down" aria-label="Move ${esc(label)} down" title="Move down">&#9660;</button>${netHide}</span>` +
         `<button class="grip" aria-label="Drag to reorder ${esc(label)}" title="Drag to reorder">&#8942;&#8942;</button>` +
         `<span class="lamp s-${worst}"></span><span class="nm">${esc(label)}</span>` +
         `<span class="cls">${CLASSLABEL[cls] || ''}</span>` +
         `<span class="head-stat">${esc(head)}<span class="chev">&#9656;</span></span>`;
       h.querySelectorAll('.panel-move .ctl').forEach(b => b.onclick = e => {
         e.stopPropagation();
-        movePanel(item.key, b.dataset.mv === 'up' ? -1 : 1);
+        if (b.dataset.mv === 'hide') { hideAdapter(item.key); return; }
+        (item.net ? moveAdapter : movePanel)(item.key, b.dataset.mv === 'up' ? -1 : 1);
       });
       h.onclick = () => {
         p.classList.toggle('collapsed');
@@ -1201,12 +1249,21 @@
     function renderPanels(sensors) {
       const panels = $('#panels');
       panels.innerHTML = '';
-      state.panelItems = SQ.buildPanelItems(sensors);
-      const ordered = SQ.applyOrder(state.panelItems, state.dashboard.panelOrder, item => item.key);
+      state.panelItems = SQ.buildPanelItems(sensors, state.dashboard);
+      const hwItems = state.panelItems.filter(i => !i.net);
+      const netItems = state.panelItems.filter(i => i.net);
+      const ordered = SQ.applyOrder(hwItems, state.dashboard.panelOrder, item => item.key);
       ordered.forEach(item => panels.appendChild(panelEl(item)));
       $('#subtag').textContent = `${ordered.length} components`;
       const preset = $('#panelsReset');
       if (preset) preset.style.display = state.dashboard.panelOrder.length ? '' : 'none';
+      const netPanels = $('#netPanels');
+      netPanels.innerHTML = '';
+      netItems.forEach(item => netPanels.appendChild(panelEl(item)));   // already ordered by netAdapterOrder
+      const hiddenNet = new Set(state.dashboard.hiddenNetAdapters);
+      const hiddenCount = SQ.buildNetAdapters(state.allSensors).filter(a => hiddenNet.has(a.key)).length;
+      $('#netsec').style.display = (netItems.length || hiddenCount) ? '' : 'none';
+      $('#nettag').textContent = `${netItems.length} adapters` + (hiddenCount ? ` · ${hiddenCount} hidden` : '');
     }
 
     function renderSensorsPopover() {
@@ -1225,8 +1282,11 @@
       // intentionally frozen while the popover is open; it is a discovery/manage
       // surface, not a live monitor (the dashboard behind it keeps updating).
       const pinnedIds = new Set(state.dashboard.pinnedCards.map(c => c.id));
+      const hiddenNetKeys = new Set(state.dashboard.hiddenNetAdapters);
+      const hiddenAdapters = SQ.buildNetAdapters(state.allSensors).filter(a => hiddenNetKeys.has(a.key));
       const sig = (state.sensorsFilter || '') + '|' +
-        rows.map(r => `${r.id}:${r.visibility}:${pinnedIds.has(r.id) ? 1 : 0}`).join(',');
+        rows.map(r => `${r.id}:${r.visibility}:${pinnedIds.has(r.id) ? 1 : 0}`).join(',') +
+        '|net:' + hiddenAdapters.map(a => a.key).join(',');
       if (sig === state.sensorsSig) return;
       state.sensorsSig = sig;
       list.innerHTML = rows.map(r => {
@@ -1240,6 +1300,12 @@
           <button class="iconbtn" data-action="${hidden ? 'show' : 'hide'}" data-id="${esc(r.id)}">${hidden ? 'Show' : 'Hide'}</button>
         </div>`;
       }).join('') || '<div class="empty-note">No sensors</div>';
+      const restore = $('#netRestore');
+      restore.style.display = hiddenAdapters.length ? '' : 'none';
+      $('#netRestoreList').innerHTML = hiddenAdapters.map(a => `<div class="sensor-choice is-hidden">
+        <div><b>${esc(a.label)}</b><span>network adapter${a.active ? '' : ' · idle'}</span><code>${esc(a.key)}</code></div>
+        <button class="iconbtn" data-action="net-show" data-key="${esc(a.key)}">Show</button>
+      </div>`).join('');
     }
     function paintGraphs() {
       const btn = $('#graphs');
@@ -1311,6 +1377,12 @@
       commitDashboard();
       renderSensorsPopover();
     };
+    $('#netRestoreList').addEventListener('click', e => {
+      const btn = e.target.closest('[data-action="net-show"]');
+      if (!btn) return;
+      showAdapter(btn.dataset.key);
+      renderSensorsPopover();
+    });
     // Escape / click-outside close for masthead disclosure menus (Pages + Sensors)
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') document.querySelectorAll('details.page-menu[open], details.sensors-menu[open]').forEach(d => { d.open = false; });
@@ -1359,7 +1431,7 @@
           const container = cell?.parentElement;
           if (!container) break;
           const keys = orderedKeysFor(container);
-          const next = moveKey(mergeOrder(container.id === 'pinned' ? state.dashboard.pinnedOrder : state.dashboard.cardOrder, keys),
+          const next = SQ.moveKey(SQ.mergeOrder(container.id === 'pinned' ? state.dashboard.pinnedOrder : state.dashboard.cardOrder, keys),
             cell.dataset.key, btn.dataset.act === 'move-left' ? -1 : 1);
           if (container.id === 'pinned') state.dashboard.pinnedOrder = next;
           else if (container.id === 'pfd') state.dashboard.cardOrder = next;
@@ -1495,6 +1567,7 @@
       if (commit && typeof a.dropIdx === 'number') {
         const next = SQ.reorderByDrop(orderedKeysFor(a.container), a.key, a.dropIdx);
         if (a.container.id === 'panels') state.dashboard.panelOrder = next;
+        else if (a.container.id === 'netPanels') state.dashboard.netAdapterOrder = next;
         else if (a.container.id === 'pinned') state.dashboard.pinnedOrder = next;
         else if (a.container.id === 'pfd') state.dashboard.cardOrder = next;
         else if (a.isRow) state.dashboard.rowOrder[a.rowGroup] = next;

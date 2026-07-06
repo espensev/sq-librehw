@@ -8,6 +8,85 @@
 **Versioned-route spec:** [../../feature-web-dashboard-versioned-routes.md](../../feature-web-dashboard-versioned-routes.md)
 **Context-dashboard spec:** [../specs/2026-07-04-dashboard-templates.md](../specs/2026-07-04-dashboard-templates.md) (Main/Gaming/Storage — preserved coexist lane, see §3.1)
 
+## 0. Resume Brief — Start Here
+
+*Read this section alone to resume. §1–§12 below are reference detail.*
+
+**State (2026-07-06):**
+
+- `master` = `origin/master` = `adf1b13` (pushed, clean worktree). Product baseline is `e7ae6f0` (the B3
+  merge); `adf1b13` is this handoff refresh on top. No open branches or PRs.
+- Done + merged, keep as regression baseline: A1/A2 (suffix/fan clipping), **B1** masthead Sensors popover
+  (`8291c89`), **B2** explicit primary-card selection (`106f91d`), **B3** Customize drawer removal
+  (`e7ae6f0`). See §11 for the log.
+- App: `LibreHardwareMonitor.Windows.Forms.exe` serves `http://localhost:8085/` (stable) and
+  `/dash/cardtruth/` (temporary preview). Web assets are **embedded resources** in
+  `LibreHardwareMonitor.Windows.Forms/Resources/Web/{index.html,console.js,console.css}` —
+  **rebuild the EXE for served changes to take effect, and stop the running EXE first (it locks the DLL/EXE).**
+
+**C1 — Network adapter subgroups is DONE** (branch `feat/web-network-subgroups-c1`, `e48173c..555e7ae`,
+merge pending; execution record [`2026-07-06-web-network-subgroups-c1.md`](2026-07-06-web-network-subgroups-c1.md)).
+One panel per active adapter keyed by `s.hwid`, ▲▼/drag reorder (`netAdapterOrder`, no-op-guarded) + ⊘ hide
+(`hiddenNetAdapters`) + Sensors-popover restore (`showAdapter`), `panelOrder` kept nic-free, hidden-adapter
+sensors reported `offscreen`. selftest 227/227, golden 42/42, both Release x64 builds 0/0, live-verified both
+themes on a 37-NIC host (5 active panels), zero console errors. **Follow-up candidate:** idle-Show interaction
+(§11 C1 row). **Next task: D1 — card header grid + reserved action gutter** (v3-next-plan §4 row D1 / §5 Slice 6).
+
+<details><summary>C1 original brief (retained for reference)</summary>
+
+Break the single merged Network panel into one subgroup per NIC.
+
+- **Where:** `SQ.buildPanelItems` in `console.js:712`. It currently excludes NICs at `:716`
+  (`if (s.cls === 'nic') return;`), then re-adds *all* active NIC sensors as one bucket at `:740`
+  (`{ hw:'Network', key:'panel:network', ss: net }`); "active" = adapters that have a `Throughput` sensor
+  with `raw > 0` (`:738`).
+- **Do:** emit one panel item per adapter keyed by **`s.hwid`** — the stable per-NIC hardware id already
+  used at `:738-739`, *not* a re-parsed `/nic/{GUID}` string (this supersedes the older §5 "id prefix"
+  wording). Label from `s.hw`; dedupe duplicate adapter labels with the same `#N` pattern as `:727`. Apply
+  `netAdapterOrder` (order) and `hiddenNetAdapters` (hide) — both already normalized in state (`:151-152`
+  init, `:178-179` via `cleanStringList`). Hidden adapters must be restorable from the **Sensors popover**.
+- **Reuse, don't reinvent:** mirror the existing panel reorder plumbing — `moveKey`/`mergeOrder` +
+  `movePanel` (`console.js:846`) / `moveRow` (`:835`). **Carry the B3 no-op guard**
+  (`if (next === merged) return;`) into the adapter reorder mutator — per §12.2 this bug recurs on every new
+  reorder surface.
+- **Keep it testable:** `SQ.buildPanelItems` is a pure, DOM-free helper (in the `SQ.*` block above
+  `window.SQ = SQ` at `:744`; the selftest loads it with `SQ_NO_BOOT`). Add adapter-keying / order / hide as
+  pure `SQ.*` helpers and TDD them in `webtests/selftest.node.js`. Full C1 contract + acceptance: **§5 Slice 5B**.
+
+**Start:**
+
+```powershell
+git checkout master
+git pull --ff-only origin master
+git checkout -b feat/web-network-subgroups-c1
+```
+
+**Verify before closeout:**
+
+```powershell
+node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js
+node webtests\selftest.node.js                 # keep green (currently 192)
+dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -c Release -p:Platform=x64   # 42 golden
+dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
+```
+
+Then **stop the app → rebuild → restart** and live-smoke in a **real browser across poll ticks, in BOTH dark
+and light themes** — the light theme is a first-class constraint, and the DOM-less selftest cannot catch a
+dangling reference or a theme regression (§12.4–12.5).
+
+**Non-negotiables (§4 / §12.6):** no `data.json`/server/contract change (state stays browser-local under
+`sq.dashboard.v1`, multi-tab-safe via `SQ.saveTelemetryState`); vanilla JS/CSS/HTML only; no host-specific
+labels/limits/sensor IDs in product code; raw LHM label + `SensorId` visible wherever an alias shows; golden
+(42) + selftest (192) stay green; both themes deliberately styled.
+
+**Traps that will bite C1 specifically:** §12.2 reorder no-op guard (directly reusable), §12.3 inline-control
+keyboard reachability (adapter-header controls must be focusable or always-visible), §12.4 live-only
+ReferenceError gate, §12.5 the async-`<details>` / shared-expand-key / multi-tab-skew / MCP-lock gotchas.
+
+</details>
+
+---
+
 ## 1. Purpose
 
 This document expands the remaining v3 work into implementation-ready detail and records a handoff
@@ -593,6 +672,7 @@ Reverse chronological; each phase has its own execution record in this folder.
 
 | Phase | What landed | Merge / commit |
 |---|---|---|
+| **C1** | Network adapter subgroups (Slice 5B). One subsystem panel per **active** adapter keyed by `s.hwid` (`SQ.netAdapterKey`/`SQ.buildNetAdapters`; `SQ.buildPanelItems` gained a `state` arg), deduped `#N` labels, own `#netsec`/`#netPanels` section. Always-visible ▲▼ (`moveAdapter`, no-op-guarded §12.2) + ⊘ hide; drag → `netAdapterOrder` via a new `endDrag` `#netPanels` branch; `movePanel` filtered to non-nic so `panelOrder` never absorbs adapter keys; hidden-adapter sensors report `offscreen`; hidden adapters restore from the Sensors popover (`showAdapter`, sig-gated). selftest 227/227 (+35), golden 42/42, both builds 0/0. Live-verified dark+light on a 37-NIC host (5 active panels), zero console errors. **Follow-up:** *idle-Show* — an adapter hidden while active then gone idle is un-hidden by Show but excluded from panels by the active filter until it transmits again (sensors stay in the popover; not a regression — idle adapters never rendered panels pre-C1). | `e48173c..555e7ae` (merge pending); `9443348` helpers + `cc156a5` grouping + `dfd0ddd` per-adapter items + `5b1dceb` offscreen + `b110b1a` render + `555e7ae` popover restore |
 | **B3** | Customize drawer removed after inline+popover parity. Parity re-assessment corrected the plan's gate: pinned-card reorder was **already** inline (expanded card `move-left`/`move-right` → `pinnedOrder`); only **panel** reorder was a real gap → added always-visible ▲▼ in the panel head + Subsystems "Reset order". Deleted `#customizeDrawer`/`#customizeScrim`/`#customize`, tabs, `renderCustomize`/`renderPinnedEditor`/`renderLayoutEditor`/`renderSensorRows`/`renamePinned`, drawer handlers, drawer CSS (shared `.iconbtn`/`.sensor-*` rules **split**, not deleted). | `e7ae6f0` (merge); `69252b4`+`f60fcda`+`4004822` |
 | **B2** | Explicit primary-card selection: `primaryCardsCustomized` boolean sentinel, seed-from-visible on first add, seeded heroes keep curated presentation, Auto reset in PFD header. | `106f91d` |
 | **B1** | Masthead Sensors popover: search (label/alias/hardware/type/`SensorId`), show/hide/pin/reset-hidden, hidden-count badge. Replaced drawer-only hidden discovery. | `8291c89` |

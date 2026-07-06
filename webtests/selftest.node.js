@@ -17,7 +17,9 @@ const menuChecks = [
   ['root menu links metrics', indexHtml.includes('href="/metrics"')],
   ['preview css is root-absolute for no-slash route', previewHtml.includes('href="/dash/cardtruth/console.css"')],
   ['preview js is root-absolute for no-slash route', previewHtml.includes('src="/dash/cardtruth/console.js"')],
-  ['preview index has no route-relative shell assets', !previewHtml.includes('href="console.css"') && !previewHtml.includes('src="console.js"')]
+  ['preview index has no route-relative shell assets', !previewHtml.includes('href="console.css"') && !previewHtml.includes('src="console.js"')],
+  ['root index has network section', indexHtml.includes('id="netsec"') && indexHtml.includes('id="netPanels"') && indexHtml.includes('id="nettag"')],
+  ['root index has adapter restore block', indexHtml.includes('id="netRestore"') && indexHtml.includes('id="netRestoreList"')],
 ];
 for (const [name, ok] of menuChecks) log.push(`${ok ? 'ok  ' : 'FAIL'}  ${name}  got=${ok} want=true`);
 const totalPass = pass + menuChecks.filter(([, ok]) => ok).length;

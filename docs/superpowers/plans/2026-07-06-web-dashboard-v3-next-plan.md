@@ -70,7 +70,7 @@ subsections map on as noted in the "Maps to" column.
 | **B1** ✅ | Masthead Sensors popover (search/show/hide/pin/reset, hidden count) | Slice 4B | Done (`8291c89`; plan `2026-07-06-web-sensors-popover-b1.md`). Hidden/offscreen found + restored without the drawer. |
 | **B2** ✅ | Explicit primary-card selection (`primaryCardsCustomized` boolean sentinel; seed-from-visible; seeded heroes keep curated presentation) | Slice 5A | Done (`106f91d`; plan `2026-07-06-web-primary-card-selection-b2.md`). Auto heroes default; first show-as/remove-from-primary seeds the visible set + switches to custom; Auto reset in PFD header. |
 | **B3** ✅ | Remove Customize drawer after B1+B2 parity | Slice 4C | Done (`69252b4` panel reorder + `f60fcda` drawer removal; plan `2026-07-06-web-drawer-removal-b3.md`). Parity re-assessment corrected the stated gate: pinned-card reorder was **already** inline (expanded card `move-left`/`move-right` → `pinnedOrder`); only **panel** keyboard reorder was missing — added as always-visible ▲▼ in the panel header + a Subsystems "Reset order". Drawer DOM/JS/CSS deleted after live parity verification (Sensors popover covers hidden/pin/reset; pinned-card `title` rename subsumed by alias). |
-| **C1** | Network adapter subgroups (per-NIC key, hide/reorder/restore) | Slice 5B | Network readable per-adapter; a row can't cross an adapter/type group. |
+| **C1** ✅ | Network adapter subgroups (per-NIC key, hide/reorder/restore) | Slice 5B | Done (`e48173c..555e7ae`, merge pending; plan `2026-07-06-web-network-subgroups-c1.md`). One panel per **active** adapter keyed by `s.hwid`; ▲▼/drag reorder → `netAdapterOrder` (no-op-guarded), ⊘ hide → `hiddenNetAdapters`, restore from Sensors popover; `panelOrder` stays nic-free; hidden-adapter sensors `offscreen`. selftest 227/227, golden 42/42, both builds 0/0, live-verified dark+light on a 37-NIC host (5 active panels), zero console errors. |
 | **D1** | Card header grid + reserved action gutter | Slice 6 | Controls never overlap chip/icon on hover/focus/touch. |
 | **D2** | Expansion multi-column layout (use horizontal space) | audit finding | Expanded detail fills width, not a tall narrow strip. |
 | **D3** | Full responsive/theme QA matrix | Slice 6 | 320/390/640/1440/wide × dark/light, zero overlap/clip. **Re-check B3 additions at narrow widths:** always-visible panel-head ▲▼ and the extra `#panelsReset` button in the Subsystems `.sec-head` (which already has mobile tag-clamping). |
@@ -79,8 +79,10 @@ subsections map on as noted in the "Maps to" column.
 | **F1–F3** | Context dashboards (Main/Gaming/Storage): hash router + per-route state, switcher control, template defaults | new lane (§3.1) | Selectable context dashboards coexisting with `viewTheme`, each honest per card-truth. Separate campaign, gated behind Phase E; build on current baseline, not the stale branch. |
 | **X1** | Planning-doc consolidation (one authoritative plan+spec; archive superseded 2026-07-04 set) | new | Sprawl reduced; verification log remains the evidence trail. |
 
-**Critical path:** A → B → C → D → E, then F as its own campaign. A and X1 can start immediately and
-in parallel with anything; C is independent of B and can interleave.
+**Critical path:** A → B → **C (done)** → D → E, then F as its own campaign. A and X1 can start immediately and
+in parallel with anything; C was independent of B. **Next: D1** — card header grid + reserved action gutter.
+Re-check the C1 always-visible adapter-head ▲▼/⊘ controls in the D3 narrow-width matrix (they sit in the same
+`.panel-move` cluster the D-phase polish touches).
 
 Do not treat the existing `/dash/cardtruth/` preview as a product destination. It is a temporary place
 to test unsynced UI work; once a delta is accepted, promote it into stable assets or discard it.
@@ -509,7 +511,12 @@ The multi-tab state merge guard, visible expansion/action patch, masthead Sensor
 
 B3 was **not** a clean deletion, but the parity re-assessment found only one real keyboard gap: panel reorder (pinned-card reorder was already inline via the expanded card's `move-left`/`move-right`). Delivered as: (1) inline ▲▼ panel reorder + a Subsystems "Reset order"; (2) live verification that every drawer workflow has a visible/keyboard replacement (hidden/pin/reset → Sensors popover; alias/style/override/pin/hide/move → card/row expansion; pinned-title → alias, which renders on the card); (3) deletion of `#customizeDrawer`/`#customizeScrim`/`#customize`, tabs, `renderCustomize`/`renderPinnedEditor`/`renderLayoutEditor`/`renderSensorRows`/`renamePinned`, drawer handlers, and drawer CSS (shared `.iconbtn`/`.sensor-*` rules split, not deleted).
 
-The next concrete patch is **C1 — network adapter subgroups** (independent of B; see §5 Slice 5B).
+**C1 — network adapter subgroups is now done** (branch `feat/web-network-subgroups-c1`,
+`e48173c..555e7ae`, merge pending; execution record `2026-07-06-web-network-subgroups-c1.md`). One panel per
+active adapter keyed by `s.hwid`, ▲▼/drag reorder + ⊘ hide + Sensors-popover restore, `panelOrder` kept
+nic-free, hidden-adapter sensors reported `offscreen`. selftest 227/227, golden 42/42, both Release x64 builds
+0/0, live-verified in both themes on a 37-NIC host (5 active panels), zero console errors. The next concrete
+patch is **D1 — card header grid + reserved action gutter** (see §5 Slice 6 / §4 row D1).
 
 Do not make `/dash/cardtruth/` a permanent product tab; use it only as a temporary comparison route until accepted behavior is synced into the root dashboard.
 

@@ -198,6 +198,63 @@
     eq('isPinned true', S.isPinned({pinnedCards:[{id:'/x',title:''}]}, '/x'), true);
     eq('isPinned false', S.isPinned({pinnedCards:[]}, '/x'), false);
 
+    // --- C1 T1: exposed order helpers (mergeOrder/moveKey no-op contract) ---
+    eq('mergeOrder keeps saved-first then appends missing', S.mergeOrder(['b'], ['a','b','c']), ['b','a','c']);
+    eq('mergeOrder drops unknown saved keys', S.mergeOrder(['zz','c'], ['a','b','c']), ['c','a','b']);
+    eq('mergeOrder empty saved materializes keys', S.mergeOrder([], ['a','b']), ['a','b']);
+    eq('moveKey swaps within bounds', S.moveKey(['a','b','c'], 'b', 1), ['a','c','b']);
+    eq('moveKey OOB returns same reference (no-op guard)', (() => { const m = S.mergeOrder([], ['a','b']); return S.moveKey(m, 'a', -1) === m; })(), true);
+    eq('moveKey bottom-down returns same reference', (() => { const m = ['a','b']; return S.moveKey(m, 'b', 1) === m; })(), true);
+    eq('moveKey missing key returns same reference', (() => { const m = ['a','b']; return S.moveKey(m, 'zz', 1) === m; })(), true);
+
+    // --- C1 T2: network adapter grouping ---
+    const mkNic = (g, hw, type, text, raw, n) => {
+      const s = { cls: 'nic', hw, type, text, raw, value: String(raw), id: (g || 'hw') + '/x/' + n };
+      if (g) s.hwid = g;
+      return s;
+    };
+    const nicSensors = [
+      mkNic('/nic/%7BAAA%7D', 'Realtek Gaming 2.5GbE', 'Throughput', 'Upload Speed', 100, 1),
+      mkNic('/nic/%7BAAA%7D', 'Realtek Gaming 2.5GbE', 'Load', 'Network Utilization', 1, 2),
+      mkNic('/nic/%7BBBB%7D', 'Realtek Gaming 2.5GbE', 'Throughput', 'Download Speed', 900, 3),
+      mkNic('/nic/%7BCCC%7D', 'Wi-Fi', 'Throughput', 'Upload Speed', 0, 4),
+      mkNic(null, 'TAP Adapter', 'Throughput', 'Upload Speed', 5, 5)
+    ];
+    eq('netAdapterKey uses hwid', S.netAdapterKey(nicSensors[0]), '/nic/%7BAAA%7D');
+    eq('netAdapterKey falls back to hw label', S.netAdapterKey(nicSensors[4]), 'hw:TAP Adapter');
+    const adapters = S.buildNetAdapters(nicSensors);
+    eq('adapters group by hwid', adapters.map(a => a.key), ['/nic/%7BAAA%7D', '/nic/%7BBBB%7D', '/nic/%7BCCC%7D', 'hw:TAP Adapter']);
+    eq('duplicate adapter labels get #N', adapters.slice(0, 2).map(a => a.label), ['Realtek Gaming 2.5GbE #1', 'Realtek Gaming 2.5GbE #2']);
+    eq('unique adapter label stays plain', adapters[2].label, 'Wi-Fi');
+    eq('adapter activity needs Throughput raw>0', adapters.map(a => a.active), [true, true, false, true]);
+    eq('adapter keeps its own sensors', adapters[0].ss.map(s => s.id), ['/nic/%7BAAA%7D/x/1', '/nic/%7BAAA%7D/x/2']);
+    eq('non-nic sensors ignored', S.buildNetAdapters([{ cls: 'cpu', hw: 'X', hwid: '/c/0', type: 'Load', text: 't', raw: 1, id: '/c/0/l/0' }]), []);
+    eq('buildNetAdapters tolerates junk', S.buildNetAdapters(null), []);
+
+    // --- C1 T3: per-adapter panel items ---
+    const nicState = patch => Object.assign(S.defaultDashboardState(), patch);
+    const netItems0 = S.buildPanelItems(nicSensors, S.defaultDashboardState());
+    eq('one panel item per active adapter', netItems0.map(i => i.key), ['/nic/%7BAAA%7D', '/nic/%7BBBB%7D', 'hw:TAP Adapter']);
+    eq('adapter items flagged net and collapsed', netItems0.every(i => i.net === true && i.collapsed === true), true);
+    eq('adapter item labels deduped', netItems0[0].label, 'Realtek Gaming 2.5GbE #1');
+    eq('idle adapter emits no panel', netItems0.some(i => i.key === '/nic/%7BCCC%7D'), false);
+    eq('hidden adapter excluded', S.buildPanelItems(nicSensors, nicState({ hiddenNetAdapters: ['/nic/%7BAAA%7D'] })).map(i => i.key), ['/nic/%7BBBB%7D', 'hw:TAP Adapter']);
+    eq('netAdapterOrder applies', S.buildPanelItems(nicSensors, nicState({ netAdapterOrder: ['hw:TAP Adapter', '/nic/%7BBBB%7D'] })).map(i => i.key), ['hw:TAP Adapter', '/nic/%7BBBB%7D', '/nic/%7BAAA%7D']);
+    eq('stale order keys ignored', S.buildPanelItems(nicSensors, nicState({ netAdapterOrder: ['panel:network', '/nic/%7BBBB%7D'] })).map(i => i.key)[0], '/nic/%7BBBB%7D');
+    eq('no-state call keeps active adapters (compat)', S.buildPanelItems(nicSensors).map(i => i.key), ['/nic/%7BAAA%7D', '/nic/%7BBBB%7D', 'hw:TAP Adapter']);
+    const mixedItems = S.buildPanelItems(sensors.concat(nicSensors), S.defaultDashboardState());
+    eq('nic panels trail non-nic panels', mixedItems.findIndex(i => i.net), mixedItems.filter(i => !i.net).length);
+    eq('mixed panel keys stay unique', new Set(mixedItems.map(i => i.key)).size, mixedItems.length);
+    eq('legacy merged network bucket gone', mixedItems.some(i => i.key === 'panel:network'), false);
+    eq('mixed items reindex contiguously', mixedItems.every((it, i) => it.index === i), true);
+
+    // --- C1 T4: hidden-adapter sensors are offscreen in the popover model ---
+    eq('nic sensor of hidden adapter is offscreen', S.sensorVisibility(nicSensors[0], nicState({ hiddenNetAdapters: ['/nic/%7BAAA%7D'] })), 'offscreen');
+    eq('nic sensor of visible adapter unaffected', S.sensorVisibility(nicSensors[0], S.defaultDashboardState()), 'visible');
+    eq('explicit sensor hide beats adapter hide', S.sensorVisibility(nicSensors[0], nicState({ hiddenSensorIds: [nicSensors[0].id], hiddenNetAdapters: ['/nic/%7BAAA%7D'] })), 'hidden');
+    eq('hiddenSensorCount includes adapter-hidden sensors', S.hiddenSensorCount(nicSensors, nicState({ hiddenNetAdapters: ['/nic/%7BAAA%7D'] })), 2);
+    eq('popover ranks adapter-hidden ahead of visible', S.sensorPopoverRows(nicSensors, nicState({ hiddenNetAdapters: ['/nic/%7BAAA%7D'] }), '')[0].visibility, 'offscreen');
+
     // --- v2: kinds, niceCeil, speedoRange, cardStyle ---
     eq('kindOf temp', S.kindOf('Temperature'), 'temp');
     eq('kindOf load family', [S.kindOf('Load'), S.kindOf('Level'), S.kindOf('Control')], ['load','load','load']);
