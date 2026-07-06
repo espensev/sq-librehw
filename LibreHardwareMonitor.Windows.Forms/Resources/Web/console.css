@@ -136,6 +136,11 @@ section{margin-top:30px}
 .cell.graph-on{height:172px}
 .cell .k{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .cell .k2{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:1px}
+.cell .chead{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
+.cell .ktext{min-width:0}
+.cell .k .name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell .k2 .src{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell .chip-state{flex:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ticon{width:14px;height:14px;color:var(--tc);flex:none;opacity:.9}
 .chip-state{display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:999px;font-family:var(--mono);
   font-size:9px;font-weight:700;letter-spacing:.09em;border:1px solid currentColor}
@@ -250,13 +255,14 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
   background:var(--panel-2);color:var(--muted);cursor:pointer}
 .ctl:hover{color:var(--cy);border-color:var(--cy)}
 .ctl.pin.on{color:var(--lime);border-color:color-mix(in srgb,var(--lime) 45%,var(--line))}
-.cell-ctl,.row-ctl{position:absolute;display:none;gap:4px;z-index:2}
-.cell-ctl{top:10px;right:11px}
+.row-ctl{position:absolute;display:none;gap:4px;z-index:2}
+.cell-ctl{display:flex;gap:4px;visibility:hidden;align-self:center}
+.cell .cell-ctl .grip{display:inline-block}
 .row-ctl{top:50%;right:12px;transform:translateY(-50%);align-items:center;
   background:linear-gradient(90deg,transparent,var(--panel) 22%);padding-left:22px}
-.cell:hover .cell-ctl,.cell:focus-within .cell-ctl,
+.cell:hover .cell-ctl,.cell:focus-within .cell-ctl{visibility:visible}
 .row:hover .row-ctl,.row:focus-within .row-ctl{display:flex}
-@media (hover:none){.cell-ctl,.row-ctl{display:flex}}
+@media (hover:none){.cell-ctl{visibility:visible}.row-ctl{display:flex}}
 .panel-move{display:inline-flex;gap:3px;margin-right:2px}
 .panel-move .ctl{padding:2px 4px;font-size:10px}
 

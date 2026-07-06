@@ -1105,19 +1105,18 @@
       cell.setAttribute('aria-expanded', state.expanded.has('c:' + h.s.id) ? 'true' : 'false');
       const source = (h.s.hw || '').split(' ').slice(0, 3).join(' ');
       const label = SQ.sensorDisplayText(h.s, state.dashboard, h.label);
+      const showHide = !pinned;
+      const ctlHtml = `<button class="grip" aria-label="Drag to reorder ${esc(label)}" title="Drag to reorder">&#8942;&#8942;</button>` +
+        ctlCluster(h.s.id, label, { hide: showHide });
       cell.innerHTML =
-        `<div class="k"><span class="name">${esc(label)}</span>${chip}</div>
-         <div class="k2"><span class="src">${esc(source)}</span>${tIcon(kind)}</div>
+        `<div class="chead"><div class="ktext">
+           <div class="k"><span class="name">${esc(label)}</span>${chip}</div>
+           <div class="k2"><span class="src">${esc(source)}</span>${tIcon(kind)}</div>
+         </div><div class="cell-ctl">${ctlHtml}</div></div>
          <div class="body">${arc}<div class="readout">
            <div class="big"><span class="v">${esc(n)}</span><span class="u">${esc(u)}</span>${ceil}${ctrl ? `<span class="vcmd" title="commanded ${esc(ctrl.value)}">· ${esc(ctrl.value)}</span>` : ''}</div>
            <div class="meta">${rangeMarkup(h.s) || '<div class="range"></div>'}${trendHtml}</div>
          </div></div>${fx.spark ? sparkAreaSVG(h.s, range) : ''}`;
-      const showHide = !pinned;
-      const ctl = document.createElement('div');
-      ctl.className = 'cell-ctl';
-      ctl.innerHTML = `<button class="grip" aria-label="Drag to reorder ${esc(label)}" title="Drag to reorder">&#8942;&#8942;</button>` +
-        ctlCluster(h.s.id, label, { hide: showHide });
-      cell.appendChild(ctl);
       if (state.expanded.has('c:' + h.s.id)) {
         cell.classList.add('expanded');
         cell.appendChild(xpEl(h.s, rr, { cls: 'xp', style: true, movable: true, fallbackLabel: h.label }));
