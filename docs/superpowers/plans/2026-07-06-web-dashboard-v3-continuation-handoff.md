@@ -12,25 +12,32 @@
 
 *Read this section alone to resume. §1–§12 below are reference detail.*
 
-**State (2026-07-06):**
+**State (2026-07-07):**
 
-- `master` = `origin/master` = `adf1b13` (pushed, clean worktree). Product baseline is `e7ae6f0` (the B3
-  merge); `adf1b13` is this handoff refresh on top. No open branches or PRs.
+- `master` = `origin/master`, with **D1 merged** on top of the C1 baseline `4416db5` (pushed, clean worktree).
+  The product dashboard baseline is the D1 merge; no open branches or PRs. (Run `git log --oneline` for the
+  exact merge commit.)
 - Done + merged, keep as regression baseline: A1/A2 (suffix/fan clipping), **B1** masthead Sensors popover
   (`8291c89`), **B2** explicit primary-card selection (`106f91d`), **B3** Customize drawer removal
-  (`e7ae6f0`). See §11 for the log.
+  (`e7ae6f0`), **C1** network adapter subgroups (`7130748`), **D1** card header reserved gutter
+  (`e0f1dad`+`0e0987a`). See §11 for the log.
 - App: `LibreHardwareMonitor.Windows.Forms.exe` serves `http://localhost:8085/` (stable) and
   `/dash/cardtruth/` (temporary preview). Web assets are **embedded resources** in
   `LibreHardwareMonitor.Windows.Forms/Resources/Web/{index.html,console.js,console.css}` —
   **rebuild the EXE for served changes to take effect, and stop the running EXE first (it locks the DLL/EXE).**
 
-**C1 — Network adapter subgroups is DONE** (branch `feat/web-network-subgroups-c1`, `e48173c..555e7ae`,
-merge pending; execution record [`2026-07-06-web-network-subgroups-c1.md`](2026-07-06-web-network-subgroups-c1.md)).
-One panel per active adapter keyed by `s.hwid`, ▲▼/drag reorder (`netAdapterOrder`, no-op-guarded) + ⊘ hide
-(`hiddenNetAdapters`) + Sensors-popover restore (`showAdapter`), `panelOrder` kept nic-free, hidden-adapter
-sensors reported `offscreen`. selftest 227/227, golden 42/42, both Release x64 builds 0/0, live-verified both
-themes on a 37-NIC host (5 active panels), zero console errors. **Follow-up candidate:** idle-Show interaction
-(§11 C1 row). **Next task: D1 — card header grid + reserved action gutter** (v3-next-plan §4 row D1 / §5 Slice 6).
+**D1 — Card header grid + reserved action gutter is DONE** (branch `feat/web-card-header-gutter-d1`,
+`e0f1dad` grid + `0e0987a` collapse-at-rest refine; execution record
+[`2026-07-07-web-card-header-gutter-d1.md`](2026-07-07-web-card-header-gutter-d1.md)). The card header is a
+two-track grid (`.chead{grid-template-columns:minmax(0,1fr) auto}`) with the `.cell-ctl` cluster in column 2,
+so the controls **structurally cannot** overlap the state chip or type-icon (mutually-exclusive grid track, no
+`position`/`transform`/negative-margin escape). The cluster collapses `display:none` at rest (default card names
+stay full) and reveals `display:flex` in-flow on hover/focus/touch. selftest 227/227, golden 42/42, clean
+`net10.0-windows` x64 rebuild of committed `0e0987a` 0/0 (stamp `0.9.6+0e0987a.2026-07-07`), live RED 4→GREEN 0
+in both themes across desktop/touch/narrow, zero console errors; final whole-branch review (opus) READY TO MERGE
+0C/0I. **Accepted tradeoffs:** desktop hover/focus reflows the name; touch permanently occupies the gutter
+(graceful ellipsis, full raw label in expansion). **Next task: D2 — expansion multi-column layout**
+(v3-next-plan §4 row D2 / §5 Slice 6 polish).
 
 <details><summary>C1 original brief (retained for reference)</summary>
 
@@ -672,6 +679,7 @@ Reverse chronological; each phase has its own execution record in this folder.
 
 | Phase | What landed | Merge / commit |
 |---|---|---|
+| **D1** | Card header grid + reserved action gutter (Slice 6 / closes card-truth finding #9). Header restructured into a two-track grid `.chead{grid-template-columns:minmax(0,1fr) auto}` — name+chip (`.k`) / source+type-icon (`.k2`) in column 1, the `.cell-ctl` cluster (grip/pin/hide) in column 2 — so the control cluster **structurally cannot** overlap the state chip or type-icon (mutually-exclusive grid track, no `position`/`transform`/negative-margin escape). Design evolved A→B under the controller live gate: A reserved the gutter permanently (`visibility:hidden`) and passed every overlap check but **truncated chip-card names at rest** (`CPU Temp`→`CPU…`, a readability stop-condition); B (shipped) collapses `.cell-ctl` to `display:none` at rest (full names) and reveals it `display:flex` in-flow on `:hover`/`:focus-within`/`@media(hover:none)`, never overlaying. Grip reverts to shared `.grip` reveal rules; `.row-ctl`/panel heads/`index.html` byte-unchanged; cards-only. No node unit-test surface (both harnesses DOM-less) → controller-owned live rect-intersection gate: RED 4→GREEN 0 both themes across desktop/touch-390/narrow-320, 0 truncated names at rest, focus clears chip 8px, zero console errors. selftest 227/227, golden 42/42, clean `net10.0-windows` x64 rebuild 0/0 (stamp `0.9.6+0e0987a.2026-07-07`). Final whole-branch review (opus): READY TO MERGE, 0C/0I. **Accepted tradeoffs (non-blocking):** desktop hover/focus name reflow; touch permanently occupies the gutter (graceful ellipsis, full raw label in expansion); ~8px residual grid-gap at rest. | `e0f1dad` grid + `0e0987a` collapse-at-rest; merged to master via finishing-a-development-branch |
 | **C1** | Network adapter subgroups (Slice 5B). One subsystem panel per **active** adapter keyed by `s.hwid` (`SQ.netAdapterKey`/`SQ.buildNetAdapters`; `SQ.buildPanelItems` gained a `state` arg), deduped `#N` labels, own `#netsec`/`#netPanels` section. Always-visible ▲▼ (`moveAdapter`, no-op-guarded §12.2) + ⊘ hide; drag → `netAdapterOrder` via a new `endDrag` `#netPanels` branch; `movePanel` filtered to non-nic so `panelOrder` never absorbs adapter keys; hidden-adapter sensors report `offscreen`; hidden adapters restore from the Sensors popover (`showAdapter`, sig-gated). selftest 227/227 (+35), golden 42/42, both builds 0/0. Live-verified dark+light on a 37-NIC host (5 active panels), zero console errors. **D-phase follow-ups (non-blocking, from the final whole-branch review):** (1) *idle-Show* — an adapter hidden while active then gone idle is un-hidden by Show but excluded from panels by the active filter until it transmits again (sensors stay in the popover; not a regression — idle adapters never rendered panels pre-C1). (2) *pinned-nic × adapter-hide asymmetry* — `SQ.visibleSensors` does not drop adapter-hidden nic sensors, so a nic sensor pinned via the B1 popover keeps rendering as a card after its adapter is ⊘-hidden, while the masthead badge counts it `offscreen`; arguably-correct (a pin is a deliberate override) → **product decision for D-phase**. (3) *stale `· idle` marker* — the popover restore-row rebuild signature omits `a.active`, so a hidden adapter flipping active↔idle while the popover is open keeps a stale marker until the sig bumps; 1-line fix (append `':'+a.active` to the `|net:` sig term). | `7130748` (merge Phase C1); `9443348` helpers + `cc156a5` grouping + `dfd0ddd` per-adapter items + `5b1dceb` offscreen + `b110b1a` render + `555e7ae` popover restore + `b65501b` docs |
 | **B3** | Customize drawer removed after inline+popover parity. Parity re-assessment corrected the plan's gate: pinned-card reorder was **already** inline (expanded card `move-left`/`move-right` → `pinnedOrder`); only **panel** reorder was a real gap → added always-visible ▲▼ in the panel head + Subsystems "Reset order". Deleted `#customizeDrawer`/`#customizeScrim`/`#customize`, tabs, `renderCustomize`/`renderPinnedEditor`/`renderLayoutEditor`/`renderSensorRows`/`renamePinned`, drawer handlers, drawer CSS (shared `.iconbtn`/`.sensor-*` rules **split**, not deleted). | `e7ae6f0` (merge); `69252b4`+`f60fcda`+`4004822` |
 | **B2** | Explicit primary-card selection: `primaryCardsCustomized` boolean sentinel, seed-from-visible on first add, seeded heroes keep curated presentation, Auto reset in PFD header. | `106f91d` |

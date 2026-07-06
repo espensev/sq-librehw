@@ -71,7 +71,7 @@ subsections map on as noted in the "Maps to" column.
 | **B2** ✅ | Explicit primary-card selection (`primaryCardsCustomized` boolean sentinel; seed-from-visible; seeded heroes keep curated presentation) | Slice 5A | Done (`106f91d`; plan `2026-07-06-web-primary-card-selection-b2.md`). Auto heroes default; first show-as/remove-from-primary seeds the visible set + switches to custom; Auto reset in PFD header. |
 | **B3** ✅ | Remove Customize drawer after B1+B2 parity | Slice 4C | Done (`69252b4` panel reorder + `f60fcda` drawer removal; plan `2026-07-06-web-drawer-removal-b3.md`). Parity re-assessment corrected the stated gate: pinned-card reorder was **already** inline (expanded card `move-left`/`move-right` → `pinnedOrder`); only **panel** keyboard reorder was missing — added as always-visible ▲▼ in the panel header + a Subsystems "Reset order". Drawer DOM/JS/CSS deleted after live parity verification (Sensors popover covers hidden/pin/reset; pinned-card `title` rename subsumed by alias). |
 | **C1** ✅ | Network adapter subgroups (per-NIC key, hide/reorder/restore) | Slice 5B | Done (`e48173c..555e7ae`, merge pending; plan `2026-07-06-web-network-subgroups-c1.md`). One panel per **active** adapter keyed by `s.hwid`; ▲▼/drag reorder → `netAdapterOrder` (no-op-guarded), ⊘ hide → `hiddenNetAdapters`, restore from Sensors popover; `panelOrder` stays nic-free; hidden-adapter sensors `offscreen`. selftest 227/227, golden 42/42, both builds 0/0, live-verified dark+light on a 37-NIC host (5 active panels), zero console errors. |
-| **D1** | Card header grid + reserved action gutter | Slice 6 | Controls never overlap chip/icon on hover/focus/touch. |
+| **D1** ✅ | Card header grid + reserved action gutter | Slice 6 | Done (`e0f1dad` grid + `0e0987a` collapse-at-rest; plan `2026-07-07-web-card-header-gutter-d1.md`). Header is a two-track grid (`.chead{minmax(0,1fr) auto}`) with `.cell-ctl` in column 2 → **structurally** cannot overlap the chip/type-icon (mutually-exclusive track, no `position`/`transform` escape). Cluster collapses `display:none` at rest (default names stay full) and reveals in-flow on hover/focus/touch. Live RED 4→GREEN 0 both themes (desktop/touch-390/narrow-320), selftest 227/227, golden 42/42, clean rebuild 0/0 (`0.9.6+0e0987a`), final review 0C/0I. Controls never overlap chip/icon on hover/focus/touch. |
 | **D2** | Expansion multi-column layout (use horizontal space) | audit finding | Expanded detail fills width, not a tall narrow strip. |
 | **D3** | Full responsive/theme QA matrix | Slice 6 | 320/390/640/1440/wide × dark/light, zero overlap/clip. **Re-check B3 additions at narrow widths:** always-visible panel-head ▲▼ and the extra `#panelsReset` button in the Subsystems `.sec-head` (which already has mobile tag-clamping). |
 | **E1** | Root `viewTheme: standard \| cardTruth` selector, route-namespace-ready | Slice 7 | Look selector persists; state plumbing ready for `sq.dashboard.{route}`. |
@@ -80,7 +80,7 @@ subsections map on as noted in the "Maps to" column.
 | **X1** | Planning-doc consolidation (one authoritative plan+spec; archive superseded 2026-07-04 set) | new | Sprawl reduced; verification log remains the evidence trail. |
 
 **Critical path:** A → B → **C (done)** → D → E, then F as its own campaign. A and X1 can start immediately and
-in parallel with anything; C was independent of B. **Next: D1** — card header grid + reserved action gutter.
+in parallel with anything; C was independent of B. **D1 done** (card header reserved gutter, merged). **Next: D2** — expansion multi-column layout (use horizontal space).
 Re-check the C1 always-visible adapter-head ▲▼/⊘ controls in the D3 narrow-width matrix (they sit in the same
 `.panel-move` cluster the D-phase polish touches).
 
@@ -515,8 +515,15 @@ B3 was **not** a clean deletion, but the parity re-assessment found only one rea
 `e48173c..555e7ae`, merge pending; execution record `2026-07-06-web-network-subgroups-c1.md`). One panel per
 active adapter keyed by `s.hwid`, ▲▼/drag reorder + ⊘ hide + Sensors-popover restore, `panelOrder` kept
 nic-free, hidden-adapter sensors reported `offscreen`. selftest 227/227, golden 42/42, both Release x64 builds
-0/0, live-verified in both themes on a 37-NIC host (5 active panels), zero console errors. The next concrete
-patch is **D1 — card header grid + reserved action gutter** (see §5 Slice 6 / §4 row D1).
+0/0, live-verified in both themes on a 37-NIC host (5 active panels), zero console errors.
+
+**D1 — card header grid + reserved action gutter is now done** (branch `feat/web-card-header-gutter-d1`,
+`e0f1dad` grid + `0e0987a` collapse-at-rest refine; execution record `2026-07-07-web-card-header-gutter-d1.md`):
+a two-track `.chead` grid makes control↔chip/type-icon overlap structurally impossible, and the control cluster
+collapses at rest so default card names stay full. selftest 227/227, golden 42/42, clean `net10.0-windows` x64
+rebuild 0/0 (stamp `0.9.6+0e0987a.2026-07-07`), live RED 4→GREEN 0 in both themes across desktop/touch/narrow,
+final whole-branch review 0C/0I. The next concrete patch is **D2 — expansion multi-column layout** (see §4 row
+D2 / §5 Slice 6 polish).
 
 Do not make `/dash/cardtruth/` a permanent product tab; use it only as a temporary comparison route until accepted behavior is synced into the root dashboard.
 
