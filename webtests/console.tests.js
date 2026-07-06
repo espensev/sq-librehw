@@ -156,6 +156,52 @@
     eq('gauge allows paired fan control', S.gaugeRangeFor({lo:0, hi:2000, source:'peak'}, {id:'/f', type:'Fan', raw:900}, {raw:45}),
       {lo:0, hi:100, source:'control'});
 
+    // --- Slice 1: range truth + machine-agnostic limit derivation ---
+    const sPwr = {id:'/gpu-nvidia/0/power/0', type:'Power', raw:233};
+    eq('rangeLabelFor override', S.rangeLabelFor({lo:0, hi:575, source:'override'}, sPwr), '575');
+    eq('rangeLabelFor derived limit is approximate', S.rangeLabelFor({lo:0, hi:599, source:'limit', derived:true}, sPwr), '~575');
+    eq('rangeLabelFor real limit', S.rangeLabelFor({lo:0, hi:575, source:'limit'}, sPwr), '575');
+    eq('rangeLabelFor band', S.rangeLabelFor({lo:25, hi:95, source:'band'}, sPwr), '95');
+    eq('rangeLabelFor peak -> null', S.rangeLabelFor({lo:0, hi:500, source:'peak'}, sPwr), null);
+    eq('rangeLabelFor unknown -> null', S.rangeLabelFor({lo:0, hi:500, source:'weird'}, sPwr), null);
+    eq('rangeLabelFor null sensor -> null', S.rangeLabelFor({lo:0, hi:500, source:'override'}, {id:'/x', type:'Power', raw:null}), null);
+    eq('roundPowerBucket floors to 25W', [S.roundPowerBucket(599), S.roundPowerBucket(24), S.roundPowerBucket(50)], [575, 25, 50]);
+    eq('median odd/even', [S.median([3,1,2]), S.median([4,1,2,3])], [2, 2.5]);
+    eq('median empty -> null', S.median([]), null);
+    // derived GPU limit: synthetic watt + percent sensors under one hwid
+    const gpuWattPct = (watt, pct) => [
+      {id:'/g/0/power/0', hwid:'/g/0', cls:'gpu', type:'Power', text:'GPU Package', raw:watt},
+      {id:'/g/0/load/0',  hwid:'/g/0', cls:'gpu', type:'Load',   text:'GPU Power',  raw:pct}
+    ];
+    // accumulate enough non-idle samples to clear the min-sample gate
+    let samples = {};
+    for (let i = 0; i < S.POWER_LIMIT_MIN_SAMPLES; i++) samples = S.trackPowerSamples(gpuWattPct(150, 30), samples);
+    eq('trackPowerSamples collected min count', samples['/g/0'].length >= S.POWER_LIMIT_MIN_SAMPLES, true);
+    eq('derivedPowerLimit from watt/pct ratio (~500W, bucketed)', S.derivedPowerLimit('/g/0', {powerLimitSamples: samples}), 500);
+    // idle percent (below floor) must not produce a sample
+    const idleOnly = S.trackPowerSamples(gpuWattPct(20, 1), {});
+    eq('trackPowerSamples drops idle pct', idleOnly['/g/0'], undefined);
+    // too few samples -> no limit derived
+    const tooFew = S.trackPowerSamples(gpuWattPct(150, 30), {});
+    eq('derivedPowerLimit refuses too few samples', S.derivedPowerLimit('/g/0', {powerLimitSamples: tooFew}), null);
+    // AMD-style iGPU: watt present but no power-percent sensor -> no samples, no limit
+    const amdIgpu = [{id:'/a/0/power/0', hwid:'/a/0', cls:'igpu', type:'Power', text:'GPU Core', raw:45}];
+    eq('trackPowerSamples no pct sensor -> no samples', S.trackPowerSamples(amdIgpu, {})['/a/0'], undefined);
+    eq('derivedPowerLimit null without pct sensor', S.derivedPowerLimit('/a/0', {powerLimitSamples: {}}), null);
+    // CPU power stays number-only: no derivation path, rangeFor gives peak, gauge rejects it
+    const cpuPkg = sensors.find(s => s.type === 'Power' && /package/i.test(s.text));
+    if (cpuPkg) {
+      const r = S.rangeFor(cpuPkg, {}, undefined);
+      eq('CPU power range is peak (no derivation)', r && r.source, 'peak');
+      eq('CPU power gauge rejects peak', S.gaugeRangeFor(r, cpuPkg, null), null);
+    }
+    // mergeObservedPeaks keeps running max, ignores temp/level, tolerates junk
+    const peakSensors = [{id:'/f1', type:'Fan', raw:1200}, {id:'/f1', type:'Fan', raw:1500}, {id:'/t1', type:'Temperature', raw:90}];
+    eq('mergeObservedPeaks keeps running max', S.mergeObservedPeaks(peakSensors, {'/f1': 1000})['/f1'], 1500);
+    eq('mergeObservedPeaks ignores temperature', S.mergeObservedPeaks(peakSensors, {})['/t1'], undefined);
+    eq('mergeObservedPeaks tolerates junk input', S.mergeObservedPeaks(null, 'junk'), {});
+    eq('mergeObservedPeaks preserves prior peak when lower', S.mergeObservedPeaks([{id:'/f1', type:'Fan', raw:900}], {'/f1': 2000})['/f1'], 2000);
+
     // --- v2: trend + hero fans ---
     S.resetSensorTrends();
     const seedHist = (id, pts) => pts.forEach(([t, raw]) => S.trackSensorHistory([{id, raw}], t));
@@ -188,11 +234,118 @@
     eq('normalize rangeOverrides', S.normalizeDashboardState({rangeOverrides:{'/a':{max:575},'/b':{max:-1},'/c':{max:200,min:50},'':{max:5},'/d':'x'}}).rangeOverrides,
       {'/a':{max:575},'/c':{max:200,min:50}});
     eq('normalize observedMax', S.normalizeDashboardState({observedMax:{'/a':150.9,'/b':'nope'}}).observedMax, {'/a':150.9});
+    eq('normalize aliases and card order', (() => {
+      const d = S.normalizeDashboardState({
+        sensorAliases:{'/fan':'Pump','/bad':'','/long':'x'.repeat(120), '':'Nope'},
+        primaryCards:['/cpu','/cpu','/gpu'],
+        cardOrder:['/gpu','/cpu','/gpu']
+      });
+      return [d.sensorAliases, d.primaryCards, d.cardOrder];
+    })(), [{'/fan':'Pump','/long':'x'.repeat(80)}, ['/cpu','/gpu'], ['/gpu','/cpu']]);
     eq('normalize rowOrder', S.normalizeDashboardState({rowOrder:{'k|Fan':['/f1','/f2'],'bad':[],7:'x'}}).rowOrder, {'k|Fan':['/f1','/f2']});
     eq('normalize net lists', (() => { const d = S.normalizeDashboardState({netAdapterOrder:['/nic/a','/nic/a'], hiddenNetAdapters:['/nic/b']});
       return [d.netAdapterOrder, d.hiddenNetAdapters]; })(), [['/nic/a'], ['/nic/b']]);
     eq('default has v3 fields', (() => { const d = S.defaultDashboardState();
-      return [d.rangeOverrides, d.observedMax, d.rowOrder, d.netAdapterOrder, d.hiddenNetAdapters]; })(), [{}, {}, {}, [], []]);
+      return [d.rangeOverrides, d.observedMax, d.powerLimitSamples, d.sensorAliases, d.primaryCards, d.cardOrder, d.rowOrder, d.netAdapterOrder, d.hiddenNetAdapters]; })(),
+      [{}, {}, {}, {}, [], [], {}, [], []]);
+    eq('sensorDisplayText prefers alias then fallback then raw text', [
+      S.sensorDisplayText({id:'/fan', text:'Fan #7'}, {sensorAliases:{'/fan':'Pump'}}, 'Fan card'),
+      S.sensorDisplayText({id:'/fan', text:'Fan #7'}, {}, 'Fan card'),
+      S.sensorDisplayText({id:'/fan', text:'Fan #7'}, {}, '')
+    ], ['Pump', 'Fan card', 'Fan #7']);
+    eq('updateSensorAlias trims sets and clears', (() => {
+      const set = S.updateSensorAlias({}, '/fan', '  Pump  ');
+      const cleared = S.updateSensorAlias(set, '/fan', ' ');
+      return [set.sensorAliases, cleared.sensorAliases];
+    })(), [{'/fan':'Pump'}, {}]);
+    eq('updateRangeOverride sets max', S.updateRangeOverride({}, '/p', '575', ''), {'/p':{max:575}});
+    eq('updateRangeOverride sets min+max', S.updateRangeOverride({}, '/p', '575', '50'), {'/p':{max:575, min:50}});
+    eq('updateRangeOverride ignores min >= max', S.updateRangeOverride({}, '/p', '575', '600'), {'/p':{max:575}});
+    eq('updateRangeOverride empty max clears', S.updateRangeOverride({'/p':{max:575}}, '/p', '', ''), {});
+    eq('updateRangeOverride junk max clears', S.updateRangeOverride({'/p':{max:575}}, '/p', 'abc', ''), {});
+    eq('updateRangeOverride keeps other ids', S.updateRangeOverride({'/q':{max:100}}, '/p', '575', ''), {'/q':{max:100}, '/p':{max:575}});
+    eq('rangeSourceLabel per source', [
+      S.rangeSourceLabel({lo:0, hi:575, source:'override'}),
+      S.rangeSourceLabel({lo:0, hi:575, source:'limit', derived:true}),
+      S.rangeSourceLabel({lo:0, hi:89, source:'limit'}),
+      S.rangeSourceLabel({lo:0, hi:100, source:'band'}),
+      S.rangeSourceLabel({lo:0, hi:100, source:'control'}),
+      S.rangeSourceLabel({lo:0, hi:178.5, source:'peak'}),
+      S.rangeSourceLabel(null)
+    ], ['operator override', 'derived hardware limit', 'hardware limit', 'semantic band', 'paired control %', 'observed peak', 'no known range']);
+
+    // --- Slice 3 pre-flight: telemetry saves must not clobber user state ---
+    const freshUserState = S.normalizeDashboardState({
+      hiddenSensorIds:['/new-hidden'],
+      pinnedCards:[{id:'/new-pin', title:'Keep Me'}],
+      pinnedOrder:['/new-pin'],
+      panelOrder:['/panel-new'],
+      collapsedPanels:{'/panel-new':true},
+      cardStyle:{'/new-pin':'graph'},
+      rangeOverrides:{'/gpu/power':{max:575}},
+      sensorAliases:{'/fan':'Pump'},
+      primaryCards:['/cpu/temp','/gpu/power'],
+      cardOrder:['/gpu/power','/cpu/temp'],
+      rowOrder:{'/panel-new|Fan':['/fan2','/fan1']},
+      netAdapterOrder:['/nic/a'],
+      hiddenNetAdapters:['/nic/b'],
+      graphsEnabled:true,
+      paused:true,
+      rate:5,
+      theme:'light',
+      observedMax:{'/fan':1200},
+      powerLimitSamples:{'/gpu/0':[100,110,120,130,140,150,160,170,180]}
+    });
+    const staleTelemetryState = S.normalizeDashboardState({
+      hiddenSensorIds:['/old-hidden'],
+      pinnedCards:[{id:'/old-pin', title:'Lose Me'}],
+      pinnedOrder:['/old-pin'],
+      panelOrder:['/panel-old'],
+      collapsedPanels:{'/panel-old':true},
+      cardStyle:{'/old-pin':'number'},
+      rangeOverrides:{'/gpu/power':{max:200}},
+      sensorAliases:{'/fan':'Old Pump'},
+      primaryCards:['/old/card'],
+      cardOrder:['/old/card'],
+      rowOrder:{'/panel-old|Fan':['/fan1','/fan2']},
+      netAdapterOrder:['/nic/old'],
+      hiddenNetAdapters:['/nic/old-hidden'],
+      graphsEnabled:false,
+      paused:false,
+      rate:1,
+      theme:'dark',
+      observedMax:{'/fan':1500, '/pump':900},
+      powerLimitSamples:{'/gpu/0':[900], '/gpu/1':[500,525,550,575,600,625,650,675,700,725]}
+    });
+    const mergedTelemetry = S.mergeTelemetryState(freshUserState, staleTelemetryState);
+    eq('telemetry merge preserves fresh user layout', [
+      mergedTelemetry.hiddenSensorIds, mergedTelemetry.pinnedCards, mergedTelemetry.pinnedOrder,
+      mergedTelemetry.panelOrder, mergedTelemetry.collapsedPanels, mergedTelemetry.cardStyle,
+      mergedTelemetry.rangeOverrides, mergedTelemetry.sensorAliases, mergedTelemetry.primaryCards,
+      mergedTelemetry.cardOrder, mergedTelemetry.rowOrder, mergedTelemetry.netAdapterOrder,
+      mergedTelemetry.hiddenNetAdapters, mergedTelemetry.graphsEnabled, mergedTelemetry.paused,
+      mergedTelemetry.rate, mergedTelemetry.theme
+    ], [
+      ['/new-hidden'], [{id:'/new-pin', title:'Keep Me'}], ['/new-pin'],
+      ['/panel-new'], {'/panel-new':true}, {'/new-pin':'graph'},
+      {'/gpu/power':{max:575}}, {'/fan':'Pump'}, ['/cpu/temp','/gpu/power'],
+      ['/gpu/power','/cpu/temp'], {'/panel-new|Fan':['/fan2','/fan1']}, ['/nic/a'],
+      ['/nic/b'], true, true, 5, 'light'
+    ]);
+    eq('telemetry merge combines telemetry accumulators',
+      [mergedTelemetry.observedMax, mergedTelemetry.powerLimitSamples],
+      [{'/fan':1500,'/pump':900}, {'/gpu/0':[100,110,120,130,140,150,160,170,180], '/gpu/1':[500,525,550,575,600,625,650,675,700,725]}]);
+    const telemetryStore = (() => { let slot = JSON.stringify(freshUserState); return {
+      getItem:k => slot, setItem:(k, v) => { slot = v; }, read:() => JSON.parse(slot)
+    }; })();
+    const savedTelemetry = S.saveTelemetryState(telemetryStore, staleTelemetryState);
+    eq('saveTelemetryState writes merged state', [savedTelemetry.sensorAliases, savedTelemetry.hiddenSensorIds, savedTelemetry.observedMax],
+      [{'/fan':'Pump'}, ['/new-hidden'], {'/fan':1500,'/pump':900}]);
+    eq('user save can intentionally replace layout', (() => {
+      S.saveDashboardState(telemetryStore, staleTelemetryState);
+      const saved = S.loadDashboardState(telemetryStore);
+      return [saved.hiddenSensorIds, saved.sensorAliases, saved.rangeOverrides];
+    })(), [['/old-hidden'], {'/fan':'Old Pump'}, {'/gpu/power':{max:200}}]);
 
     // --- v3: rangeFor provenance ---
     S.resetSensorMotion();

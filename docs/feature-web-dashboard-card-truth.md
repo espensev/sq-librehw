@@ -1,7 +1,7 @@
 # Feature Spec: Web Dashboard Card Truth & Card-First Controls (v3)
 
 **Project:** LibreHardwareMonitor Sev IQ local fork
-**Status:** Draft — scope accepted; implementation in progress on `feat/web-dashboard-v3-card-first`
+**Status:** Accepted for implemented v3 slices; remaining card-first scope in progress on `feat/web-dashboard-v3-card-first`
 **Active plan:** [`superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md`](superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md) (authoritative; supersedes the 2026-07-04 plans)
 **Updated:** 2026-07-06
 **Related docs:** [`feature-web-dashboard-customization.md`](feature-web-dashboard-customization.md) (v2, shipped on this branch), [`superpowers/specs/2026-07-04-web-dashboard-telemetry-console-design.md`](superpowers/specs/2026-07-04-web-dashboard-telemetry-console-design.md), implementation plan [`superpowers/plans/2026-07-04-web-dashboard-card-truth-plan.md`](superpowers/plans/2026-07-04-web-dashboard-card-truth-plan.md), execution campaign [`superpowers/plans/2026-07-04-web-dashboard-implementation-campaign.md`](superpowers/plans/2026-07-04-web-dashboard-implementation-campaign.md), corrective visible plan [`superpowers/plans/2026-07-04-web-dashboard-visible-correctness-plan.md`](superpowers/plans/2026-07-04-web-dashboard-visible-correctness-plan.md), next v3 plan [`superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md`](superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md)
@@ -11,7 +11,21 @@
 
 Operator feedback on the shipped Console v2 boils down to two connected themes: **the dashboard must stop implying precision it does not have, and it should feel like a polished, modern, user-friendly monitoring app whose controls live where the operator is already looking.** This spec covers: honest gauge ranges (real limit > user override > semantic band > clearly-labeled estimate), fan gauges driven by their paired Control % sensor, clean multi-GPU / duplicate-hardware identity, card-carried detail and actions replacing the Customize drawer, movable cards, panels, individual sensor rows/lines, and network subgroups, cohesive card color/styling, customization ergonomics, and the state-chip/icon/value clipping fixes.
 
-## 1.1 Current operator restatement (2026-07-04)
+## 1.1 Current Slice Status
+
+| Slice | Status | Notes |
+|---|---|---|
+| Stabilize current worktree | done | Baseline route/menu/gauge work is committed on `feat/web-dashboard-v3-card-first`; live rebuild/smoke was recorded 2026-07-06. |
+| Host-specific hidden-sensor cleanup | done | Product code no longer hides sensors by this machine's `/lpc/nct6701d/...` IDs. |
+| Hardware identity and multi-device rendering | done | Panels/heroes are keyed by `hwid`; duplicate-name NVMe/GPU fixtures are covered by model tests. |
+| Range truth and machine-agnostic limit derivation | done | Range labels, observed peaks, and GPU watt + percent derived limits are implemented while keeping peak ranges number/sparkline-only. |
+| Card/row expansion | in progress | First visible expansion/action patch is implemented in stable and preview routes: raw label, `SensorId`, alias, style, max override, pin/hide, keyboard move, card order, and stable row ordering. Drawer parity and popover remain. |
+| Sensor popover and drawer removal | remaining | Keep only a compact masthead popover for hidden/offscreen discovery; remove normal drawer workflows after parity. |
+| Visible ordering everywhere | remaining | Promote accepted row-order preview behavior and finish card/panel/row/network ordering from visible surfaces. |
+| Modern UI polish and responsive QA | remaining | Resolve overlap/clipping and polish dark/light themes across target viewport sizes. |
+| Preview promotion and closeout | remaining | Sync accepted changes into `/`, retire `/dash/cardtruth/`, and expose any surviving visual style via the root Theme dropdown/view selector. |
+
+## 1.2 Current operator restatement (2026-07-04)
 
 This is the governing review summary for implementation worktrees:
 
@@ -49,10 +63,10 @@ This is the governing review summary for implementation worktrees:
 
 ## 3. Opinions (what I'd do and why)
 
-1. **Range provenance is the core fix.** One resolver, `SQ.rangeFor(sensor) → {lo, hi, source}` with `source ∈ override | limit | band | peak`, and the card ceiling rendered differently per source (`/ 575 W` plain for override/limit; `/ ≈200 W` muted+tooltip for peak). This satisfies "we can and must accept" estimates while never disguising them. Temps keep their semantic bands — a CPU arc drawn against 30–95 °C is *meaningful*, and no sensor exposes TjMax here; I would not churn that.
+1. **Range provenance is the core fix.** One resolver, `SQ.rangeFor(sensor) -> {lo, hi, source}` with `source` in `override | limit | band | peak`, and the card ceiling rendered differently per source (`/ 575 W` plain for override/real limit, `/ ~575 W` for a derived approximate limit, and no ceiling/gauge for peak). This satisfies "we can and must accept" estimates while never disguising them. Temps keep their semantic bands; a CPU arc drawn against 30-95 C is meaningful, and no sensor exposes TjMax here.
 2. **Session peaks should persist.** `niceCeil(session peak)` resets every reload, so ceilings wobble between visits. Persist per-sensor observed peaks in `sq.dashboard.v1` so estimates only ratchet up. Cheap, and makes the "est" ceiling stable and honest ("highest this browser has ever seen").
 3. **Fan pairing via Control is strictly better** than any RPM ceiling: arc = commanded %, number = measured RPM — you see both intent and effect (that is exactly the SQ-Control mental model: `control/N` is the command lane, `fan/N` the tach). I'd also show the paired % as a small secondary line on fan rows.
-4. **Derived NVIDIA power limit is worth one small task** (W ÷ %-of-limit, median over samples where % > 10, rounded to 25 W, labeled "≈ derived"). It removes the single most misleading gauge (5090 power) with zero hardcoding and zero server work. Accuracy caveat at idle (±1 % quantization) is handled by the sample gate.
+4. **Derived NVIDIA power limit is worth one small task** (W divided by percent-of-limit, median over samples after dropping values below the 5% idle floor, at least 8 samples, rounded down to 25 W buckets, labeled `~ derived`). It removes the single most misleading gauge (5090 power) with zero hardcoding and zero server work. Accuracy caveat at idle is handled by the sample gate.
 5. **Do NOT rush server-side limit sensors.** Adding NVML `EnforcedPowerLimit` / temp-threshold sensors upstreams real limits properly, but touches `LibreHardwareMonitorLib`, changes `data.json` content, and forces a `DataJsonGoldenTests` regen on a payload documented as a downstream contract (ThermalTrace). Keep it as an optional, separately-gated branch (E) after the client-side work proves what's actually missing.
 6. **Hardware identity by `HardwareId` everywhere** (panels, collapse state, order keys, hero iteration). Display names become labels only, with `#1/#2` suffixes on duplicates and short device names in hero labels when >1 GPU ("RTX 5090 Temp" / "Radeon Temp"). This fixes the NVMe merge today and is the actual "support 2 GPUs" requirement.
 7. **iGPU policy:** give the Radeon a compact hero pair (hottest temp + core power) — it draws a real 35–65 W and deserves visibility — and raise the hero cap to 14 with fans trimmed first (the cap-overflow wording landed in `749f386` already admits the 12 cap bites).
@@ -69,7 +83,7 @@ This is the governing review summary for implementation worktrees:
 - Two GPUs (and any duplicate-named hardware) render as distinct, correctly-labeled panels and heroes.
 - Per-sensor max override, editable on the card, persisted browser-locally.
 - Card/row expansion carries detail + all per-sensor actions; the Customize drawer is deleted; one compact masthead popover covers search/restore/pin of not-currently-visible sensors and must not become a side pane.
-- Primary cards, pinned cards, subsystem panels, individual rows, and Network adapter subgroups are reorderable from the UI, with keyboard-accessible move controls.
+- The operator can choose and reorder primary cards, pinned cards, subsystem panels, individual rows, and Network adapter subgroups from the UI, with pointer drag/drop plus keyboard-accessible move controls.
 - State chip, type icon, hover controls, value, unit, and ceiling text never overlap or clip at any width or on touch.
 - Missing/unknown data keeps rendering gracefully ("—", number-only cards, explicit "no known range").
 
@@ -79,17 +93,18 @@ This is the governing review summary for implementation worktrees:
 - No control writes from the dashboard; read-only stays read-only.
 - No cross-browser/machine layout sync service (export/import file only).
 - No replacement of the poll model, row bars, theme/rate/pause behavior, or the v2 card anatomy.
+- No permanent `cardtruth` product page. `/dash/cardtruth/` is a temporary preview/dev surface until selected changes are synced into `/`; after promotion, the surviving visual treatment belongs under the root dashboard Theme dropdown/view selector.
 
 ## 5. Behavior specification
 
 **Range resolution** (per sensor, evaluated in order; first hit wins):
 1. `rangeOverrides[id]` from dashboard state (user-set max, optional min; validated numeric, max > min).
-2. Sensor-provided or derived limit: existing `deriveLimits` temps; NVIDIA power limit derived from the `(Power W, Load %-of-limit)` pair — gated on ≥10 samples with % > 10, median ratio, rounded to nearest 25 W, tagged `limit` with `derived: true`.
+2. Sensor-provided or derived limit: existing `deriveLimits` temps; NVIDIA power limit derived from the `(Power W, Load %-of-limit)` pair - values below the 5% idle floor are dropped, at least 8 samples are required, the median ratio is used, the result is rounded down to a 25 W bucket, and the range is tagged `limit` with `derived: true`.
 3. Semantic band: existing `visualRangeForSensor` (temps per class incl. junction/hot-spot, Load/Control/Level 0–100).
 4. Persisted observed peak: `max(rawMax, session motion, observedMax[id])` → `niceCeil` → tagged `peak`; `observedMax[id]` is updated (throttled) in dashboard state. Applies to Power/Clock, and to Fan only when no Control pair exists.
 5. Otherwise `null` → number-only card; expansion shows "no known range".
 
-**Rendering per source:** `override`/`limit` ceilings render plain (`/ 575 W`, tooltip states origin, derived limits prefix `≈`); `peak` is not gauge-eligible and must render as a number/sparkline only until the operator sets a true override or a real/derived limit is available; `band` shows no ceiling text (unchanged).
+**Rendering per source:** `override`/real `limit` ceilings render plain (`/ 575 W`); derived limits render with `~` (`/ ~575 W`) and detail text/tooltips state the origin; `band` ceilings may render as known semantic bounds; `peak` is not gauge-eligible and must render as a number/sparkline only until the operator sets a true override or a real/derived limit is available.
 
 **Fan pairing:** a Fan sensor with a Control sensor of identical `text` under the same `hwid` renders: arc = Control raw (0–100), big value = RPM, secondary meta line shows the %. Hero fan cells and pinned fan cards behave identically. Unpaired fans: RPM number card (fallback per range rule 4/5).
 
@@ -99,7 +114,7 @@ This is the governing review summary for implementation worktrees:
 
 **Card-first controls:** clicking a card/row (not its buttons/grip) toggles an inline expansion: full `SensorId`, hardware, raw LibreHW label, type, current/min/max raw values, range line with provenance, style select (auto/gauge/number/graph), dashboard-local alias/rename + clear, max override input + clear, hide, pin/unpin, ▲▼ move buttons (keyboard-accessible reorder). Panel headers and network subgroup headers get the same direct move affordance. Masthead gains a `Sensors — N hidden` button opening a compact anchored popover for search all sensors, Show/Hide/Pin each, and reset-hidden. That popover is for invisible/offscreen sensor discovery only; it is not a side pane and must not carry normal card details/actions. The drawer (`<aside>`, scrim, tabs, its CSS and handlers) is deleted in the same branch once expansion + popover reach action parity.
 
-**Ordering surfaces:** every user-visible ordered surface must be orderable from that surface, not only from a hidden drawer: primary card grid, pinned-card rail/list, subsystem panels, rows within each type group, and network adapter subgroups. Pointer drag is allowed where reliable; keyboard/button ▲▼ controls are required everywhere. Persisted ordering changes the dashboard layout only; raw `data.json` order and sensor identities remain untouched.
+**Ordering surfaces:** every user-visible ordered surface must be selectable and orderable from that surface, not only from a hidden drawer: primary card grid, pinned-card rail/list, subsystem panels, rows within each type group, and network adapter subgroups. Pointer drag/drop is expected where reliable; keyboard/button move controls are required everywhere. Persisted ordering changes the dashboard layout only; raw `data.json` order and sensor identities remain untouched.
 
 **Row & subgroup arranging:** rows gain grips; drag reorders within the row's type group only; order persisted as `rowOrder[panelKey + '|' + displayType] = [sensorIds]`. Network panel renders one subgroup per adapter (key = `/nic/{GUID}` id prefix, header = adapter display name), each subgroup collapsible/hideable/drag-reorderable; hidden adapters listed in the popover for restore. Idle-adapter filtering (Throughput > 0) unchanged.
 
@@ -112,7 +127,7 @@ This is the governing review summary for implementation worktrees:
 | Surface | Change |
 |---|---|
 | UI | Card/row expansion; compact masthead sensors popover only for invisible sensor search/restore; side/right drawer removed; fan cards re-ranged; per-device hero labels; network subgroups; direct ordering controls; header/value clipping fix. |
-| Settings (`sq.dashboard.v1`, additive, version stays 1) | `rangeOverrides {id:{max,min?}}`, `observedMax {id:number}`, `sensorAliases {id:string}`, `cardOrder [cardKey]`, `rowOrder {groupKey:[ids]}`, `netAdapterOrder [nicKey]`, `hiddenNetAdapters [nicKey]`; `collapsedPanels`/`panelOrder` re-keyed to `hwid` with legacy fallback. |
+| Settings (`sq.dashboard.v1`, additive, version stays 1) | `rangeOverrides {id:{max,min?}}`, `observedMax {id:number}`, `powerLimitSamples {hwid:[number]}`, `sensorAliases {id:string}`, `primaryCards [id]` or equivalent explicit card selection, `cardOrder [cardKey]`, `rowOrder {groupKey:[ids]}`, `netAdapterOrder [nicKey]`, `hiddenNetAdapters [nicKey]`; `collapsedPanels`/`panelOrder` re-keyed to `hwid` with legacy fallback. |
 | Remote web/API | None in A–D. Phase E (optional, gated): new limit sensors in `data.json` ⇒ golden regen per AGENTS §4. |
 | Logging/files | None. |
 
@@ -123,14 +138,15 @@ This is the governing review summary for implementation worktrees:
 | `data.json` downstream contract (ThermalTrace, golden tests) | Phases A–D are client-only; `dotnet test` gate must stay green untouched. Phase E explicitly parked. |
 | Drawer removal loses keyboard reorder | Expansion ▲▼ buttons land in the same branch, before drawer deletion; deletion task is last in the branch. |
 | Text-keyed saved state (collapse/order) breaks on re-key | One-time migration + legacy-text fallback read; reset actions already exist. |
-| Derived power limit wrong at idle | Sample gate (% > 10, n ≥ 10, median), `≈` labeling, override always wins. |
+| Derived power limit wrong at idle | Samples below the 5% idle floor are dropped, at least 8 samples are required, median ratio is used, `~` labeling marks derived values, and override always wins. |
+| Multiple browser tabs overwrite customization state | `SQ.saveTelemetryState` merges background `observedMax`/`powerLimitSamples` into fresh persisted layout/customization state so a passive tab cannot overwrite active-tab aliases, order, overrides, hidden state, or card selection. |
 | Upstream sync | All changes stay in `Resources/Web/*` + `webtests/*` for A–D (same isolation promise as v2). |
 | Touch devices | Controls in-flow (gutter) fixes the permanent-overlap case; drag paths already pointer-event based. |
 
 ## 8. Acceptance criteria
 
 - [ ] No gauge anywhere renders an unlabeled invented ceiling: every arc is `band`, `limit`, `override`, or a paired `control` percentage; `peak` ranges are number/sparkline only.
-- [ ] 5090 power card: shows real/derived/override limit (≈575–600 W) or number-only observed value — never a bare "/ 200" or peak-derived gauge.
+- [ ] 5090 power card: shows real/derived/override limit (`~575-600 W`) or number-only observed value - never a bare "/ 200" or peak-derived gauge.
 - [ ] Every fan with a Control pair: arc = %, number = RPM (heroes, pinned, rows).
 - [ ] Both GPUs appear as distinct panels and correctly-labeled heroes; three same-name NVMe drives render as three panels.
 - [ ] A user can set/clear a max override from the card itself and the gauge respects it after reload.
@@ -157,11 +173,13 @@ This is the governing review summary for implementation worktrees:
 | Decision | Needed before | Current default |
 |---|---|---|
 | iGPU hero policy | Phase B | Always show temp+power pair; cap 14, trim fans first |
-| Derived-limit rounding/labeling | Phase A task 5 | Median ratio, round 25 W, display `≈` |
+| Derived-limit rounding/labeling | Slice 1 | Drop samples below 5%, require at least 8 samples, use median ratio, round down to 25 W buckets, display `~` |
+| Multi-tab state merge | resolved | Background telemetry persistence now uses `SQ.mergeTelemetryState`/`SQ.saveTelemetryState`. Stable `/` and preview `/dash/cardtruth/` keep separate storage keys, and same-route telemetry saves preserve fresh user-owned layout/customization fields. |
 | Drawer deletion timing | End of card-first branch | Delete only after expansion+popover parity in same branch |
 | Row drag scope | Phase D | Within type group only; cross-panel = pinning |
 | Phase E (server limit sensors) go/no-go | After A–D evaluated | Parked; requires explicit operator green-light (golden regen + downstream review) |
 | State version bump | Phase A | Keep `version:1`, additive fields (normalizer drops unknowns on old builds — acceptable browser-local) |
+| `cardtruth` route lifetime | Promotion | Temporary preview only; remove after sync and expose selected style as a Theme dropdown/view choice on `/` |
 
 ## 11. Verification log
 
@@ -169,11 +187,15 @@ This is the governing review summary for implementation worktrees:
 |---|---|---|---|
 | 2026-07-04 | Spec drafted from operator feedback + annotated screenshot + live data.json walk + console.js/css review | pending | Implementation intentionally not started; awaiting operator branch go |
 | 2026-07-04 | Concurrent session merged `feature/web-dashboard-customization` into `master` (`2128e33`) and deleted the branch mid-planning; this spec/plan re-targeted to master | n/a | Evidence screenshots also removed from working tree by that session |
-| 2026-07-04 | Follow-up screenshot review captured in §1.1 | pending | Confirms the worktree split: trunk/model truth first, then card-first controls and row/subgroup ordering as separate UI branches. |
+| 2026-07-04 | Follow-up screenshot review captured in §1.2 | pending | Confirms the worktree split: trunk/model truth first, then card-first controls and row/subgroup ordering as separate UI branches. |
 | 2026-07-04 | Local worktree `.worktrees/card-truth` on `feat/web-card-truth-base` | pass | A0-A3 are committed there through `1acccc7`: range state schema, `SQ.rangeFor`, and fan Control %-based gauges. `node webtests/selftest.node.js` passed 100/100; net10.0-windows x64 build passed with 0 errors; data.json/golden untouched. ~~Resume from plan Task A4 Step 1~~ — that resume point is superseded; `gaugeRangeFor` now rejects peak arcs. |
 | 2026-07-04 | Live `http://localhost:8085/data.json` evidence check | pass | 575 live sensors. Board temps are named `Temperature #1`..`#6`; 9 fan/control pairs found (7 Nuvoton + 2 RTX 5090); RTX 5090 exposes `GPU Package` W plus `GPU Power` and `GPU Board Power` percent-of-limit inputs for derived power-limit work. |
 | 2026-07-04 | Live browser review of `http://localhost:8085/` and `https://telemetry.seviq.org/` in dark and light themes | follow-up required | Hosted matches local. Both still show Customize drawer subtitle `Browser-local dashboard state`, bare `/ 200` CPU/GPU power ceilings, RPM fan ceilings, no general alias input, and right-edge clipping on ceiling/unit suffixes. Fan #7 is visible as raw `Fan #7`; endpoint confirms paired Control `/lpc/nct6701d/0/control/6`, so `Pump` belongs as an operator alias, not a raw rename. |
 | 2026-07-04 | Follow-up screenshot review after `34e1f09` merge | follow-up required | Visible UI still fails the operator requirements: side Customize panel remains, power gauge ceilings still appear wrong/clipped, gauges lack clear provenance, card colors read as random, card detail/actions are missing, and reorder/alias workflows are not visible. Corrective campaign drafted in `docs/superpowers/plans/2026-07-04-web-dashboard-visible-correctness-plan.md`. |
 | 2026-07-06 | Screenshot-specific gauge correctness fix | partial pass | Peak-derived ranges are no longer gauge-eligible. `SQ.gaugeRangeFor` allows only semantic bands, explicit overrides, real/derived limits, or paired fan Control %. `node webtests\selftest.node.js` passes 106/106 and live `/console.js` contains the guard. Remaining v3 issues from the prior review still stand. |
 | 2026-07-06 | Next v3 execution plan | pending | `docs/superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md` breaks remaining work into machine-agnostic slices: range display, device identity, card/row expansion, drawer removal, visible ordering, responsive polish, and preview promotion. |
-| 2026-07-06 | Slice 0 stabilize + C1 host-ID removal | pass | Route feature + gauge guard committed (`47aa6f3`); v3 branch `feat/web-dashboard-v3-card-first` cut. C1 (`c5c8d13`) replaced hardcoded `/lpc/nct6701d/...` IDs with `SQ.isStaticMbTemp` motion heuristic — zero host-specific identifiers in product code, and temperature/5 (live VRM) is now correctly visible. selftest 108/108, dotnet test 42/42. Stale peak-arc recipe in predecessor plans marked superseded. |
+| 2026-07-06 | Slice 0 stabilize + C1 host-ID removal | pass | Route feature + gauge guard committed (`47aa6f3`); v3 branch `feat/web-dashboard-v3-card-first` cut. C1 (`c5c8d13`) replaced hardcoded `/lpc/nct6701d/...` IDs with `SQ.isStaticMbTemp` motion heuristic — zero host-specific identifiers in product code, and temperature/5 (live VRM) is now correctly visible. At that checkpoint: selftest 108/108, dotnet test 42/42. Stale peak-arc recipe in predecessor plans marked superseded. |
+| 2026-07-06 | Slice 2 hardware identity + preview route review fixes | pass | `08b64b7` keys panels/heroes by `hwid`, separates duplicate-name NVMe devices, covers distinct GPU hero hardware ids, and keeps legacy text-key collapse fallback. Current branch selftest is 117/117 before the route fix and 120/120 after adding preview asset assertions; dotnet test remains 42/42. `net472` and `net10.0-windows` Release x64 builds passed 0/0; live rebuilt app PID 38804 serves fixed `/dash/cardtruth` assets. `/dash/cardtruth/` is confirmed temporary and should be retired after promotion in favor of a root Theme dropdown/view choice. |
+| 2026-07-06 | Slice 1 range truth + machine-agnostic limit derivation | pass | `SQ.rangeLabelFor` maps range provenance to a ceiling label (override/real limit/plain number, derived limit rendered `~575` approximate, peak/unknown -> no label). `SQ.trackPowerSamples` + `SQ.derivedPowerLimit` derive a GPU power ceiling only from matching `GPU Package` W + `GPU Power`/`GPU Board Power` percent-of-limit sensors under the same `hwid`, gated by: finite values, percent above the 5% idle floor, at least 8 samples, median ratio, rounded to 25 W buckets. CPU power has no derivation path and stays peak (number/sparkline-only, rejected by `gaugeRangeFor`). `SQ.mergeObservedPeaks` closes the prior read-only `observedMax` gap with a throttled persist (every 5 ticks for samples, 30 for peaks). AMD iGPU (watt but no power-percent sensor) correctly derives nothing. New persisted field `powerLimitSamples` is additive and normalizes safely on old builds. selftest 142/142 (+23 Slice 1 tests); dotnet test 42/42; data.json contract untouched; zero host-specific refs in product JS. |
+| 2026-07-06 | Slice 3 pre-flight state merge guard | pass | Stable and preview dashboards now use `SQ.saveTelemetryState` for background telemetry persistence. The helper merges telemetry-only accumulators into freshly loaded same-route state, preserving hidden sensors, pinned cards/order, panel order/collapse, card style, range overrides, row/network order, and newly normalized `sensorAliases`, `primaryCards`, and `cardOrder`. User-driven `SQ.saveDashboardState` still intentionally writes full layout/customization state. selftest is 147/147 with new merge tests; preview model test passed 141/141; `dotnet test` passed 42/42; `net472` and `net10.0-windows` Release x64 builds passed 0/0. Rebuilt live app PID 48116 served `/`, `/dash/cardtruth`, preview JS, `/data.json`, and `/metrics` as 200, and served stable/preview JS both contained `SQ.saveTelemetryState`. data.json contract untouched. |
+| 2026-07-06 | Slice 3 visible expansion/actions | partial pass | Stable `/` and `/dash/cardtruth/` now support transient card/row expansion from the visible item, alias display/edit, raw LibreHardwareMonitor label and `SensorId` detail, range provenance, card style select, max/min override edit, pin/hide, keyboard move buttons, card drag/order via `cardOrder`, stable row ordering using the accepted preview `rowOrder[panelKey|type]` contract, and an inline-edit guard so polling cannot clobber active alias/range edits. selftest is 156/156; `dotnet test` passed 42/42; `net472` and `net10.0-windows` Release x64 builds passed 0/0. Rebuilt live app PID 12204 served `/`, `/dash/cardtruth`, `/data.json`, and `/metrics` as 200. Headless Chrome smoke verified card/row expansion, alias save, max override save, card order, and route-local state for stable and preview, including a 390 px viewport. Remaining Slice 3/4 scope: Sensors popover, drawer removal, explicit primary card selection, network subgroup ordering, and final preview retirement/theme promotion. |

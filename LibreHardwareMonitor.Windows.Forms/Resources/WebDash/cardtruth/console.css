@@ -277,6 +277,23 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .row:hover .row-ctl,.row:focus-within .row-ctl{display:flex}
 @media (hover:none){.cell-ctl,.row-ctl{display:flex}}
 
+/* card & row expansion - detail and actions live on the visible item */
+.cell{cursor:pointer}
+.cell.expanded,.cell.graph-on.expanded{height:auto}
+.row{cursor:pointer}
+.xp,.rowxp{display:grid;gap:9px;cursor:auto}
+.xp{border-top:1px solid var(--line-soft);margin-top:10px;padding-top:10px}
+.rowxp{padding:9px 15px 11px;border-bottom:1px solid var(--line-soft);background:rgba(255,255,255,.015)}
+.xp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:7px 14px}
+.xp-grid span{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.xp-grid b{font-size:11.5px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.xp-grid code{font-family:var(--mono);font-size:10px;color:var(--muted);overflow-wrap:anywhere}
+.xp-id{grid-column:1/-1}
+.xp-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.xp-actions .ov,.xp-actions .alias{display:inline-flex;gap:5px;align-items:center;font-family:var(--mono);font-size:10px;color:var(--muted)}
+.xp-actions input{font:11px var(--mono);color:var(--ink);background:var(--panel-2);border:1px solid var(--line-soft);border-radius:6px;padding:6px 7px;width:72px}
+.xp-actions .alias-input{width:130px}
+
 /* drag reorder */
 .grip{font:11px var(--mono);letter-spacing:-2px;line-height:1;padding:2px 4px;margin-right:2px;
   border:1px solid var(--line-soft);border-radius:5px;background:var(--panel-2);color:var(--dim);

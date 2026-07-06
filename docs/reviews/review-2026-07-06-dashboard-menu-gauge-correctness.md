@@ -1,9 +1,9 @@
 # Review - Dashboard Menu and Gauge Correctness
 
-**Date:** 2026-07-06  
-**Surface:** working tree plus live `http://localhost:8085/` after rebuild/restart  
-**Spec source:** user request, `docs/feature-web-dashboard-versioned-routes.md`, `docs/feature-web-dashboard-card-truth.md`  
-**Standards sources:** `AGENTS.md`  
+**Date:** 2026-07-06
+**Surface:** working tree plus live `http://localhost:8085/` after rebuild/restart
+**Spec source:** user request, `docs/feature-web-dashboard-versioned-routes.md`, `docs/feature-web-dashboard-card-truth.md`
+**Standards sources:** `AGENTS.md`
 **Verdict:** PASS WITH NOTES
 
 ## Findings

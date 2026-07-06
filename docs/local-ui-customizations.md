@@ -4,8 +4,8 @@ This fork ("Sev IQ") carries local changes on top of upstream LibreHardwareMonit
 **not** covered by [`feature-graph-menu.md`](feature-graph-menu.md). They were delivered in the
 initial graph-menu series (`7b0e079`, `1f4225c`, `bb432e1`, `dc424c5`) and later fork work. They
 are recorded here for traceability so future upstream merges and reviewers know they are
-intentional. This catalog was re-audited on 2026-07-06 against `upstream/master` `9837983` and local
-`HEAD` `34e1f09`; in-flight working-tree items are labeled as such.
+intentional. This catalog was re-audited on 2026-07-06 against `upstream/master` `9837983`; a later
+dashboard branch commit moved the preview-route work out of the dirty working tree.
 
 ## Current audit snapshot (2026-07-06)
 
@@ -281,7 +281,7 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   which `eval`s `console.js` under a minimal `window.SQ_NO_BOOT` shim — this is the entry point used
   for command-line/agent verification.
 
-## Web dashboard: versioned preview routes (in-flight working tree, 2026-07-06)
+## Web dashboard: versioned preview routes (temporary dev surface, 2026-07-06)
 
 - **Preview route server support** (`HttpServer.cs`, spec:
   [`feature-web-dashboard-versioned-routes.md`](feature-web-dashboard-versioned-routes.md)). The
@@ -297,7 +297,12 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   layouts cannot corrupt the stable dashboard.
 - **Route regression tests** are in `LibreHardwareMonitor.Tests/HttpServerRouteTests.cs`, covering
   root, preview HTML/CSS/JS, root API paths, and missing preview routes. This route work was present
-  in the dirty working tree during the 2026-07-06 audit; do not treat it as shipped until committed.
+  in the dirty working tree during the 2026-07-06 audit and was then committed on
+  `feat/web-dashboard-v3-card-first`.
+- **Temporary route lifecycle.** `cardtruth` is not intended to remain as a permanent extra page once
+  the selected card-first behavior is synced into `/`. At promotion time, retire the separate route
+  and Pages-menu entry; any surviving visual treatment should become a root dashboard Theme
+  dropdown/view option under stable `sq.dashboard.v1` state.
 
 ## Modernization (traceable to `discovery-librehw-sync-upgrade.md`)
 
@@ -381,3 +386,8 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   route/gauge verification for the in-flight dashboard work is recorded in
   [`feature-web-dashboard-versioned-routes.md`](feature-web-dashboard-versioned-routes.md) and
   [`reviews/review-2026-07-06-dashboard-menu-gauge-correctness.md`](reviews/review-2026-07-06-dashboard-menu-gauge-correctness.md).
+- 2026-07-06: Follow-up on `feat/web-dashboard-v3-card-first` resolved the stale dirty-state notes
+  and clarified that `/dash/cardtruth/` is a temporary dev surface. Stable `/` already carries the
+  route/menu, gauge guard, host-ID cleanup, and hardware-ID panel/hero work; the preview copy still
+  carries extra row-reorder work and an isolated `sq.dashboard.preview.cardtruth` namespace until it
+  is promoted or discarded.

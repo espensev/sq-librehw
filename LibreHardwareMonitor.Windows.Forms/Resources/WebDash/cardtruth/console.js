@@ -7,6 +7,13 @@
   const SMOOTH_FRACTIONS = new Map();
   const MAX_HISTORY_POINTS = 90;
   const TEMPBANDS = { cpu: [85, 95], gpu: [83, 92], igpu: [83, 92], nvme: [70, 80], dimm: [55, 85], mb: null, mem: null };
+  // Derived GPU power-limit knobs. Conservative on purpose: peaks/spikes must
+  // not produce a guessed ceiling, so a card only earns an approximate limit
+  // after enough idle-gated watt/percent samples converge on a stable ratio.
+  SQ.POWER_LIMIT_MAX_SAMPLES = 30;     // ring buffer per hwid
+  SQ.POWER_LIMIT_MIN_SAMPLES = 8;      // below this no limit is derived
+  SQ.POWER_LIMIT_IDLE_FLOOR = 5;       // percent-of-limit below which a sample is ignored as idle noise
+  SQ.POWER_LIMIT_BUCKET = 25;          // watt rounding for "approximate" ceilings
 
   SQ.RANK = { crit: 3, warn: 2, ok: 1, info: 0, off: -1 };
   SQ.DASHBOARD_STORAGE_KEY = DASHBOARD_STORAGE_KEY;
@@ -73,6 +80,15 @@
       });
     return out;
   }
+  function cleanAliasMap(value) {
+    const out = {};
+    if (value && typeof value === 'object' && !Array.isArray(value))
+      Object.keys(value).forEach(k => {
+        const v = typeof value[k] === 'string' ? value[k].trim().slice(0, 80) : '';
+        if (k && v) out[k] = v;
+      });
+    return out;
+  }
   function cleanRangeOverrides(value) {
     const out = {};
     if (value && typeof value === 'object' && !Array.isArray(value))
@@ -91,6 +107,18 @@
     const out = {};
     if (value && typeof value === 'object' && !Array.isArray(value))
       Object.keys(value).forEach(k => { const n = Number(value[k]); if (k && Number.isFinite(n)) out[k] = n; });
+    return out;
+  }
+  // Persisted watt/percent ratios used to derive GPU power limits. Each hwid
+  // keeps a bounded ring of finite, idle-gated ratios; never blocks rendering.
+  function cleanPowerSamples(value) {
+    const out = {};
+    if (value && typeof value === 'object' && !Array.isArray(value))
+      Object.keys(value).forEach(k => {
+        if (!k || !Array.isArray(value[k])) return;
+        const xs = value[k].filter(x => Number.isFinite(x) && x > 0).slice(-SQ.POWER_LIMIT_MAX_SAMPLES);
+        if (xs.length) out[k] = xs;
+      });
     return out;
   }
   function cleanOrderMap(value) {
@@ -114,6 +142,10 @@
       cardStyle: {},
       rangeOverrides: {},
       observedMax: {},
+      powerLimitSamples: {},
+      sensorAliases: {},
+      primaryCards: [],
+      cardOrder: [],
       rowOrder: {},
       netAdapterOrder: [],
       hiddenNetAdapters: []
@@ -136,6 +168,10 @@
       cardStyle: cleanCardStyleMap(value.cardStyle),
       rangeOverrides: cleanRangeOverrides(value.rangeOverrides),
       observedMax: cleanNumberMap(value.observedMax),
+      powerLimitSamples: cleanPowerSamples(value.powerLimitSamples),
+      sensorAliases: cleanAliasMap(value.sensorAliases),
+      primaryCards: cleanStringList(value.primaryCards),
+      cardOrder: cleanStringList(value.cardOrder),
       rowOrder: cleanOrderMap(value.rowOrder),
       netAdapterOrder: cleanStringList(value.netAdapterOrder),
       hiddenNetAdapters: cleanStringList(value.hiddenNetAdapters)
@@ -155,6 +191,32 @@
     if (storage && typeof storage.setItem === 'function')
       storage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(state));
     return state;
+  };
+  function mergeNumberMaxMap(a, b) {
+    const out = Object.assign({}, cleanNumberMap(a));
+    const next = cleanNumberMap(b);
+    Object.keys(next).forEach(k => { if (!Number.isFinite(out[k]) || next[k] > out[k]) out[k] = next[k]; });
+    return out;
+  }
+  function mergePowerSampleMap(a, b) {
+    const aa = cleanPowerSamples(a), bb = cleanPowerSamples(b), out = Object.assign({}, aa);
+    Object.keys(bb).forEach(k => {
+      const current = out[k] || [];
+      out[k] = (bb[k].length > current.length ? bb[k] : current).slice(-SQ.POWER_LIMIT_MAX_SAMPLES);
+    });
+    return out;
+  }
+  SQ.mergeTelemetryState = function (persisted, telemetry) {
+    const base = SQ.normalizeDashboardState(persisted);
+    const t = SQ.normalizeDashboardState(telemetry);
+    const merged = SQ.normalizeDashboardState(base);
+    merged.observedMax = mergeNumberMaxMap(base.observedMax, t.observedMax);
+    merged.powerLimitSamples = mergePowerSampleMap(base.powerLimitSamples, t.powerLimitSamples);
+    return merged;
+  };
+  SQ.saveTelemetryState = function (storage, telemetry) {
+    const persisted = SQ.loadDashboardState(storage);
+    return SQ.saveDashboardState(storage, SQ.mergeTelemetryState(persisted, telemetry));
   };
   SQ.migrateLegacyState = function (storage, state) {
     const cfg = SQ.normalizeDashboardState(state);
@@ -221,6 +283,44 @@
     keys.splice(to, 0, movedKey);
     return keys;
   };
+  SQ.sensorAlias = function (state, id) {
+    if (!id) return '';
+    return SQ.normalizeDashboardState(state).sensorAliases[id] || '';
+  };
+  SQ.sensorDisplayText = function (sensor, state, fallback) {
+    if (!sensor) return fallback || '';
+    return SQ.sensorAlias(state, sensor.id) || fallback || sensor.text || '';
+  };
+  SQ.updateSensorAlias = function (state, id, alias) {
+    const cfg = SQ.normalizeDashboardState(state);
+    if (!id) return cfg;
+    const aliases = Object.assign({}, cfg.sensorAliases);
+    const value = typeof alias === 'string' ? alias.trim().slice(0, 80) : '';
+    if (value) aliases[id] = value; else delete aliases[id];
+    cfg.sensorAliases = aliases;
+    return cfg;
+  };
+  // Edit the override map from raw input strings. Empty or unparseable max
+  // clears the override; min applies only when it is below max.
+  SQ.updateRangeOverride = function (overrides, id, maxStr, minStr) {
+    const next = Object.assign({}, cleanRangeOverrides(overrides));
+    delete next[id];
+    const max = parseFloat(maxStr), min = parseFloat(minStr);
+    if (id && Number.isFinite(max) && max > 0)
+      next[id] = Number.isFinite(min) && min < max ? { max, min } : { max };
+    return cleanRangeOverrides(next);
+  };
+  SQ.rangeSourceLabel = function (rangeInfo) {
+    if (!rangeInfo) return 'no known range';
+    if (rangeInfo.source === 'limit' && rangeInfo.derived) return 'derived hardware limit';
+    return {
+      override: 'operator override',
+      limit: 'hardware limit',
+      band: 'semantic band',
+      control: 'paired control %',
+      peak: 'observed peak'
+    }[rangeInfo.source] || rangeInfo.source || 'no known range';
+  };
   SQ.isPinned = function (state, id) {
     return SQ.normalizeDashboardState(state).pinnedCards.some(c => c.id === id);
   };
@@ -253,6 +353,23 @@
       m.max = Math.max(m.max, s.raw);
       SENSOR_MOTION.set(s.id, m);
     });
+  };
+  // Pure merge of observed peaks into a persisted observedMax map. Returns a new
+  // object; only finite values that exceed the prior peak are recorded. Used by
+  // the throttled persist path so peaks survive reloads without per-tick writes.
+  SQ.mergeObservedPeaks = function (sensors, observedMax) {
+    const out = {};
+    const src = observedMax && typeof observedMax === 'object' ? observedMax : {};
+    Object.keys(src).forEach(k => { if (Number.isFinite(src[k])) out[k] = src[k]; });
+    if (Array.isArray(sensors)) {
+      sensors.forEach(s => {
+        if (!s || s.raw == null || !Number.isFinite(s.raw) || s.raw <= 0) return;
+        if (s.type === 'Temperature' || s.type === 'Level') return;   // health, not a peak metric
+        const prev = out[s.id] ?? -Infinity;
+        if (s.raw > prev) out[s.id] = s.raw;
+      });
+    }
+    return out;
   };
   SQ.isStaticDriveAuxTemp = function (s) {
     if (!s || s.cls !== 'nvme' || s.type !== 'Temperature' || !/^temperature\s+#\d+$/i.test(s.text || '')) return false;
@@ -370,14 +487,70 @@
     for (const f of [1, 2, 5, 10]) { if (x <= f * m + 1e-9) return f * m; }
     return 10 * m;
   };
-  SQ.derivedPowerLimit = function () { return null; };   // real implementation lands with power-limit tracking
+  // --- Derived GPU power limit (machine-agnostic) -------------------------
+  // Pair a GPU watt sensor with a percent-of-limit sensor on the same hwid and
+  // record watt/(pct/100) as one observed implied-limit sample. Conservative:
+  // idle samples (< POWER_LIMIT_IDLE_FLOOR %) and non-finite values are dropped,
+  // and only POWER_LIMIT_MAX_SAMPLES most recent ratios are kept per hwid.
+  // Pure: returns a new samples object; never throws, never blocks rendering.
+  SQ.trackPowerSamples = function (sensors, samples) {
+    if (!Array.isArray(sensors)) return samples || {};
+    const next = {};
+    Object.keys(samples || {}).forEach(k => { if (Array.isArray(samples[k])) next[k] = samples[k].slice(); });
+    const gpus = sensors.filter(s => (s.cls === 'gpu' || s.cls === 'igpu') && s.hwid);
+    const seen = new Set();
+    gpus.forEach(s => {
+      if (seen.has(s.hwid)) return;
+      seen.add(s.hwid);
+      const fam = sensors.filter(x => x.hwid === s.hwid);
+      const watt = fam.find(x => x.type === 'Power' && /^GPU Package/i.test(x.text || '') && Number.isFinite(x.raw) && x.raw > 0);
+      if (!watt) return;
+      const pct = fam.find(x => x.type === 'Load' && /^(GPU Power|GPU Board Power)$/i.test(x.text || '') && Number.isFinite(x.raw));
+      if (!pct) return;
+      if (pct.raw < SQ.POWER_LIMIT_IDLE_FLOOR) return;   // idle noise — skip
+      const implied = watt.raw / (pct.raw / 100);
+      if (!Number.isFinite(implied) || implied <= 0) return;
+      const arr = next[s.hwid] || [];
+      arr.push(implied);
+      if (arr.length > SQ.POWER_LIMIT_MAX_SAMPLES) arr.shift();
+      next[s.hwid] = arr;
+    });
+    return next;
+  };
+  SQ.median = function (xs) {
+    if (!Array.isArray(xs) || !xs.length) return null;
+    const a = xs.slice().sort((p, q) => p - q), n = a.length;
+    return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
+  };
+  // Shallow compare two {key: number[]} sample maps (length + contents).
+  SQ.shallowEqualArrays = function (a, b) {
+    const ak = Object.keys(a || {}), bk = Object.keys(b || {});
+    if (ak.length !== bk.length) return false;
+    for (const k of ak) {
+      const xa = a[k], xb = b[k];
+      if (!Array.isArray(xa) || !Array.isArray(xb) || xa.length !== xb.length) return false;
+      for (let i = 0; i < xa.length; i++) if (xa[i] !== xb[i]) return false;
+    }
+    return true;
+  };
+  // Derive an approximate power-limit ceiling for a GPU hwid from accumulated
+  // samples. Returns a finite watt ceiling (already bucketed to 25 W) or null.
+  SQ.derivedPowerLimit = function (hwid, state) {
+    if (!hwid) return null;
+    const cfg = SQ.normalizeDashboardState(state);
+    const xs = cfg.powerLimitSamples[hwid];
+    if (!Array.isArray(xs) || xs.length < SQ.POWER_LIMIT_MIN_SAMPLES) return null;
+    const med = SQ.median(xs);
+    if (!Number.isFinite(med) || med <= 0) return null;
+    return SQ.roundPowerBucket(med);
+  };
   SQ.rangeFor = function (s, limits, state) {
     if (!s) return null;
     const cfg = SQ.normalizeDashboardState(state);
     const ov = cfg.rangeOverrides[s.id];
     if (ov) return { lo: ov.min ?? 0, hi: ov.max, source: 'override' };
     if (s.type === 'Power' && /^GPU Package/i.test(s.text || '')) {
-      const d = SQ.derivedPowerLimit(s.hwid);
+      const d = SQ.derivedPowerLimit(s.hwid, cfg);
       if (d) return { lo: 0, hi: d, source: 'limit', derived: true };
     }
     const band = SQ.visualRangeForSensor(s, limits || {});
@@ -401,6 +574,24 @@
     if (!rangeInfo || !sensor || sensor.raw == null) return null;
     if (rangeInfo.source === 'peak') return null;
     return rangeInfo;
+  };
+  // Display-model helper: maps a rangeFor result to a short ceiling label.
+  // Peak/unknown return null (no label) so peak-derived cards stay number/sparkline-only.
+  SQ.rangeLabelFor = function (rangeInfo, sensor) {
+    if (!rangeInfo || !sensor || sensor.raw == null) return null;
+    const hi = rangeInfo.hi;
+    if (!Number.isFinite(hi)) return null;
+    switch (rangeInfo.source) {
+      case 'override': return String(hi);
+      case 'limit':    return rangeInfo.derived ? `~${SQ.roundPowerBucket(hi)}` : String(hi);
+      case 'band':     return String(hi);
+      default:         return null;   // peak/unknown: no ceiling label
+    }
+  };
+  // Round a watt value down to a stable 25 W bucket for "approximate" derived ceilings.
+  SQ.roundPowerBucket = function (w) {
+    if (!Number.isFinite(w) || w <= 0) return null;
+    return Math.max(25, Math.floor(w / 25) * 25);
   };
   SQ.cardStyleFor = function (styleValue, hasRange, graphsEnabled) {
     if (styleValue === 'gauge') return { arc: !!hasRange, spark: !!graphsEnabled };
@@ -507,6 +698,10 @@
       allSensors: [],
       visibleSensors: [],
       panelItems: [],
+      limits: {},
+      expanded: new Set(),
+      inlineEditing: false,
+      inlineEditingUntil: 0,
       customizeOpen: false,
       customizeTab: 'hidden',
       hiddenFilter: '',
@@ -515,6 +710,13 @@
 
     function esc(v) {
       return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    }
+    function isInlineEditTarget(el) {
+      return !!(el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') && el.closest('.xp, .rowxp'));
+    }
+    function finishInlineEdit() {
+      state.inlineEditing = false;
+      state.inlineEditingUntil = 0;
     }
     function ctlCluster(id, label, opts) {
       const pinned = SQ.isPinned(state.dashboard, id);
@@ -527,6 +729,10 @@
     }
     function saveDashboard() {
       state.dashboard = SQ.saveDashboardState(localStorage, state.dashboard);
+      paintGraphs();
+    }
+    function saveTelemetryDashboard() {
+      state.dashboard = SQ.saveTelemetryState(localStorage, state.dashboard);
       paintGraphs();
     }
     function rerender() {
@@ -559,7 +765,9 @@
       return SQ.applyOrder(rows, state.dashboard.rowOrder[key] || [], s => s.id);
     }
     function moveRow(groupKey, id, delta) {
-      const group = Array.from(document.querySelectorAll('.row-group')).find(el => el.dataset.rowGroup === groupKey);
+      const group = Array.from(document.querySelectorAll('[data-row-group]'))
+        .find(el => el.dataset.rowGroup === groupKey &&
+          Array.from(el.querySelectorAll('.row')).some(row => row.dataset.key === id));
       if (!group) return;
       const rows = Array.from(group.querySelectorAll('.row'))
         .map(el => el.dataset.key)
@@ -593,16 +801,27 @@
 
     function render(data) {
       state.lastData = data;
+      const ae = document.activeElement;
+      if (state.inlineEditing || Date.now() < state.inlineEditingUntil || isInlineEditTarget(ae))
+        return;   // an inline detail edit is in progress; don't clobber it on poll.
       const root = rootNode(data);
       const host = root.Text || 'Sensor';
       const allSensors = SQ.flatten(root);
       SQ.trackSensorMotion(allSensors);
       SQ.trackSensorHistory(allSensors);
+      // Machine-agnostic truth accumulation: observed peaks + GPU power-limit
+      // samples. Pure merges run every tick (cheap); persistence is throttled.
+      state.dashboard.observedMax = SQ.mergeObservedPeaks(allSensors, state.dashboard.observedMax);
+      const newSamples = SQ.trackPowerSamples(allSensors, state.dashboard.powerLimitSamples);
+      const samplesChanged = !SQ.shallowEqualArrays(newSamples, state.dashboard.powerLimitSamples);
+      state.dashboard.powerLimitSamples = newSamples;
+      state.tickCount = (state.tickCount || 0) + 1;
       const sensors = SQ.visibleSensors(allSensors, state.dashboard);
       const limits = SQ.deriveLimits(sensors);
       sensors.forEach(s => s.status = SQ.statusOf(s, limits));
       state.allSensors = allSensors;
       state.visibleSensors = sensors;
+      state.limits = limits;
 
       const alarm = sensors.filter(s => s.status !== 'info' && s.status !== 'off');
       renderPinnedCards(sensors, limits);
@@ -616,6 +835,11 @@
         $('#freshtxt').textContent = 'updated ' + new Date().toLocaleTimeString();
         $('#freshdot').className = 'lamp s-ok';
       }
+      // Throttled persistence so peaks/derived limits survive reloads without
+      // per-tick localStorage writes. Power samples (needed to derive a limit)
+      // flush more often than peaks (which only grow).
+      if (samplesChanged && state.tickCount % 5 === 0) saveTelemetryDashboard();
+      else if (state.tickCount % 30 === 0) saveTelemetryDashboard();
     }
 
     function smoothFraction(id, target) {
@@ -662,6 +886,56 @@
       return badTempMin ? `<div class="range">peak <b>${esc(rmax)}</b></div>` :
         `<div class="range"><b>${esc(rmin)}</b> &rarr; <b>${esc(rmax)}</b></div>`;
     }
+    function rangeDetailText(s, rr) {
+      const ctrl = SQ.fanControlFor(s, state.allSensors);
+      const effective = ctrl ? { lo: 0, hi: 100, source: 'control' } : rr;
+      if (!effective) return SQ.rangeSourceLabel(null);
+      const prefix = effective.derived ? '~' : '';
+      return `${effective.lo} - ${prefix}${effective.hi} · ${SQ.rangeSourceLabel(effective)}`;
+    }
+    function xpEl(s, rr, opts) {
+      const ov = state.dashboard.rangeOverrides[s.id];
+      const alias = SQ.sensorAlias(state.dashboard, s.id);
+      const pinned = SQ.isPinned(state.dashboard, s.id);
+      const rawMin = s.min == null || s.min === '' ? '—' : s.min;
+      const rawMax = s.max == null || s.max === '' ? '—' : s.max;
+      const value = s.value ?? '—';
+      const styleSel = opts.style
+        ? `<select class="style-select" data-act="style" data-id="${esc(s.id)}" aria-label="Card style">
+            ${['auto','gauge','number','graph'].map(v =>
+              `<option value="${v}"${(state.dashboard.cardStyle[s.id] || 'auto') === v ? ' selected' : ''}>${v}</option>`).join('')}
+          </select>` : '';
+      const moveButtons = opts.movable
+        ? `<button class="iconbtn" data-act="${opts.rowGroup ? 'row-up' : 'move-left'}" data-id="${esc(s.id)}"${opts.rowGroup ? ` data-row-group="${esc(opts.rowGroup)}"` : ''} aria-label="Move earlier" title="Move earlier">&#9650;</button>
+           <button class="iconbtn" data-act="${opts.rowGroup ? 'row-down' : 'move-right'}" data-id="${esc(s.id)}"${opts.rowGroup ? ` data-row-group="${esc(opts.rowGroup)}"` : ''} aria-label="Move later" title="Move later">&#9660;</button>` : '';
+      const el = document.createElement('div');
+      el.className = opts.cls;
+      el.innerHTML = `
+        <div class="xp-grid">
+          <div><span>label</span><b>${esc(SQ.sensorDisplayText(s, state.dashboard, opts.fallbackLabel))}</b></div>
+          <div><span>raw label</span><b>${esc(s.text)}</b></div>
+          <div><span>source</span><b>${esc(s.hw || '—')}</b></div>
+          <div><span>hardware id</span><b>${esc(s.hwid || '—')}</b></div>
+          <div><span>type</span><b>${esc(SQ.displayType(s))}</b></div>
+          <div><span>current</span><b class="num">${esc(value)}</b></div>
+          <div><span>raw min/max</span><b class="num">${esc(rawMin)} / ${esc(rawMax)}</b></div>
+          <div><span>range</span><b class="num">${esc(rangeDetailText(s, rr))}</b></div>
+          <div class="xp-id"><span>sensor id</span><code>${esc(s.id)}</code></div>
+        </div>
+        <div class="xp-actions">
+          <label class="alias">alias <input class="alias-input" data-act="alias" data-id="${esc(s.id)}" value="${esc(alias)}" placeholder="${esc(s.text)}"></label>
+          <button class="iconbtn" data-act="alias-clear" data-id="${esc(s.id)}" ${alias ? '' : 'disabled'}>Clear alias</button>
+          <button class="iconbtn" data-act="${pinned ? 'unpin' : 'pin'}" data-id="${esc(s.id)}">${pinned ? 'Unpin' : 'Pin'}</button>
+          <button class="iconbtn" data-act="hide" data-id="${esc(s.id)}">Hide</button>
+          ${styleSel}
+          <label class="ov">max <input class="ov-max" inputmode="decimal" value="${ov ? esc(String(ov.max)) : ''}" placeholder="${rr && rr.source !== 'override' ? esc(String(rr.hi)) : 'max'}"></label>
+          <label class="ov">min <input class="ov-min" inputmode="decimal" value="${ov?.min != null ? esc(String(ov.min)) : ''}" placeholder="0"></label>
+          <button class="iconbtn" data-act="set-range" data-id="${esc(s.id)}">Set range</button>
+          ${ov ? `<button class="iconbtn" data-act="clear-range" data-id="${esc(s.id)}">Clear range</button>` : ''}
+          ${moveButtons}
+        </div>`;
+      return el;
+    }
     function cardEl(h, pinned) {
       const { n, unit } = h.s.raw == null ? { n: '—', unit: '' } : SQ.splitValue(h.s.value);
       const u = unit || h.unit || '';
@@ -685,14 +959,19 @@
       const trendHtml = trend
         ? `<span class="trend">${trend.direction === 'rising' ? '&#8599;' : '&#8600;'} ${Math.abs(trend.rate).toFixed(Math.abs(trend.rate) >= 10 ? 0 : 2)} ${esc(trend.rateUnit)}</span>`
         : '<span class="trend"></span>';
-      const ceil = fx.arc && !ctrl && gaugeRange && gaugeRange.source !== 'band' ? `<span class="ceil">/ ${esc(String(gaugeRange.hi))}</span>` : '';
+      const ceilLabel = fx.arc && !ctrl ? SQ.rangeLabelFor(gaugeRange, h.s) : null;
+      const ceil = ceilLabel ? `<span class="ceil">/ ${esc(ceilLabel)}</span>` : '';
       const cell = document.createElement('div');
       cell.className = `cell s-${st}${pinned ? ' pinned' : ''}${fx.spark ? ' graph-on' : ''}`;
       cell.style.setProperty('--tc', `var(--t-${kind})`);
-      if (pinned) cell.dataset.key = h.s.id;
+      cell.dataset.key = h.s.id;
+      cell.dataset.sid = h.s.id;
+      cell.tabIndex = 0;
+      cell.setAttribute('aria-expanded', state.expanded.has('c:' + h.s.id) ? 'true' : 'false');
       const source = (h.s.hw || '').split(' ').slice(0, 3).join(' ');
+      const label = SQ.sensorDisplayText(h.s, state.dashboard, h.label);
       cell.innerHTML =
-        `<div class="k"><span class="name">${esc(h.label)}</span>${chip}</div>
+        `<div class="k"><span class="name">${esc(label)}</span>${chip}</div>
          <div class="k2"><span class="src">${esc(source)}</span>${tIcon(kind)}</div>
          <div class="body">${arc}<div class="readout">
            <div class="big"><span class="v">${esc(n)}</span><span class="u">${esc(u)}</span>${ceil}</div>
@@ -701,8 +980,13 @@
       const showHide = !pinned;
       const ctl = document.createElement('div');
       ctl.className = 'cell-ctl';
-      ctl.innerHTML = (pinned ? `<button class="grip" aria-label="Drag to reorder ${esc(h.label)}" title="Drag to reorder">&#8942;&#8942;</button>` : '') + ctlCluster(h.s.id, h.label, { hide: showHide });
+      ctl.innerHTML = `<button class="grip" aria-label="Drag to reorder ${esc(label)}" title="Drag to reorder">&#8942;&#8942;</button>` +
+        ctlCluster(h.s.id, label, { hide: showHide });
       cell.appendChild(ctl);
+      if (state.expanded.has('c:' + h.s.id)) {
+        cell.classList.add('expanded');
+        cell.appendChild(xpEl(h.s, rr, { cls: 'xp', style: true, movable: true, fallbackLabel: h.label }));
+      }
       return cell;
     }
     function renderPinnedCards(sensors, limits) {
@@ -714,7 +998,10 @@
       $('#pinnedtag').textContent = `${cards.length} pinned`;
     }
     function renderPFD(sensors, limits) {
-      const H = SQ.pickHero(sensors, limits), pfd = $('#pfd');
+      const H = SQ.applyOrder(
+        SQ.pickHero(sensors, limits).map((h, index) => Object.assign(h, { index })),
+        state.dashboard.cardOrder, h => h.s.id);
+      const pfd = $('#pfd');
       pfd.innerHTML = '';
       H.forEach(h => pfd.appendChild(cardEl(h, false)));
       $('#pfdtag').textContent = `${H.length} auto-selected`;
@@ -741,19 +1028,29 @@
         : '';
       const r = document.createElement('div'); r.className = `row ${st}`;
       r.dataset.key = s.id;
+      r.dataset.sid = s.id;
       r.dataset.rowGroup = groupKey;
+      r.tabIndex = 0;
+      r.setAttribute('aria-expanded', state.expanded.has('r:' + s.id) ? 'true' : 'false');
       const fanCtl = s.type === 'Fan' ? SQ.fanControlFor(s, state.allSensors) : null;
-      r.innerHTML = `<button class="grip row-grip" aria-label="Drag to reorder ${esc(s.text)}" title="Drag to reorder">&#8942;&#8942;</button>
+      const label = SQ.sensorDisplayText(s, state.dashboard, s.text);
+      r.innerHTML = `<button class="grip row-grip" aria-label="Drag to reorder ${esc(label)}" title="Drag to reorder">&#8942;&#8942;</button>
         <span class="glyph-stat g-${st}" title="${STLABEL[st]}">${st === 'info' ? '' : STGLYPH[st]}</span>
-        <span class="rn">${esc(s.text)}${mm}</span><span class="rv">${esc(s.raw == null ? '—' : (s.value ?? '-'))}${fanCtl ? ` <small class="rvcmd">· ${esc(fanCtl.value)}</small>` : ''}</span>
+        <span class="rn">${esc(label)}${mm}</span><span class="rv">${esc(s.raw == null ? '—' : (s.value ?? '-'))}${fanCtl ? ` <small class="rvcmd">· ${esc(fanCtl.value)}</small>` : ''}</span>
         ${showBar ? `<div class="bar ${st==='warn'?'warn':st==='crit'?'crit':''}"><i style="width:${Math.max(0,Math.min(100,s.raw))}%"></i></div>` : ''}`;
       const rctl = document.createElement('span');
       rctl.className = 'row-ctl';
-      rctl.innerHTML = `<button class="ctl" data-act="row-up" data-id="${esc(s.id)}" data-row-group="${esc(groupKey)}" aria-label="Move ${esc(s.text)} up" title="Move up">&#9650;</button>` +
-        `<button class="ctl" data-act="row-down" data-id="${esc(s.id)}" data-row-group="${esc(groupKey)}" aria-label="Move ${esc(s.text)} down" title="Move down">&#9660;</button>` +
-        ctlCluster(s.id, s.text, { hide: true });
+      rctl.innerHTML = `<button class="ctl" data-act="row-up" data-id="${esc(s.id)}" data-row-group="${esc(groupKey)}" aria-label="Move ${esc(label)} up" title="Move up">&#9650;</button>` +
+        `<button class="ctl" data-act="row-down" data-id="${esc(s.id)}" data-row-group="${esc(groupKey)}" aria-label="Move ${esc(label)} down" title="Move down">&#9660;</button>` +
+        ctlCluster(s.id, label, { hide: true });
       r.appendChild(rctl);
       return r;
+    }
+    function appendRow(container, s, type, groupKey) {
+      container.appendChild(rowEl(s, type, groupKey));
+      if (state.expanded.has('r:' + s.id))
+        container.appendChild(xpEl(s, SQ.rangeFor(s, state.limits, state.dashboard),
+          { cls: 'rowxp', style: false, movable: true, rowGroup: groupKey, fallbackLabel: s.text }));
     }
     function panelEl(item) {
       const { hw, label, ss, collapsed } = item;
@@ -786,11 +1083,11 @@
         group.dataset.rowGroup = groupKey;
         const primary = [], extra = [];
         list.forEach(s => (cls === 'cpu' && isCoreRow(s) ? extra : primary).push(s));
-        primary.forEach(s => group.appendChild(rowEl(s, type, groupKey)));
+        primary.forEach(s => appendRow(group, s, type, groupKey));
         body.appendChild(group);
         if (extra.length) {
-          const box = document.createElement('div'); box.className = 'extra';
-          extra.forEach(s => box.appendChild(rowEl(s, type, groupKey)));
+          const box = document.createElement('div'); box.className = 'extra'; box.dataset.rowGroup = groupKey;
+          extra.forEach(s => appendRow(box, s, type, groupKey));
           const btn = document.createElement('button'); btn.className = 'morebtn';
           btn.textContent = `+ ${extra.length} per-core ${type.toLowerCase()}`;
           btn.onclick = e => { e.stopPropagation(); box.classList.toggle('open'); btn.textContent =
@@ -810,7 +1107,7 @@
     }
 
     function sensorSearchText(s) {
-      return `${s.hw} ${s.text} ${s.type} ${s.value} ${s.id}`.toLowerCase();
+      return `${s.hw} ${s.text} ${SQ.sensorAlias(state.dashboard, s.id)} ${s.type} ${s.value} ${s.id}`.toLowerCase();
     }
     function sensorButtonLabel(s) {
       return SQ.isSensorHidden(s, state.dashboard) ? 'Show' : 'Hide';
@@ -997,21 +1294,94 @@
       }
     });
 
+    function toggleExpand(key) {
+      if (state.expanded.has(key)) state.expanded.delete(key); else state.expanded.add(key);
+      rerender();
+    }
+    function handleAct(btn) {
+      const id = btn.dataset.id;
+      switch (btn.dataset.act) {
+        case 'pin': pinSensor(id); break;
+        case 'unpin': unpinSensor(id); break;
+        case 'hide': setSensorHidden(id, true); break;
+        case 'alias-clear':
+          state.dashboard = SQ.updateSensorAlias(state.dashboard, id, '');
+          finishInlineEdit();
+          commitDashboard();
+          break;
+        case 'set-range': {
+          const xp = btn.closest('.xp, .rowxp');
+          state.dashboard.rangeOverrides = SQ.updateRangeOverride(
+            state.dashboard.rangeOverrides, id,
+            xp?.querySelector('.ov-max')?.value ?? '', xp?.querySelector('.ov-min')?.value ?? '');
+          finishInlineEdit();
+          commitDashboard();
+          break;
+        }
+        case 'clear-range':
+          state.dashboard.rangeOverrides = SQ.updateRangeOverride(state.dashboard.rangeOverrides, id, '', '');
+          finishInlineEdit();
+          commitDashboard();
+          break;
+        case 'move-left':
+        case 'move-right': {
+          const cell = btn.closest('.cell');
+          const container = cell?.parentElement;
+          if (!container) break;
+          const keys = orderedKeysFor(container);
+          const next = moveKey(mergeOrder(container.id === 'pinned' ? state.dashboard.pinnedOrder : state.dashboard.cardOrder, keys),
+            cell.dataset.key, btn.dataset.act === 'move-left' ? -1 : 1);
+          if (container.id === 'pinned') state.dashboard.pinnedOrder = next;
+          else if (container.id === 'pfd') state.dashboard.cardOrder = next;
+          commitDashboard();
+          break;
+        }
+        case 'row-up':
+        case 'row-down':
+          moveRow(btn.dataset.rowGroup, id, btn.dataset.act === 'row-up' ? -1 : 1);
+          break;
+      }
+    }
     ['#pfd', '#pinned', '#panels'].forEach(sel => {
       const host = $(sel);
-      host && host.addEventListener('click', e => {
-        const b = e.target.closest('.ctl');
-        if (!b || !host.contains(b)) return;
-        if (b.dataset.act === 'row-up' || b.dataset.act === 'row-down') e.preventDefault();
-        e.stopPropagation();
-        const id = b.dataset.id;
-        if (b.dataset.act === 'pin') pinSensor(id);
-        else if (b.dataset.act === 'unpin') unpinSensor(id);
-        else if (b.dataset.act === 'hide') setSensorHidden(id, true);
-        else if (b.dataset.act === 'row-up') moveRow(b.dataset.rowGroup, id, -1);
-        else if (b.dataset.act === 'row-down') moveRow(b.dataset.rowGroup, id, 1);
+      if (!host) return;
+      host.addEventListener('click', e => {
+        const btn = e.target.closest('[data-act]');
+        if (btn && host.contains(btn) && btn.tagName === 'BUTTON') {
+          e.stopPropagation();
+          handleAct(btn);
+          return;
+        }
+        if (e.target.closest('input, select, button, a, code, .xp, .rowxp')) return;
+        const cell = e.target.closest('.cell');
+        if (cell && host.contains(cell) && cell.dataset.sid) { toggleExpand('c:' + cell.dataset.sid); return; }
+        const row = e.target.closest('.row');
+        if (row && host.contains(row) && row.dataset.sid) toggleExpand('r:' + row.dataset.sid);
+      });
+      host.addEventListener('change', e => {
+        const styleSel = e.target.closest('select[data-act="style"]');
+        if (styleSel && host.contains(styleSel)) {
+          const v = styleSel.value;
+          if (v === 'auto') delete state.dashboard.cardStyle[styleSel.dataset.id];
+          else state.dashboard.cardStyle[styleSel.dataset.id] = v;
+          commitDashboard();
+          return;
+        }
+        const aliasInput = e.target.closest('input[data-act="alias"]');
+        if (aliasInput && host.contains(aliasInput)) {
+          state.dashboard = SQ.updateSensorAlias(state.dashboard, aliasInput.dataset.id, aliasInput.value);
+          commitDashboard();
+        }
       });
     });
+    document.addEventListener('focusin', ev => {
+      if (isInlineEditTarget(ev.target)) state.inlineEditing = true;
+    }, true);
+    document.addEventListener('focusout', ev => {
+      if (!isInlineEditTarget(ev.target)) return;
+      state.inlineEditingUntil = Date.now() + 1000;
+      setTimeout(() => { state.inlineEditing = isInlineEditTarget(document.activeElement); }, 0);
+    }, true);
 
     const drag = { active: null };
     function orderedKeysFor(container) {
@@ -1067,7 +1437,7 @@
     }
     function startDrag(grip, ev) {
       if (drag.active) return;
-      const el = grip.closest('.row') || grip.closest('.panel') || grip.closest('.cell.pinned');
+      const el = grip.closest('.row') || grip.closest('.panel') || grip.closest('.cell');
       if (!el || !el.dataset.key) return;
       ev.preventDefault();
       const nameEl = el.querySelector('.rn') || el.querySelector('.nm') || el.querySelector('.k .name');
@@ -1094,9 +1464,10 @@
       try { a.grip.releasePointerCapture(a.pointerId); } catch (e) {}
       if (commit && typeof a.dropIdx === 'number') {
         const next = SQ.reorderByDrop(orderedKeysFor(a.container), a.key, a.dropIdx);
-        if (a.isPanel) state.dashboard.panelOrder = next;
+        if (a.container.id === 'panels') state.dashboard.panelOrder = next;
+        else if (a.container.id === 'pinned') state.dashboard.pinnedOrder = next;
+        else if (a.container.id === 'pfd') state.dashboard.cardOrder = next;
         else if (a.isRow) state.dashboard.rowOrder[a.rowGroup] = next;
-        else state.dashboard.pinnedOrder = next;
         commitDashboard();
       } else {
         rerender();
@@ -1109,7 +1480,19 @@
     document.addEventListener('pointermove', ev => { if (drag.active) moveGhost(ev); });
     document.addEventListener('pointerup', () => { if (drag.active) endDrag(true); });
     document.addEventListener('pointercancel', () => { if (drag.active) endDrag(false); });
-    document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && drag.active) endDrag(false); });
+    document.addEventListener('keydown', ev => {
+      if (ev.key === 'Escape') {
+        if (drag.active) { endDrag(false); return; }
+        if (state.expanded.size) { state.expanded.clear(); rerender(); }
+        return;
+      }
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      if (ev.target.closest && ev.target.closest('input, select, textarea, button, a, code, .xp, .rowxp')) return;
+      const cell = ev.target.closest && ev.target.closest('.cell');
+      if (cell && cell.dataset.sid) { ev.preventDefault(); toggleExpand('c:' + cell.dataset.sid); return; }
+      const row = ev.target.closest && ev.target.closest('.row');
+      if (row && row.dataset.sid) { ev.preventDefault(); toggleExpand('r:' + row.dataset.sid); }
+    });
     document.addEventListener('click', ev => {
       const grip = ev.target.closest && ev.target.closest('.grip');
       if (grip) { ev.preventDefault(); ev.stopPropagation(); }

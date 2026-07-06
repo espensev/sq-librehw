@@ -1,11 +1,11 @@
 # Web Dashboard v3 Next Plan - Card-First, Machine-Agnostic
 
-**Plan ID:** web-dashboard-v3-next-2026-07-06  
-**Date:** 2026-07-06  
-**Status:** in progress (Slice 0 done, C1 host-ID removal done; on branch `feat/web-dashboard-v3-card-first`)  
-**Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)  
-**Predecessor plan:** [2026-07-04-web-dashboard-visible-correctness-plan.md](2026-07-04-web-dashboard-visible-correctness-plan.md)  
-**Recent review:** [../../reviews/review-2026-07-06-dashboard-menu-gauge-correctness.md](../../reviews/review-2026-07-06-dashboard-menu-gauge-correctness.md)  
+**Plan ID:** web-dashboard-v3-next-2026-07-06
+**Date:** 2026-07-06
+**Status:** in progress (Slice 0, C1 host-ID removal, and Slice 2 hardware identity done on `feat/web-dashboard-v3-card-first`)
+**Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
+**Predecessor plan:** [2026-07-04-web-dashboard-visible-correctness-plan.md](2026-07-04-web-dashboard-visible-correctness-plan.md)
+**Recent review:** [../../reviews/review-2026-07-06-web-dashboard-v3-independent-verification.md](../../reviews/review-2026-07-06-web-dashboard-v3-independent-verification.md)
 
 ## 1. Current Baseline
 
@@ -16,7 +16,7 @@ The dashboard now has two important guardrails in place:
 
 Those fixes close the immediate screenshot failure, but they are only a partial v3 foundation. The v3 product goal remains: a machine-agnostic, card-first dashboard where trustworthy telemetry is visually clear, customization is local to the card/row/header being used, and normal workflows no longer depend on the old Customize side drawer.
 
-This plan starts from the current dirty working tree and live `http://localhost:8085/` state on 2026-07-06. It intentionally avoids host-specific assumptions. SND-DESK examples are acceptance fixtures only, not hardcoded behavior.
+This plan was drafted from the live `http://localhost:8085/` state on 2026-07-06 and now continues from the committed `feat/web-dashboard-v3-card-first` branch. It intentionally avoids host-specific assumptions. SND-DESK examples are acceptance fixtures only, not hardcoded behavior.
 
 ## 2. Non-Negotiables
 
@@ -26,6 +26,7 @@ This plan starts from the current dirty working tree and live `http://localhost:
 - `data.json` remains unchanged in this v3 client campaign. Server-side limit sensors are a separate gated feature.
 - The dashboard remains read-only. No `/Sensor?action=Set` or hardware write UI is introduced.
 - Stable `/` remains usable. Risky UI work can be staged in `/dash/cardtruth/` until promotion is explicit.
+- `/dash/cardtruth/` is a temporary dev route only. Once selected changes are synced into `/`, retire the route and expose any surviving visual treatment as a root Theme dropdown/view option.
 
 ## 3. Target User Experience
 
@@ -39,9 +40,27 @@ The first viewport is an operational dashboard, not a configuration surface.
 - Reordering is visible where the item lives: cards, panels, rows, and network adapter groups.
 - Dark and light themes use the same semantic rules: status color communicates health, type color communicates sensor kind, and unknown/estimated states are muted.
 
-## 4. Implementation Slices
+## 4. Remaining Execution Queue
 
-### Slice 0 - Stabilize Current Worktree
+This is the current queue after the 2026-07-06 alignment pass.
+
+| Order | Slice | Status | Work to post/execute next |
+|---:|---|---|---|
+| 0 | Stabilize current worktree | done | Keep as baseline; rerun smoke after any rebuild. |
+| C1 | Remove host-specific hidden-sensor IDs | done | Keep regression coverage; no host sensor IDs in product code. |
+| 2 | Hardware identity and multi-device rendering | done | Keep tests for duplicate NVMe/GPU and `hwid` keyed panels/heroes. |
+| 1 | Range truth and machine-agnostic limit derivation | done | Keep regression coverage for range labels, observed peaks, and GPU watt + percent derived limits without drawing peak gauges. |
+| 3 | Card and row expansion + ordering contract | in progress | First visible expansion/action patch is implemented; finish explicit primary card selection and remaining parity gaps before drawer removal. |
+| 4 | Masthead sensor popover and drawer removal | next | Add compact Sensors popover for hidden/offscreen discovery, then remove the Customize drawer after parity. |
+| 5 | Visible ordering everywhere | remaining | Stable row ordering is promoted; finish network subgroup ordering and any remaining card-selection/order polish. |
+| 6 | Modern UI polish and responsive QA | remaining | Fix overlap/clipping and theme quality across dark/light and narrow/wide viewports. |
+| 7 | Preview promotion and closeout | remaining | Sync accepted changes into `/`; retire `/dash/cardtruth/`; expose surviving visual treatment via root Theme dropdown/view selector. |
+
+Do not treat the existing `/dash/cardtruth/` preview as a product destination. It is a temporary place to test unsynced UI work. Today its extra delta over stable `/` is mainly row-reorder behavior plus isolated preview state; once a delta is accepted, promote it into stable assets or discard it.
+
+## 5. Implementation Slices
+
+### Slice 0 - Stabilize Current Worktree (done)
 
 Goal: make the repo state explicit before deeper changes.
 
@@ -60,10 +79,10 @@ Verification:
 
 Exit:
 
-- Current baseline is committed or deliberately carried forward as dirty work.
+- Current baseline is committed on `feat/web-dashboard-v3-card-first`.
 - No stale executable is mistaken for the current source.
 
-### Slice 1 - Range Truth and Machine-Agnostic Limit Derivation
+### Slice 1 - Range Truth and Machine-Agnostic Limit Derivation (done)
 
 Goal: finish the truth model without hardcoding this machine.
 
@@ -96,7 +115,7 @@ Exit:
 - No power card can render a bare guessed ceiling.
 - Any derived limit is explainable from live input sensors and marked approximate.
 
-### Slice 2 - Hardware Identity and Multi-Device Rendering
+### Slice 2 - Hardware Identity and Multi-Device Rendering (done)
 
 Goal: stop merging devices by display text.
 
@@ -122,9 +141,15 @@ Exit:
 - Panels and heroes can be traced to one hardware id.
 - Duplicate device names are readable, not merged.
 
-### Slice 3 - Card and Row Expansion
+### Slice 3 - Card and Row Expansion + Ordering Contract (next)
 
-Goal: move normal details/actions onto the visible item.
+Goal: move normal details/actions onto the visible item and define the user-owned selection/order contract before drawer removal.
+
+Pre-flight:
+
+- Done: fixed the Slice 1 multi-tab state-write risk. Background telemetry accumulator saves now merge into fresh same-route layout/customization state through `SQ.saveTelemetryState`, so a passive browser tab cannot overwrite active-tab aliases, order, overrides, hidden state, or card selection.
+- Audit the current `/dash/cardtruth/` row-order delta. Promote accepted behavior into stable `/` or explicitly discard it; do not leave a product capability available only in the preview route.
+- Keep stable `/` as the product target. `/dash/cardtruth/` and any future `/dash/<version>/` route are temporary comparison subsites with separate storage keys, not permanent dashboard tabs. If a visual treatment survives, expose it from the root Theme/view control during promotion.
 
 Tasks:
 
@@ -132,6 +157,11 @@ Tasks:
   - expanded card id;
   - expanded row id;
   - expanded panel/network group as needed.
+- Add explicit card selection/order state:
+  - default to the current auto-selected heroes when no user card selection exists;
+  - allow the operator to choose which sensors become visible dashboard cards;
+  - persist card order separately from raw sensor order;
+  - keep pinned-card behavior compatible with existing `pinnedCards`/`pinnedOrder`.
 - Card expansion shows:
   - raw LibreHardwareMonitor label;
   - operator alias input and clear;
@@ -146,12 +176,23 @@ Tasks:
   - hide/show;
   - move up/down buttons.
 - Row expansion uses the same details and actions, adapted to row layout.
+- Pointer drag/drop belongs on the visible surface where reliable:
+  - cards drag within their card group;
+  - pinned cards keep existing drag behavior;
+  - rows drag within their panel/type group;
+  - panel drag remains on the panel header;
+  - keyboard move controls remain available in expansion even when drag is unavailable.
 - Aliases are display-only. Raw labels remain visible in expansion/search.
 - Max override validation is strict: numeric, finite, max > min.
+- Cross-panel row moves remain pin/promote actions, not raw row migration. Raw `data.json` order and sensor ids are never changed.
 - Keyboard behavior:
   - expansion toggles with Enter/Space on the row/card button target;
   - controls have labels;
   - move buttons work without drag.
+- Multi-tab/subsite behavior:
+  - two browser tabs on `/` must not clobber each other's persisted edits;
+  - stable `/` and `/dash/cardtruth/` keep separate localStorage namespaces until promotion;
+  - expansion open/closed state is per-tab/transient unless persistence is deliberately chosen.
 
 Tests:
 
@@ -160,10 +201,15 @@ Tests:
 - Invalid override is rejected or ignored without corrupting state.
 - Expanded detail contains raw label and `SensorId`.
 - Keyboard move helper changes order.
+- Drag/drop helper changes order for card, panel, and row containers without crossing row group boundaries.
+- Multi-tab save test: a telemetry-only/background save cannot overwrite a fresh alias/order/override edit from another same-route tab.
+- Preview namespace test: stable `/` and `/dash/cardtruth/` do not read or write each other's dashboard state.
 
 Exit:
 
 - The old drawer is no longer the only way to rename, style, override, pin, hide, or reorder.
+- The operator can choose and reorder visible cards/rows directly, with drag/drop plus keyboard fallback.
+- No accepted ordering capability remains only on `/dash/cardtruth/`.
 
 ### Slice 4 - Masthead Sensor Popover and Drawer Removal
 
@@ -282,6 +328,8 @@ Tasks:
 
 - Keep risky UI work available under `/dash/cardtruth/` until accepted.
 - When accepted, promote by copying/wiring selected assets into `Resources/Web/`.
+- After sync/promotion, remove the temporary `cardtruth` route and Pages-menu entry unless a new active comparison needs it.
+- If the card-truth visual treatment survives as an alternate style, expose it from the root Theme dropdown/view selector using stable `sq.dashboard.v1` state instead of a separate route namespace.
 - Verify stable `/` and preview route independently.
 - Update spec verification logs and review notes.
 
@@ -299,7 +347,7 @@ Exit:
 - Stable route and preview route both behave intentionally.
 - Verification log records exact commands and live URL results.
 
-## 5. Data and State Model
+## 6. Data and State Model
 
 All state remains browser-local under `sq.dashboard.v1` unless a preview route intentionally uses its own namespace.
 
@@ -309,9 +357,11 @@ Additive fields:
 |---|---:|---|
 | `rangeOverrides` | 1, 3 | User-set true min/max for sensors. |
 | `observedMax` | 1 | Historical observed peak, not gauge-eligible by itself. |
+| `powerLimitSamples` | 1 | Telemetry-only GPU implied-limit samples, scoped by `hwid`. |
 | `sensorAliases` | 3 | Display alias while preserving raw label. |
-| `cardOrder` | 5 | Primary/pinned card order if split from existing pinned order. |
-| `rowOrder` | 5 | Row order per panel/type group. |
+| `primaryCards` or equivalent | 3, 5 | Explicit user-selected primary card list; absent means current auto hero defaults. |
+| `cardOrder` | 3, 5 | Primary/pinned card order if split from existing pinned order. |
+| `rowOrder` | 3, 5 | Row order per panel/type group. |
 | `netAdapterOrder` | 5 | Network adapter subgroup order. |
 | `hiddenNetAdapters` | 5 | Network adapter visibility. |
 | `expanded` or equivalent transient state | 3 | Runtime only unless persistence is intentionally chosen. |
@@ -322,8 +372,10 @@ Normalizer rules:
 - Deduplicate arrays.
 - Preserve missing-sensor references where useful so layout can recover if hardware returns.
 - Never let invalid state prevent rendering.
+- Background telemetry writes use `SQ.saveTelemetryState` to merge `observedMax`/`powerLimitSamples` into fresh same-route persisted state before saving. User-driven commits still write the intended full dashboard state.
+- Stable `/` uses `sq.dashboard.v1`; preview routes use separate namespaces until promotion. Cross-route state import/export is explicit only.
 
-## 6. Component Structure
+## 7. Component Structure
 
 This is still vanilla HTML/CSS/JS. Do not introduce a frontend framework for v3.
 
@@ -353,7 +405,7 @@ Recommended internal render structure:
 
 The goal is not abstraction for its own sake. The goal is to keep state derivation separate from DOM string assembly so tests can cover behavior without a browser.
 
-## 7. Test Plan
+## 8. Test Plan
 
 Model tests in `webtests/console.tests.js` should grow before or with each slice.
 
@@ -378,11 +430,14 @@ Browser/live tests:
 - no side drawer after Slice 4;
 - card expansion works by mouse and keyboard;
 - row expansion works by mouse and keyboard;
+- card and row drag/drop persists without crossing row group boundaries;
+- two browser tabs on the same route do not overwrite each other's aliases/order/overrides through background telemetry saves;
+- stable `/` and `/dash/cardtruth/` state namespaces stay isolated until an explicit promotion/import path exists;
 - hidden sensor can be restored;
 - reorders persist after reload;
 - narrow viewports do not clip controls.
 
-## 8. Branching Recommendation
+## 9. Branching Recommendation
 
 Preferred:
 
@@ -390,7 +445,7 @@ Preferred:
 git checkout -b feat/web-dashboard-v3-card-first
 ```
 
-If the current working tree remains dirty with baseline route/menu changes, either commit that baseline first or create a dedicated worktree after deciding what belongs in the baseline commit.
+The baseline route/menu/gauge and hardware-identity work is committed on `feat/web-dashboard-v3-card-first`. If new dirty work appears, commit or park that baseline before starting another parallel route/UI slice.
 
 Avoid parallel branches for `console.js`. The file is too central and the slices depend on one another.
 
@@ -405,7 +460,7 @@ Recommended commit grouping:
 7. `fix(web): refine dashboard card layout and responsive controls`
 8. `docs(web): record v3 verification and promotion decision`
 
-## 9. Stop Conditions
+## 10. Stop Conditions
 
 Stop and review before continuing if any of these happen:
 
@@ -416,14 +471,18 @@ Stop and review before continuing if any of these happen:
 - Live dashboard cannot be restarted after a build.
 - A visual fix makes the default dashboard less readable or more cluttered.
 
-## 10. First Next Step
+## 11. First Next Step
 
-Start with Slice 1 in `/dash/cardtruth/` or a branch that can be served as a preview. The first concrete patch should add a tested display-model helper for range provenance and observed peaks, not a broad UI rewrite.
+The multi-tab state merge guard and first visible expansion/action patch are implemented. Stable `/` and preview `/dash/cardtruth/` now expose raw label, `SensorId`, hardware id, range provenance, alias, style, max override, pin/hide, and keyboard move controls from the visible card/row surface, and stable `/` has the accepted row-order contract promoted from the preview.
 
-Acceptance for that first patch:
+The next concrete patch should close the remaining parity gap before drawer deletion: compact masthead Sensors popover for hidden/offscreen discovery, explicit primary-card selection where needed, and final checks that all drawer-only workflows have a visible replacement.
 
-- `node webtests\selftest.node.js` adds and passes range display tests.
-- CPU power remains number-only without override/limit.
-- GPU power with valid watt+percent fixture gets an approximate derived limit.
-- GPU power without percent fixture remains number-only or explicitly unknown.
+Do not make `/dash/cardtruth/` a permanent product tab; use it only as a temporary comparison route until accepted behavior is synced into the root dashboard.
+
+Acceptance for the next patch:
+
+- `node webtests\selftest.node.js` adds and passes popover/drawer-removal model tests where practical.
+- Hidden/offscreen sensor discovery is available from one compact masthead popover.
+- No normal card/row detail workflow remains drawer-only.
+- Drawer DOM/CSS/handlers are removed only after parity is verified.
 - No product code mentions this machine's sensor IDs or device names.
