@@ -815,6 +815,7 @@
       limits: {},
       expanded: new Set(),
       xpEnter: null,
+      primaryIds: new Set(),
       inlineEditing: false,
       inlineEditingUntil: 0
     };
@@ -831,9 +832,11 @@
     }
     function ctlCluster(id, label, opts) {
       const pinned = SQ.isPinned(state.dashboard, id);
+      const primary = state.primaryIds.has(id);
+      const star = `<button class="ctl star${primary ? ' on' : ''}" data-act="${primary ? 'primary-remove' : 'primary-add'}" data-id="${esc(id)}" aria-label="${primary ? 'Remove from primary' : 'Show as primary'} ${esc(label)}" title="${primary ? 'Remove from primary' : 'Show as primary'}">${primary ? '&#9733;' : '&#9734;'}</button>`;
       const pin = `<button class="ctl pin${pinned ? ' on' : ''}" data-act="${pinned ? 'unpin' : 'pin'}" data-id="${esc(id)}" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(label)}" title="${pinned ? 'Unpin' : 'Pin'}">&#128204;</button>`;
       const hide = opts && opts.hide ? `<button class="ctl hide" data-act="hide" data-id="${esc(id)}" aria-label="Hide ${esc(label)}" title="Hide">&#8856;</button>` : '';
-      return pin + hide;
+      return star + pin + hide;
     }
     function rootNode(data) {
       return data.Children && data.Children[0] ? data.Children[0] : data;
@@ -947,6 +950,7 @@
       sensors.forEach(s => s.status = SQ.statusOf(s, limits));
       state.allSensors = allSensors;
       state.visibleSensors = sensors;
+      state.primaryIds = new Set(SQ.primaryCardIds(sensors, state.dashboard));
       state.limits = limits;
 
       const alarm = sensors.filter(s => s.status !== 'info' && s.status !== 'off');
@@ -1023,7 +1027,7 @@
       const ov = state.dashboard.rangeOverrides[s.id];
       const alias = SQ.sensorAlias(state.dashboard, s.id);
       const pinned = SQ.isPinned(state.dashboard, s.id);
-      const isPrimary = SQ.isPrimaryCard(state.dashboard, s.id, state.allSensors);
+      const isPrimary = state.primaryIds.has(s.id);
       const rawMin = s.min == null || s.min === '' ? '—' : s.min;
       const rawMax = s.max == null || s.max === '' ? '—' : s.max;
       const value = s.value ?? '—';
@@ -1299,17 +1303,19 @@
       const hiddenNetKeys = new Set(state.dashboard.hiddenNetAdapters);
       const hiddenAdapters = SQ.buildNetAdapters(state.allSensors).filter(a => hiddenNetKeys.has(a.key));
       const sig = (state.sensorsFilter || '') + '|' +
-        rows.map(r => `${r.id}:${r.visibility}:${pinnedIds.has(r.id) ? 1 : 0}`).join(',') +
+        rows.map(r => `${r.id}:${r.visibility}:${pinnedIds.has(r.id) ? 1 : 0}:${state.primaryIds.has(r.id) ? 1 : 0}`).join(',') +
         '|net:' + hiddenAdapters.map(a => a.key).join(',');
       if (sig === state.sensorsSig) return;
       state.sensorsSig = sig;
       list.innerHTML = rows.map(r => {
         const hidden = r.visibility === 'hidden';
         const pinned = pinnedIds.has(r.id);
+        const primary = state.primaryIds.has(r.id);
         const alias = r.label !== r.rawLabel ? ` · ${esc(r.rawLabel)}` : '';
         return `<div class="sensor-choice ${hidden ? 'is-hidden' : ''}">
           <div><b>${esc(r.label)}</b><span>${esc(r.hw)} · ${esc(r.type)} · ${esc(r.value)}${alias}</span><code>${esc(r.id)}</code></div>
           <span class="vis-chip vis-${r.visibility}">${r.visibility}</span>
+          ${r.visibility === 'visible' ? `<button class="iconbtn" data-action="${primary ? 'primary-remove' : 'primary-add'}" data-id="${esc(r.id)}">${primary ? 'Remove primary' : 'Make primary'}</button>` : ''}
           <button class="iconbtn" data-action="${pinned ? 'unpin' : 'pin'}" data-id="${esc(r.id)}">${pinned ? 'Unpin' : 'Pin'}</button>
           <button class="iconbtn" data-action="${hidden ? 'show' : 'hide'}" data-id="${esc(r.id)}">${hidden ? 'Show' : 'Hide'}</button>
         </div>`;
@@ -1383,6 +1389,8 @@
         case 'show': setSensorHidden(id, false); break;
         case 'pin': pinSensor(id); break;
         case 'unpin': unpinSensor(id); break;
+        case 'primary-add': setPrimaryCardState(id, true); break;
+        case 'primary-remove': setPrimaryCardState(id, false); break;
       }
       renderSensorsPopover();
     });
