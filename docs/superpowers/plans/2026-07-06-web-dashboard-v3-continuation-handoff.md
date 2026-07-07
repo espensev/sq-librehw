@@ -1,8 +1,8 @@
 # Web Dashboard v3 Continuation Plan and Handoff
 
-**Date:** 2026-07-06 (updated after B3 merge)
-**Status:** B1 (masthead Sensors popover), B2 (explicit primary-card selection), and **B3 (Customize drawer removal)** are all MERGED to `master`. Next: **C1 / Slice 5B — network adapter subgroups** (independent of B; see §5 Slice 5B, the [v3-next-plan §4](2026-07-06-web-dashboard-v3-next-plan.md) queue, and §10–§12 below). **The v3-next-plan §4 A–F queue is the authoritative sequence** wherever it disagrees with the Slice numbering in §5 below.
-**Baseline:** `master` / `origin/master` at `e7ae6f0` (`Merge Customize drawer removal (Phase B3)`); was `106f91d` after B2 and `4310a8b` when this handoff was first written.
+**Date:** 2026-07-07 (updated after D1 merge; D2 brainstorm draft in progress)
+**Status:** B1, B2, B3, **C1 (network adapter subgroups)**, and **D1 (card header grid + reserved action gutter)** are all MERGED to `master`. **D2 (expansion multi-column layout) has been brainstormed into a Draft spec** ([`feature-web-dashboard-expansion-layout.md`](../../feature-web-dashboard-expansion-layout.md)) but is **not yet accepted** — two acceptance-blocking decisions are open (that spec's §9). See the §0 Resume Brief, the [v3-next-plan §4](2026-07-06-web-dashboard-v3-next-plan.md) queue, and §10–§12 below. **The v3-next-plan §4 A–F queue is the authoritative sequence** wherever it disagrees with the Slice numbering in §5 below.
+**Baseline:** `master` / `origin/master` at `47690a9` (`Merge card header reserved gutter (Phase D1)`); was `7130748` after C1, `e7ae6f0` after B3, `106f91d` after B2, and `4310a8b` when this handoff was first written.
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Active plan:** [2026-07-06-web-dashboard-v3-next-plan.md](2026-07-06-web-dashboard-v3-next-plan.md)
 **Versioned-route spec:** [../../feature-web-dashboard-versioned-routes.md](../../feature-web-dashboard-versioned-routes.md)
@@ -14,9 +14,17 @@
 
 **State (2026-07-07):**
 
-- `master` = `origin/master`, with **D1 merged** on top of the C1 baseline `4416db5` (pushed, clean worktree).
-  The product dashboard baseline is the D1 merge; no open branches or PRs. (Run `git log --oneline` for the
-  exact merge commit.)
+- `master` = `origin/master` = `47690a9` (`Merge card header reserved gutter (Phase D1)`), on top of the C1
+  baseline `4416db5` (pushed). **D1 is the current shipped product baseline.** No open PRs.
+- **D2 brainstorm is in progress on branch `D2-flyingcircus`** (at `47690a9`, no commits yet). The working tree
+  holds an **uncommitted** Draft D2 spec `feature-web-dashboard-expansion-layout.md` plus cross-reference edits
+  to `feature-web-dashboard-card-truth.md`, `feature-workflow.md`, and the D2 row of
+  `2026-07-06-web-dashboard-v3-next-plan.md`. The design is **not yet accepted** — two acceptance-blocking
+  decisions are open (spec §9): **#1 layout strategy** (default **B — grid breakout**, `.cell.expanded{grid-column:1/-1}`;
+  alternatives C span-N, D modal, A portal) and **#2 the shared `c:<sensorId>` expand key** for PFD/pinned twins
+  (default **keep single key**).
+- The two old experimental branches (`claude-devsev/loving-volhard-66d981`, `worktree-dashboard-templates`)
+  remain reference-only (§2).
 - Done + merged, keep as regression baseline: A1/A2 (suffix/fan clipping), **B1** masthead Sensors popover
   (`8291c89`), **B2** explicit primary-card selection (`106f91d`), **B3** Customize drawer removal
   (`e7ae6f0`), **C1** network adapter subgroups (`7130748`), **D1** card header reserved gutter
@@ -25,6 +33,8 @@
   `/dash/cardtruth/` (temporary preview). Web assets are **embedded resources** in
   `LibreHardwareMonitor.Windows.Forms/Resources/Web/{index.html,console.js,console.css}` —
   **rebuild the EXE for served changes to take effect, and stop the running EXE first (it locks the DLL/EXE).**
+  As of this handoff the app is up and serving `/` and `/data.json` (both 200), built from the D1 code-HEAD
+  (stamp `0.9.6+05f609c.2026-07-07`, an ancestor of `47690a9` with byte-identical D1 web assets).
 
 **D1 — Card header grid + reserved action gutter is DONE** (branch `feat/web-card-header-gutter-d1`,
 `e0f1dad` grid + `0e0987a` collapse-at-rest refine; execution record
@@ -37,7 +47,8 @@ stay full) and reveals `display:flex` in-flow on hover/focus/touch. selftest 227
 in both themes across desktop/touch/narrow, zero console errors; final whole-branch review (opus) READY TO MERGE
 0C/0I. **Accepted tradeoffs:** desktop hover/focus reflows the name; touch permanently occupies the gutter
 (graceful ellipsis, full raw label in expansion). **Next task: D2 — expansion multi-column layout**
-(v3-next-plan §4 row D2 / §5 Slice 6 polish).
+(v3-next-plan §4 row D2 / §5 Slice 6 polish). Its Draft spec is already authored (see the D2 bullet above and
+§10) and now needs the two spec-§9 decisions resolved before it can be planned.
 
 <details><summary>C1 original brief (retained for reference)</summary>
 
@@ -658,20 +669,39 @@ first popover implementation unless the route delta audit proves the preview is 
 
 ## 10. Immediate Next Step
 
-**Superseded by progress.** B1 (masthead Sensors popover = Slice 4B, `8291c89`), B2 (explicit
-primary-card selection = Slice 5A, `106f91d`), and B3 (Customize drawer removal = Slice 4C, merge
-`e7ae6f0`) are all done and merged; the `feat/web-drawer-removal-b3` branch is deleted. Execution
+**Superseded by progress.** B1 (Slice 4B, `8291c89`), B2 (Slice 5A, `106f91d`), B3 (Slice 4C, merge
+`e7ae6f0`), **C1 (Slice 5B network adapter subgroups, merge `7130748`)**, and **D1 (Slice 6 card-header
+reserved gutter, merge `47690a9`)** are all done and merged; their feature branches are deleted. Execution
 records: [`2026-07-06-web-sensors-popover-b1.md`](2026-07-06-web-sensors-popover-b1.md),
-[`2026-07-06-web-primary-card-selection-b2.md`](2026-07-06-web-primary-card-selection-b2.md), and
-[`2026-07-06-web-drawer-removal-b3.md`](2026-07-06-web-drawer-removal-b3.md).
+[`2026-07-06-web-primary-card-selection-b2.md`](2026-07-06-web-primary-card-selection-b2.md),
+[`2026-07-06-web-drawer-removal-b3.md`](2026-07-06-web-drawer-removal-b3.md), and
+[`2026-07-07-web-card-header-gutter-d1.md`](2026-07-07-web-card-header-gutter-d1.md). See the §0 Resume Brief
+for the current one-screen state and §11 for the full merge log.
 
-Next is **C1 / Slice 5B — network adapter subgroups**: one subgroup per adapter, keyed from the stable
-NIC id prefix (`/nic/{GUID}`-style, not the display label), each reorderable / hideable / restorable,
-with `netAdapterOrder` + `hiddenNetAdapters` (both already normalized in state) driving the render, and
-hidden adapters restorable from the Sensors popover. C1 is **independent of B** and proceeds directly off
-`e7ae6f0`. See §5 Slice 5B for the full contract, and §12 below for the reorder no-op guard and
-inline-control-reachability lessons that apply directly to it. Keeps the product usable and avoids turning
-the temporary card-truth route into a permanent second dashboard.
+**D2 — expansion multi-column layout (v3-next-plan §4 row D2 / §5 Slice 6) is mid-brainstorm.** A Draft spec
+[`feature-web-dashboard-expansion-layout.md`](../../feature-web-dashboard-expansion-layout.md) is authored and
+grounded — it diagnoses the ~190px `.pfd` card-column constraint (`console.css:105/270/275`) that forces the
+already-`auto-fit` `.xp-grid` into a tall single-column strip, and inventories `xpEl` (`console.js:1021-1065`).
+It is currently **uncommitted** on branch `D2-flyingcircus`, together with its cross-reference edits. Exit
+criterion: *expanded detail fills width, not a tall narrow strip* — spec §7 = `.xp-grid` renders 2+ columns on
+wide, no `.xp-actions` clip, `SensorId` stays full-width, across 320/390/640/1440/wide in both themes.
+
+**Next action = resolve the two acceptance-blocking Open Decisions (spec §9), then plan:**
+
+1. **#1 Layout strategy** — **B grid-breakout** (recommended default: most faithful to "detail on the item",
+   minimal DOM change, reuses the existing `.xp-grid` auto-fit; cost = grid reflow on expand) vs. **C span-N**
+   vs. **D modal/overlay** (cleanest full-width but diverges from the inline principle the campaign is built on)
+   vs. **A portal-below-grid**.
+2. **#2 Shared `c:<sensorId>` expand key** for PFD/pinned twins — **keep single key** (default; twins expand in
+   lockstep) vs. **split namespace** (`c-pfd:`/`c-pinned:`).
+
+Once #1 and #2 are resolved the spec flips Draft→Accepted; then run `writing-plans` →
+`subagent-driven-development` (continue on `D2-flyingcircus`, or start a fresh branch off `master`). Carry §12
+forward — especially the **live-only column-count / visual gate** (§12.4–12.5, mirrored in the spec's §8): D2 is
+a layout change with **no node unit-test surface**, and a green measurement gate can still hide a visual
+regression (D1's Option A passed every overlap check yet truncated names at rest). After D2: **D3** (full
+responsive/theme QA matrix), then **E** (viewTheme selector + `cardtruth` retirement, §5 Slice 7), then **F**
+(context dashboards — separate campaign, §3.1).
 
 ## 11. Progress Log (A → B, on `master`)
 
