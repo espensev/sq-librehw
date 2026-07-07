@@ -16,10 +16,13 @@
 
 - `master` = `origin/master` = `47690a9` (`Merge card header reserved gutter (Phase D1)`), on top of the C1
   baseline `4416db5` (pushed). **D1 is the current shipped product baseline.** No open PRs.
-- **D2 brainstorm is in progress on branch `D2-flyingcircus`** (at `47690a9`, no commits yet). The working tree
-  holds an **uncommitted** Draft D2 spec `feature-web-dashboard-expansion-layout.md` plus cross-reference edits
+- **D2 brainstorm is checkpointed on branch `D2-flyingcircus`** (`11312f2`, one docs-only commit on top of
+  `47690a9`): the Draft D2 spec `feature-web-dashboard-expansion-layout.md` plus cross-reference edits
   to `feature-web-dashboard-card-truth.md`, `feature-workflow.md`, and the D2 row of
-  `2026-07-06-web-dashboard-v3-next-plan.md`. The design is **not yet accepted** — two acceptance-blocking
+  `2026-07-06-web-dashboard-v3-next-plan.md`. An independent review of the D1 merge + this checkpoint is
+  recorded in [`docs/reviews/review-2026-07-07-dashboard-d1-d2-checkpoint.md`](../../reviews/review-2026-07-07-dashboard-d1-d2-checkpoint.md)
+  (PASS WITH NOTES; the notes are fixed by the commit that carries this line). The design is **not yet
+  accepted** — two acceptance-blocking
   decisions are open (spec §9): **#1 layout strategy** (default **B — grid breakout**, `.cell.expanded{grid-column:1/-1}`;
   alternatives C span-N, D modal, A portal) and **#2 the shared `c:<sensorId>` expand key** for PFD/pinned twins
   (default **keep single key**).
@@ -682,7 +685,7 @@ for the current one-screen state and §11 for the full merge log.
 [`feature-web-dashboard-expansion-layout.md`](../../feature-web-dashboard-expansion-layout.md) is authored and
 grounded — it diagnoses the ~190px `.pfd` card-column constraint (`console.css:105/270/275`) that forces the
 already-`auto-fit` `.xp-grid` into a tall single-column strip, and inventories `xpEl` (`console.js:1021-1065`).
-It is currently **uncommitted** on branch `D2-flyingcircus`, together with its cross-reference edits. Exit
+It is committed as checkpoint `11312f2` on branch `D2-flyingcircus`, together with its cross-reference edits. Exit
 criterion: *expanded detail fills width, not a tall narrow strip* — spec §7 = `.xp-grid` renders 2+ columns on
 wide, no `.xp-actions` clip, `SensorId` stays full-width, across 320/390/640/1440/wide in both themes.
 
