@@ -14,6 +14,14 @@
 - Keep `AssemblyVersion` at `0.9.6`.
 - Builds must use `-p:Platform=x64`.
 
+## Docs Policy
+
+- This compact docs set is intentional.
+- Keep live docs short, current, and action-oriented.
+- Do not recreate long planning/review/spec archives in `docs/`.
+- Put detailed historical evidence in git history, not new docs.
+- New docs should be rare and should stay under a clear todo, issue, or implementation path.
+
 ## Hard Rules
 
 - New features and meaningful behavior changes need a spec first.
@@ -65,6 +73,21 @@
 - Settings autosave runs during the session.
 - Writes are atomic with backup fallback.
 - The fallback save path fails (keeping the live config) if the backup cannot be preserved.
+
+## Implementation Map
+
+- `.gitignore` - ignores local MCP/tool scratch state.
+- `LibreHardwareMonitorLib/Hardware/Sensor.cs` - bounds persisted sensor value history.
+- `LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj` - exposes internals to tests.
+- `LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs` - runs dirty-settings autosave.
+- `LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs` - cleans stale history, tracks dirty state, writes atomically, and preserves backup safety.
+- `LibreHardwareMonitor.Tests/SettingsPersistenceTests.cs` - covers config bloat, cleanup, dirty tracking, atomic save, and backup recovery.
+- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs` - hardens sensor API failures, control writes, and browser-origin checks.
+- `LibreHardwareMonitor.Tests/HttpServerSensorApiTests.cs` - covers sensor API errors, control values, and same-origin policy.
+- `docs/README.md` - live repo summary.
+- `docs/reviews/review-2026-07-07-settings-persistence-fix.md` - concise review record for the settings fix.
+- `docs/reviews/review-2026-07-07-settings-autosave-rereview.md` - ultra-compact rereview summary.
+- `docs/reviews/settings-autosave-issues.md` - accepted autosave residual-risk todo list.
 
 ## Standard Commands
 
