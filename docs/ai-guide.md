@@ -17,14 +17,14 @@ A local fork of LibreHardwareMonitor ("Sev IQ") whose headline surface is a clie
 3. [`superpowers/plans/2026-07-06-web-dashboard-v3-continuation-handoff.md`](superpowers/plans/2026-07-06-web-dashboard-v3-continuation-handoff.md) **§0 Resume Brief** — the current campaign state on one screen. If it disagrees with this guide's §6 snapshot, the handoff is newer — trust it and fix the snapshot.
 4. [`superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md`](superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md) **§4** — the authoritative A→F work queue.
 5. [`feature-web-dashboard-card-truth.md`](feature-web-dashboard-card-truth.md) — the parent v3 spec; its **§11 verification log** is the evidence trail every phase appends to.
-6. [`discovery-webserver-dashboard-interaction.md`](discovery-webserver-dashboard-interaction.md) + [`reviews/review-2026-07-07-webserver-dashboard-interaction.md`](reviews/review-2026-07-07-webserver-dashboard-interaction.md) + [`feature-webserver-api-hardening.md`](feature-webserver-api-hardening.md) — current map of how `HttpServer`, `data.json`, root `/`, preview `/dash/cardtruth/`, and legacy `/Sensor`/reset APIs interact, plus the bounded hardening pass for GET `/Sensor` failures and control-value range checks.
+6. [`discovery-webserver-dashboard-interaction.md`](discovery-webserver-dashboard-interaction.md) + [`reviews/review-2026-07-07-webserver-dashboard-interaction.md`](reviews/review-2026-07-07-webserver-dashboard-interaction.md) + [`feature-webserver-api-hardening.md`](feature-webserver-api-hardening.md) + [`feature-web-dashboard-view-theme-retirement.md`](feature-web-dashboard-view-theme-retirement.md) — current map of how `HttpServer`, `data.json`, root `/`, the retired `/dash/cardtruth/` route, and legacy `/Sensor`/reset APIs interact, plus the bounded hardening pass for GET `/Sensor` failures and control-value range checks.
 7. The active phase's own spec/plan under `docs/` and `docs/superpowers/plans/` (each next-plan §4 row links them).
 8. `.superpowers/sdd/progress.md` — the execution ledger (git-ignored scratch): per-task models, gate numbers, RED→GREEN evidence, triage decisions. Trust it plus `git log` over conversation memory.
 9. [`feature-workflow.md`](feature-workflow.md) — spec lifecycle + the full docs inventory.
 
 ## 3. Hard invariants (breaking one = stop and surface it)
 
-- **Contract:** no `data.json` / HTTP server / CSV change. Golden `dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64` stays **42/42**.
+- **Contract:** no `data.json` / CSV contract change. `dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64` stays green; data.json golden coverage remains mandatory.
 - **Build:** always `-p:Platform=x64` (AnyCPU breaks CsWin32 → CS0246). **Stop the running EXE before building** (it locks the DLL/EXE); restart after; **close stale browser tabs** after a rebuild (multi-tab version skew: old tabs run old `console.js` and can strip new persisted fields on save).
 - **No host-specific sensor IDs, labels, or limits in product code** — the dashboard must work on any machine's `data.json`.
 - **Read-only dashboard:** no `/Sensor?action=Set`, no write UI. This does **not** mean the whole webserver is read-only: legacy `/Sensor` and reset APIs still exist; see the 2026-07-07 server/dashboard audit and API-hardening spec before exposing the listener beyond the trusted local operator path.
@@ -61,24 +61,23 @@ A local fork of LibreHardwareMonitor ("Sev IQ") whose headline surface is a clie
 
 **Vision:** an honest, modern, card-first telemetry console — no invented maxima, real/derived/overridden ranges with provenance, hardware identity for duplicate devices, detail and actions living **on the visible item** (no drawers/side panes), everything orderable from the UI, dense but attractive in both themes.
 
-**Shipped on `master` (each major phase has a card-truth §11 evidence row):** v2 customization + cards; card-truth slices 1–3 (honest ranges, fan %/RPM, identity, expansion actions); A1/A2 clipping fixes; **B1** masthead Sensors popover; **B2** explicit primary-card selection (seed-from-visible); **B3** Customize drawer removal; **C1** per-adapter network subgroups; **D1** card-header reserved gutter (structural non-overlap); **D2** anchored-overlay expansion (full-grid-width detail, zero displacement — merge `6a2c2d7`); **D2a** direct flight-deck edit controls (★/☆ primary toggle on cards/rows + popover, merge `0279333`, docs pin `db4a9da`); **D3** responsive/theme QA closeout (row controls in-flow on touch/narrow, mobile Sensors fit, panel/stateful controls proved, dark/light matrix clean).
+**Shipped on `master` (each major phase has a card-truth §11 evidence row):** v2 customization + cards; card-truth slices 1–3 (honest ranges, fan %/RPM, identity, expansion actions); A1/A2 clipping fixes; **B1** masthead Sensors popover; **B2** explicit primary-card selection (seed-from-visible); **B3** Customize drawer removal; **C1** per-adapter network subgroups; **D1** card-header reserved gutter (structural non-overlap); **D2** anchored-overlay expansion (full-grid-width detail, zero displacement — merge `6a2c2d7`); **D2a** direct flight-deck edit controls (★/☆ primary toggle on cards/rows + popover, merge `0279333`, docs pin `db4a9da`); **D3** responsive/theme QA closeout (row controls in-flow on touch/narrow, mobile Sensors fit, panel/stateful controls proved, dark/light matrix clean); **E1/E2** root `viewTheme` selector plus `/dash/cardtruth/` retirement.
 
 **Queue (next-plan §4 is authoritative):**
-- **E1/E2 — `viewTheme` selector, sync accepted deltas to `/`, retire the `/dash/cardtruth/` preview route** ← *next* (one product surface; route-namespace-ready state).
-- **F — context dashboards (Main/Gaming/Storage)** — separate campaign; orthogonal to the E-phase view selector (two dropdowns, deferred coexist lane).
+- **F — context dashboards (Main/Gaming/Storage)** ← *next* — separate campaign; orthogonal to the E-phase `viewTheme` selector (two controls, deferred coexist lane).
 - **X1 — planning-doc consolidation** (archive the superseded 2026-07-04 set) — can run anytime.
 
-**Runtime:** app serves `localhost:8085`; D3 live closeout on 2026-07-07 rebuilt Release `net10.0-windows` x64 as PID `79624`, with `GET /`, `/data.json`, `/metrics`, and `/dash/cardtruth/` returning 200. Final D3 Edge matrix ran 14 viewport/theme cases with `maxRowOverlap=0`, `maxRowValueOverflow=0`, no horizontal scroll, Sensors/Page/overlay fit true, and zero console warnings/errors. Root `/` asserted `#sensorsMenu` and no Customize drawer/button; `/dash/cardtruth/` remains comparison-only until Phase E. The server/dashboard audit found `GET /Sensor?action=Get&id=/missing` returned HTTP 500 while POST returned JSON fail; `feature-webserver-api-hardening.md` fixed that bounded server bug and live rebuilt PID `30508` returned JSON failures for missing GET `/Sensor` and GET `action=Set`. Legacy write-auth and GET reset policy remain open compatibility decisions.
+**Runtime:** app serves `localhost:8085`; E1/E2 live closeout on 2026-07-07 rebuilt Release `net10.0-windows` x64 as PID `74624`. `GET /`, `/console.css`, `/console.js`, `/data.json`, and `/metrics` return 200; root contains `#viewTheme` and no `/dash/cardtruth/` Pages link; `/dash/cardtruth/` and `/dash/cardtruth` return 404. Final D3 Edge matrix remains the responsive/theme baseline. The server/dashboard audit found `GET /Sensor?action=Get&id=/missing` returned HTTP 500 while POST returned JSON fail; `feature-webserver-api-hardening.md` fixed that bounded server bug and live rebuilt PID `30508` returned JSON failures for missing GET `/Sensor` and GET `action=Set`. Legacy write-auth and GET reset policy remain open compatibility decisions.
 
 ## 7. Quick commands
 
 ```powershell
 # regression guard (DOM-less; NOT a UI gate)
-node webtests\selftest.node.js                       # expect SELFTEST PASS 227/227
+node webtests\selftest.node.js                       # expect SELFTEST PASS 229/229
 node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js
 
 # contract gate
-dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64   # 42/42
+dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64   # expect pass
 
 # build the app (STOP the running EXE first; restart after)
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64

@@ -1,14 +1,16 @@
 # Feature Spec: Web Dashboard Versioned Preview Routes
 
 **Project:** LibreHardwareMonitor Sev IQ local fork
-**Status:** Verified
-**Updated:** 2026-07-06
-**Related docs:** [`feature-web-dashboard-card-truth.md`](feature-web-dashboard-card-truth.md), [`feature-web-dashboard-customization.md`](feature-web-dashboard-customization.md)
-**Purpose:** allow multiple dashboard UI versions to be served side by side for testing without replacing or damaging the stable dashboard.
+**Status:** Verified; active `cardtruth` route retired by Phase E
+**Updated:** 2026-07-07
+**Related docs:** [`feature-web-dashboard-card-truth.md`](feature-web-dashboard-card-truth.md), [`feature-web-dashboard-view-theme-retirement.md`](feature-web-dashboard-view-theme-retirement.md), [`feature-web-dashboard-customization.md`](feature-web-dashboard-customization.md)
+**Purpose:** record the temporary preview-route mechanism and its Phase E retirement after accepted behavior moved into `/`.
 
 ## 1. Summary
 
-The web server keeps `/` as the stable dashboard and adds explicit preview routes for alternate dashboard builds. Each preview route consumes the same live root APIs (`/data.json`, `/metrics`, `/Sensor`, `/ResetAllMinMax`) but uses its own embedded static assets and browser-local state namespace.
+This spec records the verified temporary preview-route mechanism used while the card-first dashboard was still being compared against stable `/`. As of Phase E on 2026-07-07, the active `cardtruth` preview is retired: `/dash/cardtruth/` is no longer served, its Pages-menu entry and embedded assets are removed, and the surviving look choice lives as root `viewTheme` state under `sq.dashboard.v1`.
+
+Historically, the web server kept `/` as the stable dashboard and added explicit preview routes for alternate dashboard builds. Each preview route consumed the same live root APIs (`/data.json`, `/metrics`, `/Sensor`, `/ResetAllMinMax`) but used its own embedded static assets and browser-local state namespace.
 
 Preview routes are temporary development surfaces, not permanent product navigation. The `cardtruth` route exists only while the v3 card-first work is being compared and promoted. Once the selected behavior is synced into `/`, the separate `cardtruth` route and Pages-menu entry should be retired; any surviving visual treatment belongs as a selectable root-dashboard theme/view option from the Theme dropdown, not as a second dashboard page.
 
@@ -17,8 +19,8 @@ This route lane is distinct from the deferred **context-dashboard** feature (sel
 Example routes:
 
 - `/` - stable dashboard, unchanged by experiments.
-- `/dash/cardtruth/` - current card-truth preview.
-- Future examples, if needed: `/dash/roworder/` for row reorder testing, `/dash/network/` for network activity/latency testing.
+- `/dash/cardtruth/` - retired card-truth preview; current builds return 404.
+- Future examples, if needed, require a new accepted spec and route implementation: `/dash/roworder/` for row reorder testing, `/dash/network/` for network activity/latency testing.
 
 ## 2. Problem and Motivation
 
@@ -43,7 +45,9 @@ Dashboard work is now visual and interactive enough that testing changes directl
 
 ## 4. Behavior Specification
 
-The server serves `/` as the stable dashboard: `Resources/Web/index.html`, `console.css`, and `console.js` remain the stable dashboard assets. The stable dashboard masthead includes a compact Pages menu with root-absolute links to available preview dashboards and diagnostic read-only endpoints.
+The server serves `/` as the stable dashboard: `Resources/Web/index.html`, `console.css`, and `console.js` remain the stable dashboard assets. After Phase E, the stable dashboard masthead includes diagnostic links only (`/data.json`, `/metrics`) plus the root `viewTheme` selector; it does not link `/dash/cardtruth/`.
+
+The following route behavior is historical unless a future preview feature reintroduces it under a new accepted spec.
 
 The server also recognizes route roots matching `/dash/<version>/`. If the request path is exactly a preview route root, with or without the trailing slash, the server serves that version's `index.html`. Requests under the same route serve that version's embedded assets. Preview shells must use route-root-absolute asset links such as `/dash/cardtruth/console.css` and `/dash/cardtruth/console.js` so direct no-slash URLs remain browser-viable.
 
@@ -64,7 +68,7 @@ Each preview version uses a separate browser storage namespace, for example:
 - `/dash/cardtruth/`: `sq.dashboard.preview.cardtruth`
 - future `/dash/roworder/`: `sq.dashboard.preview.roworder`
 
-State can be exported/imported later, but preview routes must not read or write the stable namespace by default. When a preview is promoted, selected state fields should move into the stable `sq.dashboard.v1` model deliberately. Visual variants should be represented by a stable dashboard theme/view field, not by keeping the preview route alive.
+State can be exported/imported later, but preview routes must not read or write the stable namespace by default. When a preview is promoted, selected state fields should move into the stable `sq.dashboard.v1` model deliberately. Visual variants should be represented by a stable dashboard theme/view field, not by keeping the preview route alive. Phase E implements this as `viewTheme: standard | cardTruth` on `/`.
 
 Promotion is explicit: moving a preview to `/` requires a separate commit that copies or wires the selected assets into `Resources/Web/` and records verification against the relevant feature spec. After promotion, remove the temporary preview route unless a new active comparison needs it.
 
@@ -72,10 +76,10 @@ Promotion is explicit: moving a preview to `/` requires a separate commit that c
 
 | Surface | Change |
 |---|---|
-| UI | Adds preview dashboard URLs under `/dash/<version>/`; `/` remains stable and links available preview/diagnostic pages from the masthead Pages menu. |
-| Settings/config | Browser-local preview namespaces are separate from stable dashboard state. |
-| Remote web/API | Static routing only; root API endpoints are unchanged. |
-| Logging/files | None. |
+| UI | Historical: added preview dashboard URLs under `/dash/<version>/`. Current Phase E: root Pages links diagnostics only, and `viewTheme` carries the surviving look choice. |
+| Settings/config | Historical preview namespaces were separate. Current Phase E stores `viewTheme` in stable `sq.dashboard.v1`. |
+| Remote web/API | Historical static preview routing was retired for `cardtruth`; root API endpoints are unchanged. |
+| Logging/files | Phase E removes `Resources/WebDash/cardtruth/*`. |
 | Hardware/admin flow | None. |
 
 ## 6. Compatibility and Risk
@@ -92,29 +96,34 @@ Promotion is explicit: moving a preview to `/` requires a separate commit that c
 
 ## 7. Acceptance Criteria
 
-- [x] `/` still serves the current stable dashboard after the change.
-- [x] At least one preview route, `/dash/cardtruth/`, serves a separate dashboard shell.
-- [x] Direct `/dash/cardtruth` loads a browser-viable shell with CSS/JS from the preview route.
-- [x] Preview CSS and JS are served from the preview route, not from the stable `/` assets.
-- [x] The preview dashboard successfully fetches `/data.json` using a root-absolute URL.
-- [x] Stable and preview dashboards use different localStorage namespaces.
-- [x] `/` exposes a Pages menu linking `/dash/cardtruth/`, `/data.json`, and `/metrics`.
-- [x] A broken or missing preview route returns 404 and does not fall back to `/`.
+Current Phase E acceptance:
+
+- [x] `/` serves the stable dashboard and owns the `viewTheme` selector.
+- [x] Root Pages menu links `/data.json` and `/metrics`, and does not link `/dash/cardtruth/`.
+- [x] `/dash/cardtruth/` and `/dash/cardtruth` return 404 and do not fall back to `/`.
 - [x] Existing behavior not in scope remains unchanged: `/data.json`, `/metrics`, `/Sensor`, `/ResetAllMinMax`, and stable `/`.
-- [x] `cardtruth` is documented as a temporary development route; after promotion, visual variants move to the root Theme dropdown instead of remaining separate pages.
+
+Historical pre-E acceptance:
+
+- [x] At least one preview route, `/dash/cardtruth/`, served a separate dashboard shell.
+- [x] Direct `/dash/cardtruth` loaded a browser-viable shell with CSS/JS from the preview route.
+- [x] Preview CSS and JS were served from the preview route, not from the stable `/` assets.
+- [x] The preview dashboard successfully fetched `/data.json` using a root-absolute URL.
+- [x] Stable and preview dashboards used different localStorage namespaces.
+- [x] `/` exposed a Pages menu linking `/dash/cardtruth/`, `/data.json`, and `/metrics`.
+- [x] A broken or missing preview route returned 404 and did not fall back to `/`.
+- [x] `cardtruth` was documented as a temporary development route; after promotion, visual variants moved to root `viewTheme` instead of remaining separate pages.
 
 ## 8. Verification Plan
 
 | Check | Command or manual step | Expected result |
 |---|---|---|
-| JS syntax | `node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js` and preview JS checks | 0 errors |
+| JS syntax | `node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js` | 0 errors |
 | Web model self-test | `node webtests\selftest.node.js` | pass |
 | Build modern app | `dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64` | 0 errors |
 | Stable route smoke | `GET http://localhost:8085/` | stable dashboard HTML |
-| Root menu check | `GET http://localhost:8085/` and inspect links | menu includes `/dash/cardtruth/`, `/data.json`, `/metrics` |
-| Preview route smoke | `GET http://localhost:8085/dash/cardtruth/` | preview dashboard HTML |
-| Preview no-slash smoke | `GET http://localhost:8085/dash/cardtruth` and resolve shell assets | preview dashboard HTML; CSS and JS resolve under `/dash/cardtruth/` |
-| Preview API smoke | Open preview route and verify network request to `/data.json` | 200, live payload |
+| Root menu check | `GET http://localhost:8085/` and inspect links | current build: menu includes `/data.json` and `/metrics`, exposes `#viewTheme`, and has no `/dash/cardtruth/` link |
+| Retired preview route smoke | `GET http://localhost:8085/dash/cardtruth/` and `/dash/cardtruth` | 404 |
 | Missing route smoke | `GET http://localhost:8085/dash/missing/` | 404 |
 
 ## 9. Open Decisions
@@ -126,18 +135,25 @@ Promotion is explicit: moving a preview to `/` requires a separate commit that c
 | Preview index page | resolved | no gallery page; root Pages menu links named preview URLs |
 | Promotion process | release | explicit copy/wire to `/` after operator approval; retire temporary route once synced |
 | Long-term card-truth access | release | selected visual treatment becomes a root Theme dropdown/view choice, not a permanent extra page |
+| Phase E retirement | resolved | active `cardtruth` route removed; root `viewTheme` added |
 
 ## 10. Implementation Notes
 
 Drafted on branch `feat/web-dashboard-versioned-routes` after operator requested testable version subsites that do not destroy the current dashboard.
 
-Implementation adds:
+The original preview-route implementation added:
 
 - `HttpServer.TryMapDashboardPreviewResource(...)` for pure, testable `/dash/<slug>/...` mapping.
 - Exact root API routing for `GET /data.json`, `/metrics`, `/Sensor`, and `/ResetAllMinMax`.
 - Preview assets under `LibreHardwareMonitor.Windows.Forms/Resources/WebDash/cardtruth/`.
 - `sq.dashboard.preview.cardtruth` storage key, root-absolute shell assets, and root-absolute `fetch('/data.json')` in the preview JS.
-- Route tests in `LibreHardwareMonitor.Tests/HttpServerRouteTests.cs`.
+- Route tests in `LibreHardwareMonitor.Tests/HttpServerRouteTests.cs`, now historical after Phase E retirement.
+
+Phase E retirement removes the `cardtruth` preview route implementation:
+
+- `HttpServer.TryMapDashboardPreviewResource(...)` and the preview dispatch branch are removed.
+- `Resources/WebDash/cardtruth/*` is removed.
+- The old route tests are replaced by `WebDashboardRetirementTests`, which assert root `viewTheme` and no embedded `WebDash.cardtruth` resources.
 
 ## 11. Verification Log
 
@@ -153,3 +169,4 @@ Implementation adds:
 | 2026-07-06 | Root Pages menu and live route smoke after rebuild/restart, PID 56304 | pass | `http://localhost:8085/` serves a Pages menu linking `/dash/cardtruth/`, `/data.json`, and `/metrics`; root/preview/assets/API returned 200 and `/dash/missing/` returned 404. |
 | 2026-07-06 | No-slash preview-route fix + preview lifecycle decision | pass | Preview shell assets are route-root-absolute so `/dash/cardtruth` resolves CSS/JS correctly. `cardtruth` remains a temporary dev route only; after sync/promotion, the remaining visual treatment moves under the root Theme dropdown and the separate preview route should be removed. |
 | 2026-07-06 | Rebuilt/restarted live app, PID 38804 | pass | `node webtests\selftest.node.js` passed 120/120. `dotnet test` passed 42/42. `net472` and `net10.0-windows` Release x64 builds passed 0/0. Live `GET /dash/cardtruth` and `/dash/cardtruth/` returned 200; shell HTML points at `/dash/cardtruth/console.css` and `/dash/cardtruth/console.js`, both 200. |
+| 2026-07-07 | Phase E retirement live smoke, PID `74624` | pass | `node --check` pass; `node webtests\selftest.node.js` pass 229/229; `dotnet test` pass 44/44 with the pre-existing xUnit2020 warning; Release `net10.0-windows` x64 build pass 0/0. Live `GET /`, `/console.css`, `/console.js`, `/data.json`, and `/metrics` returned 200; root contains `#viewTheme` and no `/dash/cardtruth/` link; `/dash/cardtruth/` and `/dash/cardtruth` returned 404. |

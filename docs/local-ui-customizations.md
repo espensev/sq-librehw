@@ -281,28 +281,20 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   which `eval`s `console.js` under a minimal `window.SQ_NO_BOOT` shim — this is the entry point used
   for command-line/agent verification.
 
-## Web dashboard: versioned preview routes (temporary dev surface, 2026-07-06)
+## Web dashboard: versioned preview routes (temporary dev surface, retired 2026-07-07)
 
-- **Preview route server support** (`HttpServer.cs`, spec:
+- **Historical preview route server support** (`HttpServer.cs`, spec:
   [`feature-web-dashboard-versioned-routes.md`](feature-web-dashboard-versioned-routes.md)). The
-  stable dashboard remains at `GET /`; preview dashboards are served under explicit roots such as
-  `GET /dash/cardtruth/`. Missing preview roots return `404` instead of falling back to `/`.
-- **Separate preview assets** live under
-  `LibreHardwareMonitor.Windows.Forms/Resources/WebDash/cardtruth/`, with the stable dashboard still
-  using `Resources/Web/`. The root dashboard now exposes a compact Pages menu linking the preview,
-  `/data.json`, and `/metrics`.
-- **No telemetry contract change.** Preview pages must fetch root-absolute APIs such as
-  `/data.json`; `/dash/<version>/data.json` is a static-asset path, not a new API. Stable dashboard
-  state remains `sq.dashboard.v1`; the current preview uses `sq.dashboard.preview.cardtruth` so test
-  layouts cannot corrupt the stable dashboard.
-- **Route regression tests** are in `LibreHardwareMonitor.Tests/HttpServerRouteTests.cs`, covering
-  root, preview HTML/CSS/JS, root API paths, and missing preview routes. This route work was present
-  in the dirty working tree during the 2026-07-06 audit and was then committed on
-  `feat/web-dashboard-v3-card-first`.
-- **Temporary route lifecycle.** `cardtruth` is not intended to remain as a permanent extra page once
-  the selected card-first behavior is synced into `/`. At promotion time, retire the separate route
-  and Pages-menu entry; any surviving visual treatment should become a root dashboard Theme
-  dropdown/view option under stable `sq.dashboard.v1` state.
+  stable dashboard remains at `GET /`. The temporary `GET /dash/cardtruth/` route existed only while
+  card-first behavior was compared and promoted.
+- **Phase E retirement.** `cardtruth` is no longer an active preview page: the server dispatch branch,
+  route helper, Pages-menu entry, old route tests, and `Resources/WebDash/cardtruth/*` assets are
+  removed. Current live builds return 404 for `/dash/cardtruth/` and `/dash/cardtruth`.
+- **No telemetry contract change.** Root APIs such as `/data.json` and `/metrics` are unchanged.
+  Stable dashboard state remains `sq.dashboard.v1`; the surviving look choice is stored as
+  `viewTheme: standard | cardTruth`.
+- **Retirement regression tests** are in `LibreHardwareMonitor.Tests/WebDashboardRetirementTests.cs`,
+  covering the root selector/menu and absence of embedded `WebDash.cardtruth` resources.
 
 ## Modernization (traceable to `discovery-librehw-sync-upgrade.md`)
 

@@ -1,8 +1,8 @@
 # Web Dashboard v3 Continuation Plan and Handoff
 
-**Date:** 2026-07-07 (updated after **D3 responsive/theme QA closeout**)
-**Status:** B1, B2, B3, **C1 (network adapter subgroups)**, **D1 (card header grid + reserved action gutter)**, **D2 (expansion anchored overlay)**, **D2a (direct flight-deck edit controls — ★/☆ star toggle on cards/rows + popover primary button)**, and **D3 (responsive/theme QA + user-perspective polish)** are complete on `master`. **Next: E1/E2 — root `viewTheme` selector, sync accepted deltas to stable `/`, then retire `/dash/cardtruth/`**. D2's Draft spec is **Verified/Accepted** (both §9 decisions resolved: #1 anchored overlay, #2 single `c:` key). **The [v3-next-plan §4](2026-07-06-web-dashboard-v3-next-plan.md) A–F queue + the [SDD ledger](../../../.superpowers/sdd/progress.md) are the authoritative current sources** wherever they disagree with the Slice numbering in §5 or the pre-D2 narrative in §0/§10 below.
-**Baseline:** `origin/master` = **`e101748`** (`5a95bd7` server-boundary hardening + `e101748` D3 responsive polish, both pushed). Local `master` is one ahead at **`409f0a6`** (`fix(web): wrap panel-header name at narrow` — D3's last review residual; **not yet pushed**). D3 closeout re-verified in [`docs/reviews/review-2026-07-07-dashboard-d3-user-perspective.md`](../../reviews/review-2026-07-07-dashboard-d3-user-perspective.md) (verdict FAIL→PASS). Product D2a merge baseline = **`0279333`** (`Merge D2a direct deck-controls`, `--no-ff` phase merge, pushed); was `6a2c2d7` after D2, `47690a9` after D1, `7130748` after C1, `e7ae6f0` after B3, `106f91d` after B2, `4310a8b` at first write. Branches `D2-flyingcircus` and `feat/web-deck-controls-d2a` are merged and deleted; stale branch `worktree-dashboard-templates` is intentionally unmerged for the later context-dashboard lane.
+**Date:** 2026-07-07 (updated after **E1/E2 viewTheme + preview retirement closeout**)
+**Status:** B1, B2, B3, **C1 (network adapter subgroups)**, **D1 (card header grid + reserved action gutter)**, **D2 (expansion anchored overlay)**, **D2a (direct flight-deck controls)**, **D3 (responsive/theme QA)**, and **E1/E2 (root `viewTheme` + `/dash/cardtruth/` retirement)** are complete on `master`. **Next: F1-F3 — context dashboards (Main/Gaming/Storage)**, separate from the E-phase look selector. **The [v3-next-plan §4](2026-07-06-web-dashboard-v3-next-plan.md) A–F queue + the [SDD ledger](../../../.superpowers/sdd/progress.md) are the authoritative current sources** wherever they disagree with the older Slice numbering or historical notes below.
+**Baseline:** Current E closeout live build runs as PID `74624` from Release `net10.0-windows`. `GET /`, `/console.css`, `/console.js`, `/data.json`, and `/metrics` return 200; root has `#viewTheme` and no `/dash/cardtruth/` link; `/dash/cardtruth/` and `/dash/cardtruth` return 404. Earlier D2/D2a/D3 baseline hashes below are historical evidence only.
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Active plan:** [2026-07-06-web-dashboard-v3-next-plan.md](2026-07-06-web-dashboard-v3-next-plan.md)
 **Versioned-route spec:** [../../feature-web-dashboard-versioned-routes.md](../../feature-web-dashboard-versioned-routes.md)
@@ -12,7 +12,7 @@
 
 *Read this section alone to resume. §1–§12 below are reference detail.*
 
-> **⚠️ SUPERSEDED as of the D3 closeout (2026-07-07).** The bullets in this §0 below were written mid-D2-brainstorm (pre-D2/D2a/D3) and are stale. **Current state:** B1/B2/B3/C1/D1/**D2**/**D2a**/**D3** are complete on `master`; the next work item is **E1/E2 — root `viewTheme`, stable-route sync, and `/dash/cardtruth/` retirement**. For the live source of truth read (1) the top-matter Status/Baseline above, (2) the [v3-next-plan §4 queue](2026-07-06-web-dashboard-v3-next-plan.md), (3) the [SDD ledger](../../../.superpowers/sdd/progress.md), and (4) card-truth §11. The rest of this §0 and §10 are kept as historical reference only.
+> **⚠️ SUPERSEDED as of the E1/E2 closeout (2026-07-07).** The bullets in this §0 below were written across earlier B/C/D phases and are stale wherever they mention an active `/dash/cardtruth/` preview. **Current state:** B1/B2/B3/C1/D1/**D2**/**D2a**/**D3**/**E1/E2** are complete on `master`; the next work item is **F1-F3 — context dashboards (Main/Gaming/Storage)**. For the live source of truth read (1) the top-matter Status/Baseline above, (2) the [v3-next-plan §4 queue](2026-07-06-web-dashboard-v3-next-plan.md), (3) the [SDD ledger](../../../.superpowers/sdd/progress.md), and (4) card-truth §11. The rest of this §0 and §10 are kept as historical reference only.
 
 **State (2026-07-07):**
 
@@ -90,8 +90,8 @@ git checkout -b feat/web-network-subgroups-c1
 
 ```powershell
 node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js
-node webtests\selftest.node.js                 # keep green (currently 192)
-dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -c Release -p:Platform=x64   # 42 golden
+node webtests\selftest.node.js                 # keep green (currently 229)
+dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -c Release -p:Platform=x64   # full suite currently 44
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 ```
 
@@ -121,12 +121,12 @@ code was changed while writing this handoff.
 The next product work should start from a fresh branch off `master`. Do not resume the old
 `feat/web-dashboard-v3-card-first` branch; it was merged and deleted after PR #25.
 
-Recommended branch:
+Recommended branch for the next F-lane work:
 
 ```powershell
 git checkout master
 git pull --ff-only origin master
-git checkout -b feat/web-dashboard-v3-popover-promotion
+git checkout -b feat/web-context-dashboards-f1
 ```
 
 ## 2. Current State Evaluation
@@ -197,9 +197,9 @@ The main remaining gaps are now narrower and more concrete:
 | Responsive/theme fit | D3 final matrix ran 14 viewport/theme cases after D1/D2/D2a: no horizontal scroll, Sensors/Pages/overlay fit true, console clean | Keep the D3 matrix as the regression gate for Phase E route/selector changes |
 | Sensors popover narrow-width behavior | D3 fixed mobile anchoring/actions; 320x568 and 390x844 dark/light fit, labels/actions readable, hidden/offscreen rows present | Preserve the post-base mobile popover overrides when syncing/retiring preview assets |
 | Row and panel controls touch/narrow proof | D3 moved row controls in-flow on touch/narrow, zeroed `rowOverlapCount`/`rowValueOverflowCount`, and statefully proved `#panelsReset` + hidden-NIC restore at 320/390/640 | Keep row controls in-flow on touch/narrow and rerun D3 stateful probe after E changes |
-| Preview route remains visible | Pages menu still links `/dash/cardtruth/` | After accepted behavior is synced, remove the preview route/menu entry unless a new active comparison exists |
-| Card-truth visual treatment is still a dev route concept | `cardtruth` exists as a separate subsite namespace | If any visual treatment survives, expose it as a root dashboard Theme/view option, not as another page |
-| Visual polish regression risk | D3 closed the systematic viewport/theme QA, but Phase E will touch route/assets/navigation | Rerun the D3 browser matrix after E1/E2; do not regress the accepted D3 baselines |
+| Preview route remains visible | Closed by E2: Pages no longer links `/dash/cardtruth/`; both preview URLs return 404 | Preserve this retired state unless a new accepted preview spec reintroduces a route |
+| Card-truth visual treatment is still a dev route concept | Closed by E1: root `viewTheme` stores the surviving look choice under `sq.dashboard.v1` | Keep `viewTheme` separate from the future context-dashboard switcher |
+| Visual polish regression risk | E1 added a root masthead selector and mobile full-row CSS rule; D3 remains the viewport/theme baseline | Rerun browser geometry checks when F adds route/context controls |
 
 ## 3. Decision: What to Do With "Truth Cards"
 

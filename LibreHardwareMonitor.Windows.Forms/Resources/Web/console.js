@@ -6,6 +6,7 @@
   const SENSOR_HISTORY = new Map();
   const SMOOTH_FRACTIONS = new Map();
   const MAX_HISTORY_POINTS = 90;
+  const VIEW_THEMES = ['standard', 'cardTruth'];
   const TEMPBANDS = { cpu: [85, 95], gpu: [83, 92], igpu: [83, 92], nvme: [70, 80], dimm: [55, 85], mb: null, mem: null };
   // Derived GPU power-limit knobs. Conservative on purpose: peaks/spikes must
   // not produce a guessed ceiling, so a card only earns an approximate limit
@@ -65,6 +66,9 @@
     n = Math.round(Number(n));
     if (!Number.isFinite(n)) return 2;
     return Math.max(1, Math.min(10, n));
+  }
+  function cleanViewTheme(value) {
+    return VIEW_THEMES.includes(value) ? value : 'standard';
   }
   function cleanCollapsedMap(value) {
     const out = {};
@@ -138,6 +142,7 @@
       paused: false,
       rate: 2,
       theme: 'dark',
+      viewTheme: 'standard',
       collapsedPanels: {},
       cardStyle: {},
       rangeOverrides: {},
@@ -165,6 +170,7 @@
       paused: value.paused === true,
       rate: clampRate(value.rate),
       theme: value.theme === 'light' ? 'light' : 'dark',
+      viewTheme: cleanViewTheme(value.viewTheme),
       collapsedPanels: cleanCollapsedMap(value.collapsedPanels),
       cardStyle: cleanCardStyleMap(value.cardStyle),
       rangeOverrides: cleanRangeOverrides(value.rangeOverrides),
@@ -179,6 +185,7 @@
       hiddenNetAdapters: cleanStringList(value.hiddenNetAdapters)
     };
   };
+  SQ.normalizeViewTheme = cleanViewTheme;
   SQ.loadDashboardState = function (storage) {
     if (!storage || typeof storage.getItem !== 'function') return SQ.defaultDashboardState();
     try {
@@ -1351,11 +1358,22 @@
     }
     function schedule() { clearInterval(state.timer); state.timer = setInterval(tick, state.rate * 1000); }
 
+    function paintViewTheme() {
+      const view = $('#viewTheme');
+      document.documentElement.setAttribute('data-view-theme', state.dashboard.viewTheme);
+      if (view) view.value = state.dashboard.viewTheme;
+    }
     document.documentElement.setAttribute('data-theme', state.dashboard.theme);
+    paintViewTheme();
     $('#theme').onclick = () => {
       const t = state.dashboard.theme === 'dark' ? 'light' : 'dark';
       state.dashboard.theme = t;
       document.documentElement.setAttribute('data-theme', t);
+      saveDashboard();
+    };
+    $('#viewTheme').onchange = e => {
+      state.dashboard.viewTheme = SQ.normalizeViewTheme(e.target.value);
+      paintViewTheme();
       saveDashboard();
     };
     const rate = $('#rate'); rate.value = state.rate; $('#ratev').textContent = state.rate + 's';

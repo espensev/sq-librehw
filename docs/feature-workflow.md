@@ -88,6 +88,7 @@ Existing docs:
 - `ai-guide.md` is the start-here orientation doc: hard invariants, the phase-shipping loop, the lessons ledger, and the maintained overall-plan snapshot (read order: ai-guide → AGENTS.md → handoff §0 → v3-next-plan §4).
 - `feature-web-dashboard-expansion-layout.md` is the verified spec for Phase D2 — the anchored-overlay card expansion that fills horizontal space with zero displacement (closes the "tall narrow strip" audit finding and the 2026-07-07 operator displacement complaint).
 - `feature-web-dashboard-versioned-routes.md` is the verified spec for serving dashboard preview versions under `/dash/<version>/` while keeping `/` stable.
+- `feature-web-dashboard-view-theme-retirement.md` is the implemented Phase E spec for the root `viewTheme` selector and retiring the stale `/dash/cardtruth/` preview route after accepted behavior moved into `/`.
 - `feature-webserver-api-hardening.md` is the verified spec for the 2026-07-07 server API hardening pass: stable GET `/Sensor` JSON failures and range-checked POST control writes while preserving legacy reset/write-policy compatibility.
 - `discovery-webserver-dashboard-interaction.md` and `reviews/review-2026-07-07-webserver-dashboard-interaction.md` map the current `HttpServer`/dashboard/LibreHardwareMonitor boundary, including the distinction between the read-only dashboard and legacy mutating server APIs.
 - `review-sensor-list-bulk-selection-follow-up.md` records the corrected post-implementation review and ranked remediation plan for the bulk-selection feature.

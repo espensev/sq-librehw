@@ -1,4 +1,4 @@
-<!doctype html><html lang="en" data-theme="dark"><head>
+<!doctype html><html lang="en" data-theme="dark" data-view-theme="standard"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SQ Telemetry Console</title>
 <link rel="shortcut icon" href="favicon.ico">
@@ -17,11 +17,14 @@
     <button class="btn" id="pause">❚❚ Pause</button>
     <button class="btn" id="graphs" aria-pressed="false">Graphs</button>
     <button class="btn" id="theme">◐ Theme</button>
+    <label class="view-theme"><span>View</span><select id="viewTheme" aria-label="Dashboard view theme">
+      <option value="standard">Standard</option>
+      <option value="cardTruth">Card Truth</option>
+    </select></label>
     <details class="page-menu">
       <summary class="btn">Pages</summary>
       <nav class="page-menu-panel" aria-label="Dashboard pages">
         <a href="/">Stable Dashboard</a>
-        <a href="/dash/cardtruth/">Card Truth Preview</a>
         <a href="/data.json">data.json</a>
         <a href="/metrics">metrics</a>
       </nav>

@@ -2,7 +2,7 @@
 
 **Plan ID:** web-dashboard-v3-next-2026-07-06
 **Date:** 2026-07-06
-**Status:** in progress on `master`. Merged: Slice 3 (`4310a8b`), A1/A2 fan + suffix clipping, **B1** masthead Sensors popover (`8291c89`), **B2** explicit primary-card selection (`106f91d`), **B3** Customize drawer removal (`e7ae6f0`), **C1** network adapter subgroups (`7130748`), **D1** card-header reserved gutter (`47690a9`), **D2** expansion anchored overlay (`6a2c2d7`), **D2a** direct deck controls (`0279333`), and **D3** responsive/theme QA closeout (see [2026-07-07-web-responsive-theme-qa-d3.md](2026-07-07-web-responsive-theme-qa-d3.md)). Local `master` also contains server hardening commit `5a95bd7` ahead of `origin/master`. **Next: E1/E2** — root `viewTheme` selector, sync accepted deltas to `/`, then retire `/dash/cardtruth/`.
+**Status:** in progress on `master`. Merged: Slice 3 (`4310a8b`), A1/A2 fan + suffix clipping, **B1** masthead Sensors popover (`8291c89`), **B2** explicit primary-card selection (`106f91d`), **B3** Customize drawer removal (`e7ae6f0`), **C1** network adapter subgroups (`7130748`), **D1** card-header reserved gutter (`47690a9`), **D2** expansion anchored overlay (`6a2c2d7`), **D2a** direct deck controls (`0279333`), **D3** responsive/theme QA closeout (see [2026-07-07-web-responsive-theme-qa-d3.md](2026-07-07-web-responsive-theme-qa-d3.md)), and **E1/E2** root `viewTheme` + `/dash/cardtruth/` retirement (see [../../feature-web-dashboard-view-theme-retirement.md](../../feature-web-dashboard-view-theme-retirement.md)). **Next: F1-F3** — context dashboards (Main/Gaming/Storage), separate from the E-phase `viewTheme` look selector.
 **Authoritative sequence:** the §4 A–F queue below. Where it disagrees with the older Slice numbering in the [continuation handoff](2026-07-06-web-dashboard-v3-continuation-handoff.md) §5/§10, this §4 queue wins (B2 before B3 was chosen deliberately).
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Predecessor plan:** [2026-07-04-web-dashboard-visible-correctness-plan.md](2026-07-04-web-dashboard-visible-correctness-plan.md)
@@ -15,7 +15,7 @@
 
 The dashboard now has two important guardrails in place:
 
-- `/` exposes a Pages menu that links `/dash/cardtruth/`, `/data.json`, and `/metrics`.
+- `/` exposes a Pages menu that links `/data.json` and `/metrics`, plus a root `viewTheme` selector.
 - Peak-derived ranges are not gauge-eligible. `SQ.gaugeRangeFor(...)` only allows semantic bands, explicit overrides, real/derived limits, or paired fan Control percentages to draw arcs.
 
 Those fixes close the immediate screenshot failure, but they are only a partial v3 foundation. The v3 product goal remains: a machine-agnostic, card-first dashboard where trustworthy telemetry is visually clear, customization is local to the card/row/header being used, and normal workflows no longer depend on the old Customize side drawer.
@@ -29,8 +29,8 @@ This plan was drafted from the live `http://localhost:8085/` state on 2026-07-06
 - Raw LibreHardwareMonitor labels and `SensorId` values remain visible wherever aliases are used.
 - `data.json` remains unchanged in this v3 client campaign. Server-side limit sensors are a separate gated feature.
 - The dashboard remains read-only. No `/Sensor?action=Set` or hardware write UI is introduced.
-- Stable `/` remains usable. Risky UI work can be staged in `/dash/cardtruth/` until promotion is explicit.
-- `/dash/cardtruth/` is a temporary dev route only. Once selected changes are synced into `/`, retire the route and expose any surviving visual treatment as a root Theme dropdown/view option.
+- Stable `/` remains usable and is now the single product dashboard surface.
+- `/dash/cardtruth/` was a temporary dev route only. Phase E retired it after accepted changes were synced into `/`; any surviving visual treatment now belongs to root `viewTheme`.
 - Retiring `/dash/cardtruth/` retires a **dev/preview route**, not the deferred **context-dashboard** feature. Main/Gaming/Storage selectable dashboards remain an intended, separate future lane (own `sq.dashboard.{route}` namespaces, hash routing); the "one dashboard" closeout must not foreclose it, and the root view selector must be built route-namespace-ready. See the [context-dashboard spec](../specs/2026-07-04-dashboard-templates.md) and [continuation handoff §3.1](2026-07-06-web-dashboard-v3-continuation-handoff.md).
 
 ## 3. Target User Experience
@@ -77,17 +77,17 @@ subsections map on as noted in the "Maps to" column.
 | **D2** ✅ | Expansion **anchored-overlay** layout (multi-column detail, zero displacement) | audit finding + operator feedback | Done (`e33bd6e` overlay render + `ab1c930` semantics; plan rev 2 `2026-07-07-web-expansion-multicolumn-d2.md`; spec **Verified**). Expanded detail renders as a full-grid-width panel anchored below the card — live RED `moved:9, cols:1` → GREEN **`moved:0`** across 320/390-touch/640/1440/1920 × dark/light, cols up to 8; single-open, one-shot entrance (no poll strobe), Esc/click-away/toggle close, resize re-anchor, twins one overlay per grid, rows untouched, D1 gutter gate stays `[]`. selftest 227/227, golden 42/42, rebuild 0/0 (`0.9.6+ab1c930`), console clean. |
 | **D2a** ✅ | Direct flight-deck edit controls (operator 2026-07-07: "freely add or remove … directly from the card, not a sub menu") | operator feedback | Done (`f310f24` cluster star + `f9105c2` popover toggle + `b491c2b` live-gate fixes + `3571311` review fix; plan `2026-07-07-web-deck-controls-d2a.md`). A ★/☆ star toggle in the shared `ctlCluster` puts primary add/remove on every PFD card, pinned card, and panel row (routes through existing `primary-add`/`primary-remove` handleAct); the Sensors popover gains a "Make/Remove primary" button on visible rows with a rebuild-sig term (label flips in place, menu stays open). One per-render `state.primaryIds` Set feeds cluster + refactored `xpEl`; `.ctl.star.on` reuses pin's `--lime`; no new persisted state; `.xp-actions` button stays. **Live gate found + resolved two issues (operator's best-long-term calls):** (1) the 4th touch button truncated 3 chip names @~768 → `@media(hover:none){.ctl.hide{display:none}}` drops ⊘ Hide on coarse-pointer/touch at all widths (kept on desktop + popover; C1 net-hide `class="ctl"` untouched) → truncation back to pre-D2a baseline; (2) popover primary button showed on offscreen rows (no card renders) → gate tightened `!hidden`→`visibility==='visible'` (9 offscreen→0, 191 visible kept). selftest 227/227, golden 42/42, rebuild 0/0 (`0.9.6+b491c2b`), console clean, dark+light live-verified on a 37-NIC host. Full evidence: card-truth §11. |
 | **D3** ✅ | Full responsive/theme QA matrix plus user-perspective polish gate | Slice 6 | Done. Scoped CSS fixes: mobile Sensors effective post-base anchor/height cap, mobile Sensors one-column actions, touch/narrow row controls in-flow, wrapping section/panel headers, touch `.ctl` min 24 px. Final Edge matrix: 14 cases (320x568 touch, 390x844 touch, 640x900 hover+touch, 768x1024 touch, 1440x900 hover, 1920x1080 hover, all dark+light), `maxRowOverlap=0`, `maxRowValueOverflow=0`, no horizontal scroll, Sensors/Pages/overlay fit true, console clean. Stateful probe with seeded `panelOrder` + one hidden active NIC: `#panelsReset` and hidden-adapter restore row stay in viewport at 320/390/640, `panelHeaderBadCount=0`. Accepted baselines: narrow row/source ellipsis and the known ~768 touch `GPU Mem J...` truncation; primary value+unit hard-clip count is 0 and raw labels/`SensorId` remain available in expansion/search. |
-| **E1** | Root `viewTheme: standard \| cardTruth` selector, route-namespace-ready | Slice 7 | Look selector persists; state plumbing ready for `sq.dashboard.{route}`. |
-| **E2** | Sync accepted deltas to `/`; retire `cardtruth` route + Pages entry | Slice 7 | One product surface, no dev/preview routes. |
+| **E1** ✅ | Root `viewTheme: standard \| cardTruth` selector, route-namespace-ready | Slice 7 | Done. Root `View` selector persists in `sq.dashboard.v1`, normalizes bad values to `standard`, sets `data-view-theme`, and stays orthogonal to future `sq.dashboard.{route}` context-dashboard state. |
+| **E2** ✅ | Sync accepted deltas to `/`; retire `cardtruth` route + Pages entry | Slice 7 | Done. Stable `/` is the product surface; preview route helper/assets/tests/Pages entry removed; live `/dash/cardtruth/` and `/dash/cardtruth` return 404. |
 | **F1–F3** | Context dashboards (Main/Gaming/Storage): hash router + per-route state, switcher control, template defaults | new lane (§3.1) | Selectable context dashboards coexisting with `viewTheme`, each honest per card-truth. Separate campaign, gated behind Phase E; build on current baseline, not the stale branch. |
 | **X1** | Planning-doc consolidation (one authoritative plan+spec; archive superseded 2026-07-04 set) | new | Sprawl reduced; verification log remains the evidence trail. |
 
-**Critical path:** A → B → **C (done)** → **D (done)** → E, then F as its own campaign. A and X1 can start immediately and
-in parallel with anything; C was independent of B. **D1 done** (card header reserved gutter, merged). **D2 done** (anchored-overlay expansion, live-gated zero-displacement). **D2a done** (direct flight-deck star-toggle controls, merged). **D3 done** (responsive/theme QA matrix and polish closeout). **Next: E1/E2** — root `viewTheme` selector, sync accepted deltas to stable `/`, then retire `/dash/cardtruth/`.
+**Critical path:** A → B → **C (done)** → **D (done)** → **E (done)**, then F as its own campaign. A and X1 can start immediately and
+in parallel with anything; C was independent of B. **D1 done** (card header reserved gutter, merged). **D2 done** (anchored-overlay expansion, live-gated zero-displacement). **D2a done** (direct flight-deck star-toggle controls, merged). **D3 done** (responsive/theme QA matrix and polish closeout). **E1/E2 done** (root `viewTheme`; `/dash/cardtruth/` retired). **Next: F1-F3** context dashboards.
 The C1 always-visible adapter-head ▲▼/⊘ controls and `#panelsReset` were re-checked in the D3 stateful narrow-width matrix.
 
-Do not treat the existing `/dash/cardtruth/` preview as a product destination. It is a temporary place
-to test unsynced UI work; once a delta is accepted, promote it into stable assets or discard it.
+Do not treat the retired `/dash/cardtruth/` preview as a product destination. It was a temporary place
+to test unsynced UI work; Phase E promoted or discarded accepted deltas, then removed the route.
 Retiring that route (Phase E2) does **not** retire the context-dashboard lane (Phase F) — see §2 and the
 continuation handoff §3.1.
 
@@ -509,26 +509,27 @@ Stop and review before continuing if any of these happen:
 
 ## 11. First Next Step
 
-**E1/E2 is the next concrete patch.** B1, B2, B3, C1, D1, D2, D2a, and D3 are complete on `master`. D3's closeout is recorded in `docs\superpowers\plans\2026-07-07-web-responsive-theme-qa-d3.md` and card-truth §11.
+**F1-F3 is the next concrete patch.** B1, B2, B3, C1, D1, D2, D2a, D3, and E1/E2 are complete on `master`. D3's closeout is recorded in `docs\superpowers\plans\2026-07-07-web-responsive-theme-qa-d3.md`; E's closeout is recorded in `docs\feature-web-dashboard-view-theme-retirement.md` and card-truth §11.
 
-Use the Phase E target in §4:
+Use the Phase F target in §4:
 
 ```powershell
-# E1
-Root viewTheme selector: standard | cardTruth, route-namespace-ready
+# F1
+Context-dashboard hash router and per-route state namespaces
 
-# E2
-Sync accepted deltas to /, retire /dash/cardtruth/ and the Pages entry
+# F2
+Context switcher control that coexists with root viewTheme
+
+# F3
+Template defaults for Main/Gaming/Storage dashboards
 ```
 
-Do not make `/dash/cardtruth/` a permanent product tab. It remains a temporary comparison route until accepted behavior is synced into the root dashboard or discarded.
+Do not resurrect `/dash/cardtruth/` as a product tab. It was a temporary comparison route and is now retired after accepted behavior was synced into the root dashboard or discarded.
 
-Acceptance for the E patch:
+E closeout evidence:
 
 - The root dashboard remains the single product surface after accepted deltas are synced.
 - Any surviving card-truth visual treatment is exposed through a root `viewTheme` selector, not a second page.
 - State plumbing is route-namespace-ready and does not block future `sq.dashboard.{route}` context dashboards.
-- `/dash/cardtruth/` assets, route handling, and Pages entry are retired only after the stable route has equivalent accepted behavior.
-- D3's responsive/theme matrix remains green after the route/selector changes.
-- `node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js`, preview `node --check` while `/dash/cardtruth/` exists, `node webtests\selftest.node.js`, golden `dotnet test`, and `net10.0-windows` x64 build pass.
-- `docs/feature-web-dashboard-card-truth.md` §11 records the E verification row before this plan advances to F.
+- `/dash/cardtruth/` assets, route handling, and Pages entry are retired.
+- `node --check`, `node webtests\selftest.node.js`, golden `dotnet test`, `net10.0-windows` x64 build, and live smoke passed; `/dash/cardtruth/` and `/dash/cardtruth` return 404.

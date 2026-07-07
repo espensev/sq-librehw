@@ -147,6 +147,8 @@
     eq('normalize rate default', S.normalizeDashboardState({}).rate, 2);
     eq('normalize theme light', S.normalizeDashboardState({theme:'light'}).theme, 'light');
     eq('normalize theme junk -> dark', S.normalizeDashboardState({theme:'x'}).theme, 'dark');
+    eq('normalize viewTheme cardTruth', S.normalizeDashboardState({viewTheme:'cardTruth'}).viewTheme, 'cardTruth');
+    eq('normalize viewTheme junk -> standard', S.normalizeDashboardState({viewTheme:'x'}).viewTheme, 'standard');
     eq('normalize paused bool', S.normalizeDashboardState({paused:true}).paused, true);
     eq('normalize collapsed map coerces', S.normalizeDashboardState({collapsedPanels:{CPU:1,GPU:false,'':true}}).collapsedPanels, {CPU:true, GPU:false});
     eq('normalize collapsed rejects array', S.normalizeDashboardState({collapsedPanels:['CPU']}).collapsedPanels, {});
@@ -417,6 +419,7 @@
       paused:true,
       rate:5,
       theme:'light',
+      viewTheme:'cardTruth',
       observedMax:{'/fan':1200},
       powerLimitSamples:{'/gpu/0':[100,110,120,130,140,150,160,170,180]}
     });
@@ -438,6 +441,7 @@
       paused:false,
       rate:1,
       theme:'dark',
+      viewTheme:'standard',
       observedMax:{'/fan':1500, '/pump':900},
       powerLimitSamples:{'/gpu/0':[900], '/gpu/1':[500,525,550,575,600,625,650,675,700,725]}
     });
@@ -448,13 +452,13 @@
       mergedTelemetry.rangeOverrides, mergedTelemetry.sensorAliases, mergedTelemetry.primaryCards,
       mergedTelemetry.cardOrder, mergedTelemetry.rowOrder, mergedTelemetry.netAdapterOrder,
       mergedTelemetry.hiddenNetAdapters, mergedTelemetry.graphsEnabled, mergedTelemetry.paused,
-      mergedTelemetry.rate, mergedTelemetry.theme
+      mergedTelemetry.rate, mergedTelemetry.theme, mergedTelemetry.viewTheme
     ], [
       ['/new-hidden'], [{id:'/new-pin', title:'Keep Me'}], ['/new-pin'],
       ['/panel-new'], {'/panel-new':true}, {'/new-pin':'graph'},
       {'/gpu/power':{max:575}}, {'/fan':'Pump'}, ['/cpu/temp','/gpu/power'],
       ['/gpu/power','/cpu/temp'], {'/panel-new|Fan':['/fan2','/fan1']}, ['/nic/a'],
-      ['/nic/b'], true, true, 5, 'light'
+      ['/nic/b'], true, true, 5, 'light', 'cardTruth'
     ]);
     eq('telemetry merge combines telemetry accumulators',
       [mergedTelemetry.observedMax, mergedTelemetry.powerLimitSamples],

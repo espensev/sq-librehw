@@ -10,14 +10,13 @@ const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture.data.json'
 const storage = value => { let slot = value; return { getItem: () => slot, setItem: (k, v) => { slot = v; } }; };
 const { pass, fail, log } = runConsoleTests(global.window.SQ, data, storage);
 const indexHtml = fs.readFileSync(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/Web/index.html'), 'utf8');
-const previewHtml = fs.readFileSync(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/WebDash/cardtruth/index.html'), 'utf8');
 const menuChecks = [
-  ['root menu links card-truth preview', indexHtml.includes('href="/dash/cardtruth/"')],
+  ['root menu retired card-truth preview link', !indexHtml.includes('href="/dash/cardtruth/"')],
   ['root menu links data.json', indexHtml.includes('href="/data.json"')],
   ['root menu links metrics', indexHtml.includes('href="/metrics"')],
-  ['preview css is root-absolute for no-slash route', previewHtml.includes('href="/dash/cardtruth/console.css"')],
-  ['preview js is root-absolute for no-slash route', previewHtml.includes('src="/dash/cardtruth/console.js"')],
-  ['preview index has no route-relative shell assets', !previewHtml.includes('href="console.css"') && !previewHtml.includes('src="console.js"')],
+  ['root has viewTheme selector', indexHtml.includes('id="viewTheme"')],
+  ['root offers standard viewTheme', indexHtml.includes('value="standard"')],
+  ['root offers cardTruth viewTheme', indexHtml.includes('value="cardTruth"')],
   ['root index has network section', indexHtml.includes('id="netsec"') && indexHtml.includes('id="netPanels"') && indexHtml.includes('id="nettag"')],
   ['root index has adapter restore block', indexHtml.includes('id="netRestore"') && indexHtml.includes('id="netRestoreList"')],
 ];

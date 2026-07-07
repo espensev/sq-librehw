@@ -486,12 +486,6 @@ public class HttpServer
                         string path = request.Url.AbsolutePath;
                         string requestedFile = path.TrimStart('/');
 
-                        if (TryMapDashboardPreviewResource(path, out string previewResource, out string previewExt))
-                        {
-                            await ServeResourceFileAsync(context.Response, previewResource, previewExt);
-                            return;
-                        }
-
                         if (string.Equals(path, "/data.json", StringComparison.OrdinalIgnoreCase))
                         {
                             await SendJsonAsync(context.Response, request);
@@ -527,13 +521,8 @@ public class HttpServer
                             return;
                         }
 
-                        // default file to be served
-                        if (string.IsNullOrEmpty(requestedFile))
-                            requestedFile = "index.html";
-
-                        string[] splits = requestedFile.Split('.');
-                        string ext = splits[splits.Length - 1];
-                        await ServeResourceFileAsync(context.Response, "Web." + requestedFile.Replace('/', '.'), ext);
+                        if (TryMapStableWebResource(path, out string resourcePath, out string ext))
+                            await ServeResourceFileAsync(context.Response, resourcePath, ext);
                         break;
                     }
                 default:
@@ -558,81 +547,21 @@ public class HttpServer
         }
     }
 
-    internal static bool TryMapDashboardPreviewResource(string absolutePath, out string resourcePath, out string ext)
+    internal static bool TryMapStableWebResource(string absolutePath, out string resourcePath, out string ext)
     {
         resourcePath = null;
         ext = null;
 
-        if (string.IsNullOrEmpty(absolutePath))
+        if (absolutePath == null)
             return false;
 
-        string path = absolutePath.Trim('/');
-        if (!path.StartsWith("dash/", StringComparison.OrdinalIgnoreCase))
-            return false;
+        string requestedFile = absolutePath.TrimStart('/');
+        if (string.IsNullOrEmpty(requestedFile))
+            requestedFile = "index.html";
 
-        string[] parts = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2)
-            return false;
-
-        string slug = parts[1];
-        if (!string.Equals(slug, "cardtruth", StringComparison.OrdinalIgnoreCase))
-        {
-            resourcePath = "WebDash.__missing__.index.html";
-            ext = "html";
-            return true;
-        }
-
-        slug = "cardtruth";
-
-        for (int i = 0; i < slug.Length; i++)
-        {
-            char c = slug[i];
-            if (!char.IsLetterOrDigit(c) && c != '_')
-            {
-                resourcePath = "WebDash.__missing__.index.html";
-                ext = "html";
-                return true;
-            }
-        }
-
-        string assetPath;
-        if (parts.Length == 2)
-        {
-            assetPath = "index.html";
-        }
-        else
-        {
-            assetPath = string.Join("/", parts.Skip(2));
-            if (string.IsNullOrWhiteSpace(assetPath) || assetPath.EndsWith("/", StringComparison.Ordinal))
-                assetPath = "index.html";
-        }
-
-        string[] pathParts = assetPath.Split('/');
-        for (int i = 0; i < pathParts.Length; i++)
-        {
-            string part = pathParts[i];
-            if (string.IsNullOrEmpty(part) || part == "." || part == "..")
-            {
-                resourcePath = "WebDash.__missing__.index.html";
-                ext = "html";
-                return true;
-            }
-
-            for (int j = 0; j < part.Length; j++)
-            {
-                char c = part[j];
-                if (!char.IsLetterOrDigit(c) && c != '_' && c != '.')
-                {
-                    resourcePath = "WebDash.__missing__.index.html";
-                    ext = "html";
-                    return true;
-                }
-            }
-        }
-
-        string[] assetParts = assetPath.Split('.');
-        ext = assetParts[assetParts.Length - 1];
-        resourcePath = "WebDash." + slug + "." + assetPath.Replace('/', '.');
+        string[] splits = requestedFile.Split('.');
+        ext = splits[splits.Length - 1];
+        resourcePath = "Web." + requestedFile.Replace('/', '.');
         return true;
     }
 

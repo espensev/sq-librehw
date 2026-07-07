@@ -3,7 +3,7 @@
 **Goal:** Write down and audit how the webserver/dashboard works and how it interacts with LibreHardwareMonitor.
 **Date:** 2026-07-07
 **Status:** complete
-**Recommended next:** decide the remaining legacy API policy items (auth/write-enable for POST `Set`, POST-only reset compatibility) before exposing the server beyond the trusted local operator path; keep D3 as the next UI gate.
+**Recommended next:** decide the remaining legacy API policy items (auth/write-enable for POST `Set`, POST-only reset compatibility) before exposing the server beyond the trusted local operator path; keep the F context-dashboard lane separate from the root `viewTheme` selector.
 
 ---
 
@@ -41,12 +41,12 @@
 **Answer:** The server has three route classes: static embedded dashboard assets, read endpoints, and legacy mutating sensor/reset endpoints. The dashboard code currently uses only `data.json`, but the webserver is not globally read-only.
 
 **Evidence:**
-- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:431-505` - dispatch order: `POST`, preview static route, `/data.json`, `/images_icon/`, `/metrics`, `/Sensor`, `/ResetAllMinMax`, then stable `Web.*` assets.
-- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:529-604` - maps `/dash/cardtruth[/...]` to `WebDash.cardtruth.*` resources.
-- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:450-453` - `GET /data.json` returns the JSON telemetry contract.
-- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:462-465` - `GET /metrics` returns the Prometheus text surface.
-- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:468-483` - `GET /Sensor` handles sensor reads, rejects `action=Set`, and returns JSON failure payloads for invalid requests.
-- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:487-495` - `GET /ResetAllMinMax` resets all sensor extrema and returns `data.json`.
+- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:456-530` - dispatch order: `POST`, `/data.json`, `/images_icon/`, `/metrics`, `/Sensor`, `/ResetAllMinMax`, then stable `Web.*` assets. There is no active preview static route before `/data.json`.
+- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:489-492` - `GET /data.json` returns the JSON telemetry contract.
+- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:501-504` - `GET /metrics` returns the Prometheus text surface.
+- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:507-510` - `GET /Sensor` handles sensor reads, rejects `action=Set`, and returns JSON failure payloads for invalid requests.
+- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:513-521` - `GET /ResetAllMinMax` resets all sensor extrema and returns `data.json`.
+- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:524-530` and `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:555-590` - other GET paths map to stable embedded `Web.*` resources and return 404 when no matching resource exists; this is what retires `/dash/cardtruth/`.
 - `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs:323-333` - `POST /Sensor?action=Set` can write `ISensor.Control` values after a same-origin browser check and server-side value validation/range clamping.
 
 **Implications:**
@@ -91,20 +91,18 @@
 
 ### Q5: How does `/dash/cardtruth/` differ from `/` today?
 
-**Answer:** `/dash/cardtruth/` is now a comparison/preview surface, not an equivalent acceptance surface. It uses separate embedded assets and a separate storage namespace, but it lags root behavior.
+**Answer:** As of Phase E on 2026-07-07, `/dash/cardtruth/` is retired and should return 404. Before retirement it was a comparison/preview surface, not an equivalent acceptance surface: it used separate embedded assets and a separate storage namespace, but lagged root behavior.
 
 **Evidence:**
-- `docs/feature-web-dashboard-versioned-routes.md:11-13` - preview routes are temporary development surfaces.
-- `docs/feature-web-dashboard-versioned-routes.md:61-69` - stable `/` uses `sq.dashboard.v1`; `/dash/cardtruth/` uses `sq.dashboard.preview.cardtruth`; promotion is explicit.
-- `LibreHardwareMonitor.Windows.Forms/Resources/WebDash/cardtruth/console.js:4` - preview storage key is `sq.dashboard.preview.cardtruth`.
-- `LibreHardwareMonitor.Windows.Forms/Resources/WebDash/cardtruth/console.js:1202` - preview fetches root-absolute `/data.json`.
-- `LibreHardwareMonitor.Windows.Forms/Resources/Web/index.html:29-42` and `LibreHardwareMonitor.Windows.Forms/Resources/Web/index.html:52-63` - root has the Sensors popover, network restore, primary reset, subsystem reset, and network section.
-- `LibreHardwareMonitor.Windows.Forms/Resources/WebDash/cardtruth/index.html:29` and `LibreHardwareMonitor.Windows.Forms/Resources/WebDash/cardtruth/index.html:56-88` - preview still exposes the older Customize drawer surface.
+- `docs/feature-web-dashboard-view-theme-retirement.md` - Phase E retires `/dash/cardtruth/`, removes its assets/menu entry/tests, and adds root `viewTheme`.
+- `docs/feature-web-dashboard-versioned-routes.md` - the route spec now records `cardtruth` as historical/retired, with current builds returning 404.
+- `LibreHardwareMonitor.Windows.Forms/Resources/Web/index.html` - root has the Sensors popover, network restore, primary reset, subsystem reset, network section, and `#viewTheme`.
+- `LibreHardwareMonitor.Tests/WebDashboardRetirementTests.cs` - tests assert the root selector/menu and absence of embedded `WebDash.cardtruth` resources.
 
 **Implications:**
-- D3 acceptance must use root `/` as the primary surface.
-- Preview smoke remains useful for route lifecycle and regression checks, but passing preview behavior does not prove root behavior.
-- E1/E2 should either sync accepted deltas into `/` and retire the preview route or explicitly explain why the route still exists.
+- Root `/` is the only product dashboard surface.
+- Future preview routes require a new accepted feature spec and must not accidentally resurrect stale `cardtruth` assets.
+- The future context-dashboard lane is separate from this retired server preview route.
 
 ### Q6: Where are the main trust, data-contract, and verification risks?
 
@@ -112,7 +110,7 @@
 
 **Evidence:**
 - `docs/ai-guide.md:26-33` - hard invariants: no `data.json`/HTTP/CSV changes, read-only dashboard, label honesty, DOM-less selftest is not a UI/layout gate.
-- `LibreHardwareMonitor.Tests/HttpServerRouteTests.cs:8-43` - tests cover preview route mapping and API path exclusion from preview mapping.
+- `LibreHardwareMonitor.Tests/WebDashboardRetirementTests.cs` - tests cover root view-theme/menu state and absence of embedded retired preview assets.
 - `LibreHardwareMonitor.Tests/DataJsonGoldenTests.cs:30-67` - tests cover `data.json` streaming and golden bytes.
 - `webtests/selftest.node.js:6-13` - selftest evaluates only root `console.js` in `SQ_NO_BOOT` mode with a fixture.
 - `docs/reviews/review-2026-07-07-dashboard-d3-user-perspective.md:13-16` - existing D3 review records the live 390-touch row-control overlap blocker.
