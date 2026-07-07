@@ -22,9 +22,11 @@
   `2026-07-06-web-dashboard-v3-next-plan.md`. An independent review of the D1 merge + this checkpoint is
   recorded in [`docs/reviews/review-2026-07-07-dashboard-d1-d2-checkpoint.md`](../../reviews/review-2026-07-07-dashboard-d1-d2-checkpoint.md)
   (PASS WITH NOTES; the notes are fixed by the commit that carries this line). The design is **Accepted
-  (2026-07-07)**: §9 **#1 = B — grid breakout, full row** (`.cell.expanded{grid-column:1/-1}`) and
-  **#2 = keep the single `c:<sensorId>` expand key**. Implementation plan authored and ready to execute:
-  [`2026-07-07-web-expansion-multicolumn-d2.md`](2026-07-07-web-expansion-multicolumn-d2.md).
+  (2026-07-07)**: §9 **#1 = anchored overlay** — re-resolved same day from the B grid-breakout default after
+  operator UX feedback that in-flow expansion "moves all the cards down, creating an ugly transition" — and
+  **#2 = keep the single `c:<sensorId>` expand key**. Implementation plan (rev 2) ready to execute:
+  [`2026-07-07-web-expansion-multicolumn-d2.md`](2026-07-07-web-expansion-multicolumn-d2.md). The same
+  feedback session queued **D2a — direct flight-deck edit controls** (v3-next-plan §4).
 - The two old experimental branches (`claude-devsev/loving-volhard-66d981`, `worktree-dashboard-templates`)
   remain reference-only (§2).
 - Done + merged, keep as regression baseline: A1/A2 (suffix/fan clipping), **B1** masthead Sensors popover
@@ -688,12 +690,18 @@ It is committed as checkpoint `11312f2` on branch `D2-flyingcircus`, together wi
 criterion: *expanded detail fills width, not a tall narrow strip* — spec §7 = `.xp-grid` renders 2+ columns on
 wide, no `.xp-actions` clip, `SensorId` stays full-width, across 320/390/640/1440/wide in both themes.
 
-**The §9 decisions are RESOLVED (2026-07-07) and the spec is Accepted:** the operator took the recommended
-defaults — **#1 = B grid-breakout, full row** (`.cell.expanded{grid-column:1/-1}`) and **#2 = keep the single
-`c:<sensorId>` key** (twins expand in lockstep). Implementation plan authored:
-[`2026-07-07-web-expansion-multicolumn-d2.md`](2026-07-07-web-expansion-multicolumn-d2.md) — a single
-CSS-rule task (no JS change; `#pfd` and `#pinned` share the `.pfd` grid) with static gates for the implementer
-and a **controller-owned live column-count + clip gate**, RED→GREEN, paired with screenshots in both themes.
+**The §9 decisions are RESOLVED (2026-07-07) and the spec is Accepted:** #1 was first resolved to the B
+grid-breakout default, then **re-resolved the same day to the anchored overlay** after operator UX feedback
+(in-flow expansion "moves all the cards down, creating an ugly transition" — displacement is the defect, so
+every in-flow strategy is out); **#2 = keep the single `c:<sensorId>` key** (twins each get a locally-anchored
+overlay). Implementation plan **rev 2**:
+[`2026-07-07-web-expansion-multicolumn-d2.md`](2026-07-07-web-expansion-multicolumn-d2.md) — Task 1 renders the
+detail as a full-grid-width overlay anchored below the card (`placeCardOverlay`, zero displacement); Task 2
+adds single-open, race-safe click-away close, and a one-shot entrance animation that cannot strobe on poll
+rebuilds. Static gates for the implementer; **controller-owned live displacement gate** (RED `moved>0` →
+GREEN `moved=0`, overlay spans grid, `.xp-grid` ≥2 columns), paired with screenshots in both themes. The same
+feedback queued **D2a — direct flight-deck edit controls** (primary add/remove on the visible item; see
+v3-next-plan §4 row D2a) to run after D2, before D3.
 
 **Next action = execute that plan** via `subagent-driven-development` on `D2-flyingcircus`. Carry §12
 forward — especially the **live-only column-count / visual gate** (§12.4–12.5, mirrored in the spec's §8): D2 is

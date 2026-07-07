@@ -2,7 +2,7 @@
 
 **Project:** LibreHardwareMonitor Sev IQ local fork
 **Status:** Accepted <!-- Draft | Accepted | Implemented | Verified | Done -->
-**Updated:** 2026-07-07 (accepted with §9 #1 = B grid breakout full-row, #2 = keep single key; implementation plan [`superpowers/plans/2026-07-07-web-expansion-multicolumn-d2.md`](superpowers/plans/2026-07-07-web-expansion-multicolumn-d2.md))
+**Updated:** 2026-07-07 (accepted; §9 #1 re-resolved same day to **anchored overlay** per operator UX feedback, #2 = keep single key; implementation plan rev 2 [`superpowers/plans/2026-07-07-web-expansion-multicolumn-d2.md`](superpowers/plans/2026-07-07-web-expansion-multicolumn-d2.md))
 **Related docs:** [`feature-web-dashboard-card-truth.md`](feature-web-dashboard-card-truth.md) (parent v3 spec), [`superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md`](superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md) §4 row D2 / §5 Slice 6, [`superpowers/plans/2026-07-06-web-dashboard-v3-continuation-handoff.md`](superpowers/plans/2026-07-06-web-dashboard-v3-continuation-handoff.md) §0/§11/§12
 **Purpose:** when a card or row is expanded, the detail/action body fills the available horizontal space instead of stacking into a tall narrow strip constrained to one card's column width.
 
@@ -41,29 +41,26 @@ The dashboard's container caps at `--maxw:1520px` (`console.css:16,51`), so on a
 
 ## 4. Behavior Specification
 
-> **This section is normative only after the Open Decisions (§9) are resolved.** The layout strategy (breakout vs. modal vs. span-N) is an acceptance-blocking decision. The cell/control inventory and the *outcome* (multi-column detail using horizontal space) are normative regardless of strategy.
+> **Normative since 2026-07-07.** §9 #1 was resolved twice the same day: first to B grid-breakout (recommended default), then **re-resolved to the anchored overlay** after direct operator UX feedback that in-flow displacement itself is the defect ("it moves all the cards down, creating an ugly transition"). The original candidate list is retained in §9 for the record.
 
-**Normative outcome (strategy-independent):**
+**Normative behavior (anchored overlay):**
 
-- Expanding a card renders the detail body (`.xp-grid`'s 8 label:value cells + the full-width `SensorId` block) across **2 or more columns** wherever the container can provide ≥300px, instead of a single column.
-- The `.xp-actions` row (alias, alias-clear, pin/unpin, primary add/remove, hide, style select on cards, max/min override, set-range, clear-range, move buttons) remains a wrapped flex row and stays reachable; it is not clipped or overlapped at any width.
-- The `SensorId` `<code>` block stays full-width (`grid-column:1/-1`) and `overflow-wrap:anywhere` so long ids do not blow out the layout.
-- Collapsing restores the card to its in-grid size and position with no residual layout shift beyond the normal rerender.
-
-**Strategy candidates (decision in §9):**
-
-- **B — Grid breakout (recommended default).** `.cell.expanded{grid-column:1/-1}` (full row) or a span value. The card widens within its `.pfd` grid when expanded; detail stays in the card's DOM. Minimal DOM change; reuses the existing `.xp-grid` auto-fit, which finally gets room.
-- **D — Modal/overlay.** Expanding opens a centered, focus-managed overlay using full viewport width. Cleanest full-width and zero grid disruption; diverges from the inline principle the v3 campaign is built on.
-- **C — Span-N.** `.cell.expanded{grid-column:span N}` middle ground between full-width and single-card.
-- **A — Portal below grid.** Render the expansion as a full-width panel below the card grid row, not inside the card. Most literal "use horizontal space"; breaks "on the item" hardest.
-
-See §9 for the tradeoffs that make this a maintainer decision.
+- Expanding a card renders the detail body as a **floating overlay panel anchored directly below the card**, spanning the **full width of the card grid** (`.pfd` — both `#pfd` and `#pinned`). It paints **above** the cards/sections beneath it (elevated `z-index`, panel background + border + shadow — popover semantics).
+- **Zero displacement:** expanding or collapsing moves no other card and does not change the expanded card's own size. (The pre-D2 in-flow growth — `.cell.expanded{height:auto}` — is removed for cards; `.rowxp` keeps its in-flow behavior.)
+- The expanded card is **visibly marked** (accent border) so the overlay reads as attached to it; `aria-expanded` stays on the card and the overlay is its next DOM sibling (tab order stays adjacent).
+- The detail content is **unchanged** — the `xpEl` inventory (8 label:value cells, full-width `SensorId` block, `.xp-actions` row) renders inside the overlay; the inner `.xp-grid` auto-fit now gets the grid's full width → **2+ columns** wherever the grid provides ≥314px.
+- **Single-open (cards):** opening a card's overlay closes any other open card overlay (row expansions unaffected). The PFD/pinned **twin lockstep** (shared `c:` key, §9 #2) still applies: a sensor present in both grids shows one overlay per grid, each anchored locally.
+- **Close paths:** click the card again (toggle, as today), press **Esc** (existing handler, `console.js:1585`), or click empty page space outside any card/overlay/row/control (capture-phase listener; a click on a *different card* is not "outside" — it switches the overlay via single-open). Clicks **inside** the overlay never close it (it hosts alias/range inputs).
+- **Entrance:** the overlay fades/slides in once when opened (~140ms). The animation must **not replay on poll-tick rerenders** — gate it on the open action, not on render. `prefers-reduced-motion` disables it via the existing global rule.
+- On viewport **resize** while open, the overlay re-anchors to the card immediately (listener), not merely on the next poll tick.
+- The `.xp-actions` row remains a wrapped flex row and stays reachable, not clipped or overlapped, at any width; the `SensorId` `<code>` block stays full-width (`grid-column:1/-1`) with `overflow-wrap:anywhere`.
+- Collapsing removes the overlay with no residual layout shift.
 
 ## 5. UI, Settings, API, and Data Impact
 
 | Surface | Change |
 |---|---|
-| UI/menu/dialogs | Expanded card/row detail renders multi-column using available width. Strategy-dependent: in-grid breakout (B/C) reflows the grid on expand; modal (D) opens an overlay; portal (A) renders below the grid. |
+| UI/menu/dialogs | Expanded card detail renders as a full-grid-width **anchored overlay** below its card: zero sibling displacement, single-open, Esc/click-away close, one-shot entrance fade. Rows keep the in-flow `.rowxp`. |
 | Settings/config | **None.** Expansion state stays in-memory (`state.expanded`); no new persisted fields. |
 | Remote web/API | None. |
 | Logging/files | None. |
@@ -73,23 +70,28 @@ See §9 for the tradeoffs that make this a maintainer decision.
 
 | Risk | Mitigation |
 |---|---|
-| **Shared expand key ties PFD + pinned twins together** (`console.js:1105,1120,1458`; key `c:<sensorId>`). Any layout applies identically to both instances because they share key *and* `cardEl` render path. | Decision needed (§9): keep single key (twins expand in lockstep — acceptable if they never render adjacent) or split namespace (`c-pfd:`/`c-pinned:`). Default: keep single key unless a strategy makes adjacency common. |
-| Grid breakout (B/C) reflows sibling cards on expand | Acceptable if transient; verify it does not jump on every poll tick (rerender). If it does, scope breakout to a one-shot class toggle that survives rerender via `state.expanded`. |
-| Modal (D) diverges from "inline" v3 principle | Only choose D if the maintainer explicitly accepts the divergence; document it as an accepted tradeoff in the parent spec. |
+| **Shared expand key ties PFD + pinned twins together** (`console.js:1105,1120,1458`; key `c:<sensorId>`). | Resolved (§9 #2): single key kept. Each grid anchors its own overlay locally, so lockstep costs nothing extra. |
+| **Overlay anchor goes stale** — the `top` offset is measured at render; a viewport resize between poll ticks would leave it misaligned | Re-anchor on a `window resize` listener, not just on the next tick. |
+| **Poll rebuild replays the entrance animation** — cards (and the overlay) are rebuilt every tick, so a naive CSS animation strobes once per second | Gate the `.enter` animation class on the open *action* (a one-shot state flag cleared after the toggle's own rerender), never on plain renders. Verified at G3. |
+| **Capture-phase click-away vs. rebuild race** (the B3/C1 menu lesson: a bubble-phase rebuild detaches `e.target` and makes everything read as "outside") | The click-away listener ignores clicks landing on *any* card/row/control surface and only closes on genuinely empty space; card-to-card switching is owned by `toggleExpand`'s single-open logic, so the capture handler never races the delegated toggle. |
+| **Overlay floats over content below the grid** (cards in later rows, next section head) | By design — popover semantics. Judged at the live visual gate in both themes; the overlay carries panel background/border/shadow so it reads as a layer, not a glitch. |
 | DOM-less selftest cannot see layout | Same constraint as D1: the node harness is a regression guard, not the gate. Gate is a controller-owned live rect/column-count measurement (§8). |
-| Narrow widths (320/390) | At 320px the card grid is already 1 column (`console.css:244 @media max-width:640px`), so a full-width breakout collapses to the viewport anyway — acceptable. Verify no clip. |
+| Narrow widths (320/390) | At ≤640px the card grid is 1 column (`console.css:244`), so the overlay spans that single column and floats over the next card until closed. Verify no clip, no horizontal scroll, and that toggle/Esc/click-away all work under touch emulation. |
 | Upstream sync | Client-only (`Resources/Web/*` + `webtests/*`); same isolation promise as A–D1. |
 | `net472` vs `net10.0-windows` | Both targets embed the same web assets; no target-specific behavior. |
 
 ## 7. Acceptance Criteria
 
-- [ ] Expanding a card on a wide desktop (≥1280px) renders `.xp-grid` in **2+ columns** (detail cells flow horizontally), not a single tall strip.
+- [ ] Expanding a card on a wide desktop (≥1280px) renders `.xp-grid` in **2+ columns** inside a full-grid-width overlay, not a single tall strip.
+- [ ] **Zero displacement:** the bounding rects of every other card are byte-identical before/during/after expansion, and the expanded card's own rect is unchanged (including `graph-on` cards, whose fixed 172px height must not change on expand).
+- [ ] Single-open works (opening card B closes card A's overlay); Esc closes; a click on empty page space closes; clicks inside the overlay (alias input, range inputs, style select, buttons) never close it; clicking the card again toggles.
+- [ ] The entrance animation plays once on open and does **not** replay on poll-tick rerenders (no 1 Hz strobe).
+- [ ] The overlay re-anchors correctly on viewport resize while open.
 - [ ] Row expansion (`.rowxp`) still renders correctly and is not regressed at panel width (~370px) or narrow widths.
-- [ ] `.xp-actions` controls remain reachable, not clipped or overlapped, in dark and light, at 320/390/640/1440/wide.
+- [ ] `.xp-actions` controls remain reachable, not clipped or overlapped, in dark and light, at 320/390/640/1440/wide; no horizontal scroll anywhere.
 - [ ] `SensorId` code block stays full-width with `overflow-wrap:anywhere`; long ids do not blow out layout.
-- [ ] Collapsing restores the card to its in-grid position with no residual shift.
 - [ ] No `data.json`/server/contract change: `dotnet test` 42/42 untouched, golden untouched.
-- [ ] Existing behavior not in scope remains unchanged: card/row content inventory, `state.expanded` in-memory lifecycle, drag/keyboard-move, alias/override/style/pin/hide paths, raw label + `SensorId` visibility, the D1 card-header gutter.
+- [ ] Existing behavior not in scope remains unchanged: card/row content inventory, `state.expanded` in-memory lifecycle, drag/keyboard-move, alias/override/style/pin/hide paths, raw label + `SensorId` visibility, the D1 card-header gutter (its overlap gate re-run stays green).
 
 ## 8. Verification Plan
 
@@ -99,14 +101,14 @@ See §9 for the tradeoffs that make this a maintainer decision.
 | Model regression | `node webtests\selftest.node.js` | `SELFTEST PASS 227/227` (regression guard — no new assertions; harness is DOM-less) |
 | No-contract gate | `dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64` | 42/42, golden untouched |
 | Build modern | `dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64` | 0 errors |
-| **Live column-count gate (the real D2 evidence)** | chrome-devtools `evaluate_script` on an expanded `.xp`/`.rowxp`: count rendered columns of `.xp-grid` via `getComputedStyle(el).gridTemplateColumns.split(' ').length`; confirm ≥2 on wide, ≥1 at 320; assert `.xp-actions` right edge ≤ card right edge (no clip); assert `SensorId` `<code>` `scrollWidth ≤ clientWidth` or wraps. Run both themes, 320/390/640/1440/wide. | RED baseline (pre-fix) = 1 column on cards at wide → GREEN ≥2; zero clip; both themes. |
+| **Live displacement + overlay gate (the real D2 evidence)** | chrome-devtools `evaluate_script` (full script in the plan): snapshot every card's rect by `data-sid`, toggle a card, re-snapshot → count moved cards; assert overlay exists, spans the grid width, sits below the card, `.xp-grid` columns ≥2 on wide (≥1 at 320), `.xp-actions` unclipped, no horizontal scroll. Then exercise single-open, Esc, click-away, click-inside-stays, resize re-anchor; watch several poll ticks for animation strobe. Run both themes, 320/390/640/1440/wide, plus paired screenshots. | RED baseline (pre-fix) = cards below **move** and cols = 1 at packed width → GREEN: **moved = 0**, overlay spans grid, cols ≥ 2, all close paths work, no strobe, zero clip; both themes. |
 | Console clean | `list_console_messages` across several poll ticks with a card expanded | zero errors (catches dangling refs the selftest can't) |
 
 The live gate mirrors D1's controller-owned pattern (the DOM-less harness cannot measure layout).
 
 ## 9. Open Decisions
 
-> **Resolved 2026-07-07** — the operator accepted the recommended defaults after the D1/D2 review summary restated them ("start plan d2"): **#1 = B — grid breakout, full row** (`.cell.expanded{grid-column:1/-1}`); **#2 = keep the single `c:<sensorId>` key** (PFD/pinned twins expand in lockstep). #3 stays verify-don't-break; #4 stays a separate fix. Spec flipped Draft → Accepted; §4 is now normative. The options table is retained for the record.
+> **Resolved 2026-07-07, twice.** First pass: the operator accepted the recommended defaults ("start plan d2") — #1 = B grid-breakout, #2 = keep single key. **Same-day re-resolution of #1:** direct operator UX feedback identified in-flow displacement itself as the defect ("the dropdown … moves all the cards down, creating an ugly transition"), which rules out all in-flow strategies (B/C/A). **#1 = anchored overlay** (a D-variant that keeps the detail visually attached to its card: full-grid-width floating panel anchored below the card, zero displacement, single-open, Esc/click-away close). **#2 unchanged = keep the single `c:<sensorId>` key.** #3 stays verify-don't-break; #4 stays a separate fix. §4 is normative for the anchored overlay. The options table is retained for the record.
 
 | Decision | Needed before | Options & current default |
 |---|---|---|
@@ -125,4 +127,5 @@ The live gate mirrors D1's controller-owned pattern (the DOM-less harness cannot
 |---|---|---|---|
 | 2026-07-07 | Spec drafted from D-phase audit: grounded expansion-width measurements (`console.css:105,270,275`; `console.js:1021-1065,1122`), `xpEl` inventory, shared-key constraint, responsive-hook inventory. | pending | Draft only; awaiting §9 decisions before acceptance and implementation. Checkpointed as `11312f2` on branch `D2-flyingcircus` (docs-only, on top of master `47690a9`); implementation has not started. |
 | 2026-07-07 | Independent review of the D1 merge + this checkpoint: [`docs/reviews/review-2026-07-07-dashboard-d1-d2-checkpoint.md`](reviews/review-2026-07-07-dashboard-d1-d2-checkpoint.md). Every grounded line reference in this spec re-verified against source, incl. the §9 #4 sig-omits-`a.active` claim. | pass with notes | Notes fixed in the follow-up commit: stale "uncommitted"/"no commits yet" resume claims, card-truth `Updated:` bump, 300→314px gap arithmetic (§2). Latent cosmetic note parked in the v3-next-plan D3 row: `.cell .chip-state` `text-overflow:ellipsis` is inert on an `inline-flex` container (chips hard-clip if ever too long). |
-| 2026-07-07 | §9 #1/#2 resolved by the operator with the recommended defaults (B grid-breakout full-row; keep single `c:` key); spec flipped Draft → **Accepted**. Implementation plan authored: [`superpowers/plans/2026-07-07-web-expansion-multicolumn-d2.md`](superpowers/plans/2026-07-07-web-expansion-multicolumn-d2.md) (single CSS-rule task, `#pfd`+`#pinned` both covered via shared `.pfd`; controller-owned live column-count/clip gate + paired both-theme screenshots). | pending | Implementation not started; next = execute the plan (subagent-driven) on `D2-flyingcircus`. |
+| 2026-07-07 | §9 #1/#2 resolved by the operator with the recommended defaults (B grid-breakout full-row; keep single `c:` key); spec flipped Draft → **Accepted**. Implementation plan authored: [`superpowers/plans/2026-07-07-web-expansion-multicolumn-d2.md`](superpowers/plans/2026-07-07-web-expansion-multicolumn-d2.md) (single CSS-rule task, `#pfd`+`#pinned` both covered via shared `.pfd`; controller-owned live column-count/clip gate + paired both-theme screenshots). | pending | Superseded same day — see next row. |
+| 2026-07-07 | Operator UX feedback on the flight deck re-opened §9 #1: "the dropdown … moves all the cards down, creating an ugly transition" — displacement is the defect, so in-flow B is out. **#1 re-resolved → anchored overlay** (chosen over true modal and keep-B in an explicit 3-way question). §4/§5/§6/§7/§8 rewritten for the overlay; plan rewritten (rev 2: two tasks — overlay render/position + interaction semantics; displacement-based RED→GREEN gate). Companion finding (deck editing buried in `.xp-actions`) queued as **D2a** in the v3-next-plan. | pending | Implementation not started; next = execute plan rev 2 (subagent-driven) on `D2-flyingcircus`. |
