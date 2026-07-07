@@ -1,8 +1,8 @@
 # Feature Spec: Web Dashboard Expansion Multi-Column Layout (D2)
 
 **Project:** LibreHardwareMonitor Sev IQ local fork
-**Status:** Draft <!-- Draft | Accepted | Implemented | Verified | Done -->
-**Updated:** 2026-07-07
+**Status:** Accepted <!-- Draft | Accepted | Implemented | Verified | Done -->
+**Updated:** 2026-07-07 (accepted with §9 #1 = B grid breakout full-row, #2 = keep single key; implementation plan [`superpowers/plans/2026-07-07-web-expansion-multicolumn-d2.md`](superpowers/plans/2026-07-07-web-expansion-multicolumn-d2.md))
 **Related docs:** [`feature-web-dashboard-card-truth.md`](feature-web-dashboard-card-truth.md) (parent v3 spec), [`superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md`](superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md) §4 row D2 / §5 Slice 6, [`superpowers/plans/2026-07-06-web-dashboard-v3-continuation-handoff.md`](superpowers/plans/2026-07-06-web-dashboard-v3-continuation-handoff.md) §0/§11/§12
 **Purpose:** when a card or row is expanded, the detail/action body fills the available horizontal space instead of stacking into a tall narrow strip constrained to one card's column width.
 
@@ -106,7 +106,7 @@ The live gate mirrors D1's controller-owned pattern (the DOM-less harness cannot
 
 ## 9. Open Decisions
 
-> This spec stays **Draft** until the maintainer resolves #1 and #2. Do not hide these in Implementation Notes.
+> **Resolved 2026-07-07** — the operator accepted the recommended defaults after the D1/D2 review summary restated them ("start plan d2"): **#1 = B — grid breakout, full row** (`.cell.expanded{grid-column:1/-1}`); **#2 = keep the single `c:<sensorId>` key** (PFD/pinned twins expand in lockstep). #3 stays verify-don't-break; #4 stays a separate fix. Spec flipped Draft → Accepted; §4 is now normative. The options table is retained for the record.
 
 | Decision | Needed before | Options & current default |
 |---|---|---|
@@ -125,3 +125,4 @@ The live gate mirrors D1's controller-owned pattern (the DOM-less harness cannot
 |---|---|---|---|
 | 2026-07-07 | Spec drafted from D-phase audit: grounded expansion-width measurements (`console.css:105,270,275`; `console.js:1021-1065,1122`), `xpEl` inventory, shared-key constraint, responsive-hook inventory. | pending | Draft only; awaiting §9 decisions before acceptance and implementation. Checkpointed as `11312f2` on branch `D2-flyingcircus` (docs-only, on top of master `47690a9`); implementation has not started. |
 | 2026-07-07 | Independent review of the D1 merge + this checkpoint: [`docs/reviews/review-2026-07-07-dashboard-d1-d2-checkpoint.md`](reviews/review-2026-07-07-dashboard-d1-d2-checkpoint.md). Every grounded line reference in this spec re-verified against source, incl. the §9 #4 sig-omits-`a.active` claim. | pass with notes | Notes fixed in the follow-up commit: stale "uncommitted"/"no commits yet" resume claims, card-truth `Updated:` bump, 300→314px gap arithmetic (§2). Latent cosmetic note parked in the v3-next-plan D3 row: `.cell .chip-state` `text-overflow:ellipsis` is inert on an `inline-flex` container (chips hard-clip if ever too long). |
+| 2026-07-07 | §9 #1/#2 resolved by the operator with the recommended defaults (B grid-breakout full-row; keep single `c:` key); spec flipped Draft → **Accepted**. Implementation plan authored: [`superpowers/plans/2026-07-07-web-expansion-multicolumn-d2.md`](superpowers/plans/2026-07-07-web-expansion-multicolumn-d2.md) (single CSS-rule task, `#pfd`+`#pinned` both covered via shared `.pfd`; controller-owned live column-count/clip gate + paired both-theme screenshots). | pending | Implementation not started; next = execute the plan (subagent-driven) on `D2-flyingcircus`. |

@@ -21,11 +21,10 @@
   to `feature-web-dashboard-card-truth.md`, `feature-workflow.md`, and the D2 row of
   `2026-07-06-web-dashboard-v3-next-plan.md`. An independent review of the D1 merge + this checkpoint is
   recorded in [`docs/reviews/review-2026-07-07-dashboard-d1-d2-checkpoint.md`](../../reviews/review-2026-07-07-dashboard-d1-d2-checkpoint.md)
-  (PASS WITH NOTES; the notes are fixed by the commit that carries this line). The design is **not yet
-  accepted** — two acceptance-blocking
-  decisions are open (spec §9): **#1 layout strategy** (default **B — grid breakout**, `.cell.expanded{grid-column:1/-1}`;
-  alternatives C span-N, D modal, A portal) and **#2 the shared `c:<sensorId>` expand key** for PFD/pinned twins
-  (default **keep single key**).
+  (PASS WITH NOTES; the notes are fixed by the commit that carries this line). The design is **Accepted
+  (2026-07-07)**: §9 **#1 = B — grid breakout, full row** (`.cell.expanded{grid-column:1/-1}`) and
+  **#2 = keep the single `c:<sensorId>` expand key**. Implementation plan authored and ready to execute:
+  [`2026-07-07-web-expansion-multicolumn-d2.md`](2026-07-07-web-expansion-multicolumn-d2.md).
 - The two old experimental branches (`claude-devsev/loving-volhard-66d981`, `worktree-dashboard-templates`)
   remain reference-only (§2).
 - Done + merged, keep as regression baseline: A1/A2 (suffix/fan clipping), **B1** masthead Sensors popover
@@ -689,17 +688,14 @@ It is committed as checkpoint `11312f2` on branch `D2-flyingcircus`, together wi
 criterion: *expanded detail fills width, not a tall narrow strip* — spec §7 = `.xp-grid` renders 2+ columns on
 wide, no `.xp-actions` clip, `SensorId` stays full-width, across 320/390/640/1440/wide in both themes.
 
-**Next action = resolve the two acceptance-blocking Open Decisions (spec §9), then plan:**
+**The §9 decisions are RESOLVED (2026-07-07) and the spec is Accepted:** the operator took the recommended
+defaults — **#1 = B grid-breakout, full row** (`.cell.expanded{grid-column:1/-1}`) and **#2 = keep the single
+`c:<sensorId>` key** (twins expand in lockstep). Implementation plan authored:
+[`2026-07-07-web-expansion-multicolumn-d2.md`](2026-07-07-web-expansion-multicolumn-d2.md) — a single
+CSS-rule task (no JS change; `#pfd` and `#pinned` share the `.pfd` grid) with static gates for the implementer
+and a **controller-owned live column-count + clip gate**, RED→GREEN, paired with screenshots in both themes.
 
-1. **#1 Layout strategy** — **B grid-breakout** (recommended default: most faithful to "detail on the item",
-   minimal DOM change, reuses the existing `.xp-grid` auto-fit; cost = grid reflow on expand) vs. **C span-N**
-   vs. **D modal/overlay** (cleanest full-width but diverges from the inline principle the campaign is built on)
-   vs. **A portal-below-grid**.
-2. **#2 Shared `c:<sensorId>` expand key** for PFD/pinned twins — **keep single key** (default; twins expand in
-   lockstep) vs. **split namespace** (`c-pfd:`/`c-pinned:`).
-
-Once #1 and #2 are resolved the spec flips Draft→Accepted; then run `writing-plans` →
-`subagent-driven-development` (continue on `D2-flyingcircus`, or start a fresh branch off `master`). Carry §12
+**Next action = execute that plan** via `subagent-driven-development` on `D2-flyingcircus`. Carry §12
 forward — especially the **live-only column-count / visual gate** (§12.4–12.5, mirrored in the spec's §8): D2 is
 a layout change with **no node unit-test surface**, and a green measurement gate can still hide a visual
 regression (D1's Option A passed every overlap check yet truncated names at rest). After D2: **D3** (full
