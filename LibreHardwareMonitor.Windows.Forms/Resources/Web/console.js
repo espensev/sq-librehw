@@ -1063,14 +1063,17 @@
         </div>`;
       return el;
     }
+    function cardRange(h) {
+      return h.bounded ? { lo: h.bounded[0], hi: h.bounded[1], source: 'band' }
+                       : SQ.rangeFor(h.s, {}, state.dashboard);
+    }
     function cardEl(h, pinned) {
       const { n, unit } = h.s.raw == null ? { n: '—', unit: '' } : SQ.splitValue(h.s.value);
       const u = unit || h.unit || '';
       const st = h.status;
       const kind = SQ.kindOf(h.s.type);
       const styleVal = state.dashboard.cardStyle[h.s.id];
-      const rr = h.bounded ? { lo: h.bounded[0], hi: h.bounded[1], source: 'band' }
-                           : SQ.rangeFor(h.s, {}, state.dashboard);
+      const rr = cardRange(h);
       const range = rr ? [rr.lo, rr.hi] : null;
       const ctrl = kind === 'fan' ? SQ.fanControlFor(h.s, state.allSensors) : null;
       const gaugeRange = SQ.gaugeRangeFor(rr, h.s, ctrl);
@@ -1117,11 +1120,20 @@
            <div class="big"><span class="v">${esc(n)}</span><span class="u">${esc(u)}</span>${ceil}${ctrl ? `<span class="vcmd" title="commanded ${esc(ctrl.value)}">· ${esc(ctrl.value)}</span>` : ''}</div>
            <div class="meta">${rangeMarkup(h.s) || '<div class="range"></div>'}${trendHtml}</div>
          </div></div>${fx.spark ? sparkAreaSVG(h.s, range) : ''}`;
-      if (state.expanded.has('c:' + h.s.id)) {
-        cell.classList.add('expanded');
-        cell.appendChild(xpEl(h.s, rr, { cls: 'xp', style: true, movable: true, fallbackLabel: h.label }));
-      }
+      if (state.expanded.has('c:' + h.s.id)) cell.classList.add('expanded');
       return cell;
+    }
+    function placeCardOverlay(grid, cards) {
+      const old = grid.querySelector('.xp-overlay');
+      if (old) old.remove();
+      const h = cards.find(c => state.expanded.has('c:' + c.s.id));
+      if (!h) return;
+      const cell = grid.querySelector(`.cell[data-sid="${CSS.escape(h.s.id)}"]`);
+      if (!cell) return;
+      const ov = xpEl(h.s, cardRange(h), { cls: 'xp xp-overlay', style: true, movable: true, fallbackLabel: h.label });
+      if (state.xpEnter === 'c:' + h.s.id) ov.classList.add('enter');
+      cell.after(ov);
+      ov.style.top = (cell.offsetTop + cell.offsetHeight + 6) + 'px';
     }
     function renderPinnedCards(sensors, limits) {
       const cards = SQ.resolvePinnedCards(sensors, state.dashboard, limits);
@@ -1129,6 +1141,7 @@
       grid.innerHTML = '';
       sec.style.display = cards.length ? '' : 'none';
       cards.forEach(h => grid.appendChild(cardEl(h, true)));
+      placeCardOverlay(grid, cards);
       $('#pinnedtag').textContent = `${cards.length} pinned`;
     }
     function renderPFD(sensors, limits) {
@@ -1141,6 +1154,7 @@
       const pfd = $('#pfd');
       pfd.innerHTML = '';
       H.forEach(h => pfd.appendChild(cardEl(h, false)));
+      placeCardOverlay(pfd, H);
       const reset = $('#pfdReset');
       if (reset) reset.style.display = custom ? '' : 'none';
       $('#pfdtag').textContent = custom ? `${H.length} selected` : `${H.length} auto-selected`;
@@ -1599,6 +1613,14 @@
       const grip = ev.target.closest && ev.target.closest('.grip');
       if (grip) { ev.preventDefault(); ev.stopPropagation(); }
     }, true);
+    window.addEventListener('resize', () => {
+      ['#pfd', '#pinned'].forEach(sel => {
+        const grid = $(sel);
+        const ov = grid && grid.querySelector('.xp-overlay');
+        const cell = grid && grid.querySelector('.cell.expanded');
+        if (ov && cell) ov.style.top = (cell.offsetTop + cell.offsetHeight + 6) + 'px';
+      });
+    });
 
     paintPause();
     paintGraphs();
