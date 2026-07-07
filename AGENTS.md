@@ -21,6 +21,7 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
 
 ## 2. Source-of-truth map
 
+- `docs/ai-guide.md`: **start here** — repo orientation, hard invariants, the phase-shipping loop, the lessons ledger, and the maintained overall-plan snapshot for the web-dashboard campaign.
 - `docs/feature-workflow.md`: how new feature specs move from idea to verified implementation, including the current draft feature list.
 - `docs/feature-spec-template.md`: copy this for a new feature spec.
 - `docs/feature-graph-menu.md`: existing graph-menu feature spec; treat as the precedent for local feature specs.
