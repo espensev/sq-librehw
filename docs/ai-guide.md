@@ -17,16 +17,17 @@ A local fork of LibreHardwareMonitor ("Sev IQ") whose headline surface is a clie
 3. [`superpowers/plans/2026-07-06-web-dashboard-v3-continuation-handoff.md`](superpowers/plans/2026-07-06-web-dashboard-v3-continuation-handoff.md) **§0 Resume Brief** — the current campaign state on one screen. If it disagrees with this guide's §6 snapshot, the handoff is newer — trust it and fix the snapshot.
 4. [`superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md`](superpowers/plans/2026-07-06-web-dashboard-v3-next-plan.md) **§4** — the authoritative A→F work queue.
 5. [`feature-web-dashboard-card-truth.md`](feature-web-dashboard-card-truth.md) — the parent v3 spec; its **§11 verification log** is the evidence trail every phase appends to.
-6. The active phase's own spec/plan under `docs/` and `docs/superpowers/plans/` (each next-plan §4 row links them).
-7. `.superpowers/sdd/progress.md` — the execution ledger (git-ignored scratch): per-task models, gate numbers, RED→GREEN evidence, triage decisions. Trust it plus `git log` over conversation memory.
-8. [`feature-workflow.md`](feature-workflow.md) — spec lifecycle + the full docs inventory.
+6. [`discovery-webserver-dashboard-interaction.md`](discovery-webserver-dashboard-interaction.md) + [`reviews/review-2026-07-07-webserver-dashboard-interaction.md`](reviews/review-2026-07-07-webserver-dashboard-interaction.md) + [`feature-webserver-api-hardening.md`](feature-webserver-api-hardening.md) — current map of how `HttpServer`, `data.json`, root `/`, preview `/dash/cardtruth/`, and legacy `/Sensor`/reset APIs interact, plus the bounded hardening pass for GET `/Sensor` failures and control-value range checks.
+7. The active phase's own spec/plan under `docs/` and `docs/superpowers/plans/` (each next-plan §4 row links them).
+8. `.superpowers/sdd/progress.md` — the execution ledger (git-ignored scratch): per-task models, gate numbers, RED→GREEN evidence, triage decisions. Trust it plus `git log` over conversation memory.
+9. [`feature-workflow.md`](feature-workflow.md) — spec lifecycle + the full docs inventory.
 
 ## 3. Hard invariants (breaking one = stop and surface it)
 
 - **Contract:** no `data.json` / HTTP server / CSV change. Golden `dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64` stays **42/42**.
 - **Build:** always `-p:Platform=x64` (AnyCPU breaks CsWin32 → CS0246). **Stop the running EXE before building** (it locks the DLL/EXE); restart after; **close stale browser tabs** after a rebuild (multi-tab version skew: old tabs run old `console.js` and can strip new persisted fields on save).
 - **No host-specific sensor IDs, labels, or limits in product code** — the dashboard must work on any machine's `data.json`.
-- **Read-only dashboard:** no `/Sensor?action=Set`, no write UI.
+- **Read-only dashboard:** no `/Sensor?action=Set`, no write UI. This does **not** mean the whole webserver is read-only: legacy `/Sensor` and reset APIs still exist; see the 2026-07-07 server/dashboard audit and API-hardening spec before exposing the listener beyond the trusted local operator path.
 - **Label honesty:** raw LibreHardwareMonitor labels + `SensorId` stay visible wherever aliases/renames exist; missing data renders as missing/estimated, never as fake precision.
 - **Both themes first-class:** every UI change is verified in dark AND light.
 - **DOM-less selftest stays green:** `node webtests/selftest.node.js`. It exercises `SQ.*` pure functions only — it is a **regression guard, never the gate for UI/layout work**.
@@ -54,21 +55,21 @@ A local fork of LibreHardwareMonitor ("Sev IQ") whose headline surface is a clie
 - **chrome-devtools MCP profile lock:** if the browser drops mid-session ("already running for chrome-profile"), kill the `*chrome-devtools-mcp*` chrome processes and reopen.
 - **`<details>` toggling is async;** PFD and pinned twins share the expand key `c:<sensorId>` by design.
 - **Deleting UI needs a parity re-assessment first** — B3's drawer removal found the claimed gap list was wrong; verify which affordances actually lack an inline home before deleting their old one.
+- **Dashboard truth != server truth:** browser aliases, overrides, hidden state, observed peaks, and derived limits are presentation state over `data.json`; keep raw labels, `SensorId`, and provenance visible, and never imply they mutated LibreHardwareMonitor.
 
 ## 6. Snapshot — overall plan and current position (as of 2026-07-07)
 
 **Vision:** an honest, modern, card-first telemetry console — no invented maxima, real/derived/overridden ranges with provenance, hardware identity for duplicate devices, detail and actions living **on the visible item** (no drawers/side panes), everything orderable from the UI, dense but attractive in both themes.
 
-**Shipped on `master` (each a `--no-ff` phase merge with a card-truth §11 evidence row):** v2 customization + cards; card-truth slices 1–3 (honest ranges, fan %/RPM, identity, expansion actions); A1/A2 clipping fixes; **B1** masthead Sensors popover; **B2** explicit primary-card selection (seed-from-visible); **B3** Customize drawer removal; **C1** per-adapter network subgroups; **D1** card-header reserved gutter (structural non-overlap); **D2** anchored-overlay expansion (full-grid-width detail, zero displacement — merge `6a2c2d7`).
+**Shipped on `master` (each a `--no-ff` phase merge with a card-truth §11 evidence row):** v2 customization + cards; card-truth slices 1–3 (honest ranges, fan %/RPM, identity, expansion actions); A1/A2 clipping fixes; **B1** masthead Sensors popover; **B2** explicit primary-card selection (seed-from-visible); **B3** Customize drawer removal; **C1** per-adapter network subgroups; **D1** card-header reserved gutter (structural non-overlap); **D2** anchored-overlay expansion (full-grid-width detail, zero displacement — merge `6a2c2d7`); **D2a** direct flight-deck edit controls (★/☆ primary toggle on cards/rows + popover, merge `0279333`, docs pin `db4a9da`).
 
 **Queue (next-plan §4 is authoritative):**
-- **D2a — direct flight-deck edit controls** ← *next; plan ready* (`superpowers/plans/2026-07-07-web-deck-controls-d2a.md`, branch `feat/web-deck-controls-d2a`): ★/☆ primary toggle on card/row clusters + popover, existing model, sig-term + touch-width gates.
-- **D3 — full responsive/theme QA matrix** (320/390/640/1440/wide × dark/light; carries parked notes: chip-ellipsis inert on inline-flex, overlay z-index vs any future sticky masthead, ~768-touch cluster width, B3/C1 narrow-width controls).
+- **D3 — full responsive/theme QA matrix plus user-perspective polish gate** ← *next; patch list ready* (`superpowers/plans/2026-07-07-web-responsive-theme-qa-d3.md`; review `reviews/review-2026-07-07-dashboard-d3-user-perspective.md`): 320/390/640/~768/1440/wide plus short-height mobile × dark/light. Confirmed current blocker: 390-touch row controls overlap values (`rowOverlapCount=11`, `rowValueOverflowCount=11`). Also carries Sensors popover viewport/text fit, B3/C1 panel controls, stat-card readout rhythm, chip-ellipsis, D2 overlay hit testing/occlusion, root-vs-preview route expectations, and D2a touch cluster regression.
 - **E1/E2 — `viewTheme` selector, sync accepted deltas to `/`, retire the `/dash/cardtruth/` preview route** (one product surface; route-namespace-ready state).
 - **F — context dashboards (Main/Gaming/Storage)** — separate campaign; orthogonal to the E-phase view selector (two dropdowns, deferred coexist lane).
 - **X1 — planning-doc consolidation** (archive the superseded 2026-07-04 set) — can run anytime.
 
-**Runtime:** app serves `localhost:8085`; current EXE stamp `0.9.6+ab1c930.2026-07-07` (assets == merged master).
+**Runtime:** app serves `localhost:8085`; live check on 2026-07-07 found PID `38992`, `GET /`, `/data.json`, `/metrics`, `/dash/cardtruth`, and `/dash/cardtruth/` 200, `/dash/missing/` 404, and EXE `ProductVersion` `0.9.6+0279333.2026-07-07` (D2a product merge assets; current docs pin is `db4a9da`). The server/dashboard audit found `GET /Sensor?action=Get&id=/missing` returned HTTP 500 while POST returned JSON fail; `feature-webserver-api-hardening.md` fixed that bounded server bug and live rebuilt PID `30508` returned JSON failures for missing GET `/Sensor` and GET `action=Set`. Legacy write-auth and GET reset policy remain open compatibility decisions.
 
 ## 7. Quick commands
 

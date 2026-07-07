@@ -2,12 +2,14 @@
 
 **Plan ID:** web-dashboard-v3-next-2026-07-06
 **Date:** 2026-07-06
-**Status:** in progress on `master`. Merged: Slice 3 (`4310a8b`), A1/A2 fan + suffix clipping, **B1** masthead Sensors popover (`8291c89`), **B2** explicit primary-card selection (`106f91d`). **B3** Customize drawer removal **merged to `master` (`e7ae6f0`)**, `feat/web-drawer-removal-b3` deleted (`69252b4` panel reorder + `f60fcda` drawer removal + `4004822` no-op guard; plan `2026-07-06-web-drawer-removal-b3.md`). **Next: C1** — network adapter subgroups.
+**Status:** in progress on `master`. Merged: Slice 3 (`4310a8b`), A1/A2 fan + suffix clipping, **B1** masthead Sensors popover (`8291c89`), **B2** explicit primary-card selection (`106f91d`), **B3** Customize drawer removal (`e7ae6f0`), **C1** network adapter subgroups (`7130748`), **D1** card-header reserved gutter (`47690a9`), **D2** expansion anchored overlay (`6a2c2d7`), and **D2a** direct deck controls (`0279333`). Latest docs pin: `db4a9da`. **Next: D3** — responsive/theme QA matrix and small visual fixes from [2026-07-07-web-responsive-theme-qa-d3.md](2026-07-07-web-responsive-theme-qa-d3.md).
 **Authoritative sequence:** the §4 A–F queue below. Where it disagrees with the older Slice numbering in the [continuation handoff](2026-07-06-web-dashboard-v3-continuation-handoff.md) §5/§10, this §4 queue wins (B2 before B3 was chosen deliberately).
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Predecessor plan:** [2026-07-04-web-dashboard-visible-correctness-plan.md](2026-07-04-web-dashboard-visible-correctness-plan.md)
 **Recent review:** [../../reviews/review-2026-07-06-web-dashboard-v3-independent-verification.md](../../reviews/review-2026-07-06-web-dashboard-v3-independent-verification.md)
+**Current D3 review:** [../../reviews/review-2026-07-07-dashboard-d3-user-perspective.md](../../reviews/review-2026-07-07-dashboard-d3-user-perspective.md)
 **Continuation handoff:** [2026-07-06-web-dashboard-v3-continuation-handoff.md](2026-07-06-web-dashboard-v3-continuation-handoff.md)
+**Active D3 patch list:** [2026-07-07-web-responsive-theme-qa-d3.md](2026-07-07-web-responsive-theme-qa-d3.md)
 
 ## 1. Current Baseline
 
@@ -70,18 +72,18 @@ subsections map on as noted in the "Maps to" column.
 | **B1** ✅ | Masthead Sensors popover (search/show/hide/pin/reset, hidden count) | Slice 4B | Done (`8291c89`; plan `2026-07-06-web-sensors-popover-b1.md`). Hidden/offscreen found + restored without the drawer. |
 | **B2** ✅ | Explicit primary-card selection (`primaryCardsCustomized` boolean sentinel; seed-from-visible; seeded heroes keep curated presentation) | Slice 5A | Done (`106f91d`; plan `2026-07-06-web-primary-card-selection-b2.md`). Auto heroes default; first show-as/remove-from-primary seeds the visible set + switches to custom; Auto reset in PFD header. |
 | **B3** ✅ | Remove Customize drawer after B1+B2 parity | Slice 4C | Done (`69252b4` panel reorder + `f60fcda` drawer removal; plan `2026-07-06-web-drawer-removal-b3.md`). Parity re-assessment corrected the stated gate: pinned-card reorder was **already** inline (expanded card `move-left`/`move-right` → `pinnedOrder`); only **panel** keyboard reorder was missing — added as always-visible ▲▼ in the panel header + a Subsystems "Reset order". Drawer DOM/JS/CSS deleted after live parity verification (Sensors popover covers hidden/pin/reset; pinned-card `title` rename subsumed by alias). |
-| **C1** ✅ | Network adapter subgroups (per-NIC key, hide/reorder/restore) | Slice 5B | Done (`e48173c..555e7ae`, merge pending; plan `2026-07-06-web-network-subgroups-c1.md`). One panel per **active** adapter keyed by `s.hwid`; ▲▼/drag reorder → `netAdapterOrder` (no-op-guarded), ⊘ hide → `hiddenNetAdapters`, restore from Sensors popover; `panelOrder` stays nic-free; hidden-adapter sensors `offscreen`. selftest 227/227, golden 42/42, both builds 0/0, live-verified dark+light on a 37-NIC host (5 active panels), zero console errors. |
+| **C1** ✅ | Network adapter subgroups (per-NIC key, hide/reorder/restore) | Slice 5B | Done (`7130748` merge; plan `2026-07-06-web-network-subgroups-c1.md`). One panel per **active** adapter keyed by `s.hwid`; ▲▼/drag reorder → `netAdapterOrder` (no-op-guarded), ⊘ hide → `hiddenNetAdapters`, restore from Sensors popover; `panelOrder` stays nic-free; hidden-adapter sensors `offscreen`. selftest 227/227, golden 42/42, both builds 0/0, live-verified dark+light on a 37-NIC host (5 active panels), zero console errors. |
 | **D1** ✅ | Card header grid + reserved action gutter | Slice 6 | Done (`e0f1dad` grid + `0e0987a` collapse-at-rest; plan `2026-07-07-web-card-header-gutter-d1.md`). Header is a two-track grid (`.chead{minmax(0,1fr) auto}`) with `.cell-ctl` in column 2 → **structurally** cannot overlap the chip/type-icon (mutually-exclusive track, no `position`/`transform` escape). Cluster collapses `display:none` at rest (default names stay full) and reveals in-flow on hover/focus/touch. Live RED 4→GREEN 0 both themes (desktop/touch-390/narrow-320), selftest 227/227, golden 42/42, clean rebuild 0/0 (`0.9.6+0e0987a`), final review 0C/0I. Controls never overlap chip/icon on hover/focus/touch. |
 | **D2** ✅ | Expansion **anchored-overlay** layout (multi-column detail, zero displacement) | audit finding + operator feedback | Done (`e33bd6e` overlay render + `ab1c930` semantics; plan rev 2 `2026-07-07-web-expansion-multicolumn-d2.md`; spec **Verified**). Expanded detail renders as a full-grid-width panel anchored below the card — live RED `moved:9, cols:1` → GREEN **`moved:0`** across 320/390-touch/640/1440/1920 × dark/light, cols up to 8; single-open, one-shot entrance (no poll strobe), Esc/click-away/toggle close, resize re-anchor, twins one overlay per grid, rows untouched, D1 gutter gate stays `[]`. selftest 227/227, golden 42/42, rebuild 0/0 (`0.9.6+ab1c930`), console clean. |
 | **D2a** ✅ | Direct flight-deck edit controls (operator 2026-07-07: "freely add or remove … directly from the card, not a sub menu") | operator feedback | Done (`f310f24` cluster star + `f9105c2` popover toggle + `b491c2b` live-gate fixes + `3571311` review fix; plan `2026-07-07-web-deck-controls-d2a.md`). A ★/☆ star toggle in the shared `ctlCluster` puts primary add/remove on every PFD card, pinned card, and panel row (routes through existing `primary-add`/`primary-remove` handleAct); the Sensors popover gains a "Make/Remove primary" button on visible rows with a rebuild-sig term (label flips in place, menu stays open). One per-render `state.primaryIds` Set feeds cluster + refactored `xpEl`; `.ctl.star.on` reuses pin's `--lime`; no new persisted state; `.xp-actions` button stays. **Live gate found + resolved two issues (operator's best-long-term calls):** (1) the 4th touch button truncated 3 chip names @~768 → `@media(hover:none){.ctl.hide{display:none}}` drops ⊘ Hide on coarse-pointer/touch at all widths (kept on desktop + popover; C1 net-hide `class="ctl"` untouched) → truncation back to pre-D2a baseline; (2) popover primary button showed on offscreen rows (no card renders) → gate tightened `!hidden`→`visibility==='visible'` (9 offscreen→0, 191 visible kept). selftest 227/227, golden 42/42, rebuild 0/0 (`0.9.6+b491c2b`), console clean, dark+light live-verified on a 37-NIC host. Full evidence: card-truth §11. |
-| **D3** | Full responsive/theme QA matrix | Slice 6 | 320/390/640/1440/wide × dark/light, zero overlap/clip. **Re-check B3 additions at narrow widths:** always-visible panel-head ▲▼ and the extra `#panelsReset` button in the Subsystems `.sec-head` (which already has mobile tag-clamping). **From the 2026-07-07 D1/D2 review (low, latent):** `.cell .chip-state`'s `text-overflow:ellipsis` is inert (`inline-flex` container — flex items don't ellipsize), so an overflowing chip hard-clips; decide fix-or-accept during the matrix. |
+| **D3** | Full responsive/theme QA matrix plus user-perspective polish gate | Slice 6 | Active patch list: `2026-07-07-web-responsive-theme-qa-d3.md`; current review: `../../reviews/review-2026-07-07-dashboard-d3-user-perspective.md`. 320/390/640/~768/1440/wide plus short-height mobile × dark/light, zero overlap/clip except explicitly accepted baseline cases. Confirmed blocker: 390-touch row controls currently overlap values (`rowOverlapCount=11`, `rowValueOverflowCount=11`). Must cover Sensors popover viewport fit and action-column crowding, row-control touch overlays, B3/C1 panel-head ▲▼/⊘ plus `#panelsReset`, D2a touch cluster regression, D2 overlay occlusion/click-away/resize/hit testing, Pages menu/mobile masthead fit, stat-card readout rhythm, user-feel screenshots, root-vs-preview route expectations, and the `.cell .chip-state` ellipsis decision. |
 | **E1** | Root `viewTheme: standard \| cardTruth` selector, route-namespace-ready | Slice 7 | Look selector persists; state plumbing ready for `sq.dashboard.{route}`. |
 | **E2** | Sync accepted deltas to `/`; retire `cardtruth` route + Pages entry | Slice 7 | One product surface, no dev/preview routes. |
 | **F1–F3** | Context dashboards (Main/Gaming/Storage): hash router + per-route state, switcher control, template defaults | new lane (§3.1) | Selectable context dashboards coexisting with `viewTheme`, each honest per card-truth. Separate campaign, gated behind Phase E; build on current baseline, not the stale branch. |
 | **X1** | Planning-doc consolidation (one authoritative plan+spec; archive superseded 2026-07-04 set) | new | Sprawl reduced; verification log remains the evidence trail. |
 
 **Critical path:** A → B → **C (done)** → D → E, then F as its own campaign. A and X1 can start immediately and
-in parallel with anything; C was independent of B. **D1 done** (card header reserved gutter, merged). **D2 done** (anchored-overlay expansion, live-gated zero-displacement). **D2a done** (direct flight-deck star-toggle controls, merged; ~768-touch stop-condition resolved by dropping ⊘ Hide on touch — fold into D3 matrix). **Next: D3** — full responsive/theme QA matrix.
+in parallel with anything; C was independent of B. **D1 done** (card header reserved gutter, merged). **D2 done** (anchored-overlay expansion, live-gated zero-displacement). **D2a done** (direct flight-deck star-toggle controls, merged; ~768-touch stop-condition resolved by dropping ⊘ Hide on touch — fold into D3 matrix). **Next: D3** — full responsive/theme QA matrix from [2026-07-07-web-responsive-theme-qa-d3.md](2026-07-07-web-responsive-theme-qa-d3.md).
 Re-check the C1 always-visible adapter-head ▲▼/⊘ controls in the D3 narrow-width matrix (they sit in the same
 `.panel-move` cluster the D-phase polish touches).
 
@@ -508,30 +510,26 @@ Stop and review before continuing if any of these happen:
 
 ## 11. First Next Step
 
-The multi-tab state merge guard, visible expansion/action patch, masthead Sensors popover (B1), explicit primary-card selection (B2), and **Customize drawer removal (B3)** are all implemented and merged to `master` (B3 at `e7ae6f0`; `feat/web-drawer-removal-b3` deleted). Stable `/` exposes raw label, `SensorId`, hardware id, range provenance, alias, style, max override, pin/hide, keyboard move (cards, rows, pinned cards, **and panels**), hidden/offscreen discovery via the Sensors popover, and operator-chosen primary cards with an Auto reset — **with no side drawer**.
+**D3 is the next concrete patch.** B1, B2, B3, C1, D1, D2, and D2a are merged on `master`; the latest docs pin is `db4a9da`, and the product merge baseline for D3 is `0279333`.
 
-B3 was **not** a clean deletion, but the parity re-assessment found only one real keyboard gap: panel reorder (pinned-card reorder was already inline via the expanded card's `move-left`/`move-right`). Delivered as: (1) inline ▲▼ panel reorder + a Subsystems "Reset order"; (2) live verification that every drawer workflow has a visible/keyboard replacement (hidden/pin/reset → Sensors popover; alias/style/override/pin/hide/move → card/row expansion; pinned-title → alias, which renders on the card); (3) deletion of `#customizeDrawer`/`#customizeScrim`/`#customize`, tabs, `renderCustomize`/`renderPinnedEditor`/`renderLayoutEditor`/`renderSensorRows`/`renamePinned`, drawer handlers, and drawer CSS (shared `.iconbtn`/`.sensor-*` rules split, not deleted).
+Use the D3 patch list and plan:
 
-**C1 — network adapter subgroups is now done** (branch `feat/web-network-subgroups-c1`,
-`e48173c..555e7ae`, merge pending; execution record `2026-07-06-web-network-subgroups-c1.md`). One panel per
-active adapter keyed by `s.hwid`, ▲▼/drag reorder + ⊘ hide + Sensors-popover restore, `panelOrder` kept
-nic-free, hidden-adapter sensors reported `offscreen`. selftest 227/227, golden 42/42, both Release x64 builds
-0/0, live-verified in both themes on a 37-NIC host (5 active panels), zero console errors.
+```powershell
+docs\superpowers\plans\2026-07-07-web-responsive-theme-qa-d3.md
+```
 
-**D1 — card header grid + reserved action gutter is now done** (branch `feat/web-card-header-gutter-d1`,
-`e0f1dad` grid + `0e0987a` collapse-at-rest refine; execution record `2026-07-07-web-card-header-gutter-d1.md`):
-a two-track `.chead` grid makes control↔chip/type-icon overlap structurally impossible, and the control cluster
-collapses at rest so default card names stay full. selftest 227/227, golden 42/42, clean `net10.0-windows` x64
-rebuild 0/0 (stamp `0.9.6+0e0987a.2026-07-07`), live RED 4→GREEN 0 in both themes across desktop/touch/narrow,
-final whole-branch review 0C/0I. The next concrete patch is **D2 — expansion multi-column layout** (see §4 row
-D2 / §5 Slice 6 polish).
+D3 is a responsive/theme QA pass plus small visual fixes. It must start with the browser matrix in the D3 plan:
+320, 390, 640, ~768 touch, 1440, wide/1920+, and the short-height mobile cases in both dark and light. It must explicitly cover Sensors popover viewport fit, Sensors row action crowding, the confirmed row-control touch overlap, panel/adapter header controls, `#panelsReset`, D2a touch cluster regression, D2 overlay occlusion/click-away/resize/hit testing, stat-card readout rhythm, mobile touch targets, root-vs-preview route expectations, and the `.cell .chip-state` ellipsis decision. Screenshot review must apply the D3 user-feel and stat-card rules, not just numeric geometry probes.
 
 Do not make `/dash/cardtruth/` a permanent product tab; use it only as a temporary comparison route until accepted behavior is synced into the root dashboard.
 
-Acceptance for the next patch:
+Acceptance for the D3 patch:
 
-- `node webtests\selftest.node.js` adds and passes popover/drawer-removal model tests where practical.
-- Hidden/offscreen sensor discovery is available from one compact masthead popover.
-- No normal card/row detail workflow remains drawer-only.
-- Drawer DOM/CSS/handlers are removed only after parity is verified.
-- No product code mentions this machine's sensor IDs or device names.
+- All D3 patch-list items are fixed, explicitly accepted, or deferred with evidence.
+- Browser rect probes and screenshots cover every width/theme state in the D3 matrix.
+- No visible overlap, viewport clipping, or unexpected hard clipping remains.
+- The confirmed 390-touch row overlap is zeroed or explicitly replaced by an accepted in-flow/stacked mobile control layout.
+- Stat-card screenshots satisfy the D3 card rules: value/unit remain primary, controls stay tertiary, range visuals remain truthful, and number-only cards look deliberate.
+- The browser console stays clean across poll ticks with Sensors open and a card expanded.
+- `node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js`, preview `node --check` while `/dash/cardtruth/` exists, `node webtests\selftest.node.js`, golden `dotnet test`, and `net10.0-windows` x64 build pass.
+- `docs/feature-web-dashboard-card-truth.md` §11 records the D3 verification row and this plan advances to E1/E2 only after D3 is green.

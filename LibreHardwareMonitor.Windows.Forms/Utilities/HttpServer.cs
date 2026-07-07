@@ -243,19 +243,59 @@ public class HttpServer
     }
     public void SetSensorControlValue(SensorNode sNode, string value)
     {
-        if (sNode.Sensor.Control == null)
+        IControl control = sNode.Sensor.Control;
+
+        if (control == null)
         {
             throw new ArgumentException("Specified sensor '" + sNode.Sensor.Identifier + "' can not be set");
         }
 
         if (value == "null")
         {
-            sNode.Sensor.Control.SetDefault();
+            control.SetDefault();
         }
         else
         {
-            sNode.Sensor.Control.SetSoftware(float.Parse(value, CultureInfo.InvariantCulture));
+            if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float softwareValue) ||
+                float.IsNaN(softwareValue) ||
+                float.IsInfinity(softwareValue))
+            {
+                throw new ArgumentException("Invalid control value '" + value + "' specified");
+            }
+
+            if (softwareValue < control.MinSoftwareValue)
+                softwareValue = control.MinSoftwareValue;
+            else if (softwareValue > control.MaxSoftwareValue)
+                softwareValue = control.MaxSoftwareValue;
+
+            control.SetSoftware(softwareValue);
         }
+    }
+
+    internal Dictionary<string, object> HandleGetSensorRequest(NameValueCollection queryString)
+    {
+        var result = new Dictionary<string, object>();
+
+        try
+        {
+            // Hardware control writes must not be reachable via GET (CSRF).
+            if (queryString["action"] == "Set")
+            {
+                result["result"] = "fail";
+                result["message"] = "Set requires a POST request";
+            }
+            else
+            {
+                HandleSensorRequest(queryString, null, result);
+            }
+        }
+        catch (Exception e)
+        {
+            result["result"] = "fail";
+            result["message"] = e.Message; // never e.ToString(): no stack traces to clients
+        }
+
+        return result;
     }
 
     //Handles "/Sensor" requests.
@@ -297,7 +337,12 @@ public class HttpServer
 
     private void HandleSensorRequest(HttpListenerRequest request, Dictionary<string, object> result)
     {
-        IDictionary<string, string> dict = ToDictionary(request.QueryString);
+        HandleSensorRequest(request.QueryString, request, result);
+    }
+
+    private void HandleSensorRequest(NameValueCollection queryString, HttpListenerRequest request, Dictionary<string, object> result)
+    {
+        IDictionary<string, string> dict = ToDictionary(queryString);
 
         if (dict.ContainsKey("action"))
         {
@@ -326,7 +371,7 @@ public class HttpServer
                         // against hardware control writes. Browsers always attach Origin
                         // (or at least Referer) to cross-site form posts; script clients
                         // like LiquidCool.py send neither and are unaffected.
-                        if (IsCrossOriginBrowserRequest(request))
+                        if (request != null && IsCrossOriginBrowserRequest(request))
                             throw new ArgumentException("Set rejected: cross-origin browser requests are not allowed");
 
                         SetSensorControlValue(sNode, dict["value"]);
@@ -467,20 +512,7 @@ public class HttpServer
 
                         if (string.Equals(path, "/Sensor", StringComparison.OrdinalIgnoreCase))
                         {
-                            var sensorResult = new Dictionary<string, object>();
-
-                            // Hardware control writes must not be reachable via GET (CSRF).
-                            if (request.QueryString["action"] == "Set")
-                            {
-                                sensorResult["result"] = "fail";
-                                sensorResult["message"] = "Set requires a POST request";
-                            }
-                            else
-                            {
-                                HandleSensorRequest(request, sensorResult);
-                            }
-
-                            await SendJsonSensorAsync(context.Response, sensorResult);
+                            await SendJsonSensorAsync(context.Response, HandleGetSensorRequest(request.QueryString));
                             return;
                         }
 

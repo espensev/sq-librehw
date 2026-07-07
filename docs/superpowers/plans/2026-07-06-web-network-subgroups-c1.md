@@ -1,7 +1,7 @@
 # C1 — Network Adapter Subgroups Implementation Plan
 
 > **STATUS: COMPLETE (2026-07-07).** Executed subagent-driven (TDD) on `feat/web-network-subgroups-c1`,
-> commits `e48173c..555e7ae` (merge pending final whole-branch review). All 7 tasks landed + task-reviewed
+> commits `e48173c..555e7ae`, later merged to `master` as `7130748`. All 7 tasks landed + task-reviewed
 > (0 Critical / 0 Important each). Gates: selftest 227/227, golden 42/42, `net472`+`net10.0-windows` Release
 > x64 builds 0/0, `git diff --check` clean. Live-verified in a real browser (dark+light, across reloads) on a
 > 37-NIC host: 5 active adapter panels, no-op guard holds, reorder/hide/restore all work, popover stays open on
