@@ -815,6 +815,7 @@
       limits: {},
       expanded: new Set(),
       xpEnter: null,
+      primaryIds: new Set(),
       inlineEditing: false,
       inlineEditingUntil: 0
     };
@@ -831,9 +832,11 @@
     }
     function ctlCluster(id, label, opts) {
       const pinned = SQ.isPinned(state.dashboard, id);
+      const primary = state.primaryIds.has(id);
+      const star = `<button class="ctl star${primary ? ' on' : ''}" data-act="${primary ? 'primary-remove' : 'primary-add'}" data-id="${esc(id)}" aria-label="${primary ? 'Remove from primary' : 'Show as primary'} ${esc(label)}" title="${primary ? 'Remove from primary' : 'Show as primary'}">${primary ? '&#9733;' : '&#9734;'}</button>`;
       const pin = `<button class="ctl pin${pinned ? ' on' : ''}" data-act="${pinned ? 'unpin' : 'pin'}" data-id="${esc(id)}" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(label)}" title="${pinned ? 'Unpin' : 'Pin'}">&#128204;</button>`;
       const hide = opts && opts.hide ? `<button class="ctl hide" data-act="hide" data-id="${esc(id)}" aria-label="Hide ${esc(label)}" title="Hide">&#8856;</button>` : '';
-      return pin + hide;
+      return star + pin + hide;
     }
     function rootNode(data) {
       return data.Children && data.Children[0] ? data.Children[0] : data;
@@ -947,6 +950,7 @@
       sensors.forEach(s => s.status = SQ.statusOf(s, limits));
       state.allSensors = allSensors;
       state.visibleSensors = sensors;
+      state.primaryIds = new Set(SQ.primaryCardIds(allSensors, state.dashboard));
       state.limits = limits;
 
       const alarm = sensors.filter(s => s.status !== 'info' && s.status !== 'off');
@@ -1023,7 +1027,7 @@
       const ov = state.dashboard.rangeOverrides[s.id];
       const alias = SQ.sensorAlias(state.dashboard, s.id);
       const pinned = SQ.isPinned(state.dashboard, s.id);
-      const isPrimary = SQ.isPrimaryCard(state.dashboard, s.id, state.allSensors);
+      const isPrimary = state.primaryIds.has(s.id);
       const rawMin = s.min == null || s.min === '' ? '—' : s.min;
       const rawMax = s.max == null || s.max === '' ? '—' : s.max;
       const value = s.value ?? '—';
