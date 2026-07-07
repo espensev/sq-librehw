@@ -7,3 +7,4 @@
 .vscode/
 packages/
 .claude/settings.local.json
+.roslyn-mcp/

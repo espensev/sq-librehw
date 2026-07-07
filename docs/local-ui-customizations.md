@@ -66,6 +66,28 @@ dashboard branch commit moved the preview-route work out of the dirty working tr
   from `/voltage/0..5` to `/voltage/1..6`; `GPU Core Voltage` and the Current/Power pin ids are
   unchanged. Shared-lib edit — it's an upstream defect, so it's a candidate for an upstream report.
 
+## Settings persistence (`Sensor.cs`, `PersistentSettings.cs`, `MainForm.cs`)
+
+- **Bounded sensor history** (`Sensor.cs`, `EncodeValuesBounded` / `MaxPersistedValuesLength`).
+  Persisted `<sensor>/values` history is GZip-encoded and trimmed oldest-first to a 64 KB budget;
+  an empty history removes the key instead of writing an empty blob. Prevents the runtime `.config`
+  bloating to hundreds of MB (NIC throughput sensors previously wrote ~800 KB each), which had made
+  saves slow and brittle so user settings appeared to revert after restart. Shared-lib change — the
+  cap governs every `ISettings` consumer.
+- **Load/save cleanup and migration** (`PersistentSettings.cs`, `MaxSensorValuesLength` kept in sync
+  with the lib cap). Oversized `/values` blobs written by older builds are dropped, `/values` of
+  hardware absent this session is pruned (`_unclaimedSensorValues`), and default-only `*/plot=false`
+  noise is filtered. Real user settings are preserved: listener/auth, UI scale, window layout,
+  `/hidden`, `/plot=true`, custom names, pen colors.
+- **Autosave and atomic writes** (`MainForm.cs`, `PersistentSettings.cs`). Settings previously saved
+  only on clean exit/log-off, so a crash, forced kill, or power loss reverted everything changed
+  since launch. A 5-minute autosave timer (`AutoSaveIntervalMilliseconds`) now persists in-session
+  changes; a `Modified` dirty-flag skips idle writes and autosave I/O failures log instead of raising
+  a modal. Writes go to a temp file, flush to disk, then swap via `File.Replace` retaining
+  `<config>.backup` (copy-based fallback on non-NTFS/network volumes); `Load` falls back to the
+  backup when the live file is missing or corrupt, so a torn write can never drop the user to
+  defaults.
+
 ## CSV logger (`Logger.cs`)
 
 - **One-sensor-one-column guard.** `SensorAdded` and `OpenExistingLogFile` now `break` on the first
@@ -385,3 +407,12 @@ change. `favicon.ico` and `images/` (referenced by `data.json` `ImageURL`s) are 
   ordering. The preview copy remains only as an isolated `sq.dashboard.preview.cardtruth` comparison
   namespace until it is retired or any surviving visual treatment is promoted into the root Theme/view
   selector.
+- 2026-07-07: Settings-persistence bloat + durability fix implemented (`Sensor.cs`,
+  `PersistentSettings.cs`, `MainForm.cs`). Bounded `/values` history to 64 KB, added load/save cleanup
+  for oversized/stale blobs and `plot=false` noise, added a 5-minute autosave with a `Modified`
+  dirty-flag, and made writes atomic with a `<config>.backup` retained on swap plus load-time backup
+  fallback. `dotnet test LibreHardwareMonitor.Tests -p:Platform=x64` **passed**, including 11
+  `SettingsPersistenceTests` (bounded/oversized/stale history, plot/hidden filtering, user-settings
+  round-trip, `Modified` tracking, and backup recovery from a corrupt live file); solution build 0/0.
+  `LibreHardwareMonitorLib.csproj` gains `InternalsVisibleTo=LibreHardwareMonitor.Tests` to exercise
+  the internal encode helper.

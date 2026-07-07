@@ -14,6 +14,11 @@ namespace LibreHardwareMonitor.Hardware;
 
 internal class Sensor : ISensor
 {
+    // Upper bound for the base64 payload persisted per sensor under "<sensor>/values".
+    // Keep in sync with PersistentSettings.MaxSensorValuesLength in the Windows Forms app,
+    // which drops any larger entry so sensor history cannot bloat the settings file.
+    internal const int MaxPersistedValuesLength = 64 * 1024;
+
     private readonly string _defaultName;
     private readonly Hardware _hardware;
     private readonly ISettings _settings;
@@ -243,28 +248,65 @@ internal class Sensor : ISensor
 
     private void SetSensorValuesToSettings()
     {
+        string name = new Identifier(Identifier, "values").ToString();
+
+        SensorValue[] values;
+        lock (_valuesLock)
+        {
+            values = _values.ToArray();
+        }
+
+        if (values.Length == 0)
+        {
+            // No history to persist (e.g. history disabled): drop any leftover entry instead
+            // of storing an empty blob for every sensor.
+            _settings.Remove(name);
+            return;
+        }
+
+        _settings.SetValue(name, EncodeValuesBounded(values, MaxPersistedValuesLength));
+    }
+
+    /// <summary>
+    /// Encodes sensor values for persistence, dropping the oldest samples as needed so the
+    /// resulting base64 payload does not exceed <paramref name="maxEncodedLength" /> characters.
+    /// </summary>
+    internal static string EncodeValuesBounded(SensorValue[] values, int maxEncodedLength)
+    {
+        int start = 0;
+        string encoded = EncodeValues(values, start);
+
+        while (encoded.Length > maxEncodedLength && start < values.Length)
+        {
+            // Drop the oldest half of the remaining samples until the payload fits.
+            start += (values.Length - start + 1) / 2;
+            encoded = EncodeValues(values, start);
+        }
+
+        return encoded;
+    }
+
+    private static string EncodeValues(SensorValue[] values, int start)
+    {
         using MemoryStream memoryStream = new();
-        using GZipStream gZipStream = new(memoryStream, CompressionMode.Compress);
-        using BufferedStream outputStream = new(gZipStream, 65536);
+        using (GZipStream gZipStream = new(memoryStream, CompressionMode.Compress))
+        using (BufferedStream outputStream = new(gZipStream, 65536))
         using (BinaryWriter binaryWriter = new(outputStream))
         {
             long t = 0;
 
-            lock (_valuesLock)
+            for (int i = start; i < values.Length; i++)
             {
-                foreach (SensorValue sensorValue in _values)
-                {
-                    long v = sensorValue.Time.ToBinary();
-                    binaryWriter.Write(v - t);
-                    t = v;
-                    binaryWriter.Write(sensorValue.Value);
-                }
+                long v = values[i].Time.ToBinary();
+                binaryWriter.Write(v - t);
+                t = v;
+                binaryWriter.Write(values[i].Value);
             }
 
             binaryWriter.Flush();
         }
 
-        _settings.SetValue(new Identifier(Identifier, "values").ToString(), Convert.ToBase64String(memoryStream.ToArray()));
+        return Convert.ToBase64String(memoryStream.ToArray());
     }
 
     private void GetSensorValuesFromSettings()

@@ -88,6 +88,11 @@ public sealed partial class MainForm : Form
     private int _baseMinColumnWidth = 100;
     private int _baseMaxColumnWidth = 100;
 
+    // Persist settings on this cadence so a crash, forced kill or power loss cannot revert
+    // everything changed since launch; the app otherwise saves only on clean exit/log-off.
+    private const int AutoSaveIntervalMilliseconds = 5 * 60 * 1000;
+    private readonly System.Windows.Forms.Timer _autoSaveTimer;
+
     public MainForm()
     {
         InitializeComponent();
@@ -631,6 +636,7 @@ public sealed partial class MainForm : Form
         // Make sure the settings are saved when the user logs off
         Microsoft.Win32.SystemEvents.SessionEnded += delegate
         {
+            _autoSaveTimer.Stop();
             _computer.Close();
             SaveConfiguration();
             if (_runWebServer.Value)
@@ -638,6 +644,10 @@ public sealed partial class MainForm : Form
         };
 
         Microsoft.Win32.SystemEvents.PowerModeChanged += PowerModeChanged;
+
+        _autoSaveTimer = new System.Windows.Forms.Timer { Interval = AutoSaveIntervalMilliseconds };
+        _autoSaveTimer.Tick += AutoSaveTimer_Tick;
+        _autoSaveTimer.Start();
     }
 
     private void StopFileHardwareMenuFromClosing(object sender, ToolStripDropDownClosingEventArgs e)
@@ -1362,7 +1372,15 @@ public sealed partial class MainForm : Form
             backgroundUpdater.RunWorkerAsync();
     }
 
-    private void SaveConfiguration()
+    private void AutoSaveTimer_Tick(object sender, EventArgs e)
+    {
+        if (_closing)
+            return;
+
+        SaveConfiguration(autoSave: true);
+    }
+
+    private void SaveConfiguration(bool autoSave = false)
     {
         if (_plotPanel == null || _settings == null)
             return;
@@ -1390,11 +1408,22 @@ public sealed partial class MainForm : Form
         _settings.SetValue("authenticationUserName", Server.UserName);
         _settings.SetValue("authenticationPassword", Server.PasswordSHA256);
 
+        // Nothing changed since the last save; skip the periodic write to avoid needless disk
+        // churn while the app sits idle in the tray.
+        if (autoSave && !_settings.Modified)
+            return;
+
         string fileName = Path.ChangeExtension(Application.ExecutablePath, ".config");
 
         try
         {
             _settings.Save(fileName);
+        }
+        catch (Exception ex) when (autoSave && (ex is UnauthorizedAccessException || ex is IOException))
+        {
+            // A periodic save must never interrupt the user with a modal dialog every cycle. The
+            // atomic write preserved the previous file/backup, so just log and retry next tick.
+            Debug.WriteLine("Autosave of settings failed: " + ex.Message);
         }
         catch (UnauthorizedAccessException)
         {
@@ -1471,6 +1500,7 @@ public sealed partial class MainForm : Form
         Visible = false;
         _systemTray.IsMainIconEnabled = false;
         timer.Enabled = false;
+        _autoSaveTimer.Stop();
         _computer.Close();
         SaveConfiguration();
         if (_runWebServer.Value)
@@ -1478,6 +1508,7 @@ public sealed partial class MainForm : Form
 
         _systemTray.Dispose();
         timer.Dispose();
+        _autoSaveTimer.Dispose();
         backgroundUpdater.Dispose();
 
         Application.Exit();
