@@ -1315,7 +1315,7 @@
         return `<div class="sensor-choice ${hidden ? 'is-hidden' : ''}">
           <div><b>${esc(r.label)}</b><span>${esc(r.hw)} · ${esc(r.type)} · ${esc(r.value)}${alias}</span><code>${esc(r.id)}</code></div>
           <span class="vis-chip vis-${r.visibility}">${r.visibility}</span>
-          ${hidden ? '' : `<button class="iconbtn" data-action="${primary ? 'primary-remove' : 'primary-add'}" data-id="${esc(r.id)}">${primary ? 'Remove primary' : 'Make primary'}</button>`}
+          ${r.visibility === 'visible' ? `<button class="iconbtn" data-action="${primary ? 'primary-remove' : 'primary-add'}" data-id="${esc(r.id)}">${primary ? 'Remove primary' : 'Make primary'}</button>` : ''}
           <button class="iconbtn" data-action="${pinned ? 'unpin' : 'pin'}" data-id="${esc(r.id)}">${pinned ? 'Unpin' : 'Pin'}</button>
           <button class="iconbtn" data-action="${hidden ? 'show' : 'hide'}" data-id="${esc(r.id)}">${hidden ? 'Show' : 'Hide'}</button>
         </div>`;
