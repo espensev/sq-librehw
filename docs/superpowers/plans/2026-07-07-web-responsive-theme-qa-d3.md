@@ -1,8 +1,8 @@
 # Web Dashboard D3 - Responsive and Theme QA Patch List
 
 **Date:** 2026-07-07
-**Status:** ready for D3 implementation branch
-**Baseline:** `master` / `origin/master` at `db4a9da` (docs pin after D2a); product merge baseline `0279333` (`Merge D2a direct deck-controls`)
+**Status:** implemented and verified; lands as the D3 follow-up commit on top of `5a95bd7`
+**Baseline:** D3 implementation starts from local `master` at `5a95bd7` (`fix(web): harden telemetry server boundary`), ahead of `origin/master` `db4a9da`; product D2a merge baseline `0279333` (`Merge D2a direct deck-controls`)
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Queue source:** [2026-07-06-web-dashboard-v3-next-plan.md](2026-07-06-web-dashboard-v3-next-plan.md) §4 row D3
 **User-perspective review:** [../../reviews/review-2026-07-07-dashboard-d3-user-perspective.md](../../reviews/review-2026-07-07-dashboard-d3-user-perspective.md)
@@ -21,18 +21,39 @@ semantics unless a separate accepted spec explicitly authorizes that change.
 
 This patch list is grounded in the live root dashboard, not only static CSS inspection.
 
-Current snapshot from the 2026-07-07 Edge/Playwright pass against `http://localhost:8085/`:
+Final D3 closeout from the 2026-07-07 Edge/Playwright pass against `http://127.0.0.1:8085/`:
 
-- Process: existing live EXE, PID `38992`; `GET /` returned 200 before the browser pass.
-- Desktop 1440, dark and light: 14 PFD cards, 12 subsystem panels, 5 active network panels,
-  9 hidden/offscreen sensors, no browser console errors, row-control overlap count 0.
-- Mobile/touch 390, dark: 14 PFD cards, the D2a touch card cluster correctly omits `Hide`,
-  no browser console errors, but `rowOverlapCount=11` and `rowValueOverflowCount=11`.
-- Several stat cards were flagged by geometry probes for large readout/source overflow. Treat
-  those as a user-visible review target in D3: first distinguish benign flex sizing from actual
-  visible clipping, then fix any primary value, unit, ceiling, or source text that reads broken.
+- Process: rebuilt Release `net10.0-windows` x64 EXE, PID `79624`; `GET /`, `/data.json`,
+  `/metrics`, and `/dash/cardtruth/` returned 200 before the browser matrix.
+- Matrix: 14 cases — 320x568 touch, 390x844 touch, 640x900 hover, 640x900 touch,
+  768x1024 touch, 1440x900 hover, and 1920x1080 hover, each in dark and light.
+- Browser gates: `maxRowOverlap=0`, `maxRowValueOverflow=0`, no horizontal scroll,
+  Sensors panel X/Y fit true, Pages menu X fit true, overlay X fit true, zero console
+  warnings/errors, and root route identity `{hasSensorsMenu:true, hasCustomizeDrawer:false}`.
+- Stateful localStorage probe: seeded non-empty `panelOrder` and one hidden active NIC;
+  `#panelsReset` and the hidden-adapter restore row remained in viewport at 320/390/640,
+  with `panelHeaderBadCount=0` and no horizontal scroll.
+- Evidence files: `C:\Users\Sev\AppData\Local\Temp\sq-librehw-d3-20260707-edge-r3\d3-report.json`
+  and `d3-stateful-panels-report.json`; inspected screenshots include
+  `320x568-touch-dark-sensors.png`, `390x844-touch-dark-rows.png`,
+  `768x1024-touch-dark-default.png`, `1440x900-hover-light-default.png`,
+  `320x568-touch-dark-overlay.png`, and `390x844-touch-stateful-panels.png`.
+- Static gates: `node --check` passed for root and `/dash/cardtruth/` `console.js`;
+  `node webtests\selftest.node.js` passed 227/227; `dotnet test
+  LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64` passed 55/55
+  with the existing xUnit analyzer warning; Release `net10.0-windows` and `net472` x64 builds
+  passed 0 warnings/0 errors; `git diff --check` passed with CRLF normalization warnings only.
+  After the final rebuild/restart, PID `77988` served `/`, `/data.json`, `/metrics`, and
+  `/dash/cardtruth/` as 200.
+- Accepted observations: narrow row-name ellipsis is expected for long labels at 320/390;
+  source text truncation at 320/390/~768 is acceptable because primary values/units hard-clip
+  count is 0 and full raw labels/`SensorId` remain available in expansion/search. The single
+  `GPU Mem J...` card-label truncation at ~768 touch is the known D2a baseline. Desktop hover
+  controls remain compact; touch controls are now minimum 24 px and the destructive Hide action
+  stays out of the touch card/row cluster.
 
-The confirmed mobile row overlap makes D3-03 a blocking D3 issue, not a cosmetic note.
+D3-03's confirmed mobile row-value overlap is fixed by moving row controls in-flow on touch/narrow
+layouts; D3 closes only because the browser matrix and screenshot review both passed.
 
 ## 3. Review Lenses
 
@@ -161,6 +182,27 @@ Required interaction states:
 | D3-14 | Low | Focus and accidental-touch behavior need explicit review after direct controls were added everywhere. | D2a put primary-card controls on cards, rows, and the Sensors popover; mobile/touch keeps many controls visible. | Keyboard tab order must be predictable, labels must be meaningful, and touch targets must not make hide/remove actions easy to trigger while scrolling or expanding rows. |
 | D3-15 | Low | Route-surface divergence can confuse D3 evidence. | Stable `/` has `#sensorsMenu` and no drawer, while `/dash/cardtruth/` remains a legacy comparison route with Customize/drawer DOM until Phase E. | Root `/` is the acceptance surface. D3 evidence should assert `/` has `#sensorsMenu` and no drawer workflow; `/dash/cardtruth/` evidence is comparison-only while the preview route exists. |
 | D3-16 | Low | Viewport width checks are insufficient for popovers and bottom overlays. | Sensors panel uses `max-height:min(70vh,560px)` and overlays are positioned below cards by offset math. | Add 320x568 and 390x844 checks. Open Sensors and a lower-card overlay; no horizontal scroll, clipped critical controls, unreachable popover actions, or offscreen overlay controls. |
+
+## 7.1 Patch List Closeout
+
+| ID | Status | D3 outcome |
+|---|---|---|
+| D3-01 | Fixed | Mobile Sensors rules now apply after the base popover rule: full-width mobile anchor plus `max-height:min(62vh,560px)`. 320x568 Sensors box is `16,211 -> 304,563`, inside the viewport in both themes. |
+| D3-02 | Fixed | At <=640px, Sensors rows stack text, chip, and actions in one column; 320/390 screenshots keep label, source/type/value, `SensorId`, and row actions readable/reachable. |
+| D3-03 | Fixed | `.row-ctl` moves in-flow on touch/narrow rows. Final matrix: `maxRowOverlap=0`, `maxRowValueOverflow=0`; row screenshots show readings first and controls below. |
+| D3-04 | Fixed/proven | `.sec-head` and `.panel-head` wrap on mobile; stateful probe with non-empty `panelOrder` shows `#panelsReset` in viewport and `panelHeaderBadCount=0` at 320/390/640. |
+| D3-05 | Proven | 768 touch dark/light still shows `[grip, star, pin]`; Hide remains desktop-only in the card/row cluster and available from the Sensors popover. |
+| D3-06 | Accepted | Current `OK/WATCH/CRIT` chip labels are short, hard-clip count is 0, and no D3 screenshot shows chip clipping. Future longer chip text should add an inner text span or non-flex ellipsis. |
+| D3-07 | Proven | Card overlay remains horizontally in viewport, opens below the card, does not cover masthead/popovers, and survives a poll tick with zero console errors. |
+| D3-08 | Proven | D3 used browser rect probes plus screenshots; DOM-less selftest remains a regression guard only. |
+| D3-09 | Proven | 320/390/640 masthead controls, rate slider, Pages, and Sensors remain reachable with no horizontal scroll. |
+| D3-10 | Proven | Every matrix viewport ran dark and light. Light desktop screenshot review matched dark hierarchy and spacing. |
+| D3-11 | Accepted/proven | Primary value+unit hard-clip count is 0. Long source/card labels may ellipsize at narrow widths; full raw label and `SensorId` remain in expansion/search. |
+| D3-12 | Fixed/proven | Sensors open-state verified at 320/390 in both themes with visible, hidden, and offscreen rows; stateful probe also verified one hidden NIC restore row. |
+| D3-13 | Proven | Screenshot review rejected geometry-only closeout; inspected mobile Sensors, mobile rows, tablet cards, desktop light, mobile overlay, and stateful panel reset. |
+| D3-14 | Fixed/proven | Touch `.ctl` controls now have 24 px minimum dimensions; Hide is omitted from touch card/row clusters, reducing accidental destructive taps while scrolling. |
+| D3-15 | Proven | Root `/` is the acceptance surface and has `#sensorsMenu` with no Customize drawer/button. `/dash/cardtruth/` remains comparison-only and still has legacy preview DOM until Phase E. |
+| D3-16 | Proven | Short-height 320x568 and 390x844 checks pass for Sensors and overlays; no horizontal scroll, unreachable popover action, or offscreen critical control remains. |
 
 ## 8. Suggested Browser Probes
 

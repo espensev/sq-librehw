@@ -237,15 +237,22 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
   .btn{min-width:0;padding:7px 9px;font-size:10.5px;justify-content:center}
   .page-menu{min-width:0}
   .page-menu-panel{right:auto;left:0;min-width:min(220px,calc(100vw - 32px))}
+  .sensors-menu{grid-column:1/-1;min-width:0}
+  .sensors-menu>summary{width:100%;justify-content:center}
   main{padding-top:20px}
   section{margin-top:24px}
+  .sec-head{flex-wrap:wrap}
   .sec-head h2{font-size:13px;letter-spacing:.16em}
   .sec-head .tag{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+  #panelsReset{margin-left:0}
   .pfd{grid-template-columns:1fr}
   .cell .body{gap:10px}
   .cell .src{max-width:118px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .readout .big .v{font-size:28px}
   .grid{column-width:auto;column-count:1}
+  .panel-head{flex-wrap:wrap;gap:8px}
+  .panel-head .nm{flex:1 1 150px}
+  .panel-head .head-stat{margin-left:0;width:100%;justify-content:flex-end}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
@@ -262,7 +269,17 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
   background:linear-gradient(90deg,transparent,var(--panel) 22%);padding-left:22px}
 .cell:hover .cell-ctl,.cell:focus-within .cell-ctl{display:flex}
 .row:hover .row-ctl,.row:focus-within .row-ctl{display:flex}
-@media (hover:none){.cell-ctl{display:flex}.row-ctl{display:flex}.ctl.hide{display:none}}
+@media (hover:none){.cell-ctl{display:flex}.row-ctl{display:flex}.ctl{min-width:24px;min-height:24px}.ctl.hide{display:none}}
+@media (hover:none),(max-width:640px){
+  .row{grid-template-columns:auto 14px minmax(0,1fr) auto;gap:5px 8px}
+  .row>.row-grip{grid-column:1}
+  .row>.glyph-stat{grid-column:2}
+  .row>.rn{grid-column:3}
+  .row>.rv{grid-column:4}
+  .row>.bar{grid-column:3/5}
+  .row>.row-ctl{position:static;grid-column:3/5;display:flex;justify-self:end;transform:none;
+    background:none;padding-left:0;margin-top:1px}
+}
 .panel-move{display:inline-flex;gap:3px;margin-right:2px}
 .panel-move .ctl{padding:2px 4px;font-size:10px}
 
@@ -326,6 +343,13 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .vis-chip.vis-visible{opacity:.6}
 .net-restore{margin-top:10px;padding-top:10px;border-top:1px solid var(--line-soft)}
 .net-restore-head{font:700 9px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 8px}
+@media (max-width:640px){
+  .sensors-panel{left:0;right:auto;width:calc(100vw - 32px);max-height:min(62vh,560px)}
+  .sensors-tools{display:grid;grid-template-columns:1fr}
+  .sensors-panel .sensor-choice{grid-template-columns:minmax(0,1fr);align-items:start}
+  .sensors-panel .sensor-choice .iconbtn{width:100%;justify-content:center}
+  .sensors-panel .vis-chip{justify-self:start}
+}
 
 /* --- Primary card selection (B2) --- */
 #pfdReset,#panelsReset{margin-left:8px}
