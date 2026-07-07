@@ -4,7 +4,7 @@
 **Surface:** working tree plus live root dashboard evidence
 **Spec source:** current user request; `docs/superpowers/plans/2026-07-07-web-responsive-theme-qa-d3.md`
 **Standards sources:** `AGENTS.md`; `docs/ai-guide.md`; `docs/feature-web-dashboard-card-truth.md`
-**Verdict:** FAIL for D3 closeout until D3-03 is fixed
+**Verdict:** ~~FAIL for D3 closeout until D3-03 is fixed~~ → **PASS** (re-verified 2026-07-07 after `e101748` + `409f0a6`; see **Re-verification** at the end)
 
 ## Findings
 
@@ -66,3 +66,15 @@
 
 - Should D3 fix row controls with an in-flow second row only on touch, or also simplify desktop focus behavior for consistency?
 - Should touch target minimums follow a strict 24px local compact rule or a larger accessibility target where layout allows?
+
+## Re-verification (2026-07-07, post-fix — verdict FAIL → PASS)
+
+Re-audited the live root dashboard (rebuilt EXE, chrome-devtools, dark+light) at 320 and 390 touch after `e101748` (D3 responsive patch) and `409f0a6` (panel-name wrap). Every finding above is resolved:
+
+- **High / D3-03 (mobile row controls cover value)** — RESOLVED by `e101748`. Live: 390 touch **and** 320 touch, 234 rows, `rowCtlOverValue=0`, `rowValueClip=0`; `.row-ctl` is now `position:static; grid-column:3/5` on its own line under the value (`@media (hover:none),(max-width:640px)`). Telemetry text is no longer occluded.
+- **Medium (Sensors popover readability)** — RESOLVED by `e101748`. At ≤640 `.sensor-choice` is single-column; live 390: sensor label + hw/type/value + `SensorId` un-clipped, chip and Pin/Hide/Make-primary stacked full-width; panel fits viewport.
+- **Medium (panel-header content priority)** — RESOLVED by `409f0a6`. Was the last real residual: at 320, 9/17 panel names ellipsis-clipped, cutting the `#1/#2/#3` that distinguishes the three identical `KINGSTON SKC3000D2048G` drives. Fix wraps `.panel-head .nm` at ≤640 (`white-space:normal; overflow-wrap:anywhere`). Live 320 dark+light: all three Kingston `#N` fully shown (2 lines), `horizontalClip=0`, no h-scroll.
+- **Medium (D2 overlay occlusion / popover coexistence)** — VERIFIED fine. Live 390: expanded-card overlay fits the viewport (no h-scroll), and with the Sensors popover opened on top the popover renders above it (`z-index 40 > overlay z 6`) — no occlusion or click-trap.
+- **Low (preview-route divergence)** — unchanged; root `/` was the sole acceptance surface for this pass (preview not used as evidence). Defer to Phase E.
+
+Gates: `node webtests/selftest.node.js` 227/227; golden `dotnet test` 42→55/55 (server-hardening tests, unaffected by CSS); clean `net10.0-windows` Release x64 rebuild 0/0. Screenshots: `eval-320-kingston-fixed` (dark), `eval-320-kingston-light`, `eval-390-popover`. **D3 closeout complete.**
