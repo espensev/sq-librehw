@@ -251,7 +251,7 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
   .readout .big .v{font-size:28px}
   .grid{column-width:auto;column-count:1}
   .panel-head{flex-wrap:wrap;gap:8px}
-  .panel-head .nm{flex:1 1 150px}
+  .panel-head .nm{flex:1 1 150px;white-space:normal;overflow-wrap:anywhere}
   .panel-head .head-stat{margin-left:0;width:100%;justify-content:flex-end}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
