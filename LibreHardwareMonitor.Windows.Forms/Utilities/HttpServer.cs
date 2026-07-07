@@ -314,25 +314,37 @@ public class HttpServer
     //{"result":"fail","message":"Some error message"}
     //or:
     //{"result":"ok"}
-    private static bool IsCrossOriginBrowserRequest(HttpListenerRequest request)
+    internal static bool IsCrossOriginBrowserRequest(Uri requestUrl, string origin, string referer)
     {
-        string origin = request.Headers["Origin"];
         if (!string.IsNullOrEmpty(origin))
         {
             // "null" origins (sandboxed frames, file://) fail TryCreate and are rejected.
             return !(Uri.TryCreate(origin, UriKind.Absolute, out Uri originUri) &&
-                     string.Equals(originUri.Host, request.Url.Host, StringComparison.OrdinalIgnoreCase));
+                     IsSameOrigin(originUri, requestUrl));
         }
 
-        string referer = request.Headers["Referer"];
         if (!string.IsNullOrEmpty(referer))
         {
             return !(Uri.TryCreate(referer, UriKind.Absolute, out Uri refererUri) &&
-                     string.Equals(refererUri.Host, request.Url.Host, StringComparison.OrdinalIgnoreCase));
+                     IsSameOrigin(refererUri, requestUrl));
         }
 
         // No browser-context headers: a non-browser client (scripts, curl, the downstream poller).
         return false;
+    }
+
+    private static bool IsCrossOriginBrowserRequest(HttpListenerRequest request)
+    {
+        return IsCrossOriginBrowserRequest(request.Url, request.Headers["Origin"], request.Headers["Referer"]);
+    }
+
+    private static bool IsSameOrigin(Uri browserUri, Uri requestUri)
+    {
+        return browserUri != null &&
+               requestUri != null &&
+               string.Equals(browserUri.Scheme, requestUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(browserUri.Host, requestUri.Host, StringComparison.OrdinalIgnoreCase) &&
+               browserUri.Port == requestUri.Port;
     }
 
     private void HandleSensorRequest(HttpListenerRequest request, Dictionary<string, object> result)

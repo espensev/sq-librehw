@@ -108,6 +108,22 @@ public class HttpServerSensorApiTests
         Assert.Equal(0, fixture.Control.SetSoftwareCallCount);
     }
 
+    [Theory]
+    [InlineData("http://localhost:8085", "http://localhost:8085", null, false)]
+    [InlineData("http://localhost:8085", "http://localhost:9999", null, true)]
+    [InlineData("http://localhost:8085", "https://localhost:8085", null, true)]
+    [InlineData("http://localhost:8085", "http://example.test:8085", null, true)]
+    [InlineData("http://localhost:8085", "null", null, true)]
+    [InlineData("http://localhost:8085", null, "http://localhost:8085/page", false)]
+    [InlineData("http://localhost:8085", null, "http://localhost:9999/page", true)]
+    [InlineData("http://localhost:8085", null, null, false)]
+    public void BrowserOriginPolicyRequiresSameSchemeHostAndPort(string requestUrl, string origin, string referer, bool expected)
+    {
+        bool isCrossOrigin = HttpServer.IsCrossOriginBrowserRequest(new Uri(requestUrl), origin, referer);
+
+        Assert.Equal(expected, isCrossOrigin);
+    }
+
     private static NameValueCollection Query(params (string Key, string Value)[] values)
     {
         NameValueCollection query = new();
