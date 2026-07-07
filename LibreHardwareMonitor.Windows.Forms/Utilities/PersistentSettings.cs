@@ -235,11 +235,11 @@ public class PersistentSettings : ISettings
             }
             catch { }
 
-            try
-            {
-                File.Copy(fileName, backupFileName, overwrite: true);
-            }
-            catch { }
+            // If the previous good file cannot be preserved as the backup, fail the save before
+            // touching the live file: proceeding into the delete+move below could otherwise leave
+            // neither a live config nor a backup. The caller re-marks the store dirty on throw, so
+            // a later (auto)save retries.
+            File.Copy(fileName, backupFileName, overwrite: true);
         }
 
         // First save (nothing to preserve) or the copy-based fallback: move the fully written temp

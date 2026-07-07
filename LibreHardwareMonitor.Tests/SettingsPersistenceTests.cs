@@ -273,6 +273,33 @@ public sealed class SettingsPersistenceTests : IDisposable
     }
 
     [Fact]
+    public void Save_KeepsLiveConfig_WhenBackupCannotBePreserved()
+    {
+        string path = ConfigPath("locked-backup");
+
+        PersistentSettings settings = new();
+        settings.SetValue("listenerPort", 8085);
+        settings.Save(path);
+
+        // Lock the backup path exclusively so File.Replace fails (forcing the copy-based
+        // fallback) and the backup copy fails as well. The save must then throw instead of
+        // deleting the live file, otherwise a crash here would lose the last good config.
+        using (new FileStream(path + ".backup", FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+        {
+            settings.SetValue("listenerPort", 9090);
+            Assert.ThrowsAny<IOException>(() => settings.Save(path));
+        }
+
+        // The failed save re-arms the dirty flag so a later (auto)save retries.
+        Assert.True(settings.Modified);
+
+        // The live file still holds the previous good configuration.
+        PersistentSettings reloaded = new();
+        reloaded.Load(path);
+        Assert.Equal(8085, reloaded.GetValue("listenerPort", 0));
+    }
+
+    [Fact]
     public void SensorHistoryEncoding_TrimsOldestSamplesToStayWithinBudget()
     {
         // Poorly compressible data (random floats) models NIC throughput history that used to

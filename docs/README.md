@@ -64,6 +64,7 @@
 - Oversized/stale `/values` blobs are cleaned during load/save.
 - Settings autosave runs during the session.
 - Writes are atomic with backup fallback.
+- The fallback save path fails (keeping the live config) if the backup cannot be preserved.
 
 ## Standard Commands
 
