@@ -950,7 +950,7 @@
       sensors.forEach(s => s.status = SQ.statusOf(s, limits));
       state.allSensors = allSensors;
       state.visibleSensors = sensors;
-      state.primaryIds = new Set(SQ.primaryCardIds(allSensors, state.dashboard));
+      state.primaryIds = new Set(SQ.primaryCardIds(sensors, state.dashboard));
       state.limits = limits;
 
       const alarm = sensors.filter(s => s.status !== 'info' && s.status !== 'off');
