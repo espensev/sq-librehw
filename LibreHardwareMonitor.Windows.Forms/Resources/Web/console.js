@@ -814,6 +814,7 @@
       panelItems: [],
       limits: {},
       expanded: new Set(),
+      xpEnter: null,
       inlineEditing: false,
       inlineEditingUntil: 0
     };
@@ -1407,9 +1408,28 @@
     document.addEventListener('click', e => {
       document.querySelectorAll('details.page-menu[open], details.sensors-menu[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
     }, true);
-    function toggleExpand(key) {
-      if (state.expanded.has(key)) state.expanded.delete(key); else state.expanded.add(key);
+    // Capture phase, and deliberately blind to clicks on any card/row/control
+    // surface: card-to-card switching belongs to toggleExpand's single-open
+    // logic, and a bubble-phase rebuild must never make a control click read
+    // as "outside" (same race as the sensors-popover lesson above).
+    document.addEventListener('click', e => {
+      const open = [...state.expanded].filter(k => k.startsWith('c:'));
+      if (!open.length) return;
+      if (e.target.closest('.cell, .xp-overlay, .row, .rowxp, .panel-head, button, input, select, a, code, label, details')) return;
+      open.forEach(k => state.expanded.delete(k));
       rerender();
+    }, true);
+    function toggleExpand(key) {
+      if (state.expanded.has(key)) state.expanded.delete(key);
+      else {
+        if (key.startsWith('c:')) {
+          [...state.expanded].filter(k => k.startsWith('c:')).forEach(k => state.expanded.delete(k));
+          state.xpEnter = key;
+        }
+        state.expanded.add(key);
+      }
+      rerender();
+      state.xpEnter = null;
     }
     function handleAct(btn) {
       const id = btn.dataset.id;

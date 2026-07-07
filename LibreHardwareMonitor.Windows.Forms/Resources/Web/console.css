@@ -286,6 +286,9 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
   border:1px solid var(--line);border-radius:13px;
   background:linear-gradient(180deg,var(--panel),var(--panel-2));box-shadow:var(--shadow)}
 
+.xp-overlay.enter{animation:xpin .14s ease-out}
+@keyframes xpin{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+
 /* drag reorder */
 .grip{font:11px var(--mono);letter-spacing:-2px;line-height:1;padding:2px 4px;margin-right:2px;
   border:1px solid var(--line-soft);border-radius:5px;background:var(--panel-2);color:var(--dim);
