@@ -1,8 +1,8 @@
 # Web Dashboard v3 Continuation Plan and Handoff
 
-**Date:** 2026-07-07 (updated after D1 merge; D2 brainstorm draft in progress)
-**Status:** B1, B2, B3, **C1 (network adapter subgroups)**, **D1 (card header grid + reserved action gutter)**, and **D2 (expansion anchored overlay)** are all MERGED to `master`. **Next: D2a — direct flight-deck edit controls** (plan ready: [`2026-07-07-web-deck-controls-d2a.md`](2026-07-07-web-deck-controls-d2a.md) on branch `feat/web-deck-controls-d2a`; execute via subagent-driven-development), then D3. **D2 (expansion multi-column layout) has been brainstormed into a Draft spec** ([`feature-web-dashboard-expansion-layout.md`](../../feature-web-dashboard-expansion-layout.md)) but is **not yet accepted** — two acceptance-blocking decisions are open (that spec's §9). See the §0 Resume Brief, the [v3-next-plan §4](2026-07-06-web-dashboard-v3-next-plan.md) queue, and §10–§12 below. **The v3-next-plan §4 A–F queue is the authoritative sequence** wherever it disagrees with the Slice numbering in §5 below.
-**Baseline:** `master` / `origin/master` at `6a2c2d7` (`Merge expansion anchored overlay (Phase D2)`, pushed); was `47690a9` after D1, `7130748` after C1, `e7ae6f0` after B3, `106f91d` after B2, and `4310a8b` when this handoff was first written. Branch `D2-flyingcircus` is merged and deleted.
+**Date:** 2026-07-07 (updated after **D2a merge** — direct flight-deck star-toggle controls)
+**Status:** B1, B2, B3, **C1 (network adapter subgroups)**, **D1 (card header grid + reserved action gutter)**, **D2 (expansion anchored overlay)**, and **D2a (direct flight-deck edit controls — ★/☆ star toggle on cards/rows + popover primary button)** are all MERGED to `master`. **Next: D3 — full responsive/theme QA matrix** (v3-next-plan §4 row D3; fold in the D2a ~768-touch result — ⊘ Hide is now dropped on coarse-pointer/touch at all widths). D2's Draft spec is now **Verified/Accepted** (both §9 decisions resolved: #1 anchored overlay, #2 single `c:` key). **The [v3-next-plan §4](2026-07-06-web-dashboard-v3-next-plan.md) A–F queue + the [SDD ledger](../../../.superpowers/sdd/progress.md) are the authoritative current sources** wherever they disagree with the Slice numbering in §5 or the pre-D2 narrative in §0/§10 below.
+**Baseline:** `master` / `origin/master` at the **D2a merge commit** (`Merge D2a direct deck-controls`, pushed — exact SHA set in the post-merge doc commit); was `6a2c2d7` after D2, `47690a9` after D1, `7130748` after C1, `e7ae6f0` after B3, `106f91d` after B2, `4310a8b` at first write. Branches `D2-flyingcircus` and `feat/web-deck-controls-d2a` are merged and deleted.
 **Primary spec:** [../../feature-web-dashboard-card-truth.md](../../feature-web-dashboard-card-truth.md)
 **Active plan:** [2026-07-06-web-dashboard-v3-next-plan.md](2026-07-06-web-dashboard-v3-next-plan.md)
 **Versioned-route spec:** [../../feature-web-dashboard-versioned-routes.md](../../feature-web-dashboard-versioned-routes.md)
@@ -12,10 +12,12 @@
 
 *Read this section alone to resume. §1–§12 below are reference detail.*
 
+> **⚠️ SUPERSEDED as of the D2a merge (2026-07-07).** The bullets in this §0 below were written mid-D2-brainstorm (pre-D2/D2a merge) and are stale. **Current state:** B1/B2/B3/C1/D1/**D2**/**D2a** are all merged to `master`; the next work item is **D3 — responsive/theme QA matrix**. For the live source of truth read (1) the top-matter Status/Baseline above, (2) the [v3-next-plan §4 queue](2026-07-06-web-dashboard-v3-next-plan.md), (3) the [SDD ledger](../../../.superpowers/sdd/progress.md), and (4) card-truth §11. The rest of this §0 and §10 are kept as historical reference only.
+
 **State (2026-07-07):**
 
 - `master` = `origin/master` = `47690a9` (`Merge card header reserved gutter (Phase D1)`), on top of the C1
-  baseline `4416db5` (pushed). **D1 is the current shipped product baseline.** No open PRs.
+  baseline `4416db5` (pushed). **D1 is the current shipped product baseline.** No open PRs. *(Historical — superseded by the D2 and D2a merges; see the banner above.)*
 - **D2 brainstorm is checkpointed on branch `D2-flyingcircus`** (`11312f2`, one docs-only commit on top of
   `47690a9`): the Draft D2 spec `feature-web-dashboard-expansion-layout.md` plus cross-reference edits
   to `feature-web-dashboard-card-truth.md`, `feature-workflow.md`, and the D2 row of
