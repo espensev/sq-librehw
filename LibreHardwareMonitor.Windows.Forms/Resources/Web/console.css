@@ -265,9 +265,9 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .panel-move{display:inline-flex;gap:3px;margin-right:2px}
 .panel-move .ctl{padding:2px 4px;font-size:10px}
 
-/* card & row expansion - detail and actions live on the visible item */
+/* card & row expansion - detail lives in a full-width overlay anchored to the visible item */
 .cell{cursor:pointer}
-.cell.expanded,.cell.graph-on.expanded{height:auto}
+.cell.expanded{border-color:color-mix(in srgb,var(--cy) 45%,var(--line))}
 .row{cursor:pointer}
 .xp,.rowxp{display:grid;gap:9px;cursor:auto}
 .xp{border-top:1px solid var(--line-soft);margin-top:10px;padding-top:10px}
@@ -281,6 +281,13 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .xp-actions .ov,.xp-actions .alias{display:inline-flex;gap:5px;align-items:center;font-family:var(--mono);font-size:10px;color:var(--muted)}
 .xp-actions input{font:11px var(--mono);color:var(--ink);background:var(--panel-2);border:1px solid var(--line-soft);border-radius:6px;padding:6px 7px;width:72px}
 .xp-actions .alias-input{width:130px}
+
+.xp-overlay{position:absolute;left:0;right:0;z-index:6;margin:0;padding:12px 15px 13px;
+  border:1px solid var(--line);border-radius:13px;
+  background:linear-gradient(180deg,var(--panel),var(--panel-2));box-shadow:var(--shadow)}
+
+.xp-overlay.enter{animation:xpin .14s ease-out}
+@keyframes xpin{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 
 /* drag reorder */
 .grip{font:11px var(--mono);letter-spacing:-2px;line-height:1;padding:2px 4px;margin-right:2px;
