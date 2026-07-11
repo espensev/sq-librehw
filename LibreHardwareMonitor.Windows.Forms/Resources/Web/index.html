@@ -8,7 +8,7 @@
 <header><div class="wrap mast">
   <div class="brand">
     <div class="sigil">SQ</div>
-    <div class="wordmark"><b id="host">—</b><span>Hardware Telemetry Console</span></div>
+    <div class="wordmark"><b id="host">—</b><span id="dashboardSubtitle">Hardware Telemetry Console</span></div>
   </div>
   <div class="spacer"></div>
   <div class="controls">
@@ -17,9 +17,9 @@
     <button class="btn" id="pause">❚❚ Pause</button>
     <button class="btn" id="graphs" aria-pressed="false">Graphs</button>
     <button class="btn" id="theme">◐ Theme</button>
-    <label class="view-theme"><span>View</span><select id="viewTheme" aria-label="Dashboard view theme">
+    <label class="view-theme"><span>Dashboard</span><select id="viewTheme" aria-label="Dashboard">
       <option value="standard">Standard</option>
-      <option value="cardTruth">Card Truth</option>
+      <option value="cardTruth">Studio</option>
     </select></label>
     <details class="page-menu">
       <summary class="btn">Pages</summary>
@@ -46,7 +46,9 @@
   </div>
 </div></header>
 
-<main class="wrap">
+<div class="studio-atmosphere" aria-hidden="true"></div>
+
+<main class="wrap" id="standardView" data-dashboard-view="standard">
   <section id="pinnedsec" style="display:none">
     <div class="sec-head"><h2>Pinned</h2><div class="rule"></div><span class="tag" id="pinnedtag">0 pinned</span></div>
     <div class="pfd" id="pinned"></div>
@@ -71,6 +73,116 @@
       <span><span class="lamp s-crit"></span>CRIT</span><span><span class="lamp s-info"></span>INFO</span>
       <span><span class="lamp s-off"></span>IDLE</span>
     </span>
+  </footer>
+</main>
+
+<main class="wrap studio-view" id="studioView" data-dashboard-view="studio" hidden>
+  <section class="studio-hero">
+    <div class="studio-hero-copy">
+      <span class="studio-kicker">Live system canvas</span>
+      <h1><span id="studioHost">—</span> at a glance</h1>
+      <p id="studioSummary">Waiting for live telemetry.</p>
+      <div class="studio-health" id="studioHealth"></div>
+    </div>
+    <details class="studio-customize" id="studioCustomize">
+      <summary class="btn">Customize Studio</summary>
+      <div class="studio-customize-panel">
+        <div class="studio-customize-head">
+          <div><span>Studio controls</span><strong>Shape the view</strong></div>
+          <button class="iconbtn" id="studioReset" aria-label="Reset Studio">Reset</button>
+        </div>
+        <fieldset class="studio-control-group">
+          <legend>Atmosphere</legend>
+          <div class="studio-control-grid">
+            <label>Accent
+              <select id="studioAccent">
+                <option value="coral">Coral</option>
+                <option value="rose">Rose</option>
+                <option value="amber">Amber</option>
+                <option value="plum">Plum</option>
+              </select>
+            </label>
+            <label>Canvas
+              <select id="studioCanvas">
+                <option value="ember">Ember</option>
+                <option value="strata">Strata</option>
+                <option value="plain">Plain</option>
+              </select>
+            </label>
+            <div class="studio-range-control studio-wide">
+              <span><label for="studioCanvasOpacity">Atmosphere opacity</label><output id="studioCanvasOpacityValue" for="studioCanvasOpacity">55%</output></span>
+              <input type="range" id="studioCanvasOpacity" min="0" max="100" step="5" value="55">
+            </div>
+          </div>
+        </fieldset>
+        <fieldset class="studio-control-group">
+          <legend>Layout</legend>
+          <div class="studio-control-grid">
+            <label>Density
+              <select id="studioDensity">
+                <option value="comfortable">Comfortable</option>
+                <option value="compact">Compact</option>
+              </select>
+            </label>
+            <label>Focus layout
+              <select id="studioFocusLayout">
+                <option value="spotlight">Spotlight</option>
+                <option value="grid">Even grid</option>
+              </select>
+            </label>
+            <label>Focus cards
+              <select id="studioFocusCount">
+                <option value="4">4</option>
+                <option value="6">6</option>
+                <option value="8">8</option>
+                <option value="12">12</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+        <fieldset class="studio-control-group">
+          <legend>Content</legend>
+          <div class="studio-toggle-grid">
+            <label class="studio-check"><input type="checkbox" id="studioShowSparklines"> Live sparklines</label>
+            <label class="studio-check"><input type="checkbox" id="studioShowSystems"> System summaries</label>
+            <label class="studio-check"><input type="checkbox" id="studioShowNetwork"> Network summaries</label>
+          </div>
+        </fieldset>
+        <p class="studio-customize-note">These controls affect Studio only. Sensor choices, aliases, ranges, pins, and visibility stay shared with Standard.</p>
+      </div>
+    </details>
+  </section>
+
+  <section class="studio-alerts" id="studioAlerts" style="display:none"></section>
+  <div class="sr-only" id="studioAlertStatus" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <section class="studio-section">
+    <div class="studio-section-head">
+      <div><span>Curated telemetry</span><h2>Focus deck</h2></div>
+      <button class="iconbtn" id="studioOpenSensors">Choose sensors</button>
+    </div>
+    <div class="studio-focus" id="studioFocus"></div>
+  </section>
+
+  <section class="studio-section" id="studioSystemsSection">
+    <div class="studio-section-head">
+      <div><span>Hardware map</span><h2>Systems</h2></div>
+      <span class="studio-section-count" id="studioSystemsCount"></span>
+    </div>
+    <div class="studio-system-grid" id="studioSystems"></div>
+  </section>
+
+  <section class="studio-section" id="studioNetworkSection">
+    <div class="studio-section-head">
+      <div><span>Active paths</span><h2>Network</h2></div>
+      <span class="studio-section-count" id="studioNetworkCount"></span>
+    </div>
+    <div class="studio-system-grid" id="studioNetwork"></div>
+  </section>
+
+  <footer class="studio-footer">
+    <span id="studioFootLeft"></span>
+    <span>Read-only · same telemetry truth as Standard</span>
   </footer>
 </main>
 <script src="console.js"></script>

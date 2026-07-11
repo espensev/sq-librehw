@@ -7,6 +7,11 @@
   const SMOOTH_FRACTIONS = new Map();
   const MAX_HISTORY_POINTS = 90;
   const VIEW_THEMES = ['standard', 'cardTruth'];
+  const STUDIO_ACCENTS = ['coral', 'rose', 'amber', 'plum'];
+  const STUDIO_CANVASES = ['ember', 'strata', 'plain'];
+  const STUDIO_DENSITIES = ['comfortable', 'compact'];
+  const STUDIO_FOCUS_LAYOUTS = ['spotlight', 'grid'];
+  const STUDIO_FOCUS_COUNTS = [4, 6, 8, 12];
   const TEMPBANDS = { cpu: [85, 95], gpu: [83, 92], igpu: [83, 92], nvme: [70, 80], dimm: [55, 85], mb: null, mem: null };
   // Derived GPU power-limit knobs. Conservative on purpose: peaks/spikes must
   // not produce a guessed ceiling, so a card only earns an approximate limit
@@ -69,6 +74,27 @@
   }
   function cleanViewTheme(value) {
     return VIEW_THEMES.includes(value) ? value : 'standard';
+  }
+  function cleanStudioAccent(value) {
+    return STUDIO_ACCENTS.includes(value) ? value : 'coral';
+  }
+  function cleanStudioCanvas(value) {
+    return STUDIO_CANVASES.includes(value) ? value : 'ember';
+  }
+  function cleanStudioCanvasOpacity(value) {
+    const n = Math.round(Number(value));
+    if (!Number.isFinite(n)) return 55;
+    return Math.max(0, Math.min(100, n));
+  }
+  function cleanStudioDensity(value) {
+    return STUDIO_DENSITIES.includes(value) ? value : 'comfortable';
+  }
+  function cleanStudioFocusLayout(value) {
+    return STUDIO_FOCUS_LAYOUTS.includes(value) ? value : 'spotlight';
+  }
+  function cleanStudioFocusCount(value) {
+    const n = Number(value);
+    return STUDIO_FOCUS_COUNTS.includes(n) ? n : 6;
   }
   function cleanCollapsedMap(value) {
     const out = {};
@@ -143,6 +169,15 @@
       rate: 2,
       theme: 'dark',
       viewTheme: 'standard',
+      studioAccent: 'coral',
+      studioCanvas: 'ember',
+      studioCanvasOpacity: 55,
+      studioDensity: 'comfortable',
+      studioFocusLayout: 'spotlight',
+      studioFocusCount: 6,
+      studioShowSparklines: true,
+      studioShowSystems: true,
+      studioShowNetwork: true,
       collapsedPanels: {},
       cardStyle: {},
       rangeOverrides: {},
@@ -171,6 +206,15 @@
       rate: clampRate(value.rate),
       theme: value.theme === 'light' ? 'light' : 'dark',
       viewTheme: cleanViewTheme(value.viewTheme),
+      studioAccent: cleanStudioAccent(value.studioAccent),
+      studioCanvas: cleanStudioCanvas(value.studioCanvas),
+      studioCanvasOpacity: cleanStudioCanvasOpacity(value.studioCanvasOpacity),
+      studioDensity: cleanStudioDensity(value.studioDensity),
+      studioFocusLayout: cleanStudioFocusLayout(value.studioFocusLayout),
+      studioFocusCount: cleanStudioFocusCount(value.studioFocusCount),
+      studioShowSparklines: value.studioShowSparklines !== false,
+      studioShowSystems: value.studioShowSystems !== false,
+      studioShowNetwork: value.studioShowNetwork !== false,
       collapsedPanels: cleanCollapsedMap(value.collapsedPanels),
       cardStyle: cleanCardStyleMap(value.cardStyle),
       rangeOverrides: cleanRangeOverrides(value.rangeOverrides),
@@ -935,7 +979,7 @@
       state.dashboard = SQ.resetPrimaryCards(state.dashboard);
       commitDashboard();
     }
-    function render(data) {
+    function render(data, freshTelemetry = false) {
       state.lastData = data;
       const ae = document.activeElement;
       if (state.inlineEditing || Date.now() < state.inlineEditingUntil || isInlineEditTarget(ae))
@@ -961,14 +1005,19 @@
       state.limits = limits;
 
       const alarm = sensors.filter(s => s.status !== 'info' && s.status !== 'off');
-      renderPinnedCards(sensors, limits);
-      renderPFD(sensors, limits);
-      renderPlacard(alarm);
-      renderPanels(sensors);
+      if (state.dashboard.viewTheme === 'cardTruth') {
+        state.panelItems = SQ.buildPanelItems(sensors, state.dashboard);
+        renderStudio(host, sensors, limits, alarm, data.Version);
+      } else {
+        renderPinnedCards(sensors, limits);
+        renderPFD(sensors, limits);
+        renderPlacard(alarm);
+        renderPanels(sensors);
+      }
       renderSensorsPopover();
       $('#host').textContent = host;
       $('#foot-left').textContent = `LibreHardwareMonitor ${data.Version} · host ${host} · GET /data.json · ${state.rate}s poll`;
-      if (!state.paused) {
+      if (freshTelemetry && !state.paused) {
         $('#freshtxt').textContent = 'updated ' + new Date().toLocaleTimeString();
         $('#freshdot').className = 'lamp s-ok';
       }
@@ -1186,6 +1235,136 @@
           <span class="who">${esc(s.text)} <small>${esc(s.hw)}</small></span>
           <span class="val g-${s.status}">${esc(s.value)}</span></li>`).join('')}</ul></div>`;
     }
+    function studioCardsFor(sensors, limits) {
+      const custom = state.dashboard.primaryCardsCustomized;
+      const base = custom ? SQ.resolvePrimaryCards(sensors, state.dashboard, limits)
+                          : SQ.pickHero(sensors, limits);
+      return SQ.applyOrder(
+        base.map((h, index) => Object.assign(h, { index })),
+        state.dashboard.cardOrder, h => h.s.id)
+        .slice(0, state.dashboard.studioFocusCount);
+    }
+    function studioFocusCardEl(h) {
+      const { n, unit } = h.s.raw == null ? { n: '—', unit: '' } : SQ.splitValue(h.s.value);
+      const kind = SQ.kindOf(h.s.type);
+      const status = h.status || 'info';
+      const range = cardRange(h);
+      const trend = SQ.trendFor(h.s.id, kind);
+      const label = SQ.sensorDisplayText(h.s, state.dashboard, h.label);
+      const article = document.createElement('article');
+      article.className = `studio-focus-card s-${status}`;
+      article.style.setProperty('--tc', `var(--studio-${kind})`);
+      article.dataset.sid = h.s.id;
+      article.innerHTML = `<div class="studio-card-head">
+          <div><span>${esc(h.s.hw || 'Sensor')}</span><h3>${esc(label)}</h3></div>
+          <div class="studio-card-actions"><span class="studio-status g-${status}">${STLABEL[status]}</span>
+          <button class="studio-star" data-studio-act="primary-remove" data-id="${esc(h.s.id)}"
+            aria-label="Remove ${esc(label)} from focus" title="Remove from focus">&#9733;</button></div>
+        </div>
+        <div class="studio-card-reading"><strong>${esc(n)}</strong><span>${esc(unit || h.unit || '')}</span></div>
+        <div class="studio-card-meta"><span>${esc(rangeDetailText(h.s, range))}</span>
+          <span>${h.s.raw == null ? 'unavailable' : trend ? `${trend.direction === 'rising' ? '&#8599;' : '&#8600;'} ${esc(Math.abs(trend.rate).toFixed(Math.abs(trend.rate) >= 10 ? 0 : 2))} ${esc(trend.rateUnit)}` : 'live'}</span></div>
+        ${state.dashboard.studioShowSparklines ? sparkAreaSVG(h.s, range ? [range.lo, range.hi] : null) : ''}`;
+      return article;
+    }
+    function studioSensorPriority(s) {
+      const order = ['Temperature','Load','Power','Fan','Control','Clock','Throughput','Data','SmallData','Level'];
+      const typeRank = order.indexOf(s.type);
+      return (SQ.RANK[s.status] + 1) * 100 - (typeRank < 0 ? 99 : typeRank);
+    }
+    function studioSystemEl(item) {
+      let worst = 'info';
+      item.ss.forEach(s => { if (SQ.RANK[s.status] > SQ.RANK[worst]) worst = s.status; });
+      const cls = item.ss[0]?.cls || 'other';
+      const useful = item.ss.filter(s => !SQ.isLimitSensor(s));
+      const sorted = (useful.length ? useful : item.ss).slice()
+        .sort((a, b) => studioSensorPriority(b) - studioSensorPriority(a));
+      const readings = [], seenTypes = new Set();
+      sorted.forEach(s => {
+        const type = SQ.displayType(s);
+        if (readings.length < 4 && !seenTypes.has(type)) { readings.push(s); seenTypes.add(type); }
+      });
+      sorted.forEach(s => { if (readings.length < 4 && !readings.includes(s)) readings.push(s); });
+      const article = document.createElement('article');
+      article.className = `studio-system-card s-${worst}`;
+      article.innerHTML = `<div class="studio-system-head"><div><span>${esc(CLASSLABEL[cls] || 'SYSTEM')}</span>
+          <h3>${esc(item.label || item.hw)}</h3></div><span class="lamp s-${worst}" title="${STLABEL[worst]}"></span></div>
+        <div class="studio-readings">${readings.map(s => `<div><span>${esc(SQ.sensorDisplayText(s, state.dashboard, s.text))}</span>
+          <strong class="g-${s.status}">${esc(s.raw == null ? '—' : (s.value ?? '—'))}</strong></div>`).join('')}</div>`;
+      return article;
+    }
+    function renderStudio(host, sensors, limits, alarm, version) {
+      const activeAction = document.activeElement?.closest?.('#studioFocus [data-studio-act]');
+      const activeActionId = activeAction?.dataset.id || null;
+      const activeActionIndex = activeAction
+        ? [...$('#studioFocus').querySelectorAll('[data-studio-act]')].indexOf(activeAction)
+        : -1;
+      const focus = studioCardsFor(sensors, limits);
+      const focusHost = $('#studioFocus');
+      focusHost.innerHTML = '';
+      if (focus.length) focus.forEach(h => focusHost.appendChild(studioFocusCardEl(h)));
+      else focusHost.innerHTML = `<div class="studio-empty"><b>No focus sensors selected</b>
+        <span>Open Sensors and choose Make primary to build this deck.</span></div>`;
+      if (activeActionId) {
+        const nextAction = focusHost.querySelector(`[data-studio-act][data-id="${CSS.escape(activeActionId)}"]`);
+        const remainingActions = [...focusHost.querySelectorAll('[data-studio-act]')];
+        const fallbackAction = remainingActions[Math.min(activeActionIndex, remainingActions.length - 1)]
+          || $('#studioOpenSensors');
+        (nextAction || fallbackAction).focus({ preventScroll: true });
+      }
+
+      const flagged = alarm.filter(s => s.status === 'warn' || s.status === 'crit')
+        .sort((a, b) => SQ.RANK[b.status] - SQ.RANK[a.status]);
+      const crit = flagged.filter(s => s.status === 'crit').length;
+      const warn = flagged.length - crit;
+      const unavailable = sensors.filter(s => s.raw == null).length;
+      $('#studioHost').textContent = host;
+      $('#studioSummary').textContent = `${sensors.length} visible readings · ${unavailable} unavailable · ${focus.length} focus cards · read-only telemetry`;
+      $('#studioHealth').innerHTML = `${flagged.length
+        ? `<span class="studio-health-pill ${crit ? 'crit' : 'warn'}"><b>${flagged.length}</b> needs attention</span>`
+        : unavailable
+          ? `<span class="studio-health-pill off"><b>Telemetry partial</b> ${unavailable} unavailable</span>`
+          : '<span class="studio-health-pill ok"><b>All clear</b> monitored bands nominal</span>'}
+        <span class="studio-health-pill"><b>${crit}</b> critical</span>
+        <span class="studio-health-pill"><b>${warn}</b> watch</span>
+        <span class="studio-health-pill"><b>${unavailable}</b> unavailable</span>
+        <span class="studio-health-pill"><b>${state.dashboard.pinnedCards.length}</b> pinned</span>`;
+
+      const alerts = $('#studioAlerts');
+      alerts.style.display = flagged.length ? '' : 'none';
+      alerts.innerHTML = flagged.length ? `<div><span>Attention</span><b>${crit ? 'Critical telemetry' : 'Watch telemetry'}</b></div>
+        <ul>${flagged.slice(0, 4).map(s => `<li><span>${esc(SQ.sensorDisplayText(s, state.dashboard, s.text))}</span>
+          <strong class="g-${s.status}">${esc(s.value ?? '—')}</strong></li>`).join('')}</ul>` : '';
+      const alertSignature = flagged.map(s => `${s.id}:${s.status}`).join('|');
+      if (alertSignature !== state.studioAlertSignature) {
+        const priorSignature = state.studioAlertSignature;
+        state.studioAlertSignature = alertSignature;
+        if (priorSignature !== undefined) {
+          const alertNames = flagged.slice(0, 3)
+            .map(s => SQ.sensorDisplayText(s, state.dashboard, s.text)).join(', ');
+          $('#studioAlertStatus').textContent = flagged.length
+            ? `Studio telemetry alert: ${crit} critical, ${warn} watch. ${alertNames}.`
+            : 'Studio telemetry alerts cleared.';
+        }
+      }
+
+      const hardwareItems = SQ.applyOrder(state.panelItems.filter(item => !item.net), state.dashboard.panelOrder, item => item.key);
+      const systemsSection = $('#studioSystemsSection');
+      systemsSection.hidden = !state.dashboard.studioShowSystems;
+      $('#studioSystemsCount').textContent = `${hardwareItems.length} systems`;
+      const systems = $('#studioSystems');
+      systems.innerHTML = '';
+      if (state.dashboard.studioShowSystems) hardwareItems.forEach(item => systems.appendChild(studioSystemEl(item)));
+
+      const networkItems = state.panelItems.filter(item => item.net);
+      const networkSection = $('#studioNetworkSection');
+      networkSection.hidden = !state.dashboard.studioShowNetwork || !networkItems.length;
+      $('#studioNetworkCount').textContent = `${networkItems.length} active`;
+      const network = $('#studioNetwork');
+      network.innerHTML = '';
+      if (state.dashboard.studioShowNetwork) networkItems.forEach(item => network.appendChild(studioSystemEl(item)));
+      $('#studioFootLeft').textContent = `LibreHardwareMonitor ${version} · ${host} · ${state.rate}s poll`;
+    }
     function rowEl(s, type, groupKey) {
       const st = s.status, showBar = (s.type === 'Load' || s.type === 'Level' || s.type === 'Control') && s.raw != null;
       const mm = (s.min != null && s.min !== '' && type === 'Temperature')
@@ -1348,7 +1527,7 @@
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const data = await r.json();
         if (state.dragging) return;   // drag started during the fetch — don't render over it
-        render(data);
+        render(data, true);
         document.body.classList.remove('stale');
       } catch (e) {
         $('#freshdot').className = 'lamp s-warn';
@@ -1358,10 +1537,35 @@
     }
     function schedule() { clearInterval(state.timer); state.timer = setInterval(tick, state.rate * 1000); }
 
+    function paintStudioPreferences() {
+      const cfg = state.dashboard;
+      document.documentElement.setAttribute('data-studio-accent', cfg.studioAccent);
+      document.documentElement.setAttribute('data-studio-canvas', cfg.studioCanvas);
+      document.documentElement.style.setProperty('--studio-canvas-opacity', String(cfg.studioCanvasOpacity / 100));
+      document.documentElement.setAttribute('data-studio-density', cfg.studioDensity);
+      document.documentElement.setAttribute('data-studio-focus-layout', cfg.studioFocusLayout);
+      document.documentElement.setAttribute('data-studio-sparklines', String(cfg.studioShowSparklines));
+      $('#studioAccent').value = cfg.studioAccent;
+      $('#studioCanvas').value = cfg.studioCanvas;
+      $('#studioCanvasOpacity').value = String(cfg.studioCanvasOpacity);
+      $('#studioCanvasOpacity').setAttribute('aria-valuetext', `${cfg.studioCanvasOpacity}%`);
+      $('#studioCanvasOpacityValue').textContent = `${cfg.studioCanvasOpacity}%`;
+      $('#studioDensity').value = cfg.studioDensity;
+      $('#studioFocusLayout').value = cfg.studioFocusLayout;
+      $('#studioFocusCount').value = String(cfg.studioFocusCount);
+      $('#studioShowSparklines').checked = cfg.studioShowSparklines;
+      $('#studioShowSystems').checked = cfg.studioShowSystems;
+      $('#studioShowNetwork').checked = cfg.studioShowNetwork;
+    }
     function paintViewTheme() {
       const view = $('#viewTheme');
+      const studio = state.dashboard.viewTheme === 'cardTruth';
       document.documentElement.setAttribute('data-view-theme', state.dashboard.viewTheme);
       if (view) view.value = state.dashboard.viewTheme;
+      $('#standardView').hidden = studio;
+      $('#studioView').hidden = !studio;
+      $('#dashboardSubtitle').textContent = studio ? 'Telemetry Studio' : 'Hardware Telemetry Console';
+      paintStudioPreferences();
     }
     document.documentElement.setAttribute('data-theme', state.dashboard.theme);
     paintViewTheme();
@@ -1375,6 +1579,74 @@
       state.dashboard.viewTheme = SQ.normalizeViewTheme(e.target.value);
       paintViewTheme();
       saveDashboard();
+      rerender();
+    };
+    $('#studioAccent').onchange = e => {
+      state.dashboard.studioAccent = cleanStudioAccent(e.target.value);
+      paintStudioPreferences();
+      commitDashboard();
+    };
+    $('#studioCanvas').onchange = e => {
+      state.dashboard.studioCanvas = cleanStudioCanvas(e.target.value);
+      paintStudioPreferences();
+      commitDashboard();
+    };
+    $('#studioCanvasOpacity').oninput = e => {
+      state.dashboard.studioCanvasOpacity = cleanStudioCanvasOpacity(e.target.value);
+      paintStudioPreferences();
+      saveDashboard();
+    };
+    $('#studioDensity').onchange = e => {
+      state.dashboard.studioDensity = cleanStudioDensity(e.target.value);
+      paintStudioPreferences();
+      commitDashboard();
+    };
+    $('#studioFocusLayout').onchange = e => {
+      state.dashboard.studioFocusLayout = cleanStudioFocusLayout(e.target.value);
+      paintStudioPreferences();
+      commitDashboard();
+    };
+    $('#studioFocusCount').onchange = e => {
+      state.dashboard.studioFocusCount = cleanStudioFocusCount(e.target.value);
+      paintStudioPreferences();
+      commitDashboard();
+    };
+    $('#studioShowSparklines').onchange = e => {
+      state.dashboard.studioShowSparklines = e.target.checked;
+      paintStudioPreferences();
+      commitDashboard();
+    };
+    $('#studioShowSystems').onchange = e => {
+      state.dashboard.studioShowSystems = e.target.checked;
+      commitDashboard();
+    };
+    $('#studioShowNetwork').onchange = e => {
+      state.dashboard.studioShowNetwork = e.target.checked;
+      commitDashboard();
+    };
+    $('#studioReset').onclick = () => {
+      const defaults = SQ.defaultDashboardState();
+      state.dashboard.studioAccent = defaults.studioAccent;
+      state.dashboard.studioCanvas = defaults.studioCanvas;
+      state.dashboard.studioCanvasOpacity = defaults.studioCanvasOpacity;
+      state.dashboard.studioDensity = defaults.studioDensity;
+      state.dashboard.studioFocusLayout = defaults.studioFocusLayout;
+      state.dashboard.studioFocusCount = defaults.studioFocusCount;
+      state.dashboard.studioShowSparklines = defaults.studioShowSparklines;
+      state.dashboard.studioShowSystems = defaults.studioShowSystems;
+      state.dashboard.studioShowNetwork = defaults.studioShowNetwork;
+      paintStudioPreferences();
+      commitDashboard();
+    };
+    $('#studioFocus').addEventListener('click', e => {
+      const btn = e.target.closest('[data-studio-act="primary-remove"]');
+      if (btn) setPrimaryCardState(btn.dataset.id, false);
+    });
+    $('#studioOpenSensors').onclick = () => {
+      const menu = $('#sensorsMenu');
+      menu.open = true;
+      renderSensorsPopover();
+      $('#sensorsSearch').focus();
     };
     const rate = $('#rate'); rate.value = state.rate; $('#ratev').textContent = state.rate + 's';
     rate.oninput = e => {
@@ -1423,16 +1695,16 @@
       showAdapter(btn.dataset.key);
       renderSensorsPopover();
     });
-    // Escape / click-outside close for masthead disclosure menus (Pages + Sensors)
+    // Escape / click-outside close for disclosure menus.
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') document.querySelectorAll('details.page-menu[open], details.sensors-menu[open]').forEach(d => { d.open = false; });
+      if (e.key === 'Escape') document.querySelectorAll('details.page-menu[open], details.sensors-menu[open], details.studio-customize[open]').forEach(d => { d.open = false; });
     });
     // Capture phase: this must observe e.target BEFORE the #sensorsList action
     // handler (bubble phase) rebuilds the list and detaches the clicked button —
     // otherwise the orphaned target reads as "outside" and closes the popover on
     // every Pin/Hide/Show click.
     document.addEventListener('click', e => {
-      document.querySelectorAll('details.page-menu[open], details.sensors-menu[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
+      document.querySelectorAll('details.page-menu[open], details.sensors-menu[open], details.studio-customize[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
     }, true);
     // Capture phase, and deliberately blind to clicks on any card/row/control
     // surface: card-to-card switching belongs to toggleExpand's single-open

@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor Docs
 
 **Status:** live summary only.
-**Updated:** 2026-07-07.
+**Updated:** 2026-07-11.
 
 ## Current State
 
@@ -47,6 +47,8 @@
 - Anchored expansion overlay shipped with zero card displacement.
 - Responsive/theme QA passed for the current dashboard.
 - Root `viewTheme` selector shipped.
+- Studio dashboard is implemented and verified locally; behavior follows
+  `docs/feature-web-dashboard-studio-view.md`.
 
 ## Hardware Notes
 

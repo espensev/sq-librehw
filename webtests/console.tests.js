@@ -149,6 +149,44 @@
     eq('normalize theme junk -> dark', S.normalizeDashboardState({theme:'x'}).theme, 'dark');
     eq('normalize viewTheme cardTruth', S.normalizeDashboardState({viewTheme:'cardTruth'}).viewTheme, 'cardTruth');
     eq('normalize viewTheme junk -> standard', S.normalizeDashboardState({viewTheme:'x'}).viewTheme, 'standard');
+    eq('default has studio settings', (() => { const d = S.defaultDashboardState();
+      return [d.studioAccent, d.studioCanvas, d.studioCanvasOpacity, d.studioDensity, d.studioFocusLayout,
+        d.studioFocusCount, d.studioShowSparklines, d.studioShowSystems, d.studioShowNetwork];
+    })(), ['coral', 'ember', 55, 'comfortable', 'spotlight', 6, true, true, true]);
+    eq('normalize accepts studio accents', ['coral','rose','amber','plum'].map(studioAccent =>
+      S.normalizeDashboardState({studioAccent}).studioAccent), ['coral','rose','amber','plum']);
+    eq('normalize accepts studio canvases', ['ember','strata','plain'].map(studioCanvas =>
+      S.normalizeDashboardState({studioCanvas}).studioCanvas), ['ember','strata','plain']);
+    eq('normalize clamps studio canvas opacity', [-5,0,47,100,180,'x'].map(studioCanvasOpacity =>
+      S.normalizeDashboardState({studioCanvasOpacity}).studioCanvasOpacity), [0,0,47,100,100,55]);
+    eq('normalize accepts studio densities', ['comfortable','compact'].map(studioDensity =>
+      S.normalizeDashboardState({studioDensity}).studioDensity), ['comfortable','compact']);
+    eq('normalize accepts studio focus layouts', ['spotlight','grid'].map(studioFocusLayout =>
+      S.normalizeDashboardState({studioFocusLayout}).studioFocusLayout), ['spotlight','grid']);
+    eq('normalize accepts studio focus counts', [4,6,8,12].map(studioFocusCount =>
+      S.normalizeDashboardState({studioFocusCount}).studioFocusCount), [4,6,8,12]);
+    eq('normalize studio visibility booleans', (() => {
+      const d = S.normalizeDashboardState({studioShowSparklines:false, studioShowSystems:false, studioShowNetwork:false});
+      return [d.studioShowSparklines, d.studioShowSystems, d.studioShowNetwork];
+    })(), [false, false, false]);
+    eq('normalize malformed studio settings independently', (() => {
+      const d = S.normalizeDashboardState({
+        studioAccent:'red', studioCanvas:'noise', studioCanvasOpacity:'none', studioDensity:'dense', studioFocusLayout:'stack',
+        studioFocusCount:10, studioShowSparklines:0, studioShowSystems:0, studioShowNetwork:'false'
+      });
+      return [d.studioAccent, d.studioCanvas, d.studioCanvasOpacity, d.studioDensity, d.studioFocusLayout,
+        d.studioFocusCount, d.studioShowSparklines, d.studioShowSystems, d.studioShowNetwork];
+    })(), ['coral', 'ember', 55, 'comfortable', 'spotlight', 6, true, true, true]);
+    eq('studio settings save/load round-trip', (() => {
+      let slot = null;
+      const store = {getItem:() => slot, setItem:(key, value) => { slot = value; }};
+      S.saveDashboardState(store, {studioAccent:'plum', studioCanvas:'strata', studioCanvasOpacity:35,
+        studioDensity:'compact', studioFocusLayout:'grid', studioFocusCount:8,
+        studioShowSparklines:false, studioShowSystems:false, studioShowNetwork:true});
+      const d = S.loadDashboardState(store);
+      return [d.studioAccent, d.studioCanvas, d.studioCanvasOpacity, d.studioDensity, d.studioFocusLayout,
+        d.studioFocusCount, d.studioShowSparklines, d.studioShowSystems, d.studioShowNetwork];
+    })(), ['plum', 'strata', 35, 'compact', 'grid', 8, false, false, true]);
     eq('normalize paused bool', S.normalizeDashboardState({paused:true}).paused, true);
     eq('normalize collapsed map coerces', S.normalizeDashboardState({collapsedPanels:{CPU:1,GPU:false,'':true}}).collapsedPanels, {CPU:true, GPU:false});
     eq('normalize collapsed rejects array', S.normalizeDashboardState({collapsedPanels:['CPU']}).collapsedPanels, {});
@@ -420,6 +458,15 @@
       rate:5,
       theme:'light',
       viewTheme:'cardTruth',
+      studioAccent:'plum',
+      studioCanvas:'strata',
+      studioCanvasOpacity:25,
+      studioDensity:'compact',
+      studioFocusLayout:'grid',
+      studioFocusCount:12,
+      studioShowSparklines:false,
+      studioShowSystems:false,
+      studioShowNetwork:false,
       observedMax:{'/fan':1200},
       powerLimitSamples:{'/gpu/0':[100,110,120,130,140,150,160,170,180]}
     });
@@ -442,6 +489,15 @@
       rate:1,
       theme:'dark',
       viewTheme:'standard',
+      studioAccent:'amber',
+      studioCanvas:'plain',
+      studioCanvasOpacity:90,
+      studioDensity:'comfortable',
+      studioFocusLayout:'spotlight',
+      studioFocusCount:4,
+      studioShowSparklines:true,
+      studioShowSystems:true,
+      studioShowNetwork:true,
       observedMax:{'/fan':1500, '/pump':900},
       powerLimitSamples:{'/gpu/0':[900], '/gpu/1':[500,525,550,575,600,625,650,675,700,725]}
     });
@@ -460,6 +516,13 @@
       ['/gpu/power','/cpu/temp'], {'/panel-new|Fan':['/fan2','/fan1']}, ['/nic/a'],
       ['/nic/b'], true, true, 5, 'light', 'cardTruth'
     ]);
+    eq('telemetry merge preserves studio settings', [
+      mergedTelemetry.studioAccent, mergedTelemetry.studioCanvas, mergedTelemetry.studioCanvasOpacity,
+      mergedTelemetry.studioDensity,
+      mergedTelemetry.studioFocusLayout, mergedTelemetry.studioFocusCount,
+      mergedTelemetry.studioShowSparklines, mergedTelemetry.studioShowSystems,
+      mergedTelemetry.studioShowNetwork
+    ], ['plum', 'strata', 25, 'compact', 'grid', 12, false, false, false]);
     eq('telemetry merge combines telemetry accumulators',
       [mergedTelemetry.observedMax, mergedTelemetry.powerLimitSamples],
       [{'/fan':1500,'/pump':900}, {'/gpu/0':[100,110,120,130,140,150,160,170,180], '/gpu/1':[500,525,550,575,600,625,650,675,700,725]}]);
