@@ -8,3 +8,7 @@
 packages/
 .claude/settings.local.json
 .roslyn-mcp/
+
+# Local tooling scratch: Python bytecode cache (e.g. scripts/*/__pycache__)
+__pycache__/
+*.pyc
