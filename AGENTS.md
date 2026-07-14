@@ -22,10 +22,12 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
 ## 2. Source-of-truth map
 
 - `docs/README.md`: **start here** — compact current-state, contract, implementation, and verification map.
-- `docs/feature-memory-ui-reliability.md`: active memory, ownership, efficiency, and UI-reliability remediation spec.
+- `docs/feature-memory-ui-reliability.md`: shipped memory, ownership, efficiency, and UI-reliability contract, verification, and open follow-ups.
 - `docs/feature-web-dashboard-studio-view.md`: shipped Studio dashboard behavior and verification record.
-- `docs/discovery-studio-distinction.md`: Studio design discovery and constraints.
-- `docs/reviews/`: concise findings and verification records; a review is input evidence, not a substitute for an accepted behavior spec.
+
+Completed discovery and review evidence belongs in Git history. Keep unresolved
+findings and current verification in the nearest feature spec instead of a
+separate review archive.
 
 When adding or changing a requirement, update the nearest feature spec, traceability note, or verification section in the same pass. A behavior change without acceptance criteria is unfinished.
 

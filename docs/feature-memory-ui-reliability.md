@@ -1,19 +1,17 @@
 # Feature Spec: Memory, Lifetime, and UI Reliability
 
-**Status:** implemented, deployed, and verified; low edge case and extended live soak deferred
+**Status:** shipped, deployed, and verified; follow-ups below
 
 **Updated:** 2026-07-14
 
-**Review/patch closeout:** `docs/reviews/review-2026-07-14-memory-ui-lifecycle.md`
-
 ## Problem and motivation
 
-The current application passes its existing automated suites but still has
+The pre-patch application passed its automated suites but still had
 definite managed/static-event and native GDI leaks, avoidable history and HTTP
 allocation growth, unsafe shutdown/UI-thread ownership, synchronous UI stalls,
 and web-dashboard state paths that can fabricate telemetry or retain stale work.
 
-This work closes every actionable finding in the original findings-first
+This work closed every actionable finding in the original findings-first
 review without changing sensor truth, external payloads, the read-only
 dashboard policy, or supported frameworks.
 
@@ -135,6 +133,14 @@ dashboard policy, or supported frameworks.
 - [x] The golden `data.json` contract remains unchanged; all tests and both
   Release target builds pass.
 
+## Open follow-ups
+
+- [ ] Preserve the forced first dashboard snapshot when a persisted-paused page
+  starts hidden, so first visibility does not stay blank until Resume.
+- [ ] Preserve the last bounded on-disk sensor histories across autosave until a
+  clean hardware close refreshes `/values`.
+- [ ] Optional confidence gate: run a 60-minute current-commit live soak.
+
 ## Verification plan
 
 Use red-capable regression tests at the owning seam before or with each fix:
@@ -167,65 +173,24 @@ separate maintainer approval.
 
 ## Verification log
 
-- 2026-07-14: remediation accepted from the findings-first review; implementation
-  started from `master` at `63816bb` with the prior reliability branch used only
-  as a selectively ported, already-tested source.
-- 2026-07-14: closeout review corrected shutdown ordering so HTTP intake stops
-  before hardware teardown, discovery and UI-owned hardware nodes converge under
-  the lifecycle gate, and hardware-discovery failures show the actual root error
-  instead of referring to a nonexistent debug log. Tray retry exhaustion now
-  permits a later shell event to open a fresh bounded retry window.
-- 2026-07-14: `node --check` passed; the dashboard self-test passed 267/267 and
-  the polling suite passed 3/3. The x64 .NET suite passed 124, skipped the one
-  intentionally opt-in live-config-copy test, and failed 0; this includes the
-  unchanged `data.json` golden master. The opt-in historical large-config harness
-  had already verified the approximately 252 MiB source configuration. Valid
-  current histories remain supported and are bounded per sensor rather than
-  removed globally.
-- 2026-07-14: isolated Release staging builds for `net10.0-windows` and `net472`
-  both completed with 0 warnings and 0 errors. `git diff --check` passed; its only
-  output was the repository's LF-to-CRLF working-copy warning.
-- 2026-07-14: current-head browser smoke covered Standard/Studio switching,
-  pause/resume, dark/light, a 360 CSS-pixel viewport without horizontal overflow,
-  focusable controls, live polling/restart, and a clean browser console.
-- 2026-07-14: an isolated staged `net10.0-windows` process completed three
-  synthetic Windows resume/reset cycles with 180/180 HTTP 200 polls, then served
-  32/32 concurrent `data.json` requests. Working set stayed between 202.9 and
-  207.9 MiB, private memory between 117.9 and 123.2 MiB, GDI stayed at 48, USER
-  handles stayed between 66 and 69, and total handles stayed between 675 and 755.
-  Closing the actual main form drained the server and exited cleanly with code 0.
-- 2026-07-14: implementation commit `5b9c6f9f7c867bfd8f82549f1d1dde531d5705b4`
-  was deployed as product version `0.9.6+5b9c6f9.2026-07-14` through the actual
-  owner task `\SevGrp\AdminTask\LibreHW-No-UAC`. The complete 71-file candidate
-  matched the live runtime byte-for-byte; 3,305 CSV logs and both settings files
-  were preserved. The verified rollback packet is
+- Implementation `5b9c6f9` deployed as `0.9.6+5b9c6f9.2026-07-14` through
+  `\SevGrp\AdminTask\LibreHW-No-UAC`; 71 candidate files matched. Rollback:
   `C:\ProgramData\LibreHardwareMonitor\backups\20260714-042926-pre-5b9c6f9`.
-- 2026-07-14: deployed checks returned HTTP 200 for `/`, `/data.json`, and
-  `/metrics`, and HTTP 404 for both retired `/dash/cardtruth` forms. A synthetic
-  resume/reset produced 60/60 successful polls followed by 32/32 concurrent
-  `data.json` responses. Working set moved from 210.7 to 210.1 MiB, private
-  memory from 130.2 to 127.5 MiB, handles from 753 to 725, GDI stayed at 47, and
-  USER handles moved from 55 to 56. A controlled close/restart returned the task
-  to `Running` on the same deployed version with all three live routes healthy.
-- 2026-07-14: a final 45-request live sample returned 45/45 HTTP 200 responses.
-  Working set stayed between 154.0 and 158.7 MiB, private memory between 142.6
-  and 148.2 MiB, GDI stayed at 47, and USER handles stayed at 56. Total handles
-  oscillated between 660 and 1,187 with a negative least-squares trend, so the
-  observed peak was transient rather than monotonic growth.
-- 2026-07-14: persistence was checked across that close/restart. The clean-close
-  config contained 475 valid history entries and 342,464 decoded records in
-  2,889,088 bytes; the largest encoded history was 25,376 characters, below the
-  65,536-character per-sensor cap. The first five-minute autosave compacted the
-  primary to 22,643 bytes; a later autosave left both primary and backup at
-  22,643 bytes. This is the intended bounded-history lifecycle, not a recurrence
-  of unbounded config growth, and it directly confirms why crash-after-autosave
-  history continuity remains tracked in
-  `docs/reviews/settings-autosave-issues.md`.
-- 2026-07-14: the bounded current-commit staging and deployed smokes satisfy this
-  patch's acceptance gate. A 60-minute current-commit live soak remains a
-  deferred operational confidence check and is not claimed as completed.
-- 2026-07-14: final fixed-point review found no high- or medium-severity
-  residual. One low dashboard edge remains deferred: when a persisted-paused
-  dashboard first loads in a hidden tab, its forced initial snapshot is not
-  retried on first visibility, leaving it blank until Resume. The closeout
-  review records the exact source seam and missing regression case.
+- The task action was repaired from invalid command `:` to the deployed
+  executable; its long-running settings now have no time limit or battery stop.
+  It then passed a graceful close/start with one process, result `0x41301`, and
+  healthy local routes.
+  Broken-definition backup:
+  `C:\ProgramData\LibreHardwareMonitor\backups\20260714-052253-task-fix`.
+- Node passed 267/267 plus 3/3; .NET passed 124 with one opt-in skip; the golden
+  `data.json` stayed unchanged; both x64 Release targets built cleanly.
+- Browser, three staged resume cycles, 180 polls, 32 concurrent requests,
+  shutdown, and deployed reset/restart smokes passed with bounded memory,
+  GDI/USER, handles, and a clean browser console.
+- Live `/`, `/data.json`, and `/metrics` returned 200; retired
+  `/dash/cardtruth[/]` returned 404.
+- A clean close persisted 475 valid bounded histories in 2,889,088 bytes; later
+  autosaves compacted primary and backup to 22,643 bytes. The remaining history
+  continuity edge is tracked above.
+- Final fixed-point review found no high/medium residual. Detailed audit and
+  measurement history remains in Git at `60b9e23`.

@@ -1,16 +1,13 @@
 # Feature Spec: Studio Dashboard View
 
-**Status:** verified locally.  
+**Status:** shipped and verified
 **Updated:** 2026-07-11.
-
-Design recovery and extension findings are recorded in
-`docs/discovery-studio-distinction.md`.
 
 ## Problem
 
-The root dashboard survived and remains the trusted dense console.
-Its `View` dropdown also exposes `cardTruth`, but that value currently changes
-only a saved HTML attribute. It does not produce a second visual composition.
+The root dashboard remains the trusted dense console. Before this feature, its
+`cardTruth` value changed only a saved HTML attribute and did not produce a
+second visual composition.
 
 ## Goal
 
@@ -106,24 +103,11 @@ desktop plus narrow viewport. Record results below before handoff.
 
 ## Verification Log
 
-- 2026-07-11: JS syntax and web selftest passed `252/252`; .NET tests passed
-  `64/64`; Release x64 builds passed for `net10.0-windows` and `net472` with no
-  build warnings or errors.
-- 2026-07-11: rebuilt net10 app runs as PID `58740`. Root, assets, data, metrics,
-  and local proxy returned 200; both retired preview paths returned 404.
-- 2026-07-11: Coral, Rose, Amber, and Plum resolved to warm accent values.
-  Studio focus/status values used gold, coral, rose, plum, and sand tokens in
-  dark/light; cyan, blue, and green branding options are absent.
-- 2026-07-11: Ember, two-layer non-grid Strata, and Plain passed dark/light.
-  Atmosphere opacity was exercised at `0%`, `35%`, and `100%`; `35%` survived
-  reload and Reset restored Coral/Ember/`55%`/Spotlight/sparklines.
-- 2026-07-11: grouped Customize controls passed desktop and 375px checks with
-  one-column mobile groups, correct overlay stacking, and zero x-overflow. The
-  existing reduced-motion rule covers the new transition; browser errors were empty.
-- 2026-07-11: with Strata stored, Standard hid the atmosphere, restored its
-  base `9px` sigil and `blur(10px)` masthead, kept Graphs visible, and had zero
-  x-overflow.
-- 2026-07-11: final live smoke confirmed the opacity range has an explicit
-  label, customization preserves `stale - retrying`, Studio replaces the shared
-  green active-control token, and removing a focused card moves focus to the
-  next card. Defaults were restored afterward.
+- Automated: JS/selftest passed `252/252`, .NET passed `64/64`, and both x64
+  Release targets built without warnings/errors.
+- Live: root/assets/data/metrics/proxy returned 200 and retired preview paths
+  returned 404. Dark/light, desktop/375px, reduced motion, focus, empty/stale
+  states, and zero horizontal overflow passed.
+- Compatibility: Standard remained isolated; warm Studio palettes, canvas
+  modes, opacity persistence/reset, grouped controls, and focus restoration
+  passed with a clean browser console.

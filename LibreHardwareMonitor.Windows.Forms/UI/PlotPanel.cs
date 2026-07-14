@@ -314,9 +314,9 @@ public class PlotPanel : UserControl
 
     private void CreateOptionsButton()
     {
-        // Graph-local entry point to the same option set as the plot right-click menu
-        // (docs/feature-graph-panel-controls.md). Overlay button so the plot keeps its
-        // footprint; fixed glyph size so nothing clips in narrow panel placements.
+        // Graph-local entry point to the same option set as the plot right-click menu.
+        // Overlay the button so the plot keeps its footprint; use a fixed glyph size
+        // so nothing clips in narrow panel placements.
         int size = (int)Math.Round(24 * _dpiYScale);
         int margin = (int)Math.Round(6 * _dpiXScale);
 
