@@ -8,19 +8,22 @@ using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 
 namespace LibreHardwareMonitor.Windows.Forms.UI;
 
-public class HardwareNode : Node, IExpandPersistNode
+public class HardwareNode : Node, IExpandPersistNode, IDisposable
 {
     private readonly PersistentSettings _settings;
     private readonly UnitManager _unitManager;
     private readonly Control _uiMarshaller;
-    private readonly List<TypeNode> _typeNodes = new List<TypeNode>();
+    private readonly Dictionary<SensorType, TypeNode> _typeNodes = new Dictionary<SensorType, TypeNode>();
     private readonly string _expandedIdentifier;
+    private readonly int _uiThreadId;
     private bool _expanded;
+    private bool _disposed;
 
     public event EventHandler PlotSelectionChanged;
 
@@ -29,12 +32,10 @@ public class HardwareNode : Node, IExpandPersistNode
         _settings = settings;
         _unitManager = unitManager;
         _uiMarshaller = uiMarshaller;
+        _uiThreadId = Environment.CurrentManagedThreadId;
         _expandedIdentifier = new Identifier(hardware.Identifier, "expanded").ToString();
         Hardware = hardware;
         Image = HardwareTypeImage.Instance.GetImage(hardware.HardwareType);
-
-        foreach (SensorType sensorType in Enum.GetValues(typeof(SensorType)))
-            _typeNodes.Add(new TypeNode(sensorType, hardware.Identifier, _settings));
 
         foreach (ISensor sensor in hardware.Sensors)
             SensorAdded(sensor);
@@ -42,20 +43,33 @@ public class HardwareNode : Node, IExpandPersistNode
         // Drivers activate/deactivate sensors inside hardware.Update(), which runs on the
         // background updater thread, so these events must hop to the UI thread before they
         // mutate the node tree (and, through it, TreeViewAdv and the plot model).
-        hardware.SensorAdded += sensor => RunOnUiThread(() => SensorAdded(sensor));
-        hardware.SensorRemoved += sensor => RunOnUiThread(() => SensorRemoved(sensor));
+        hardware.SensorAdded += Hardware_SensorAdded;
+        hardware.SensorRemoved += Hardware_SensorRemoved;
 
         _expanded = settings.GetValue(_expandedIdentifier, true);
     }
 
     private void RunOnUiThread(Action action)
     {
+        if (_disposed)
+            return;
+
+        if (Environment.CurrentManagedThreadId == _uiThreadId)
+        {
+            action();
+            return;
+        }
+
         Control marshaller = _uiMarshaller;
-        if (marshaller is { IsHandleCreated: true, IsDisposed: false } && marshaller.InvokeRequired)
+        if (marshaller is { IsHandleCreated: true, IsDisposed: false })
         {
             try
             {
-                marshaller.BeginInvoke(action);
+                marshaller.BeginInvoke((Action)(() =>
+                {
+                    if (!_disposed)
+                        action();
+                }));
                 return;
             }
             catch (ObjectDisposedException)
@@ -69,7 +83,18 @@ public class HardwareNode : Node, IExpandPersistNode
             }
         }
 
-        action();
+        // A missing or destroyed handle is not evidence that this worker owns the UI. Drop the
+        // callback; a later hardware snapshot/reset will recreate the visible tree safely.
+    }
+
+    private void Hardware_SensorAdded(ISensor sensor)
+    {
+        RunOnUiThread(() => SensorAdded(sensor));
+    }
+
+    private void Hardware_SensorRemoved(ISensor sensor)
+    {
+        RunOnUiThread(() => SensorRemoved(sensor));
     }
 
 
@@ -101,6 +126,8 @@ public class HardwareNode : Node, IExpandPersistNode
     }
 
     public IHardware Hardware { get; }
+
+    internal int MaterializedTypeNodeCount => _typeNodes.Count;
 
     public bool Expanded
     {
@@ -134,22 +161,19 @@ public class HardwareNode : Node, IExpandPersistNode
 
     private void SensorRemoved(ISensor sensor)
     {
-        foreach (TypeNode typeNode in _typeNodes)
+        if (_typeNodes.TryGetValue(sensor.SensorType, out TypeNode typeNode))
         {
-            if (typeNode.SensorType == sensor.SensorType)
+            SensorNode sensorNode = null;
+            foreach (Node node in typeNode.Nodes)
             {
-                SensorNode sensorNode = null;
-                foreach (Node node in typeNode.Nodes)
-                {
-                    if (node is SensorNode n && n.Sensor == sensor)
-                        sensorNode = n;
-                }
-                if (sensorNode != null)
-                {
-                    sensorNode.PlotSelectionChanged -= SensorPlotSelectionChanged;
-                    typeNode.Nodes.Remove(sensorNode);
-                    UpdateNode(typeNode);
-                }
+                if (node is SensorNode n && n.Sensor == sensor)
+                    sensorNode = n;
+            }
+            if (sensorNode != null)
+            {
+                sensorNode.PlotSelectionChanged -= SensorPlotSelectionChanged;
+                typeNode.Nodes.Remove(sensorNode);
+                UpdateNode(typeNode);
             }
         }
         PlotSelectionChanged?.Invoke(this, null);
@@ -173,15 +197,44 @@ public class HardwareNode : Node, IExpandPersistNode
 
     private void SensorAdded(ISensor sensor)
     {
-        foreach (TypeNode typeNode in _typeNodes)
+        if (_disposed)
+            return;
+
+        if (!_typeNodes.TryGetValue(sensor.SensorType, out TypeNode typeNode))
         {
-            if (typeNode.SensorType == sensor.SensorType)
-            {
-                InsertSorted(typeNode, sensor);
-                UpdateNode(typeNode);
-            }
+            typeNode = new TypeNode(sensor.SensorType, Hardware.Identifier, _settings);
+            _typeNodes.Add(sensor.SensorType, typeNode);
         }
 
+        InsertSorted(typeNode, sensor);
+        UpdateNode(typeNode);
+
         PlotSelectionChanged?.Invoke(this, null);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        Hardware.SensorAdded -= Hardware_SensorAdded;
+        Hardware.SensorRemoved -= Hardware_SensorRemoved;
+
+        foreach (HardwareNode child in Nodes.OfType<HardwareNode>().ToList())
+            child.Dispose();
+
+        foreach (TypeNode typeNode in _typeNodes.Values)
+        {
+            foreach (SensorNode sensorNode in typeNode.Nodes.OfType<SensorNode>())
+                sensorNode.PlotSelectionChanged -= SensorPlotSelectionChanged;
+
+            typeNode.Dispose();
+        }
+
+        Nodes.Clear();
+        _typeNodes.Clear();
+        PlotSelectionChanged = null;
+        GC.SuppressFinalize(this);
     }
 }

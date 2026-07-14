@@ -204,6 +204,43 @@
     eq('migrate keeps unrelated key', legacyStore._m['other'], 'keep');
     eq('migrate idempotent (2nd pass)', (() => { const again = S.migrateLegacyState(legacyStore, migrated);
       return [again.paused, again.rate, again.theme]; })(), [true, 5, 'light']);
+    const throwingStorage = {
+      get length() { throw new Error('storage blocked'); },
+      key: () => { throw new Error('storage blocked'); },
+      getItem: () => { throw new Error('storage blocked'); },
+      setItem: () => { throw new Error('storage blocked'); },
+      removeItem: () => { throw new Error('storage blocked'); }
+    };
+    eq('throwing storage load falls back safely', S.loadDashboardState(throwingStorage).theme, 'dark');
+    eq('throwing storage save does not abort', (() => {
+      try { return S.saveDashboardState(throwingStorage, {theme:'light'}).theme; } catch (e) { return e.message; }
+    })(), 'light');
+    eq('throwing storage migration does not abort', (() => {
+      try { return S.migrateLegacyState(throwingStorage, {rate:7}).rate; } catch (e) { return e.message; }
+    })(), 7);
+    eq('safe storage adapter retains an in-memory fallback', (() => {
+      if (typeof S.createSafeStorage !== 'function') return 'missing';
+      const safe = S.createSafeStorage(throwingStorage);
+      safe.setItem('x', 'kept');
+      return [safe.getItem('x'), safe.length, safe.key(0)];
+    })(), ['kept', 1, 'x']);
+    eq('safe storage adapter tolerates a throwing browser storage getter', (() => {
+      const safe = S.createSafeStorage(() => { throw new Error('security'); });
+      S.saveDashboardState(safe, {theme:'light', rate:4});
+      const loaded = S.loadDashboardState(safe);
+      return [loaded.theme, loaded.rate];
+    })(), ['light', 4]);
+    eq('safe storage shadow wins after quota and removal failures', (() => {
+      let primary = 'old';
+      const quotaStore = {getItem:() => primary, setItem:() => { throw new Error('quota'); },
+        removeItem:() => { throw new Error('blocked'); }};
+      const safe = S.createSafeStorage(quotaStore);
+      const loaded = safe.getItem('x');
+      safe.setItem('x', 'new');
+      const afterWrite = safe.getItem('x');
+      safe.removeItem('x');
+      return [loaded, afterWrite, safe.getItem('x')];
+    })(), ['old', 'new', null]);
 
     // --- Tier 3: panel collapse tri-state ---
     eq('collapse stored true wins', S.isPanelCollapsed({collapsedPanels:{CPU:true}}, 'CPU', false), true);
@@ -538,6 +575,64 @@
       return [saved.hiddenSensorIds, saved.sensorAliases, saved.rangeOverrides];
     })(), [['/old-hidden'], {'/fan':'Old Pump'}, {'/gpu/power':{max:200}}]);
 
+    // Cached paints must never be treated as telemetry ingestion. This helper is
+    // the exact seam used by render(), so Studio preference rerenders exercise a
+    // no-op rather than growing histories, samples, peaks, or ticks.
+    eq('cached telemetry ingestion is a byte-for-byte no-op', (() => {
+      if (typeof S.ingestTelemetry !== 'function') return 'missing';
+      const runtime = {dashboard:S.defaultDashboardState(), tickCount:0};
+      const sample = [
+        {id:'/g/0/power/0', hwid:'/g/0', cls:'gpu', type:'Power', text:'GPU Package', raw:150},
+        {id:'/g/0/load/0', hwid:'/g/0', cls:'gpu', type:'Load', text:'GPU Power', raw:30}
+      ];
+      S.ingestTelemetry(runtime, sample, true, 1000);
+      const before = JSON.stringify({tick:runtime.tickCount, dashboard:runtime.dashboard,
+        history:S.historyFor('/g/0/power/0')});
+      for (let i = 0; i < 12; i++) S.ingestTelemetry(runtime, sample, false, 2000 + i);
+      return [JSON.stringify({tick:runtime.tickCount, dashboard:runtime.dashboard,
+        history:S.historyFor('/g/0/power/0')}) === before,
+        runtime.dashboard.powerLimitSamples['/g/0'].length,
+        S.derivedPowerLimit('/g/0', runtime.dashboard)];
+    })(), [true, 1, null]);
+
+    eq('telemetry maps are globally bounded during normalization', (() => {
+      const observedMax = {}, powerLimitSamples = {};
+      for (let i = 0; i < 3000; i++) {
+        observedMax['/sensor/' + i] = i;
+        powerLimitSamples['/gpu/' + i] = [i + 1];
+      }
+      const normalized = S.normalizeDashboardState({observedMax, powerLimitSamples});
+      return [Object.keys(normalized.observedMax).length, Object.keys(normalized.powerLimitSamples).length,
+        S.SENSOR_STATE_MAX_KEYS, S.POWER_STATE_MAX_KEYS];
+    })(), [2048, 512, 2048, 512]);
+
+    eq('transient motion and history maps are globally bounded', (() => {
+      S.resetTelemetryCaches();
+      const many = Array.from({length:2300}, (_, i) => ({id:'/temp/' + i, hwid:'/hw/' + i,
+        cls:'cpu', type:'Temperature', text:'Core', raw:40 + (i % 10)}));
+      S.ingestTelemetry({dashboard:S.defaultDashboardState()}, many, true, 1);
+      const sizes = S.telemetryCacheSizes();
+      return [sizes.motion, sizes.history];
+    })(), [2048, 2048]);
+
+    eq('departed telemetry survives grace then prunes from memory and persisted maps', (() => {
+      if (typeof S.ingestTelemetry !== 'function' || typeof S.telemetryCacheSizes !== 'function') return 'missing';
+      S.resetTelemetryCaches();
+      const runtime = {dashboard:S.normalizeDashboardState({observedMax:{'/gone':40},
+        powerLimitSamples:{'/gone-hw':[100]}}), tickCount:0};
+      const gone = [{id:'/gone', hwid:'/gone-hw', cls:'gpu', type:'Power', text:'GPU Package', raw:40}];
+      S.ingestTelemetry(runtime, gone, true, 0);
+      S.ingestTelemetry(runtime, [], true, S.SENSOR_STATE_GRACE_MS - 1);
+      const during = ['/gone' in runtime.dashboard.observedMax, '/gone-hw' in runtime.dashboard.powerLimitSamples];
+      const pruned = S.ingestTelemetry(runtime, [], true, S.SENSOR_STATE_GRACE_MS + 1);
+      const after = ['/gone' in runtime.dashboard.observedMax, '/gone-hw' in runtime.dashboard.powerLimitSamples,
+        S.telemetryCacheSizes().history];
+      let slot = JSON.stringify({observedMax:{'/gone':40}, powerLimitSamples:{'/gone-hw':[100]}});
+      const persisted = {getItem:() => slot, setItem:(key, value) => { slot = value; }};
+      const saved = S.saveTelemetryState(persisted, runtime.dashboard, pruned.removals);
+      return [during, after, ['/gone' in saved.observedMax, '/gone-hw' in saved.powerLimitSamples]];
+    })(), [[true, true], [false, false, 0], [false, false]]);
+
     // --- v3: rangeFor provenance ---
     S.resetSensorMotion();
     eq('rangeFor override wins', S.rangeFor({id:'/p', type:'Power', raw:80, rawMax:122}, {}, {rangeOverrides:{'/p':{max:575}}}),
@@ -564,6 +659,92 @@
 
     return { pass, fail, log };
   }
-  if (typeof module !== 'undefined' && module.exports) module.exports = runConsoleTests;
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = runConsoleTests;
+    if (require.main === module) {
+      const test = require('node:test');
+      const assert = require('node:assert/strict');
+      const fs = require('node:fs');
+      const path = require('node:path');
+      const source = fs.readFileSync(path.join(__dirname,
+        '../LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js'), 'utf8');
+      const modelWindow = {SQ_NO_BOOT:true};
+      Function('window', source)(modelWindow);
+      const S = modelWindow.SQ;
+
+      test('polling is single-flight, abortable, and ignores cancelled generations', async () => {
+        assert.equal(typeof S.createPollController, 'function');
+        const pending = [], painted = [], errors = [];
+        const poller = S.createPollController({
+          intervalMs:60000,
+          timeoutMs:60000,
+          request:signal => new Promise(resolve => pending.push({signal, resolve})),
+          onData:data => painted.push(data),
+          onError:error => errors.push(error)
+        });
+        poller.start();
+        assert.equal(pending.length, 1);
+        poller.refresh();
+        assert.equal(pending.length, 1, 'a refresh must not overlap the active request');
+        poller.setPaused(true);
+        assert.equal(pending[0].signal.aborted, true);
+        poller.setPaused(false);
+        assert.equal(pending.length, 1, 'resume waits for cancelled request ownership to settle');
+        pending[0].resolve({generation:0});
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(pending.length, 2);
+        assert.deepEqual(painted, [], 'cancelled response cannot paint');
+        pending[1].resolve({generation:1});
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(painted, [{generation:1}]);
+        assert.deepEqual(errors, []);
+        poller.stop();
+      });
+
+      test('visibility and rate changes cancel work; timeout reports an error', async () => {
+        const pending = [], errors = [];
+        const poller = S.createPollController({
+          intervalMs:60000,
+          timeoutMs:15,
+          request:signal => new Promise((resolve, reject) => {
+            pending.push({signal, resolve});
+            signal.addEventListener('abort', () => reject(new Error('aborted')), {once:true});
+          }),
+          onData:() => {},
+          onError:error => errors.push(error)
+        });
+        poller.start();
+        poller.setHidden(true);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(pending[0].signal.aborted, true);
+        assert.equal(errors.length, 0, 'visibility cancellation is not a telemetry error');
+        poller.setHidden(false);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(pending.length, 2);
+        poller.setInterval(20000);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(pending[1].signal.aborted, true);
+        poller.refresh();
+        await new Promise(resolve => setTimeout(resolve, 30));
+        assert.equal(errors.length, 1, 'request timeout reaches stale/error handling');
+        poller.stop();
+      });
+
+      test('a persisted paused dashboard gets one snapshot and no recurring poll', async () => {
+        let requests = 0, paints = 0;
+        const poller = S.createPollController({
+          paused:true,
+          intervalMs:10,
+          timeoutMs:1000,
+          request:async () => { requests++; return {snapshot:true}; },
+          onData:() => { paints++; }
+        });
+        await poller.start(true);
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.deepEqual([requests, paints, poller.status().scheduled], [1, 1, false]);
+        poller.stop();
+      });
+    }
+  }
   else root.runConsoleTests = runConsoleTests;
 })(typeof window !== 'undefined' ? window : globalThis);

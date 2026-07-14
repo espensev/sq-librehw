@@ -98,9 +98,14 @@ namespace LibreHardwareMonitor.Windows.Forms.UI.Themes
                 TextRenderer.DrawText(g, text, font, rect, Current.TreeTextColor, TextFormatFlags.Left);
             };
 
+            Pen previousLinePen = TreeViewAdv.CustomHorizontalLinePen;
+            Brush previousSelectionBrush = TreeViewAdv.CustomSelectedRowBrush;
             TreeViewAdv.CustomHorizontalLinePen = new Pen(Current.TreeRowSepearatorColor);
             TreeViewAdv.CustomSelectedRowBrush = new SolidBrush(Current.TreeSelectedBackgroundColor);
             TreeViewAdv.CustomSelectedTextColor = Current.TreeSelectedTextColor;
+
+            previousLinePen?.Dispose();
+            previousSelectionBrush?.Dispose();
         }
 
         private static List<Theme> _all;

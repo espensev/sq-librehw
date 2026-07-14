@@ -2,7 +2,7 @@
 
 **Project:** LibreHardwareMonitor Sev IQ local fork  
 **Status:** Active implementation fork  
-**Updated:** 2026-06-06  
+**Updated:** 2026-07-14
 **Purpose:** keep feature work spec-first without blocking normal review, build, launch, and bugfix work.
 
 This repository is not specs-only: product code exists and normal maintenance can proceed. The rule is narrower: **new features and meaningful behavior changes need a clear feature spec before implementation starts**, unless the maintainer explicitly asks for a small direct fix or exploratory spike.
@@ -15,18 +15,17 @@ Before editing, decide which lane the user asked for:
 - **Build/launch/verification:** run the requested build, clean, launch, or monitoring steps. No feature spec is needed.
 - **Bugfix:** fix a concrete defect. For small fixes, implement directly and document the result. If the fix changes user-facing behavior or settings/API semantics, update or create a feature spec.
 - **Spec/doc refinement:** edit docs only. Keep requirements traceable to acceptance and verification.
-- **New feature or behavior change:** start with `docs/feature-workflow.md` and a feature spec from `docs/feature-spec-template.md`.
+- **New feature or behavior change:** start from the nearest current feature spec in `docs/`; when none exists, create a compact spec covering the readiness checklist below.
 
 If a requested implementation is ambiguous and acceptance is unclear, draft the spec or ask for the missing decision before writing product code.
 
 ## 2. Source-of-truth map
 
-- `docs/ai-guide.md`: **start here** — repo orientation, hard invariants, the phase-shipping loop, the lessons ledger, and the maintained overall-plan snapshot for the web-dashboard campaign.
-- `docs/feature-workflow.md`: how new feature specs move from idea to verified implementation, including the current draft feature list.
-- `docs/feature-spec-template.md`: copy this for a new feature spec.
-- `docs/feature-graph-menu.md`: existing graph-menu feature spec; treat as the precedent for local feature specs.
-- `docs/local-ui-customizations.md`: traceability for local changes that shipped outside the graph-menu spec.
-- `docs/discovery-librehw-sync-upgrade.md`: upstream sync and modernization discovery notes.
+- `docs/README.md`: **start here** — compact current-state, contract, implementation, and verification map.
+- `docs/feature-memory-ui-reliability.md`: active memory, ownership, efficiency, and UI-reliability remediation spec.
+- `docs/feature-web-dashboard-studio-view.md`: shipped Studio dashboard behavior and verification record.
+- `docs/discovery-studio-distinction.md`: Studio design discovery and constraints.
+- `docs/reviews/`: concise findings and verification records; a review is input evidence, not a substitute for an accepted behavior spec.
 
 When adding or changing a requirement, update the nearest feature spec, traceability note, or verification section in the same pass. A behavior change without acceptance criteria is unfinished.
 

@@ -13,10 +13,10 @@
   <div class="spacer"></div>
   <div class="controls">
     <div class="fresh"><span class="lamp s-ok" id="freshdot"></span><span id="freshtxt">live</span></div>
-    <div class="rate"><span>rate</span><input type="range" id="rate" min="1" max="10" value="2"><span id="ratev">2s</span></div>
-    <button class="btn" id="pause">❚❚ Pause</button>
+    <label class="rate" for="rate"><span id="rateLabel">Poll rate</span><input type="range" id="rate" min="1" max="10" value="2" aria-labelledby="rateLabel" aria-describedby="ratev"><span id="ratev">2s</span></label>
+    <button class="btn" id="pause" aria-pressed="false">❚❚ Pause</button>
     <button class="btn" id="graphs" aria-pressed="false">Graphs</button>
-    <button class="btn" id="theme">◐ Theme</button>
+    <button class="btn" id="theme" aria-pressed="false" aria-label="Switch to light theme" title="Current theme: dark">◐ Dark</button>
     <label class="view-theme"><span>Dashboard</span><select id="viewTheme" aria-label="Dashboard">
       <option value="standard">Standard</option>
       <option value="cardTruth">Studio</option>

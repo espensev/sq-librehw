@@ -18,17 +18,22 @@ public class SystemTray : IDisposable
     private IComputer _computer;
     private readonly PersistentSettings _settings;
     private readonly UnitManager _unitManager;
+    private readonly Control _uiMarshaller;
     private readonly List<SensorNotifyIcon> _sensorList = new List<SensorNotifyIcon>();
     private readonly SynchronizationContext _uiContext;
     private readonly int _uiThreadId;
     private bool _mainIconEnabled;
     private readonly NotifyIconAdv _mainIcon;
+    private readonly ContextMenuStrip _mainContextMenu;
+    private readonly System.Drawing.Icon _mainIconImage;
+    private bool _disposed;
 
-    public SystemTray(IComputer computer, PersistentSettings settings, UnitManager unitManager)
+    public SystemTray(IComputer computer, PersistentSettings settings, UnitManager unitManager, Control uiMarshaller = null)
     {
         _computer = computer;
         _settings = settings;
         _unitManager = unitManager;
+        _uiMarshaller = uiMarshaller;
         _uiContext = SynchronizationContext.Current;
         _uiThreadId = Environment.CurrentManagedThreadId;
         computer.HardwareAdded += HardwareAdded;
@@ -36,26 +41,27 @@ public class SystemTray : IDisposable
 
         _mainIcon = new NotifyIconAdv();
 
-        ContextMenuStrip contextMenuStrip = new ContextMenuStrip();
+        _mainContextMenu = new ContextMenuStrip();
         ToolStripItem hideShowItem = new ToolStripMenuItem("Hide/Show");
         hideShowItem.Click += delegate
         {
             SendHideShowCommand();
         };
-        contextMenuStrip.Items.Add(hideShowItem);
-        contextMenuStrip.Items.Add(new ToolStripSeparator());
+        _mainContextMenu.Items.Add(hideShowItem);
+        _mainContextMenu.Items.Add(new ToolStripSeparator());
         ToolStripItem exitItem = new ToolStripMenuItem("Exit");
         exitItem.Click += delegate
         {
             SendExitCommand();
         };
-        contextMenuStrip.Items.Add(exitItem);
-        _mainIcon.ContextMenuStrip = contextMenuStrip;
+        _mainContextMenu.Items.Add(exitItem);
+        _mainIcon.ContextMenuStrip = _mainContextMenu;
         _mainIcon.DoubleClick += delegate
         {
             SendHideShowCommand();
         };
-        _mainIcon.Icon = EmbeddedResources.GetIcon("smallicon.ico");
+        _mainIconImage = EmbeddedResources.GetIcon("smallicon.ico");
+        _mainIcon.Icon = _mainIconImage;
         _mainIcon.Text = "Libre Hardware Monitor - Sev IQ";
     }
 
@@ -65,14 +71,47 @@ public class SystemTray : IDisposable
     // the -= in HardwareRemoved keeps working.
     private void RunOnUiThread(Action action)
     {
-        if (_uiContext != null && Environment.CurrentManagedThreadId != _uiThreadId)
-            _uiContext.Post(_ => action(), null);
-        else
+        if (_disposed)
+            return;
+
+        if (Environment.CurrentManagedThreadId == _uiThreadId)
+        {
             action();
+            return;
+        }
+
+        Control marshaller = _uiMarshaller;
+        if (marshaller is { IsHandleCreated: true, IsDisposed: false })
+        {
+            try
+            {
+                marshaller.BeginInvoke((Action)(() =>
+                {
+                    if (!_disposed)
+                        action();
+                }));
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+
+            return;
+        }
+
+        if (_uiMarshaller == null && _uiContext != null)
+        {
+            _uiContext.Post(_ =>
+            {
+                if (!_disposed)
+                    action();
+            }, null);
+        }
     }
 
     private void HardwareRemoved(IHardware hardware)
     {
+        if (_disposed)
+            return;
+
         hardware.SensorAdded -= SensorAdded;
         hardware.SensorRemoved -= SensorRemoved;
 
@@ -85,6 +124,9 @@ public class SystemTray : IDisposable
 
     private void HardwareAdded(IHardware hardware)
     {
+        if (_disposed)
+            return;
+
         foreach (ISensor sensor in hardware.Sensors)
             SensorAdded(sensor);
 
@@ -115,10 +157,38 @@ public class SystemTray : IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        _computer.HardwareAdded -= HardwareAdded;
+        _computer.HardwareRemoved -= HardwareRemoved;
+        foreach (IHardware hardware in _computer.Hardware)
+            UnsubscribeHardware(hardware);
+
         foreach (SensorNotifyIcon icon in _sensorList)
             icon.Dispose();
         _sensorList.Clear();
+
+        _mainIcon.ContextMenuStrip = null;
+        _mainIcon.Icon = null;
         _mainIcon.Dispose();
+        _mainContextMenu.Dispose();
+        _mainIconImage?.Dispose();
+
+        HideShowCommand = null;
+        ExitCommand = null;
+        _computer = null;
+        GC.SuppressFinalize(this);
+    }
+
+    private void UnsubscribeHardware(IHardware hardware)
+    {
+        hardware.SensorAdded -= SensorAdded;
+        hardware.SensorRemoved -= SensorRemoved;
+
+        foreach (IHardware subHardware in hardware.SubHardware)
+            UnsubscribeHardware(subHardware);
     }
 
     public void Redraw()

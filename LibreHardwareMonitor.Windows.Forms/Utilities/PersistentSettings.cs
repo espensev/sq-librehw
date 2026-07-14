@@ -26,15 +26,32 @@ public class PersistentSettings : ISettings
     private const string SensorValuesKeySuffix = "/values";
     private const string PlotKeySuffix = "/plot";
 
+    private enum LoadResult
+    {
+        Success,
+        Missing,
+        Corrupt,
+        TransientFailure
+    }
+
+    internal enum SaveStage
+    {
+        Entered,
+        SerializationAcquired
+    }
+
     private readonly IDictionary<string, string> _settings = new Dictionary<string, string>();
+
+    private readonly Action<string, byte[], bool> _writeFile;
+    private readonly Action<SaveStage> _saveStageObserver;
 
     // "<sensor>/values" keys loaded from disk that no sensor claimed (via Remove) or refreshed
     // (via SetValue) during this session. They belong to hardware that is no longer present and
     // are skipped on Save so stale history cannot accumulate forever.
     private readonly HashSet<string> _unclaimedSensorValues = new HashSet<string>();
 
-    // Guards _settings, _unclaimedSensorValues and _modified so periodic autosave (on the UI
-    // thread) and the SessionEnded handler (on a system thread) cannot corrupt shared state.
+    // Guards _settings, _unclaimedSensorValues, _modified and the transient-load write block so
+    // periodic autosave (on the UI thread) and SessionEnded (on a system thread) stay consistent.
     private readonly object _sync = new object();
 
     // Serializes file writes so two overlapping Save calls cannot fight over the temp/backup files.
@@ -43,6 +60,37 @@ public class PersistentSettings : ISettings
     // True when an in-memory change has not yet been persisted. Autosave uses this to skip writing
     // when nothing changed, avoiding needless disk churn while the app sits idle in the tray.
     private bool _modified;
+
+    // A transient read failure leaves it unknown whether the primary or recovery file is newer.
+    // Never write that uncertain state back until a later definitive Load clears this block.
+    private bool _saveBlockedByTransientLoad;
+
+    // When Load recovered from "<fileName>.backup", the primary is known bad or missing while the
+    // backup is the last validated copy. The first repair save must replace only the primary; the
+    // normal rotation would otherwise overwrite that good backup with the corrupt primary.
+    private long _backupRecoveryGeneration;
+
+    public PersistentSettings()
+        : this(WriteFileAtomic, null)
+    { }
+
+    internal PersistentSettings(Action<string, byte[]> writeFile, Action<SaveStage> saveStageObserver = null)
+        : this(AdaptWriteFile(writeFile), saveStageObserver)
+    { }
+
+    private PersistentSettings(Action<string, byte[], bool> writeFile, Action<SaveStage> saveStageObserver)
+    {
+        _writeFile = writeFile ?? throw new ArgumentNullException(nameof(writeFile));
+        _saveStageObserver = saveStageObserver;
+    }
+
+    private static Action<string, byte[], bool> AdaptWriteFile(Action<string, byte[]> writeFile)
+    {
+        if (writeFile == null)
+            throw new ArgumentNullException(nameof(writeFile));
+
+        return (fileName, contents, _) => writeFile(fileName, contents);
+    }
 
     // True when at least one setting has changed since the last successful Save (or since Load).
     // Read by the autosave path to avoid rewriting an unchanged configuration file.
@@ -57,138 +105,279 @@ public class PersistentSettings : ISettings
 
     public void Load(string fileName)
     {
-        // Try the live file first, then the backup left by the previous successful save. Neither
-        // file is deleted on failure: a torn write or transient read error must never destroy the
-        // user's last good configuration and silently fall back to defaults.
-        XmlDocument doc = TryLoadXml(fileName) ?? TryLoadXml(fileName + ".backup");
-        if (doc == null)
+        // Block any Save that starts while this load is unresolved. A successful load or a
+        // definitive missing/corrupt result clears the block; transient access failures retain it.
+        lock (_sync)
+            _saveBlockedByTransientLoad = true;
+
+        // Try the live file first. A missing or malformed primary may recover from the backup left
+        // by the previous successful save; a transient access failure is deferred because it is
+        // not evidence that an older backup should replace the current configuration.
+        bool loadedFromBackup = false;
+        LoadResult loadResult = TryLoadSettings(fileName, out Dictionary<string, string> loadedSettings, out HashSet<string> loadedUnclaimedSensorValues, out bool cleanupApplied);
+        if (loadResult == LoadResult.TransientFailure)
             return;
+
+        if (loadResult == LoadResult.Missing || loadResult == LoadResult.Corrupt)
+        {
+            loadResult = TryLoadSettings(fileName + ".backup", out loadedSettings, out loadedUnclaimedSensorValues, out cleanupApplied);
+            loadedFromBackup = loadResult == LoadResult.Success;
+        }
+
+        if (loadResult == LoadResult.TransientFailure)
+            return;
+
+        if (loadResult != LoadResult.Success)
+        {
+            lock (_sync)
+                _saveBlockedByTransientLoad = false;
+
+            return;
+        }
 
         lock (_sync)
         {
             _settings.Clear();
             _unclaimedSensorValues.Clear();
 
-            XmlNodeList list = doc.GetElementsByTagName("appSettings");
-            foreach (XmlNode node in list)
+            foreach (KeyValuePair<string, string> setting in loadedSettings)
+                _settings[setting.Key] = setting.Value;
+
+            foreach (string key in loadedUnclaimedSensorValues)
+                _unclaimedSensorValues.Add(key);
+
+            // If load had to discard stale/noisy data, or had to recover from the backup file,
+            // keep the store dirty so the next autosave compacts/restores the live config even
+            // when the user does not change a setting.
+            _modified = cleanupApplied || loadedFromBackup || loadedUnclaimedSensorValues.Count > 0;
+            _backupRecoveryGeneration = loadedFromBackup ? _backupRecoveryGeneration + 1 : 0;
+            _saveBlockedByTransientLoad = false;
+        }
+    }
+
+    // Streams settings from disk instead of loading the whole .config into an XmlDocument. Older
+    // builds could write hundreds of megabytes of sensor history, and building a DOM for that file
+    // is the startup memory spike this cleanup path is meant to avoid.
+    private static LoadResult TryLoadSettings(
+        string fileName,
+        out Dictionary<string, string> loadedSettings,
+        out HashSet<string> loadedUnclaimedSensorValues,
+        out bool cleanupApplied)
+    {
+        loadedSettings = new Dictionary<string, string>();
+        loadedUnclaimedSensorValues = new HashSet<string>();
+        cleanupApplied = false;
+
+        try
+        {
+            var readerSettings = new XmlReaderSettings
             {
-                XmlNode parent = node.ParentNode;
-                if (parent != null && parent.Name == "configuration" && parent.ParentNode is XmlDocument)
+                DtdProcessing = DtdProcessing.Prohibit,
+                IgnoreComments = true,
+                IgnoreProcessingInstructions = true,
+                IgnoreWhitespace = true
+            };
+
+            using XmlReader reader = XmlReader.Create(fileName, readerSettings);
+
+            bool inConfiguration = false;
+            bool inAppSettings = false;
+            int configurationDepth = -1;
+            int appSettingsDepth = -1;
+
+            while (reader.Read())
+            {
+                if (reader.NodeType == XmlNodeType.Element)
                 {
-                    foreach (XmlNode child in node.ChildNodes)
+                    if (!inConfiguration && reader.Depth == 0 && reader.Name == "configuration")
                     {
-                        if (child.Name == "add")
+                        inConfiguration = true;
+                        configurationDepth = reader.Depth;
+                        if (reader.IsEmptyElement)
+                            inConfiguration = false;
+
+                        continue;
+                    }
+
+                    if (!inConfiguration)
+                        continue;
+
+                    if (!inAppSettings && reader.Depth == configurationDepth + 1 && reader.Name == "appSettings")
+                    {
+                        inAppSettings = true;
+                        appSettingsDepth = reader.Depth;
+                        if (reader.IsEmptyElement)
+                            inAppSettings = false;
+
+                        continue;
+                    }
+
+                    if (inAppSettings && reader.Depth == appSettingsDepth + 1 && reader.Name == "add")
+                    {
+                        string key = reader.GetAttribute("key");
+                        string value = reader.GetAttribute("value");
+                        if (key == null || value == null)
+                            continue;
+
+                        // Migration/cleanup: skip oversized sensor history blobs and
+                        // default-only noise written by older builds.
+                        if (!IsPersistableSetting(key, value))
                         {
-                            XmlAttributeCollection attributes = child.Attributes;
-                            XmlAttribute keyAttribute = attributes["key"];
-                            XmlAttribute valueAttribute = attributes["value"];
-                            if (keyAttribute != null && valueAttribute != null && keyAttribute.Value != null)
-                            {
-                                string key = keyAttribute.Value;
-                                string value = valueAttribute.Value;
-
-                                // Migration/cleanup: skip oversized sensor history blobs and
-                                // default-only noise written by older builds.
-                                if (!IsPersistableSetting(key, value))
-                                    continue;
-
-                                // Last-wins on a duplicate key so a hand-edited or partially
-                                // corrupt file cannot throw and abort startup.
-                                _settings[key] = value;
-
-                                if (IsSensorValuesKey(key))
-                                    _unclaimedSensorValues.Add(key);
-                            }
+                            cleanupApplied = true;
+                            continue;
                         }
+
+                        // Last-wins on a duplicate key so a hand-edited or partially corrupt file
+                        // cannot throw and abort startup. Saving will normalize duplicates away.
+                        if (loadedSettings.ContainsKey(key))
+                            cleanupApplied = true;
+
+                        loadedSettings[key] = value;
+
+                        if (IsSensorValuesKey(key))
+                            loadedUnclaimedSensorValues.Add(key);
+                    }
+                }
+                else if (reader.NodeType == XmlNodeType.EndElement)
+                {
+                    if (inAppSettings && reader.Depth == appSettingsDepth && reader.Name == "appSettings")
+                    {
+                        inAppSettings = false;
+                        appSettingsDepth = -1;
+                    }
+                    else if (inConfiguration && reader.Depth == configurationDepth && reader.Name == "configuration")
+                    {
+                        inConfiguration = false;
+                        configurationDepth = -1;
                     }
                 }
             }
 
-            _modified = false;
+            return LoadResult.Success;
         }
-    }
-
-    // Loads an XML document, returning null (instead of throwing) when the file is missing or not
-    // well-formed, so the caller can fall back to the backup without any destructive cleanup.
-    private static XmlDocument TryLoadXml(string fileName)
-    {
-        try
+        catch (FileNotFoundException)
         {
-            XmlDocument doc = new XmlDocument();
-            doc.Load(fileName);
-            return doc;
+            return LoadResult.Missing;
         }
-        catch
+        catch (DirectoryNotFoundException)
         {
-            return null;
+            return LoadResult.Missing;
+        }
+        catch (XmlException)
+        {
+            return LoadResult.Corrupt;
+        }
+        catch (Exception exception) when (exception is IOException ||
+                                          exception is UnauthorizedAccessException ||
+                                          exception is System.Security.SecurityException)
+        {
+            // Sharing violations, access failures and other I/O errors are not evidence that the
+            // primary XML is corrupt. Leave the current in-memory state untouched and defer rather
+            // than rolling back to an older backup that could later replace a valid primary file.
+            return LoadResult.TransientFailure;
         }
     }
 
     public void Save(string fileName)
     {
-        // Snapshot the entries to persist under the lock, then release it before doing file I/O so
-        // concurrent readers/writers are never blocked on the disk. Marking the store clean up
-        // front means changes made during the write are not lost (they re-dirty the flag); if the
-        // write fails we restore the flag so the next save retries.
-        List<KeyValuePair<string, string>> entries;
-        lock (_sync)
+        _saveStageObserver?.Invoke(SaveStage.Entered);
+
+        // Serialize the snapshot as well as the file swap. If two saves overlap, the later caller
+        // must snapshot only after the earlier write completes; otherwise it can clear Modified,
+        // write first, and then be overwritten by the older snapshot.
+        lock (_ioSync)
         {
-            entries = new List<KeyValuePair<string, string>>(_settings.Count);
-            foreach (KeyValuePair<string, string> keyValuePair in _settings)
-            {
-                // Sensor history that was loaded but never claimed by a live sensor this session
-                // belongs to hardware that is gone; drop it instead of carrying it forever.
-                if (_unclaimedSensorValues.Contains(keyValuePair.Key))
-                    continue;
+            _saveStageObserver?.Invoke(SaveStage.SerializationAcquired);
 
-                if (!IsPersistableSetting(keyValuePair.Key, keyValuePair.Value))
-                    continue;
-
-                entries.Add(keyValuePair);
-            }
-
-            _modified = false;
-        }
-
-        XmlDocument doc = new XmlDocument();
-        doc.AppendChild(doc.CreateXmlDeclaration("1.0", "utf-8", null));
-        XmlElement configuration = doc.CreateElement("configuration");
-        doc.AppendChild(configuration);
-        XmlElement appSettings = doc.CreateElement("appSettings");
-        configuration.AppendChild(appSettings);
-        foreach (KeyValuePair<string, string> keyValuePair in entries)
-        {
-            XmlElement add = doc.CreateElement("add");
-            add.SetAttribute("key", keyValuePair.Key);
-            add.SetAttribute("value", keyValuePair.Value);
-            appSettings.AppendChild(add);
-        }
-
-        byte[] file;
-        using (var memory = new MemoryStream())
-        {
-            using (var writer = new StreamWriter(memory, Encoding.UTF8))
-            {
-                doc.Save(writer);
-            }
-            file = memory.ToArray();
-        }
-
-        try
-        {
-            lock (_ioSync)
-            {
-                WriteFileAtomic(fileName, file);
-            }
-        }
-        catch
-        {
-            // The bytes did not land on disk. Re-mark the store dirty so a later (auto)save retries
-            // rather than assuming the file already reflects the current state.
+            // Snapshot the entries to persist under the state lock, then release it before doing
+            // file I/O so regular setting readers/writers are never blocked on disk. Changes made
+            // during the write re-dirty the flag; a failed write also re-arms it for retry.
+            List<KeyValuePair<string, string>> entries;
+            List<string> staleSensorValues;
+            long backupRecoveryGeneration;
             lock (_sync)
-                _modified = true;
+            {
+                if (_saveBlockedByTransientLoad)
+                {
+                    throw new IOException(
+                        "Saving settings is deferred because the previous load encountered a transient read failure. " +
+                        "Call Load again after the configuration files become readable.");
+                }
 
-            throw;
+                entries = new List<KeyValuePair<string, string>>(_settings.Count);
+                staleSensorValues = new List<string>();
+                foreach (KeyValuePair<string, string> keyValuePair in _settings)
+                {
+                    // Sensor history that was loaded but never claimed by a live sensor this
+                    // session belongs to hardware that is gone; omit it from the snapshot.
+                    if (_unclaimedSensorValues.Contains(keyValuePair.Key))
+                    {
+                        staleSensorValues.Add(keyValuePair.Key);
+                        continue;
+                    }
+
+                    if (!IsPersistableSetting(keyValuePair.Key, keyValuePair.Value))
+                        continue;
+
+                    entries.Add(keyValuePair);
+                }
+
+                _modified = false;
+                backupRecoveryGeneration = _backupRecoveryGeneration;
+            }
+
+            XmlDocument doc = new XmlDocument();
+            doc.AppendChild(doc.CreateXmlDeclaration("1.0", "utf-8", null));
+            XmlElement configuration = doc.CreateElement("configuration");
+            doc.AppendChild(configuration);
+            XmlElement appSettings = doc.CreateElement("appSettings");
+            configuration.AppendChild(appSettings);
+            foreach (KeyValuePair<string, string> keyValuePair in entries)
+            {
+                XmlElement add = doc.CreateElement("add");
+                add.SetAttribute("key", keyValuePair.Key);
+                add.SetAttribute("value", keyValuePair.Value);
+                appSettings.AppendChild(add);
+            }
+
+            byte[] file;
+            using (var memory = new MemoryStream())
+            {
+                using (var writer = new StreamWriter(memory, Encoding.UTF8))
+                {
+                    doc.Save(writer);
+                }
+                file = memory.ToArray();
+            }
+
+            try
+            {
+                _writeFile(fileName, file, backupRecoveryGeneration != 0);
+            }
+            catch
+            {
+                // The bytes did not land on disk. Re-mark the store dirty so a later (auto)save
+                // retries rather than assuming the file already reflects the current state.
+                lock (_sync)
+                    _modified = true;
+
+                throw;
+            }
+
+            // The successful snapshot omitted these stale histories. Release their strings from
+            // the resident store, but do not remove a key that a live sensor claimed or refreshed
+            // while the file write was in progress.
+            lock (_sync)
+            {
+                if (_backupRecoveryGeneration == backupRecoveryGeneration)
+                    _backupRecoveryGeneration = 0;
+
+                foreach (string key in staleSensorValues)
+                {
+                    if (_unclaimedSensorValues.Remove(key))
+                        _settings.Remove(key);
+                }
+            }
         }
     }
 
@@ -196,7 +385,7 @@ public class PersistentSettings : ISettings
     // is fully written and flushed to a temporary file first, then swapped into place while the
     // previous file is retained as "<fileName>.backup". A crash or power loss during the swap can
     // therefore never leave the user with only defaults: either the new file or the backup survives.
-    private static void WriteFileAtomic(string fileName, byte[] contents)
+    private static void WriteFileAtomic(string fileName, byte[] contents, bool preserveExistingBackup)
     {
         string backupFileName = fileName + ".backup";
         string tempFileName = fileName + ".new";
@@ -218,8 +407,14 @@ public class PersistentSettings : ISettings
         {
             try
             {
-                // Atomic on NTFS: the previous file becomes the backup and the temp becomes live.
-                File.Replace(tempFileName, fileName, backupFileName, ignoreMetadataErrors: true);
+                // Atomic on NTFS. During ordinary saves the previous primary becomes the backup.
+                // During recovery, keep the already-validated backup in place and replace only the
+                // corrupt/missing primary; File.Replace accepts null when no rotation is wanted.
+                File.Replace(
+                    tempFileName,
+                    fileName,
+                    preserveExistingBackup ? null : backupFileName,
+                    ignoreMetadataErrors: true);
                 return;
             }
             catch (Exception e) when (e is PlatformNotSupportedException || e is IOException || e is UnauthorizedAccessException)
@@ -229,17 +424,20 @@ public class PersistentSettings : ISettings
                 // preserves a backup, at the cost of atomicity on those file systems.
             }
 
-            try
+            if (!preserveExistingBackup)
             {
-                File.Delete(backupFileName);
-            }
-            catch { }
+                try
+                {
+                    File.Delete(backupFileName);
+                }
+                catch { }
 
-            // If the previous good file cannot be preserved as the backup, fail the save before
-            // touching the live file: proceeding into the delete+move below could otherwise leave
-            // neither a live config nor a backup. The caller re-marks the store dirty on throw, so
-            // a later (auto)save retries.
-            File.Copy(fileName, backupFileName, overwrite: true);
+                // If the previous good file cannot be preserved as the backup, fail the save before
+                // touching the live file: proceeding into the delete+move below could otherwise leave
+                // neither a live config nor a backup. The caller re-marks the store dirty on throw, so
+                // a later (auto)save retries.
+                File.Copy(fileName, backupFileName, overwrite: true);
+            }
         }
 
         // First save (nothing to preserve) or the copy-based fallback: move the fully written temp

@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 // Copyright (C) LibreHardwareMonitor and Contributors.
-// Partial Copyright (C) Michael Möller <mmoeller@openhardwaremonitor.org> and Contributors.
+// Partial Copyright (C) Michael MÃ¶ller <mmoeller@openhardwaremonitor.org> and Contributors.
 // All Rights Reserved.
 
 using System;
@@ -23,8 +23,11 @@ public sealed class GadgetWindow : NativeWindow, IDisposable
     private Size _size = new Size(130, 84);
     private readonly MethodInfo _commandDispatch;
     private IntPtr _handleBitmapDC;
+    private IntPtr _handleBitmap;
+    private IntPtr _handlePreviousBitmap;
     private Size _bufferSize;
     private Graphics _graphics;
+    private bool _disposed;
 
     public event EventHandler SizeChanged;
     public event EventHandler LocationChanged;
@@ -57,6 +60,9 @@ public sealed class GadgetWindow : NativeWindow, IDisposable
 
     private void ShowDesktopChanged(bool showDesktop)
     {
+        if (_disposed)
+            return;
+
         if (showDesktop)
             MoveToTopMost(Handle);
         else
@@ -204,8 +210,19 @@ public sealed class GadgetWindow : NativeWindow, IDisposable
     private void CreateBuffer()
     {
         IntPtr handleScreenDC = NativeMethods.GetDC(IntPtr.Zero);
-        _handleBitmapDC = NativeMethods.CreateCompatibleDC(handleScreenDC);
-        NativeMethods.ReleaseDC(IntPtr.Zero, handleScreenDC);
+        try
+        {
+            _handleBitmapDC = NativeMethods.CreateCompatibleDC(handleScreenDC);
+        }
+        finally
+        {
+            if (handleScreenDC != IntPtr.Zero)
+                NativeMethods.ReleaseDC(IntPtr.Zero, handleScreenDC);
+        }
+
+        if (_handleBitmapDC == IntPtr.Zero)
+            throw new InvalidOperationException("Unable to create the gadget drawing buffer.");
+
         _bufferSize = _size;
 
         BITMAPINFO info = new BITMAPINFO();
@@ -215,11 +232,23 @@ public sealed class GadgetWindow : NativeWindow, IDisposable
         info.BitCount = 32;
         info.Planes = 1;
 
-        IntPtr hBmp = NativeMethods.CreateDIBSection(_handleBitmapDC, ref info, 0, out IntPtr _, IntPtr.Zero, 0);
-        IntPtr hBmpOld = NativeMethods.SelectObject(_handleBitmapDC, hBmp);
-        NativeMethods.DeleteObject(hBmpOld);
+        try
+        {
+            _handleBitmap = NativeMethods.CreateDIBSection(_handleBitmapDC, ref info, 0, out IntPtr _, IntPtr.Zero, 0);
+            if (_handleBitmap == IntPtr.Zero)
+                throw new InvalidOperationException("Unable to create the gadget bitmap.");
 
-        _graphics = Graphics.FromHdc(_handleBitmapDC);
+            _handlePreviousBitmap = NativeMethods.SelectObject(_handleBitmapDC, _handleBitmap);
+            if (_handlePreviousBitmap == IntPtr.Zero || _handlePreviousBitmap == new IntPtr(-1))
+                throw new InvalidOperationException("Unable to select the gadget bitmap.");
+
+            _graphics = Graphics.FromHdc(_handleBitmapDC);
+        }
+        catch
+        {
+            DisposeBuffer();
+            throw;
+        }
 
         if (Environment.OSVersion.Version.Major > 5)
         {
@@ -230,20 +259,63 @@ public sealed class GadgetWindow : NativeWindow, IDisposable
 
     private void DisposeBuffer()
     {
-        _graphics.Dispose();
-        NativeMethods.DeleteDC(_handleBitmapDC);
+        _graphics?.Dispose();
+        _graphics = null;
+
+        if (_handleBitmapDC != IntPtr.Zero &&
+            _handlePreviousBitmap != IntPtr.Zero &&
+            _handlePreviousBitmap != new IntPtr(-1))
+        {
+            NativeMethods.SelectObject(_handleBitmapDC, _handlePreviousBitmap);
+        }
+
+        _handlePreviousBitmap = IntPtr.Zero;
+
+        if (_handleBitmap != IntPtr.Zero)
+        {
+            NativeMethods.DeleteObject(_handleBitmap);
+            _handleBitmap = IntPtr.Zero;
+        }
+
+        if (_handleBitmapDC != IntPtr.Zero)
+        {
+            NativeMethods.DeleteDC(_handleBitmapDC);
+            _handleBitmapDC = IntPtr.Zero;
+        }
+
+        _bufferSize = Size.Empty;
     }
 
     public void Dispose()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        _visible = false;
+        ShowDesktop.Instance.ShowDesktopChanged -= ShowDesktopChanged;
+
+        ContextMenuStrip?.Dispose();
+        ContextMenuStrip = null;
+
         DisposeBuffer();
+
+        if (Handle != IntPtr.Zero)
+            DestroyHandle();
+
+        Paint = null;
+        SizeChanged = null;
+        LocationChanged = null;
+        HitTest = null;
+        MouseDoubleClick = null;
+        GC.SuppressFinalize(this);
     }
 
     public PaintEventHandler Paint;
 
     public void Redraw()
     {
-        if (!_visible || Paint == null)
+        if (_disposed || !_visible || Paint == null)
             return;
 
         if (_size != _bufferSize)

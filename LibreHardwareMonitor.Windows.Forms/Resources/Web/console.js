@@ -5,7 +5,14 @@
   const SENSOR_MOTION = new Map();
   const SENSOR_HISTORY = new Map();
   const SMOOTH_FRACTIONS = new Map();
+  const TREND_DIRS = new Map();
+  const TRANSIENT_LAST_SEEN = new Map();
+  const OBSERVED_LAST_SEEN = new Map();
+  const POWER_LAST_SEEN = new Map();
   const MAX_HISTORY_POINTS = 90;
+  const SENSOR_STATE_MAX_KEYS = 2048;
+  const POWER_STATE_MAX_KEYS = 512;
+  const SENSOR_STATE_GRACE_MS = 5 * 60 * 1000;
   const VIEW_THEMES = ['standard', 'cardTruth'];
   const STUDIO_ACCENTS = ['coral', 'rose', 'amber', 'plum'];
   const STUDIO_CANVASES = ['ember', 'strata', 'plain'];
@@ -23,6 +30,9 @@
 
   SQ.RANK = { crit: 3, warn: 2, ok: 1, info: 0, off: -1 };
   SQ.DASHBOARD_STORAGE_KEY = DASHBOARD_STORAGE_KEY;
+  SQ.SENSOR_STATE_MAX_KEYS = SENSOR_STATE_MAX_KEYS;
+  SQ.POWER_STATE_MAX_KEYS = POWER_STATE_MAX_KEYS;
+  SQ.SENSOR_STATE_GRACE_MS = SENSOR_STATE_GRACE_MS;
 
   SQ.classOf = function (sid) {
     if (!sid) return 'other';
@@ -133,11 +143,16 @@
       });
     return out;
   }
+  function keepNewestKeys(value, maxKeys) {
+    const keys = Object.keys(value);
+    for (let i = 0; i < keys.length - maxKeys; i++) delete value[keys[i]];
+    return value;
+  }
   function cleanNumberMap(value) {
     const out = {};
     if (value && typeof value === 'object' && !Array.isArray(value))
       Object.keys(value).forEach(k => { const n = Number(value[k]); if (k && Number.isFinite(n)) out[k] = n; });
-    return out;
+    return keepNewestKeys(out, SENSOR_STATE_MAX_KEYS);
   }
   // Persisted watt/percent ratios used to derive GPU power limits. Each hwid
   // keeps a bounded ring of finite, idle-gated ratios; never blocks rendering.
@@ -149,7 +164,7 @@
         const xs = value[k].filter(x => Number.isFinite(x) && x > 0).slice(-SQ.POWER_LIMIT_MAX_SAMPLES);
         if (xs.length) out[k] = xs;
       });
-    return out;
+    return keepNewestKeys(out, POWER_STATE_MAX_KEYS);
   }
   function cleanOrderMap(value) {
     const out = {};
@@ -230,9 +245,67 @@
     };
   };
   SQ.normalizeViewTheme = cleanViewTheme;
+  SQ.createSafeStorage = function (storageOrProvider) {
+    const memory = new Map();
+    const removed = new Set();
+    const primary = () => {
+      try { return typeof storageOrProvider === 'function' ? storageOrProvider() : storageOrProvider; }
+      catch { return null; }
+    };
+    const readPrimary = (method, ...args) => {
+      try {
+        const target = primary();
+        return target && typeof target[method] === 'function' ? target[method](...args) : null;
+      } catch { return null; }
+    };
+    const keysSnapshot = () => {
+      const keys = [];
+      try {
+        const target = primary();
+        const length = target ? Number(target.length) : 0;
+        if (target && Number.isFinite(length) && typeof target.key === 'function') {
+          for (let i = 0; i < length; i++) {
+            const key = target.key(i);
+            if (key != null && !keys.includes(String(key))) keys.push(String(key));
+          }
+        }
+      } catch {}
+      memory.forEach((_, key) => { if (!keys.includes(key)) keys.push(key); });
+      return keys.filter(key => !removed.has(key));
+    };
+    return {
+      getItem(key) {
+        const k = String(key);
+        if (memory.has(k)) return memory.get(k);
+        if (removed.has(k)) return null;
+        const value = readPrimary('getItem', key);
+        if (value != null) { memory.set(k, String(value)); return String(value); }
+        return null;
+      },
+      setItem(key, value) {
+        const k = String(key), v = String(value);
+        removed.delete(k);
+        memory.set(k, v);
+        try { const target = primary(); if (target && typeof target.setItem === 'function') target.setItem(k, v); } catch {}
+      },
+      removeItem(key) {
+        const k = String(key);
+        memory.delete(k);
+        removed.add(k);
+        try { const target = primary(); if (target && typeof target.removeItem === 'function') target.removeItem(k); } catch {}
+      },
+      key(index) {
+        return keysSnapshot()[index] ?? null;
+      },
+      get length() {
+        return keysSnapshot().length;
+      }
+    };
+  };
   SQ.loadDashboardState = function (storage) {
-    if (!storage || typeof storage.getItem !== 'function') return SQ.defaultDashboardState();
+    if (!storage) return SQ.defaultDashboardState();
     try {
+      if (typeof storage.getItem !== 'function') return SQ.defaultDashboardState();
       const raw = storage.getItem(DASHBOARD_STORAGE_KEY);
       return raw ? SQ.normalizeDashboardState(JSON.parse(raw)) : SQ.defaultDashboardState();
     } catch {
@@ -241,15 +314,17 @@
   };
   SQ.saveDashboardState = function (storage, value) {
     const state = SQ.normalizeDashboardState(value);
-    if (storage && typeof storage.setItem === 'function')
-      storage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(state));
+    try {
+      if (storage && typeof storage.setItem === 'function')
+        storage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(state));
+    } catch {}
     return state;
   };
   function mergeNumberMaxMap(a, b) {
     const out = Object.assign({}, cleanNumberMap(a));
     const next = cleanNumberMap(b);
     Object.keys(next).forEach(k => { if (!Number.isFinite(out[k]) || next[k] > out[k]) out[k] = next[k]; });
-    return out;
+    return keepNewestKeys(out, SENSOR_STATE_MAX_KEYS);
   }
   function mergePowerSampleMap(a, b) {
     const aa = cleanPowerSamples(a), bb = cleanPowerSamples(b), out = Object.assign({}, aa);
@@ -257,7 +332,7 @@
       const current = out[k] || [];
       out[k] = (bb[k].length > current.length ? bb[k] : current).slice(-SQ.POWER_LIMIT_MAX_SAMPLES);
     });
-    return out;
+    return keepNewestKeys(out, POWER_STATE_MAX_KEYS);
   }
   SQ.mergeTelemetryState = function (persisted, telemetry) {
     const base = SQ.normalizeDashboardState(persisted);
@@ -267,31 +342,37 @@
     merged.powerLimitSamples = mergePowerSampleMap(base.powerLimitSamples, t.powerLimitSamples);
     return merged;
   };
-  SQ.saveTelemetryState = function (storage, telemetry) {
+  SQ.saveTelemetryState = function (storage, telemetry, removals) {
     const persisted = SQ.loadDashboardState(storage);
-    return SQ.saveDashboardState(storage, SQ.mergeTelemetryState(persisted, telemetry));
+    const merged = SQ.mergeTelemetryState(persisted, telemetry);
+    (removals?.observedMax || []).forEach(key => { delete merged.observedMax[key]; });
+    (removals?.powerLimitSamples || []).forEach(key => { delete merged.powerLimitSamples[key]; });
+    return SQ.saveDashboardState(storage, merged);
   };
   SQ.migrateLegacyState = function (storage, state) {
     const cfg = SQ.normalizeDashboardState(state);
-    if (!storage || typeof storage.getItem !== 'function') return cfg;
-    const paused = storage.getItem('sq.paused');
+    if (!storage) return cfg;
+    const get = key => { try { return storage.getItem(key); } catch { return null; } };
+    const paused = get('sq.paused');
     if (paused != null) cfg.paused = paused === '1';
-    const rate = storage.getItem('sq.rate');
+    const rate = get('sq.rate');
     if (rate != null && rate !== '') cfg.rate = clampRate(rate);
-    const theme = storage.getItem('sq.theme');
+    const theme = get('sq.theme');
     if (theme === 'dark' || theme === 'light') cfg.theme = theme;
     const panelKeys = [];
-    if (typeof storage.length === 'number' && typeof storage.key === 'function') {
-      for (let i = 0; i < storage.length; i++) {
-        const k = storage.key(i);
-        if (typeof k === 'string' && k.indexOf('sq.panel.') === 0) panelKeys.push(k);
+    try {
+      const length = Number(storage.length);
+      if (Number.isFinite(length) && typeof storage.key === 'function') {
+        for (let i = 0; i < length; i++) {
+          const k = storage.key(i);
+          if (typeof k === 'string' && k.indexOf('sq.panel.') === 0) panelKeys.push(k);
+        }
       }
-    }
-    panelKeys.forEach(k => { cfg.collapsedPanels[k.slice('sq.panel.'.length)] = storage.getItem(k) === '1'; });
-    if (typeof storage.removeItem === 'function') {
-      ['sq.paused', 'sq.rate', 'sq.theme'].forEach(k => storage.removeItem(k));
-      panelKeys.forEach(k => storage.removeItem(k));
-    }
+    } catch {}
+    panelKeys.forEach(k => { cfg.collapsedPanels[k.slice('sq.panel.'.length)] = get(k) === '1'; });
+    const remove = key => { try { if (typeof storage.removeItem === 'function') storage.removeItem(key); } catch {} };
+    ['sq.paused', 'sq.rate', 'sq.theme'].forEach(remove);
+    panelKeys.forEach(remove);
     return cfg;
   };
   SQ.isPanelCollapsed = function (state, key, fallbackKey, defaultCollapsed) {
@@ -538,8 +619,72 @@
   SQ.historyFor = function (id) {
     return SENSOR_HISTORY.get(id) || [];
   };
+  function pruneOwnedKeys(keys, activeKeys, lastSeen, maxKeys, remove, now) {
+    const owned = new Set(keys);
+    [...lastSeen.keys()].forEach(key => { if (!owned.has(key)) lastSeen.delete(key); });
+    activeKeys.forEach(key => { if (owned.has(key)) lastSeen.set(key, now); });
+    keys.forEach(key => {
+      if (activeKeys.has(key)) return;
+      if (!lastSeen.has(key)) lastSeen.set(key, now);
+      else if (now - lastSeen.get(key) > SENSOR_STATE_GRACE_MS) {
+        remove(key);
+        lastSeen.delete(key);
+      }
+    });
+    const remaining = keys.filter(key => lastSeen.has(key));
+    if (remaining.length <= maxKeys) return;
+    remaining.sort((a, b) => {
+      const activity = Number(activeKeys.has(a)) - Number(activeKeys.has(b));
+      return activity || (lastSeen.get(a) - lastSeen.get(b));
+    });
+    remaining.slice(0, remaining.length - maxKeys).forEach(key => {
+      remove(key);
+      lastSeen.delete(key);
+    });
+  }
+  function pruneTransientSensorState(sensors, now) {
+    const active = new Set((Array.isArray(sensors) ? sensors : []).map(s => s && s.id).filter(Boolean));
+    const keys = [...new Set([...SENSOR_MOTION.keys(), ...SENSOR_HISTORY.keys(),
+      ...SMOOTH_FRACTIONS.keys(), ...TREND_DIRS.keys()])];
+    pruneOwnedKeys(keys, active, TRANSIENT_LAST_SEEN, SENSOR_STATE_MAX_KEYS, key => {
+      SENSOR_MOTION.delete(key);
+      SENSOR_HISTORY.delete(key);
+      SMOOTH_FRACTIONS.delete(key);
+      TREND_DIRS.delete(key);
+    }, now);
+  }
+  function prunePersistedMap(value, active, lastSeen, maxKeys, now) {
+    const map = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const keys = Object.keys(map);
+    pruneOwnedKeys(keys, active, lastSeen, maxKeys, key => { delete map[key]; }, now);
+    return map;
+  }
+  SQ.pruneTelemetryState = function (sensors, dashboard, now) {
+    const t = Number.isFinite(now) ? now : Date.now();
+    const list = Array.isArray(sensors) ? sensors : [];
+    const activeSensors = new Set(list.map(s => s && s.id).filter(Boolean));
+    const activeHardware = new Set(list.map(s => s && s.hwid).filter(Boolean));
+    dashboard.observedMax = prunePersistedMap(dashboard.observedMax, activeSensors,
+      OBSERVED_LAST_SEEN, SENSOR_STATE_MAX_KEYS, t);
+    dashboard.powerLimitSamples = prunePersistedMap(dashboard.powerLimitSamples, activeHardware,
+      POWER_LAST_SEEN, POWER_STATE_MAX_KEYS, t);
+    pruneTransientSensorState(list, t);
+    return dashboard;
+  };
+  SQ.telemetryCacheSizes = function () {
+    return {motion:SENSOR_MOTION.size, history:SENSOR_HISTORY.size,
+      smooth:SMOOTH_FRACTIONS.size, trends:TREND_DIRS.size};
+  };
+  SQ.resetTelemetryCaches = function () {
+    SENSOR_MOTION.clear();
+    SENSOR_HISTORY.clear();
+    SMOOTH_FRACTIONS.clear();
+    TREND_DIRS.clear();
+    TRANSIENT_LAST_SEEN.clear();
+    OBSERVED_LAST_SEEN.clear();
+    POWER_LAST_SEEN.clear();
+  };
 
-  const TREND_DIRS = new Map();
   SQ.TRENDBANDS = {
     temp:  { unit: '°C/s',    db: 0.05, scale: 1 },
     fan:   { unit: 'rpm/min', db: 30,   scale: 60 },
@@ -671,6 +816,33 @@
       for (let i = 0; i < xa.length; i++) if (xa[i] !== xb[i]) return false;
     }
     return true;
+  };
+  SQ.ingestTelemetry = function (runtime, sensors, freshTelemetry, now) {
+    if (!freshTelemetry) return {ingested:false, samplesChanged:false};
+    const list = Array.isArray(sensors) ? sensors : [];
+    const t = Number.isFinite(now) ? now : Date.now();
+    const dashboard = runtime.dashboard || SQ.defaultDashboardState();
+    const priorSamples = dashboard.powerLimitSamples;
+    const priorObservedKeys = Object.keys(dashboard.observedMax || {});
+    const priorPowerKeys = Object.keys(dashboard.powerLimitSamples || {});
+    SQ.trackSensorMotion(list);
+    SQ.trackSensorHistory(list, t);
+    dashboard.observedMax = SQ.mergeObservedPeaks(list, dashboard.observedMax);
+    dashboard.powerLimitSamples = SQ.trackPowerSamples(list, dashboard.powerLimitSamples);
+    SQ.pruneTelemetryState(list, dashboard, t);
+    runtime.dashboard = dashboard;
+    runtime.tickCount = (runtime.tickCount || 0) + 1;
+    const removedObserved = priorObservedKeys.filter(key => !(key in dashboard.observedMax));
+    const removedPower = priorPowerKeys.filter(key => !(key in dashboard.powerLimitSamples));
+    const pending = runtime.telemetryRemovals || {observedMax:[], powerLimitSamples:[]};
+    pending.observedMax = [...new Set(pending.observedMax.concat(removedObserved))]
+      .filter(key => !(key in dashboard.observedMax)).slice(-SENSOR_STATE_MAX_KEYS);
+    pending.powerLimitSamples = [...new Set(pending.powerLimitSamples.concat(removedPower))]
+      .filter(key => !(key in dashboard.powerLimitSamples)).slice(-POWER_STATE_MAX_KEYS);
+    runtime.telemetryRemovals = pending;
+    return {ingested:true,
+      samplesChanged:!SQ.shallowEqualArrays(dashboard.powerLimitSamples, priorSamples),
+      removals:pending};
   };
   // Derive an approximate power-limit ceiling for a GPU hwid from accumulated
   // samples. Returns a finite watt ceiling (already bucketed to 25 W) or null.
@@ -834,6 +1006,115 @@
     return items;
   };
 
+  // Completion-driven browser polling. One request owns the controller at a
+  // time; cancellation invalidates its generation, and a replacement waits for
+  // that ownership to settle even if a fetch implementation ignores abort.
+  SQ.createPollController = function (options) {
+    const opts = options || {};
+    const request = typeof opts.request === 'function' ? opts.request : () => Promise.reject(new Error('request unavailable'));
+    const onData = typeof opts.onData === 'function' ? opts.onData : () => {};
+    const onError = typeof opts.onError === 'function' ? opts.onError : () => {};
+    const setTimer = opts.setTimeout || setTimeout;
+    const clearTimer = opts.clearTimeout || clearTimeout;
+    const AbortCtor = opts.AbortController || (typeof AbortController !== 'undefined' ? AbortController : null);
+    let intervalMs = Math.max(1, Number(opts.intervalMs) || 2000);
+    const timeoutMs = Math.max(1, Number(opts.timeoutMs) || 15000);
+    let paused = opts.paused === true;
+    let hidden = opts.hidden === true;
+    let stopped = true;
+    let scheduled = null;
+    let active = null;
+    let generation = 0;
+    let followup = null;
+
+    const canPoll = () => !stopped && !paused && !hidden;
+    function clearScheduled() {
+      if (scheduled != null) { clearTimer(scheduled); scheduled = null; }
+    }
+    function schedule() {
+      clearScheduled();
+      if (!canPoll() || active) return;
+      scheduled = setTimer(() => { scheduled = null; poll(); }, intervalMs);
+    }
+    function runFollowup(mode) {
+      if (!canPoll()) return;
+      if (mode === 'immediate') poll();
+      else schedule();
+    }
+    function cancelActive(reason, next) {
+      generation++;
+      clearScheduled();
+      if (active) {
+        active.cancelReason = reason;
+        if (next === 'immediate' || followup !== 'immediate') followup = next || null;
+        try { active.controller.abort(); } catch {}
+      } else {
+        runFollowup(next);
+      }
+    }
+    function poll(forceSnapshot) {
+      if (stopped || hidden || (paused && !forceSnapshot)) return Promise.resolve(null);
+      clearScheduled();
+      if (active) { followup = 'immediate'; return active.promise; }
+      const controller = AbortCtor ? new AbortCtor() : {signal:undefined, abort() {}};
+      const record = {generation:++generation, controller, cancelReason:null, timeout:null, promise:null};
+      record.timeout = setTimer(() => {
+        try { controller.abort(); } catch {}
+      }, timeoutMs);
+      record.promise = (async () => {
+        try {
+          const data = await request(controller.signal);
+          if (record.generation !== generation || record.cancelReason || stopped) return null;
+          await onData(data);
+          return data;
+        } catch (error) {
+          if (record.generation === generation && !record.cancelReason && !stopped)
+            await onError(error);
+          return null;
+        } finally {
+          clearTimer(record.timeout);
+          if (active === record) active = null;
+          const next = followup;
+          followup = null;
+          runFollowup(next);
+        }
+      })();
+      active = record;
+      return record.promise;
+    }
+    return {
+      start(snapshotWhenPaused) {
+        if (!stopped) return active?.promise || null;
+        stopped = false;
+        return !hidden && (!paused || snapshotWhenPaused === true) ? poll(snapshotWhenPaused === true) : null;
+      },
+      refresh() { if (!canPoll()) return active?.promise || null; return poll(); },
+      setPaused(value) {
+        const next = value === true;
+        if (paused === next) return;
+        paused = next;
+        cancelActive('pause', next ? null : 'immediate');
+      },
+      setHidden(value) {
+        const next = value === true;
+        if (hidden === next) return;
+        hidden = next;
+        cancelActive('visibility', next ? null : 'immediate');
+      },
+      setInterval(value) {
+        intervalMs = Math.max(1, Number(value) || intervalMs);
+        cancelActive('reconfigure', 'scheduled');
+      },
+      stop() {
+        if (stopped) return;
+        stopped = true;
+        followup = null;
+        cancelActive('stop', null);
+      },
+      status() { return {active:!!active, paused, hidden, stopped, generation, scheduled:scheduled != null}; }
+    };
+  };
+
   window.SQ = SQ;
   if (!window.SQ_NO_BOOT) {
     const $ = s => document.querySelector(s);
@@ -851,12 +1132,12 @@
     };
     const tIcon = kind => `<svg class="ticon" viewBox="0 0 20 20" aria-hidden="true">${TICONS[kind] || TICONS.data}</svg>`;
     const isCoreRow = s => /\bcore\s*#?\d/i.test(s.text) && !/average|max|total/i.test(s.text);
-    const dashboard0 = SQ.migrateLegacyState(localStorage, SQ.loadDashboardState(localStorage));
-    SQ.saveDashboardState(localStorage, dashboard0);
+    const storage = SQ.createSafeStorage(() => window.localStorage);
+    const dashboard0 = SQ.migrateLegacyState(storage, SQ.loadDashboardState(storage));
+    SQ.saveDashboardState(storage, dashboard0);
     const state = {
       paused: dashboard0.paused,
       rate: dashboard0.rate,
-      timer: null,
       dragging: false,
       dashboard: dashboard0,
       lastData: null,
@@ -870,6 +1151,8 @@
       inlineEditing: false,
       inlineEditingUntil: 0
     };
+    const stableNodeSignatures = new WeakMap();
+    const stableHtmlSignatures = new WeakMap();
 
     function esc(v) {
       return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -893,11 +1176,13 @@
       return data.Children && data.Children[0] ? data.Children[0] : data;
     }
     function saveDashboard() {
-      state.dashboard = SQ.saveDashboardState(localStorage, state.dashboard);
+      state.dashboard = SQ.saveDashboardState(storage, state.dashboard);
+      state.telemetryRemovals = {observedMax:[], powerLimitSamples:[]};
       paintGraphs();
     }
-    function saveTelemetryDashboard() {
-      state.dashboard = SQ.saveTelemetryState(localStorage, state.dashboard);
+    function saveTelemetryDashboard(ingestion) {
+      state.dashboard = SQ.saveTelemetryState(storage, state.dashboard, ingestion?.removals);
+      state.telemetryRemovals = {observedMax:[], powerLimitSamples:[]};
       paintGraphs();
     }
     function rerender() {
@@ -987,15 +1272,9 @@
       const root = rootNode(data);
       const host = root.Text || 'Sensor';
       const allSensors = SQ.flatten(root);
-      SQ.trackSensorMotion(allSensors);
-      SQ.trackSensorHistory(allSensors);
-      // Machine-agnostic truth accumulation: observed peaks + GPU power-limit
-      // samples. Pure merges run every tick (cheap); persistence is throttled.
-      state.dashboard.observedMax = SQ.mergeObservedPeaks(allSensors, state.dashboard.observedMax);
-      const newSamples = SQ.trackPowerSamples(allSensors, state.dashboard.powerLimitSamples);
-      const samplesChanged = !SQ.shallowEqualArrays(newSamples, state.dashboard.powerLimitSamples);
-      state.dashboard.powerLimitSamples = newSamples;
-      state.tickCount = (state.tickCount || 0) + 1;
+      // Cached rerenders (Studio preferences, order, expand/collapse) are paint
+      // only. All telemetry mutation lives behind this fresh-data seam.
+      const ingestion = SQ.ingestTelemetry(state, allSensors, freshTelemetry);
       const sensors = SQ.visibleSensors(allSensors, state.dashboard);
       const limits = SQ.deriveLimits(sensors);
       sensors.forEach(s => s.status = SQ.statusOf(s, limits));
@@ -1024,8 +1303,8 @@
       // Throttled persistence so peaks/derived limits survive reloads without
       // per-tick localStorage writes. Power samples (needed to derive a limit)
       // flush more often than peaks (which only grow).
-      if (samplesChanged && state.tickCount % 5 === 0) saveTelemetryDashboard();
-      else if (state.tickCount % 30 === 0) saveTelemetryDashboard();
+      if (ingestion.ingested && ingestion.samplesChanged && state.tickCount % 5 === 0) saveTelemetryDashboard(ingestion);
+      else if (ingestion.ingested && state.tickCount % 30 === 0) saveTelemetryDashboard(ingestion);
     }
 
     function smoothFraction(id, target) {
@@ -1293,6 +1572,44 @@
           <strong class="g-${s.status}">${esc(s.raw == null ? '—' : (s.value ?? '—'))}</strong></div>`).join('')}</div>`;
       return article;
     }
+    function sensorRenderSignature(s) {
+      return [s.id, s.hwid, s.cls, s.type, s.raw, s.rawMin, s.rawMax, s.value, s.min, s.max, s.status, s.text, s.hw,
+        SQ.sensorAlias(state.dashboard, s.id)].join('\u001f');
+    }
+    function syncKeyedRegion(host, items, keyFor, signatureFor, createNode) {
+      const current = new Map([...host.children]
+        .filter(node => node.dataset.renderKey)
+        .map(node => [node.dataset.renderKey, node]));
+      let changed = false;
+      const wanted = items.map(item => {
+        const key = String(keyFor(item));
+        const signature = signatureFor(item);
+        let node = current.get(key);
+        if (!node || stableNodeSignatures.get(node) !== signature) {
+          node = createNode(item);
+          node.dataset.renderKey = key;
+          stableNodeSignatures.set(node, signature);
+          changed = true;
+        }
+        return node;
+      });
+      const wantedSet = new Set(wanted);
+      [...host.children].forEach(node => {
+        if (!wantedSet.has(node)) { node.remove(); changed = true; }
+      });
+      wanted.forEach((node, index) => {
+        if (host.children[index] !== node) {
+          host.insertBefore(node, host.children[index] || null);
+          changed = true;
+        }
+      });
+      return changed;
+    }
+    function setStableHtml(host, html) {
+      if (stableHtmlSignatures.get(host) === html) return;
+      host.innerHTML = html;
+      stableHtmlSignatures.set(host, html);
+    }
     function renderStudio(host, sensors, limits, alarm, version) {
       const activeAction = document.activeElement?.closest?.('#studioFocus [data-studio-act]');
       const activeActionId = activeAction?.dataset.id || null;
@@ -1301,11 +1618,17 @@
         : -1;
       const focus = studioCardsFor(sensors, limits);
       const focusHost = $('#studioFocus');
-      focusHost.innerHTML = '';
-      if (focus.length) focus.forEach(h => focusHost.appendChild(studioFocusCardEl(h)));
-      else focusHost.innerHTML = `<div class="studio-empty"><b>No focus sensors selected</b>
-        <span>Open Sensors and choose Make primary to build this deck.</span></div>`;
-      if (activeActionId) {
+      const focusItems = focus.length ? focus : [{empty:true, s:{id:'__empty'}}];
+      const focusChanged = syncKeyedRegion(focusHost, focusItems, h => h.s.id, h => h.empty ? 'empty' :
+        JSON.stringify([state.dashboard.studioShowSparklines, sensorRenderSignature(h.s),
+          h.label, h.unit, h.bounded, SQ.historyFor(h.s.id).map(p => [p.t, p.raw])]), h => {
+          if (!h.empty) return studioFocusCardEl(h);
+          const empty = document.createElement('div');
+          empty.className = 'studio-empty';
+          empty.innerHTML = '<b>No focus sensors selected</b><span>Open Sensors and choose Make primary to build this deck.</span>';
+          return empty;
+        });
+      if (activeActionId && focusChanged) {
         const nextAction = focusHost.querySelector(`[data-studio-act][data-id="${CSS.escape(activeActionId)}"]`);
         const remainingActions = [...focusHost.querySelectorAll('[data-studio-act]')];
         const fallbackAction = remainingActions[Math.min(activeActionIndex, remainingActions.length - 1)]
@@ -1320,7 +1643,7 @@
       const unavailable = sensors.filter(s => s.raw == null).length;
       $('#studioHost').textContent = host;
       $('#studioSummary').textContent = `${sensors.length} visible readings · ${unavailable} unavailable · ${focus.length} focus cards · read-only telemetry`;
-      $('#studioHealth').innerHTML = `${flagged.length
+      setStableHtml($('#studioHealth'), `${flagged.length
         ? `<span class="studio-health-pill ${crit ? 'crit' : 'warn'}"><b>${flagged.length}</b> needs attention</span>`
         : unavailable
           ? `<span class="studio-health-pill off"><b>Telemetry partial</b> ${unavailable} unavailable</span>`
@@ -1328,13 +1651,13 @@
         <span class="studio-health-pill"><b>${crit}</b> critical</span>
         <span class="studio-health-pill"><b>${warn}</b> watch</span>
         <span class="studio-health-pill"><b>${unavailable}</b> unavailable</span>
-        <span class="studio-health-pill"><b>${state.dashboard.pinnedCards.length}</b> pinned</span>`;
+        <span class="studio-health-pill"><b>${state.dashboard.pinnedCards.length}</b> pinned</span>`);
 
       const alerts = $('#studioAlerts');
       alerts.style.display = flagged.length ? '' : 'none';
-      alerts.innerHTML = flagged.length ? `<div><span>Attention</span><b>${crit ? 'Critical telemetry' : 'Watch telemetry'}</b></div>
+      setStableHtml(alerts, flagged.length ? `<div><span>Attention</span><b>${crit ? 'Critical telemetry' : 'Watch telemetry'}</b></div>
         <ul>${flagged.slice(0, 4).map(s => `<li><span>${esc(SQ.sensorDisplayText(s, state.dashboard, s.text))}</span>
-          <strong class="g-${s.status}">${esc(s.value ?? '—')}</strong></li>`).join('')}</ul>` : '';
+          <strong class="g-${s.status}">${esc(s.value ?? '—')}</strong></li>`).join('')}</ul>` : '');
       const alertSignature = flagged.map(s => `${s.id}:${s.status}`).join('|');
       if (alertSignature !== state.studioAlertSignature) {
         const priorSignature = state.studioAlertSignature;
@@ -1353,16 +1676,18 @@
       systemsSection.hidden = !state.dashboard.studioShowSystems;
       $('#studioSystemsCount').textContent = `${hardwareItems.length} systems`;
       const systems = $('#studioSystems');
-      systems.innerHTML = '';
-      if (state.dashboard.studioShowSystems) hardwareItems.forEach(item => systems.appendChild(studioSystemEl(item)));
+      const visibleHardwareItems = state.dashboard.studioShowSystems ? hardwareItems : [];
+      syncKeyedRegion(systems, visibleHardwareItems, item => item.key,
+        item => JSON.stringify([item.label, item.ss.map(sensorRenderSignature)]), studioSystemEl);
 
       const networkItems = state.panelItems.filter(item => item.net);
       const networkSection = $('#studioNetworkSection');
       networkSection.hidden = !state.dashboard.studioShowNetwork || !networkItems.length;
       $('#studioNetworkCount').textContent = `${networkItems.length} active`;
       const network = $('#studioNetwork');
-      network.innerHTML = '';
-      if (state.dashboard.studioShowNetwork) networkItems.forEach(item => network.appendChild(studioSystemEl(item)));
+      const visibleNetworkItems = state.dashboard.studioShowNetwork ? networkItems : [];
+      syncKeyedRegion(network, visibleNetworkItems, item => item.key,
+        item => JSON.stringify([item.label, item.ss.map(sensorRenderSignature)]), studioSystemEl);
       $('#studioFootLeft').textContent = `LibreHardwareMonitor ${version} · ${host} · ${state.rate}s poll`;
     }
     function rowEl(s, type, groupKey) {
@@ -1520,22 +1845,33 @@
       btn.classList.toggle('active', state.dashboard.graphsEnabled);
     }
 
-    async function tick(force) {
-      if ((state.paused && !force) || state.dragging) return;
-      try {
-        const r = await fetch('data.json', { cache: 'no-store' });
+    const poller = SQ.createPollController({
+      intervalMs:state.rate * 1000,
+      timeoutMs:15000,
+      paused:state.paused,
+      hidden:document.hidden === true,
+      request:async signal => {
+        const r = await fetch('data.json', {cache:'no-store', signal});
         if (!r.ok) throw new Error('HTTP ' + r.status);
-        const data = await r.json();
-        if (state.dragging) return;   // drag started during the fetch — don't render over it
+        return r.json();
+      },
+      onData:data => {
+        if (state.dragging) return; // drag started during fetch; do not replace its DOM
         render(data, true);
         document.body.classList.remove('stale');
-      } catch (e) {
+      },
+      onError:() => {
         $('#freshdot').className = 'lamp s-warn';
         $('#freshtxt').textContent = 'stale - retrying';
         document.body.classList.add('stale');
       }
-    }
-    function schedule() { clearInterval(state.timer); state.timer = setInterval(tick, state.rate * 1000); }
+    });
+    document.addEventListener('visibilitychange', () => poller.setHidden(document.hidden === true));
+    window.addEventListener('pagehide', () => poller.stop());
+    window.addEventListener('pageshow', () => {
+      poller.setHidden(document.hidden === true);
+      poller.start(true);
+    });
 
     function paintStudioPreferences() {
       const cfg = state.dashboard;
@@ -1567,12 +1903,21 @@
       $('#dashboardSubtitle').textContent = studio ? 'Telemetry Studio' : 'Hardware Telemetry Console';
       paintStudioPreferences();
     }
-    document.documentElement.setAttribute('data-theme', state.dashboard.theme);
+    function paintTheme() {
+      const light = state.dashboard.theme === 'light';
+      document.documentElement.setAttribute('data-theme', state.dashboard.theme);
+      const button = $('#theme');
+      button.textContent = light ? '◐ Light' : '◐ Dark';
+      button.setAttribute('aria-pressed', light ? 'true' : 'false');
+      button.setAttribute('aria-label', `Switch to ${light ? 'dark' : 'light'} theme`);
+      button.title = `Current theme: ${light ? 'light' : 'dark'}`;
+    }
+    paintTheme();
     paintViewTheme();
     $('#theme').onclick = () => {
       const t = state.dashboard.theme === 'dark' ? 'light' : 'dark';
       state.dashboard.theme = t;
-      document.documentElement.setAttribute('data-theme', t);
+      paintTheme();
       saveDashboard();
     };
     $('#viewTheme').onchange = e => {
@@ -1649,21 +1994,24 @@
       $('#sensorsSearch').focus();
     };
     const rate = $('#rate'); rate.value = state.rate; $('#ratev').textContent = state.rate + 's';
+    rate.setAttribute('aria-valuetext', `${state.rate} seconds`);
     rate.oninput = e => {
       state.rate = clampRate(e.target.value);
       state.dashboard.rate = state.rate;
       $('#ratev').textContent = state.rate + 's';
-      saveDashboard(); schedule();
+      rate.setAttribute('aria-valuetext', `${state.rate} seconds`);
+      saveDashboard(); poller.setInterval(state.rate * 1000);
     };
     const pause = $('#pause');
     function paintPause() { pause.textContent = state.paused ? 'Resume' : 'Pause';
+      pause.setAttribute('aria-pressed', state.paused ? 'true' : 'false');
       $('#freshdot').className = 'lamp ' + (state.paused ? 's-off' : 's-ok');
       $('#freshtxt').textContent = state.paused ? 'paused' : 'live'; }
     pause.onclick = () => {
       state.paused = !state.paused;
       state.dashboard.paused = state.paused;
       saveDashboard(); paintPause();
-      if (!state.paused) tick();
+      poller.setPaused(state.paused);
     };
     $('#graphs').onclick = () => { state.dashboard.graphsEnabled = !state.dashboard.graphsEnabled; commitDashboard(); };
     $('#pfdReset').onclick = resetPrimaryCardsState;
@@ -1943,6 +2291,6 @@
     paintPause();
     paintGraphs();
     window.SQ._STLABEL = STLABEL;
-    tick(true); schedule();
+    poller.start(true);
   }
 })();

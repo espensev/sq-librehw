@@ -49,6 +49,26 @@ const menuChecks = [
     consoleJs.includes('function render(data, freshTelemetry = false)')
       && consoleJs.includes('if (freshTelemetry && !state.paused)')
       && consoleJs.includes('render(data, true)')],
+  ['cached rerenders cannot ingest or persist telemetry',
+    consoleJs.includes('SQ.ingestTelemetry(state, allSensors, freshTelemetry)')
+      && consoleJs.includes('if (!freshTelemetry) return {ingested:false, samplesChanged:false}')
+      && consoleJs.includes('if (ingestion.ingested && ingestion.samplesChanged')],
+  ['polling is completion-driven, cancellable, and visibility-aware',
+    consoleJs.includes('SQ.createPollController')
+      && consoleJs.includes("document.addEventListener('visibilitychange'")
+      && consoleJs.includes("window.addEventListener('pagehide'")
+      && !consoleJs.includes('setInterval(tick')],
+  ['dashboard storage is isolated behind safe fallback',
+    consoleJs.includes('SQ.createSafeStorage')
+      && consoleJs.includes('const storage = SQ.createSafeStorage(() => window.localStorage)')],
+  ['Studio stable regions skip unchanged DOM replacement',
+    consoleJs.includes('function syncKeyedRegion')
+      && ['syncKeyedRegion(focusHost','syncKeyedRegion(systems','syncKeyedRegion(network'].every(token => consoleJs.includes(token))],
+  ['poll rate and stateful controls expose accessible state',
+    indexHtml.includes('<label class="rate" for="rate">')
+      && indexHtml.includes('aria-describedby="ratev"')
+      && indexHtml.includes('id="pause" aria-pressed="false"')
+      && indexHtml.includes('id="theme" aria-pressed="false"')],
   ['root index has network section', indexHtml.includes('id="netsec"') && indexHtml.includes('id="netPanels"') && indexHtml.includes('id="nettag"')],
   ['root index has adapter restore block', indexHtml.includes('id="netRestore"') && indexHtml.includes('id="netRestoreList"')],
 ];

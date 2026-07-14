@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor Docs
 
 **Status:** live summary only.
-**Updated:** 2026-07-11.
+**Updated:** 2026-07-14.
 
 ## Current State
 
@@ -49,6 +49,9 @@
 - Root `viewTheme` selector shipped.
 - Studio dashboard is implemented and verified locally; behavior follows
   `docs/feature-web-dashboard-studio-view.md`.
+- Memory, ownership, and UI reliability remediation is implemented and verified;
+  its acceptance and evidence follow
+  `docs/feature-memory-ui-reliability.md` and its input review.
 
 ## Hardware Notes
 
@@ -87,6 +90,8 @@
 - `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs` - hardens sensor API failures, control writes, and browser-origin checks.
 - `LibreHardwareMonitor.Tests/HttpServerSensorApiTests.cs` - covers sensor API errors, control values, and same-origin policy.
 - `docs/README.md` - live repo summary.
+- `docs/feature-memory-ui-reliability.md` - implemented reliability contract and verification record.
+- `docs/reviews/review-2026-07-14-memory-ui-lifecycle.md` - findings-first input review.
 - `docs/reviews/review-2026-07-07-settings-persistence-fix.md` - concise review record for the settings fix.
 - `docs/reviews/review-2026-07-07-settings-autosave-rereview.md` - ultra-compact rereview summary.
 - `docs/reviews/settings-autosave-issues.md` - accepted autosave residual-risk todo list.

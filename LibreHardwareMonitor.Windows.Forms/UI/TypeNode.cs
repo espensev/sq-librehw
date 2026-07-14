@@ -6,10 +6,13 @@
 
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
 
 namespace LibreHardwareMonitor.Windows.Forms.UI;
 
-public sealed class TypeNode : Node, IExpandPersistNode
+public sealed class TypeNode : Node, IExpandPersistNode, IDisposable
 {
     private readonly PersistentSettings _settings;
     private readonly string _expandedIdentifier;
@@ -24,87 +27,87 @@ public sealed class TypeNode : Node, IExpandPersistNode
         switch (sensorType)
         {
             case SensorType.Voltage:
-                Image = Utilities.EmbeddedResources.GetImage("voltage.png");
+                Image = SensorTypeImageCache.Get("voltage.png");
                 Text = "Voltages";
                 break;
             case SensorType.Current:
-                Image = Utilities.EmbeddedResources.GetImage("voltage.png");
+                Image = SensorTypeImageCache.Get("voltage.png");
                 Text = "Currents";
                 break;
             case SensorType.Energy:
-                Image = Utilities.EmbeddedResources.GetImage("battery.png");
+                Image = SensorTypeImageCache.Get("battery.png");
                 Text = "Capacities";
                 break;
             case SensorType.Clock:
-                Image = Utilities.EmbeddedResources.GetImage("clock.png");
+                Image = SensorTypeImageCache.Get("clock.png");
                 Text = "Clocks";
                 break;
             case SensorType.Load:
-                Image = Utilities.EmbeddedResources.GetImage("load.png");
+                Image = SensorTypeImageCache.Get("load.png");
                 Text = "Load";
                 break;
             case SensorType.Temperature:
-                Image = Utilities.EmbeddedResources.GetImage("temperature.png");
+                Image = SensorTypeImageCache.Get("temperature.png");
                 Text = "Temperatures";
                 break;
             case SensorType.Fan:
-                Image = Utilities.EmbeddedResources.GetImage("fan.png");
+                Image = SensorTypeImageCache.Get("fan.png");
                 Text = "Fans";
                 break;
             case SensorType.Flow:
-                Image = Utilities.EmbeddedResources.GetImage("flow.png");
+                Image = SensorTypeImageCache.Get("flow.png");
                 Text = "Flows";
                 break;
             case SensorType.Control:
-                Image = Utilities.EmbeddedResources.GetImage("control.png");
+                Image = SensorTypeImageCache.Get("control.png");
                 Text = "Controls";
                 break;
             case SensorType.Level:
-                Image = Utilities.EmbeddedResources.GetImage("level.png");
+                Image = SensorTypeImageCache.Get("level.png");
                 Text = "Levels";
                 break;
             case SensorType.Power:
-                Image = Utilities.EmbeddedResources.GetImage("power.png");
+                Image = SensorTypeImageCache.Get("power.png");
                 Text = "Powers";
                 break;
             case SensorType.Data:
-                Image = Utilities.EmbeddedResources.GetImage("data.png");
+                Image = SensorTypeImageCache.Get("data.png");
                 Text = "Data";
                 break;
             case SensorType.SmallData:
-                Image = Utilities.EmbeddedResources.GetImage("data.png");
+                Image = SensorTypeImageCache.Get("data.png");
                 Text = "Data";
                 break;
             case SensorType.Factor:
-                Image = Utilities.EmbeddedResources.GetImage("factor.png");
+                Image = SensorTypeImageCache.Get("factor.png");
                 Text = "Factors";
                 break;
             case SensorType.Frequency:
-                Image = Utilities.EmbeddedResources.GetImage("clock.png");
+                Image = SensorTypeImageCache.Get("clock.png");
                 Text = "Frequencies";
                 break;
             case SensorType.Throughput:
-                Image = Utilities.EmbeddedResources.GetImage("throughput.png");
+                Image = SensorTypeImageCache.Get("throughput.png");
                 Text = "Throughput";
                 break;
             case SensorType.TimeSpan:
-                Image = Utilities.EmbeddedResources.GetImage("time.png");
+                Image = SensorTypeImageCache.Get("time.png");
                 Text = "Times";
                 break;
             case SensorType.Timing:
-                Image = Utilities.EmbeddedResources.GetImage("time.png");
+                Image = SensorTypeImageCache.Get("time.png");
                 Text = "Timings";
                 break;
             case SensorType.Noise:
-                Image = Utilities.EmbeddedResources.GetImage("loudspeaker.png");
+                Image = SensorTypeImageCache.Get("loudspeaker.png");
                 Text = "Noise Levels";
                 break;
             case SensorType.Conductivity:
-                Image = Utilities.EmbeddedResources.GetImage("voltage.png");
+                Image = SensorTypeImageCache.Get("voltage.png");
                 Text = "Conductivities";
                 break;
             case SensorType.Humidity:
-                Image = Utilities.EmbeddedResources.GetImage("humidity.png");
+                Image = SensorTypeImageCache.Get("humidity.png");
                 Text = "Humidity Levels";
                 break;
         }
@@ -148,6 +151,45 @@ public sealed class TypeNode : Node, IExpandPersistNode
         {
             _expanded = value;
             _settings.SetValue(_expandedIdentifier, _expanded);
+        }
+    }
+
+    public void Dispose()
+    {
+        NodeAdded -= TypeNode_NodeAdded;
+        NodeRemoved -= TypeNode_NodeRemoved;
+        foreach (Node node in Nodes)
+            node.IsVisibleChanged -= Node_IsVisibleChanged;
+    }
+}
+
+internal static class SensorTypeImageCache
+{
+    private static readonly object SyncRoot = new();
+    private static readonly Dictionary<string, Image> Images = new(StringComparer.Ordinal);
+
+    internal static Image Get(string resourceName)
+    {
+        lock (SyncRoot)
+        {
+            if (!Images.TryGetValue(resourceName, out Image image))
+            {
+                image = EmbeddedResources.GetImage(resourceName);
+                Images.Add(resourceName, image);
+            }
+
+            return image;
+        }
+    }
+
+    internal static void DisposeAll()
+    {
+        lock (SyncRoot)
+        {
+            foreach (Image image in Images.Values)
+                image.Dispose();
+
+            Images.Clear();
         }
     }
 }

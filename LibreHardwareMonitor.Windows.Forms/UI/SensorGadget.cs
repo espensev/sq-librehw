@@ -27,6 +27,8 @@ public class SensorGadget : Gadget
     private const int RightBorder = 7;
 
     private readonly UnitManager _unitManager;
+    private readonly IComputer _computer;
+    private readonly Control _uiMarshaller;
     private Image _back = Utilities.EmbeddedResources.GetImage("gadget.png");
     private Image _image;
     private Image _fore;
@@ -65,11 +67,14 @@ public class SensorGadget : Gadget
     private StringFormat _measureStringFormat;
     private Color _fontColor;
     private Color _backgroundColor;
+    private bool _disposed;
 
-    public SensorGadget(IComputer computer, PersistentSettings settings, UnitManager unitManager)
+    public SensorGadget(IComputer computer, PersistentSettings settings, UnitManager unitManager, Control uiMarshaller = null)
     {
+        _computer = computer ?? throw new ArgumentNullException(nameof(computer));
         _unitManager = unitManager;
         _settings = settings;
+        _uiMarshaller = uiMarshaller;
         _uiContext = System.Threading.SynchronizationContext.Current;
         _uiThreadId = Environment.CurrentManagedThreadId;
         computer.HardwareAdded += HardwareAdded;
@@ -330,35 +335,43 @@ public class SensorGadget : Gadget
 
     public override void Dispose()
     {
+        if (_disposed)
+            return;
 
-        _largeFont.Dispose();
+        _disposed = true;
+        _computer.HardwareAdded -= HardwareAdded;
+        _computer.HardwareRemoved -= HardwareRemoved;
+        foreach (IHardware hardware in _computer.Hardware)
+            UnsubscribeHardware(hardware);
+
+        _largeFont?.Dispose();
         _largeFont = null;
 
-        _smallFont.Dispose();
+        _smallFont?.Dispose();
         _smallFont = null;
 
-        _textBrush.Dispose();
+        _textBrush?.Dispose();
         _textBrush = null;
 
-        _stringFormat.Dispose();
+        _stringFormat?.Dispose();
         _stringFormat = null;
 
-        _measureStringFormat.Dispose();
+        _measureStringFormat?.Dispose();
         _measureStringFormat = null;
 
-        _trimStringFormat.Dispose();
+        _trimStringFormat?.Dispose();
         _trimStringFormat = null;
 
-        _alignRightStringFormat.Dispose();
+        _alignRightStringFormat?.Dispose();
         _alignRightStringFormat = null;
 
-        _back.Dispose();
+        _back?.Dispose();
         _back = null;
 
-        _barFore.Dispose();
+        _barFore?.Dispose();
         _barFore = null;
 
-        _barBack.Dispose();
+        _barBack?.Dispose();
         _barBack = null;
 
         if (_backTinted != null)
@@ -377,7 +390,7 @@ public class SensorGadget : Gadget
             _barBackTinted = null;
         }
 
-        _background.Dispose();
+        _background?.Dispose();
         _background = null;
 
         if (_image != null)
@@ -393,10 +406,24 @@ public class SensorGadget : Gadget
         }
 
         base.Dispose();
+        HideShowCommand = null;
+        GC.SuppressFinalize(this);
+    }
+
+    private void UnsubscribeHardware(IHardware hardware)
+    {
+        hardware.SensorAdded -= SensorAdded;
+        hardware.SensorRemoved -= SensorRemoved;
+
+        foreach (IHardware subHardware in hardware.SubHardware)
+            UnsubscribeHardware(subHardware);
     }
 
     private void HardwareRemoved(IHardware hardware)
     {
+        if (_disposed)
+            return;
+
         hardware.SensorAdded -= SensorAdded;
         hardware.SensorRemoved -= SensorRemoved;
 
@@ -409,6 +436,9 @@ public class SensorGadget : Gadget
 
     private void HardwareAdded(IHardware hardware)
     {
+        if (_disposed)
+            return;
+
         foreach (ISensor sensor in hardware.Sensors)
             SensorAdded(sensor);
 
@@ -424,10 +454,40 @@ public class SensorGadget : Gadget
     // HardwareRemoved keeps working.
     private void RunOnUiThread(Action action)
     {
-        if (_uiContext != null && Environment.CurrentManagedThreadId != _uiThreadId)
-            _uiContext.Post(_ => action(), null);
-        else
+        if (_disposed)
+            return;
+
+        if (Environment.CurrentManagedThreadId == _uiThreadId)
+        {
             action();
+            return;
+        }
+
+        Control marshaller = _uiMarshaller;
+        if (marshaller is { IsHandleCreated: true, IsDisposed: false })
+        {
+            try
+            {
+                marshaller.BeginInvoke((Action)(() =>
+                {
+                    if (!_disposed)
+                        action();
+                }));
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+
+            return;
+        }
+
+        if (_uiMarshaller == null && _uiContext != null)
+        {
+            _uiContext.Post(_ =>
+            {
+                if (!_disposed)
+                    action();
+            }, null);
+        }
     }
 
     private void SensorAdded(ISensor sensor)
@@ -530,9 +590,27 @@ public class SensorGadget : Gadget
 
     private void SetFontSize(float size)
     {
+        Font newLargeFont = CreateFont(size, FontStyle.Bold);
+        Font newSmallFont;
+        try
+        {
+            newSmallFont = CreateFont(size, FontStyle.Regular);
+        }
+        catch
+        {
+            newLargeFont.Dispose();
+            throw;
+        }
+
+        Font oldLargeFont = _largeFont;
+        Font oldSmallFont = _smallFont;
+
         _fontSize = size;
-        _largeFont = CreateFont(_fontSize, FontStyle.Bold);
-        _smallFont = CreateFont(_fontSize, FontStyle.Regular);
+        _largeFont = newLargeFont;
+        _smallFont = newSmallFont;
+
+        oldLargeFont?.Dispose();
+        oldSmallFont?.Dispose();
 
         double scaledFontSize = _fontSize * _scale;
         _iconSize = (int)Math.Round(1.5 * scaledFontSize);
@@ -731,7 +809,8 @@ public class SensorGadget : Gadget
             MinimumSize = new Size(420, 320),
             AutoScaleMode = AutoScaleMode.Font
         };
-        form.Icon = EmbeddedResources.GetIcon("icon.ico");
+        using Icon dialogIcon = EmbeddedResources.GetIcon("icon.ico");
+        form.Icon = dialogIcon;
 
         Panel svBox = new Panel
         {
