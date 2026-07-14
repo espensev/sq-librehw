@@ -1,167 +1,103 @@
-# Review - Memory, lifetime, efficiency, and UI handling
+# Patch Closeout - Memory, lifetime, efficiency, and UI handling
 
 **Date:** 2026-07-14
 
-**Review surface:** `origin/master...HEAD` at `63816bb`, plus a current-HEAD audit of memory, ownership, polling, and WinForms hot paths
+**Implementation:** `63816bb..5b9c6f9`
 
-**Specification:** `docs/feature-web-dashboard-studio-view.md` and the requested whole-application runtime/UI review
+**Deployed product:** `0.9.6+5b9c6f9.2026-07-14`
+
+**Specification:** `docs/feature-memory-ui-reliability.md`
 
 **Standards:** repository `AGENTS.md`
 
-**Verdict:** **FAIL**
-
-The four commits ahead of `origin/master` pass their existing automated tests, but the current source still contains definite managed and native leaks, large avoidable history allocations, unsafe shutdown ownership, and a Studio-view correctness regression. The verified fixes on `codex/memory-reliability` diverge from `master` at `541b05b` and are not present in the reviewed source.
-
-## High-severity findings
-
-### 1. Storage groups leak after every reset, resume, or storage toggle
-
-`StorageGroup` subscribes to the static `StorageDIT.DevicesChanged` event in `LibreHardwareMonitorLib/Hardware/Storage/StorageGroup.cs:35-45`, but its `Close()` method is empty at line 69. `Computer.Reset()` removes and recreates every group at `LibreHardwareMonitorLib/Hardware/Computer.cs:674-684`, and the application invokes that reset after resume at `LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs:702-706`.
-
-Every reset leaves the old `StorageGroup` rooted by the static publisher, including its storage devices, sensors, and histories. It also adds another event callback, so later storage changes invoke every leaked instance.
-
-**Required fix:** unsubscribe in `Close()`, close and clear every retained storage device, close devices when they are removed, and add a reset/resume regression test that verifies the old group can be collected.
-
-### 2. Sensor history retention and copying scale badly at the active settings
-
-`Sensor` keeps an uncapped `List<SensorValue>` plus a cached full-array snapshot in `LibreHardwareMonitorLib/Hardware/Sensor.cs:26-33`. It appends an averaged point every four readings and expires only by time at lines 119-159 and 382-390. Accessing `Values` copies the entire changed history at lines 176-185.
-
-The current deployed configuration uses a 250 ms update interval and the default 24-hour history window. A changing sensor can therefore retain roughly 86,400 points per day. The live `/data.json` tree contained 546 sensor leaves, illustrating the scale even though not every sensor necessarily changes continuously.
-
-The cost is then multiplied:
-
-- `/metrics` requests a full snapshot for every sensor while holding the node lock at `LibreHardwareMonitor.Windows.Forms/HttpServer.cs:806-850`.
-- `PlotPanel` rebuilds and retains another full `DataPoint` list at `LibreHardwareMonitor.Windows.Forms/UI/PlotPanel.cs:648-680`.
-- Clearing or shortening a window does not return peak `List<T>` capacity.
-
-This is time-bounded rather than infinite, but it creates severe retained memory, O(total history) copying, allocation pressure, and UI work.
-
-**Required fix:** selectively port or reimplement the tested hard point cap, tail/delta readers, and incremental plot synchronization from `codex/memory-reliability`; trim oversized buffers when the configured window contracts.
-
-### 3. Current settings loading can reproduce the previous huge startup spike
-
-`LibreHardwareMonitorLib/PersistentSettings.cs:58-64,113-119` loads the complete settings file into an `XmlDocument`. Oversized persisted sensor histories are rejected only after the DOM is materialized at lines 90-93. The loader then forces `_modified = false` at line 107, so cleanup alone does not schedule a compacting save.
-
-The deployed config is currently compact at about 22 KB, so this is not the cause of the process's present footprint. It remains a proven recurrence path: a historically observed hundreds-of-megabytes config will again be expanded into a much larger in-memory DOM and remain bloated on disk until another change causes a save.
-
-**Required fix:** port the streaming `XmlReader` loader and cleanup-dirty behavior from the verified reliability work, with the large-config regression tests.
-
-### 4. Session shutdown is cross-thread, duplicated, and statically rooted
-
-`LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs:637-646` registers anonymous `SystemEvents` handlers. The session-ended callback directly stops a WinForms timer, closes hardware, reads UI configuration, saves, and stops the server from the SystemEvents thread. `SaveConfiguration()` reads WinForms-owned state at lines 1388-1409, while the normal close path repeats teardown at lines 1495-1514.
-
-The paths have no exactly-once gate and the static handlers are never removed. This creates cross-thread UI access, competing close/save operations, and a static root that retains the form and hardware graph when the form is disposed without immediate process termination.
-
-**Required fix:** restore an exactly-once UI-thread shutdown coordinator, marshal session work to the UI context, and unsubscribe both `SessionEnded` and `PowerModeChanged` during teardown.
-
-### 5. Gadget buffer recreation leaks an HBITMAP every time
-
-`LibreHardwareMonitor.Windows.Forms/UI/GadgetWindow.cs:204-229` creates and selects a DIB into a memory DC but keeps the bitmap handle only in a local variable. `DisposeBuffer()` at lines 231-235 disposes the managed `Graphics` and DC but never reselects the previous object or deletes the DIB. Buffer recreation occurs on size changes at lines 249-253.
-
-This is a definite unmanaged memory/GDI-object leak. Repeated gadget resizing or sensor-layout changes can eventually exhaust the per-process GDI handle budget.
-
-**Required fix:** retain the DIB and previous selected-object handles, reselect the old object, call `DeleteObject` on the DIB before deleting the DC, make disposal idempotent, and dispose the gadget from `MainForm` shutdown.
-
-### 6. Studio controls replay cached telemetry as if it were new
-
-The new Studio controls call `commitDashboard()` and rerender cached `state.lastData` in `LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js:903-905,1584-1639`. Despite `freshTelemetry` being false, `render()` still updates sensor motion/history, observed maxima, power samples, and the tick counter at lines 982-998 and persists the result at lines 1024-1028.
-
-A synthetic replay of one identical GPU sample through eight Studio rerenders produced eight samples and a fabricated 500 W derived limit. This violates the spec's requirement that Studio retain the same telemetry truth and not invent limits (`docs/feature-web-dashboard-studio-view.md:23,36,88`).
-
-**Required fix:** separate telemetry ingestion from painting, or gate every accumulator, tick, and telemetry-persistence mutation behind `freshTelemetry`. Add a DOM-level test proving that any number of appearance changes leaves sample counts and derived telemetry unchanged.
-
-### 7. Tray-icon retries can freeze the UI for eight seconds per icon
-
-`LibreHardwareMonitor.Windows.Forms/UI/NotifyIconAdv.cs:565-606` retries Shell notification-area add/delete operations 40 times with `Thread.Sleep(200)` while holding its synchronization lock. These paths are reached from UI redraw and disposal.
-
-An Explorer restart or shell failure can therefore freeze the application for up to eight seconds multiplied by the number of sensor tray icons.
-
-**Required fix:** use bounded asynchronous/timer-driven retry with cancellation and no sleep under the ownership lock; keep disposal non-blocking and idempotent.
-
-## Medium-severity findings
-
-### 8. Concurrent saves can overwrite newer settings with an older snapshot
-
-`PersistentSettings.Save()` snapshots state and clears `_modified` under `_sync` at `LibreHardwareMonitorLib/PersistentSettings.cs:127-151`, but it does not acquire `_ioSync` until after serialization at lines 153-182. A slower old save can therefore write after a newer save and permanently roll back the file while `_modified` remains false. Autosave and the SystemEvents shutdown callback make this reachable.
-
-Serialize snapshot creation and writing under the same ordering gate, or use monotonic save generations.
-
-### 9. HTTP and browser polling ownership is unbounded
-
-The server starts an untracked `Task.Run` for every accepted context at `LibreHardwareMonitor.Windows.Forms/HttpServer.cs:171-179`, has no handler concurrency limit, and stops only the accept loop at lines 145-157. Data serialization is gated, but a response holds that gate through network writing at lines 709-742, so slow clients retain queued tasks and contexts.
-
-The browser poller uses `setInterval` around an async request at `Resources/Web/console.js:1523-1538`, without an in-flight guard, timeout, abort controller, or request generation. Slow responses can overlap; pausing does not invalidate an already active request.
-
-Bound server concurrency, track and drain handler tasks, release serialization ownership before slow socket writes, and switch the client to completion-driven polling with one abortable request.
-
-### 10. Persisted-history decompression has no expansion limit
-
-`LibreHardwareMonitorLib/Hardware/Sensor.cs:321-329` accepts a bounded compressed setting but copies decompressed data into an unrestricted `MemoryStream`. A small gzip payload can expand far beyond the input limit, and repeated sensor entries can exhaust memory during startup.
-
-Decode through a byte- and record-budgeted stream; reject oversized, trailing, and malformed payloads before retention.
-
-### 11. Hardware callbacks can mutate UI state off-thread
-
-`MainForm.cs:1211-1243` marshals only when a handle exists and `InvokeRequired` is true; otherwise it directly mutates the UI tree. Hardware is opened and subscribed before explicit handle creation at lines 250-269 and 631-634. `HardwareNode.cs:53-72` has the same unsafe fallback when its marshaller is missing or disposed.
-
-Capture the UI synchronization context after handle creation, queue only through that dispatcher, and discard callbacks once closing begins.
-
-### 12. UI-owned GDI and static-event resources lack teardown
-
-- `SensorGadget.cs:531-535` replaces its large and small fonts without disposing the previous pair.
-- `Theme.cs:101-102` replaces static `Pen` and `SolidBrush` objects on every theme initialization without disposal.
-- `TreeViewAdv.cs:263` subscribes to static `ExpandingIcon.IconChanged`, but the designer disposal path does not unsubscribe.
-- `MainForm` does not dispose `_gadget`; `GadgetWindow.Dispose()` also does not detach `ShowDesktop`, destroy its native window, or dispose its context menu.
-- `PlotPanel` owns a `ToolTip` and scaled fonts but has no disposal override.
-
-These are concrete GDI/static-root leaks, primarily visible with repeated customization, form recreation, or long-lived test hosts.
-
-### 13. Web storage failures can abort dashboard boot
-
-Dashboard-state reads are guarded, but `localStorage.setItem`, migration enumeration, and removals are not guarded in `Resources/Web/console.js:233-294`. Migration and the first save run during boot. Browsers that deny storage access or hit quota can therefore abort initialization.
-
-Use a single safe storage adapter with an in-memory fallback and test with a throwing storage implementation.
-
-### 14. Several multi-second operations run synchronously on the UI thread
-
-PawnIO installation and hardware discovery run synchronously during form setup (`MainForm.cs:269-279`), interface settings perform synchronous DNS resolution (`InterfacePortForm.cs:29-38`), and web-server stop can wait up to five seconds while called from a UI option (`HttpServer.cs:145-156`, `MainForm.cs:416-423`).
-
-Move blocking discovery/network waits off the UI thread and return results through a closing-aware UI continuation.
-
-## Low-severity findings
-
-- Web telemetry maps retain departed sensor IDs indefinitely; each per-sensor history is capped, but key cardinality and persisted stale keys are not. Add grace-period pruning and global caps.
-- Studio focus/system/network content is cleared and rebuilt on every tick, creating avoidable DOM allocation and GC churn. Reuse keyed nodes or skip unchanged regions.
-- Several modal forms and `ColorDialog` instances rely on finalization instead of `using`, including call sites in `MainForm.cs:1524,1718-1720,1936-1937,2165-2170` and `SensorNotifyIcon.cs:71-78`.
-- Every hardware node eagerly creates sensor-type groups and decodes duplicate images even for empty groups (`HardwareNode.cs:36-40`, `TypeNode.cs:24-110`). Cache images and create groups lazily.
-- The Studio poll-rate range lacks an associated label/accessible name in `Resources/Web/index.html:16`; the theme control also does not expose its current state.
-- `AGENTS.md` names `docs/ai-guide.md`, `docs/feature-workflow.md`, the feature template, and several other source-of-truth documents that are absent from the current tree. Restore those documents or update the contributor map so its required workflow is executable.
-
-## Runtime observation
-
-The running Release process is not a current-HEAD binary: its product version is `0.9.6+541b05b-dirty.2026-07-11`. A three-minute sample while requesting `/data.json` once per second showed sawtooth behavior rather than monotonic growth: private bytes started around 417 MiB and ended around 410 MiB, with an observed maximum around 419 MiB; working set ended below its starting point. Handle count fluctuated substantially.
-
-That short sample does **not** prove a live process leak. It also does not invalidate the definite event, HBITMAP, and ownership leaks found in source. A current-HEAD build plus a 60-minute reset/resume, gadget-resize, graph, and web-poll soak with managed-heap and GDI-object counters is still needed after fixes.
-
-## Verification
-
-- `node --check LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js` - pass
-- `node webtests/selftest.node.js` - pass, 252/252
-- `node --test webtests/console.tests.js` - pass, 1/1
-- `dotnet test LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.csproj -p:Platform=x64` - pass, 64/64; one existing `xUnit2020` warning
-- Synthetic cached-rerender reproduction - fail: one sample replayed eight times became eight samples and produced a derived 500 W limit
-- `git diff --check origin/master...HEAD` - reports only the intentional Markdown hard-break whitespace at `docs/feature-web-dashboard-studio-view.md:3`
-
-No Release build was run against the active output directory because a non-current binary is running from it. The passing suites do not cover static-event collectability, GDI handle ownership, concurrent save ordering, shutdown thread affinity, or cached-render telemetry mutation.
-
-## Coverage notes
-
-Deep review covered the four branch commits, Studio specification and tests, settings persistence, sensor-history ownership, server request lifetime, hardware group reset/close behavior, WinForms shutdown and dispatch, gadget/tray/plot resources, and live process/configuration state. Hardware-specific driver implementations were sampled rather than exhaustively audited. No heap dump, ETW trace, GDIView capture, resume cycle, or long-duration current-HEAD soak was performed.
-
-## Recommended fix order
-
-1. Fix `StorageGroup.Close()` and native gadget buffer ownership first; both are definite leaks with narrow fixes.
-2. Selectively transplant the streaming-settings, bounded-history/tail-reader, save-ordering, and shutdown-coordinator changes from `codex/memory-reliability`, rather than merging its entire tooling-heavy branch.
-3. Separate Studio telemetry ingestion from cached UI rendering and add a behavioral test.
-4. Bound HTTP/client polling ownership and remove synchronous tray/UI retry waits.
-5. Run both target-framework builds, all tests, then a current-HEAD 60-minute memory/GDI/reset-resume soak.
+**Verdict:** **PASS WITH NOTES**
+
+The original findings-first review is preserved in Git history. All 14 high-
+and medium-severity findings were fixed and covered by targeted tests, bounded
+runtime evidence, or both. A final fixed-point review found no high- or
+medium-severity residual. One low hidden-start dashboard edge case and two
+operational follow-ups remain explicitly deferred below.
+
+## Patch status
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| 1. Storage group reset/static-event lifetime | Fixed/proven | Closed groups detach, removed devices close, and weak-reference/reset regressions pass in `StorageGroupLifetimeTests`. The staged and deployed resume/reset smokes stayed bounded. |
+| 2. Sensor-history retention, copying, plots, and metrics | Fixed/proven | History is capped at 10,000 representative points; tail/delta readers are covered by `SensorHistoryTests`, `PlotPanelHistoryTests`, and Prometheus tests. |
+| 3. Large settings load and cleanup | Fixed/proven | Settings load through `XmlReader`; stale/oversized entries dirty the store for compaction. Persistence tests and the historical approximately 252 MiB harness cover the regression seam. |
+| 4. Session/form shutdown ownership | Fixed/proven | `UiShutdownCoordinator` makes shutdown UI-thread and exactly-once; coordinator tests pass and two controlled live closes drained HTTP and exited cleanly. |
+| 5. Gadget HBITMAP/DC ownership | Fixed/proven | Selected objects, bitmap, DC, HWND, menu, and subscriptions now have idempotent teardown; GDI stayed flat in staged and deployed smokes. |
+| 6. Studio cached-telemetry replay | Fixed/proven | Telemetry ingestion is separated from cached paint; Node tests prove rerenders do not fabricate samples, extrema, or derived limits. |
+| 7. Tray retry UI stalls | Fixed/proven | Retries are bounded, timer-driven, cancellable, and do not sleep while holding UI ownership. |
+| 8. Concurrent settings-save ordering | Fixed/proven | Snapshot and file replacement share one ordering gate; overlapping-save and backup-safety tests pass. |
+| 9. HTTP and browser polling ownership | Fixed/proven | Server handlers are bounded/tracked/drained and browser fetches are single-flight, abortable, timed, and generation-checked. The deployed runtime served 32/32 concurrent data requests. |
+| 10. History decompression expansion | Fixed/proven | Byte/record budgets reject malformed, trailing, and oversized expansion; targeted history tests pass. |
+| 11. Hardware callback thread affinity | Fixed/proven | Callbacks marshal through a live UI owner and late work is dropped across initialization, reset, and shutdown. |
+| 12. UI GDI/static-event teardown | Fixed/proven | Tree, theme, font, gadget, tooltip, dialog, icon, and image ownership is deterministic; WinForms lifetime tests pass. |
+| 13. Web storage failure handling | Fixed/proven | Dashboard storage uses guarded access with an in-memory fallback; throwing-storage boot tests pass. |
+| 14. Multi-second UI-thread work | Fixed/proven | PawnIO/discovery, DNS, hardware lifecycle, and server stop are asynchronous or bounded without the prior synchronous waits. |
+| Web state cardinality, keyed DOM reuse, modal/image cleanup, accessibility, and contributor-map issues | Fixed/proven | Node/browser checks, WinForms lifetime tests, and current docs-map inspection cover the original low-severity list. |
+| Bounded clean-close history file | Accepted | A clean close persisted 475 valid histories in 2,889,088 bytes; all decoded, the maximum was 3,256 records and 25,376 encoded characters, below the 10,000-record and 65,536-character per-sensor limits. This is intended cross-restart history, not stale config growth. |
+| Initially hidden persisted-paused dashboard | Deferred | Low severity: the forced startup snapshot is lost while hidden, so the dashboard stays blank until Resume. Preserve the pending snapshot across first visibility restore and add the missing hidden-start test. |
+| Crash-after-autosave graph-history continuity | Deferred | Autosave can write live settings without current `/values`; the existing risk remains tracked in `docs/reviews/settings-autosave-issues.md`. |
+| 60-minute current-commit live soak | Deferred | The bounded staged and deployed gates passed; an extended current-commit soak is an additional confidence check, not claimed as completed. |
+
+## Deployment verification
+
+- The implementation commit is
+  `5b9c6f9f7c867bfd8f82549f1d1dde531d5705b4`.
+- Isolated Release builds for `net10.0-windows` and `net472` completed with
+  0 warnings and 0 errors. The 71-file net10 candidate matched the live runtime
+  byte-for-byte.
+- Core live SHA-256 values:
+  - executable:
+    `CF43D8E4B4820A29208DB2E20520400C8381B472300D629CC6758B70416E62C8`;
+  - Forms DLL:
+    `EDDED07EC0BB99EAC452E98548E628EE20017B5A9BADC7439821E6F12529442D`;
+  - library DLL:
+    `B0CFEA49DBB8F54C65C25BF6C0337C859B652B4BC8F431A452054FDE7A24789D`.
+- The rollback packet is
+  `C:\ProgramData\LibreHardwareMonitor\backups\20260714-042926-pre-5b9c6f9`.
+  Deployment preserved both settings files and all 3,305 existing CSV logs
+  (6,935,205,771 bytes); later log growth is from the running app.
+- The actual owner task `\SevGrp\AdminTask\LibreHW-No-UAC` is `Running`
+  with one process at the expected live path and the deployed product version.
+- `/`, `/data.json`, and `/metrics` return HTTP 200.
+  `/dash/cardtruth` and `/dash/cardtruth/` remain HTTP 404.
+- One deployed synthetic resume/reset completed 60/60 HTTP polls and 32/32
+  concurrent data requests. Working set moved from 210.7 to 210.1 MiB, private
+  memory from 130.2 to 127.5 MiB, handles from 753 to 725, GDI stayed at 47,
+  and USER handles moved from 55 to 56.
+- A final 45-request sample returned 45/45 HTTP 200 responses. Working set stayed
+  between 154.0 and 158.7 MiB, private memory between 142.6 and 148.2 MiB, GDI
+  stayed at 47, and USER handles stayed at 56. Total handles oscillated between
+  660 and 1,187 with a negative least-squares trend, confirming the observed
+  spike was transient rather than monotonic growth.
+- After the controlled restart, the first five-minute autosave compacted the
+  primary config from 2,889,088 to 22,643 bytes. The bounded clean-close
+  histories first rotated to the backup; a later autosave left both primary and
+  backup at 22,643 bytes, directly confirming the deferred continuity risk.
+
+## Automated and manual evidence
+
+- `node --check` - pass.
+- Dashboard self-test - 267/267 pass.
+- Polling suite - 3/3 pass.
+- x64 .NET suite - 124 pass, one intentionally opt-in live-config-copy test
+  skipped, zero failures; the `data.json` golden master is unchanged.
+- Current-head browser smoke - Standard/Studio, pause/resume, dark/light,
+  360 CSS-pixel viewport, focusable controls, live polling/restart, and clean
+  console passed.
+- Isolated process smoke - three resume cycles, 180/180 HTTP polls, 32/32
+  concurrent requests, stable GDI/USER/handle envelope, and clean main-form
+  exit passed.
+- Final fixed-point diff review - no high- or medium-severity residual findings;
+  the low hidden-start paused case above is the only new code finding.
+
+## Coverage
+
+The closeout covered the complete implementation diff, specification,
+settings/history contracts, storage reset ownership, WinForms and native
+lifetimes, shutdown/dispatch, server request ownership, dashboard behavior,
+targeted tests, staged binaries, rollback packet, and deployed runtime. The
+deferred 60-minute soak is the only unperformed extended runtime gate.

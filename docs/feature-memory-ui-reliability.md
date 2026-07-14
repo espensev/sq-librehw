@@ -1,10 +1,10 @@
 # Feature Spec: Memory, Lifetime, and UI Reliability
 
-**Status:** implemented; automated and bounded current-HEAD verification complete
+**Status:** implemented, deployed, and verified; low edge case and extended live soak deferred
 
 **Updated:** 2026-07-14
 
-**Input:** `docs/reviews/review-2026-07-14-memory-ui-lifecycle.md`
+**Review/patch closeout:** `docs/reviews/review-2026-07-14-memory-ui-lifecycle.md`
 
 ## Problem and motivation
 
@@ -13,9 +13,9 @@ definite managed/static-event and native GDI leaks, avoidable history and HTTP
 allocation growth, unsafe shutdown/UI-thread ownership, synchronous UI stalls,
 and web-dashboard state paths that can fabricate telemetry or retain stale work.
 
-This work closes every actionable finding in the input review without changing
-sensor truth, external payloads, the read-only dashboard policy, or supported
-frameworks.
+This work closes every actionable finding in the original findings-first
+review without changing sensor truth, external payloads, the read-only
+dashboard policy, or supported frameworks.
 
 ## Goals
 
@@ -179,8 +179,9 @@ separate maintainer approval.
   the polling suite passed 3/3. The x64 .NET suite passed 124, skipped the one
   intentionally opt-in live-config-copy test, and failed 0; this includes the
   unchanged `data.json` golden master. The opt-in historical large-config harness
-  had already verified the approximately 252 MiB source configuration; the
-  current compact live file no longer contains that source history payload.
+  had already verified the approximately 252 MiB source configuration. Valid
+  current histories remain supported and are bounded per sensor rather than
+  removed globally.
 - 2026-07-14: isolated Release staging builds for `net10.0-windows` and `net472`
   both completed with 0 warnings and 0 errors. `git diff --check` passed; its only
   output was the repository's LF-to-CRLF working-copy warning.
@@ -193,4 +194,38 @@ separate maintainer approval.
   207.9 MiB, private memory between 117.9 and 123.2 MiB, GDI stayed at 48, USER
   handles stayed between 66 and 69, and total handles stayed between 675 and 755.
   Closing the actual main form drained the server and exited cleanly with code 0.
-  The deployed Release runtime and its configuration were not replaced.
+- 2026-07-14: implementation commit `5b9c6f9f7c867bfd8f82549f1d1dde531d5705b4`
+  was deployed as product version `0.9.6+5b9c6f9.2026-07-14` through the actual
+  owner task `\SevGrp\AdminTask\LibreHW-No-UAC`. The complete 71-file candidate
+  matched the live runtime byte-for-byte; 3,305 CSV logs and both settings files
+  were preserved. The verified rollback packet is
+  `C:\ProgramData\LibreHardwareMonitor\backups\20260714-042926-pre-5b9c6f9`.
+- 2026-07-14: deployed checks returned HTTP 200 for `/`, `/data.json`, and
+  `/metrics`, and HTTP 404 for both retired `/dash/cardtruth` forms. A synthetic
+  resume/reset produced 60/60 successful polls followed by 32/32 concurrent
+  `data.json` responses. Working set moved from 210.7 to 210.1 MiB, private
+  memory from 130.2 to 127.5 MiB, handles from 753 to 725, GDI stayed at 47, and
+  USER handles moved from 55 to 56. A controlled close/restart returned the task
+  to `Running` on the same deployed version with all three live routes healthy.
+- 2026-07-14: a final 45-request live sample returned 45/45 HTTP 200 responses.
+  Working set stayed between 154.0 and 158.7 MiB, private memory between 142.6
+  and 148.2 MiB, GDI stayed at 47, and USER handles stayed at 56. Total handles
+  oscillated between 660 and 1,187 with a negative least-squares trend, so the
+  observed peak was transient rather than monotonic growth.
+- 2026-07-14: persistence was checked across that close/restart. The clean-close
+  config contained 475 valid history entries and 342,464 decoded records in
+  2,889,088 bytes; the largest encoded history was 25,376 characters, below the
+  65,536-character per-sensor cap. The first five-minute autosave compacted the
+  primary to 22,643 bytes; a later autosave left both primary and backup at
+  22,643 bytes. This is the intended bounded-history lifecycle, not a recurrence
+  of unbounded config growth, and it directly confirms why crash-after-autosave
+  history continuity remains tracked in
+  `docs/reviews/settings-autosave-issues.md`.
+- 2026-07-14: the bounded current-commit staging and deployed smokes satisfy this
+  patch's acceptance gate. A 60-minute current-commit live soak remains a
+  deferred operational confidence check and is not claimed as completed.
+- 2026-07-14: final fixed-point review found no high- or medium-severity
+  residual. One low dashboard edge remains deferred: when a persisted-paused
+  dashboard first loads in a hidden tab, its forced initial snapshot is not
+  retried on first visibility, leaving it blank until Resume. The closeout
+  review records the exact source seam and missing regression case.

@@ -20,5 +20,11 @@
 
 ## Verification Recorded
 
-- `dotnet test ... -p:Platform=x64 --no-restore` passed 64/64.
-- `dotnet build ... -f net472 -p:Platform=x64 --no-restore` passed 0/0.
+- The x64 .NET suite passed 124, skipped one intentionally opt-in
+  live-config-copy test, and failed 0.
+- Isolated Release builds for `net10.0-windows` and `net472` both passed with
+  0 warnings and 0 errors.
+- A deployed clean restart loaded 475 bounded history entries. The first
+  five-minute autosave compacted the primary config from 2,889,088 to 22,643
+  bytes; a later autosave left both primary and backup at 22,643 bytes. This
+  confirms both the cleanup behavior and the still-open continuity risk above.
