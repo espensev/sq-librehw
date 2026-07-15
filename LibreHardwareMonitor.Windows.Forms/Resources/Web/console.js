@@ -13,7 +13,7 @@
   const SENSOR_STATE_MAX_KEYS = 2048;
   const POWER_STATE_MAX_KEYS = 512;
   const SENSOR_STATE_GRACE_MS = 5 * 60 * 1000;
-  const VIEW_THEMES = ['standard', 'cardTruth'];
+  const VIEW_THEMES = ['standard', 'cardTruth', 'workspace'];
   const STUDIO_ACCENTS = ['coral', 'rose', 'amber', 'plum'];
   const STUDIO_CANVASES = ['ember', 'strata', 'plain'];
   const STUDIO_DENSITIES = ['comfortable', 'compact'];
@@ -286,7 +286,14 @@
         const k = String(key), v = String(value);
         removed.delete(k);
         memory.set(k, v);
-        try { const target = primary(); if (target && typeof target.setItem === 'function') target.setItem(k, v); } catch {}
+        try {
+          const target = primary();
+          if (target && typeof target.setItem === 'function') {
+            target.setItem(k, v);
+            return true;
+          }
+        } catch {}
+        return false;
       },
       removeItem(key) {
         const k = String(key);
@@ -503,7 +510,8 @@
       limit: 'hardware limit',
       band: 'semantic band',
       control: 'paired control %',
-      peak: 'observed peak'
+      peak: 'observed peak',
+      history: 'visible history'
     }[rangeInfo.source] || rangeInfo.source || 'no known range';
   };
   SQ.isPinned = function (state, id) {
@@ -916,6 +924,28 @@
     const m = String(v).match(/^([\-\d.,]+)\s*(.*)$/);
     return m ? { n: m[1], unit: m[2] } : { n: String(v), unit: '' };
   };
+  SQ.graphScaleFor = function (rangeInfo, history) {
+    if (rangeInfo && Number.isFinite(rangeInfo.lo) && Number.isFinite(rangeInfo.hi) &&
+        rangeInfo.hi > rangeInfo.lo)
+      return Object.assign({}, rangeInfo);
+    const values = Array.isArray(history)
+      ? history.map(point => point && point.raw).filter(Number.isFinite)
+      : [];
+    if (values.length < 2) return null;
+    let lo = Math.min(...values), hi = Math.max(...values);
+    if (!(hi > lo)) {
+      lo = lo >= 0 ? Math.max(0, lo - 1) : lo - 1;
+      hi += 1;
+    }
+    return {lo, hi, source:'history'};
+  };
+  SQ.graphScaleText = function (scale, sensor) {
+    if (!scale) return 'Scale pending · collecting live history';
+    const compact = value => Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
+    const unit = SQ.splitValue(sensor && sensor.value).unit;
+    const suffix = unit ? ' ' + unit : '';
+    return `Scale ${compact(scale.lo)} - ${scale.derived ? '~' : ''}${compact(scale.hi)}${suffix} · ${SQ.rangeSourceLabel(scale)}`;
+  };
 
   SQ.pickHero = function (sensors, limits) {
     const H = [], find = p => sensors.find(p);
@@ -1118,6 +1148,7 @@
   window.SQ = SQ;
   if (!window.SQ_NO_BOOT) {
     const $ = s => document.querySelector(s);
+    const Workspace = window.SQWorkspace;
     const STLABEL = { ok:'OK', warn:'WATCH', crit:'CRIT', info:'INFO', off:'IDLE' };
     const STGLYPH = { ok:'●', warn:'▲', crit:'✕', info:'·', off:'○' };
     const CLASSLABEL = { cpu:'CPU', gpu:'GPU', igpu:'iGPU', mem:'MEMORY', dimm:'DIMM', nvme:'STORAGE', disk:'DISK', mb:'BOARD', nic:'NET', other:'MISC' };
@@ -1135,11 +1166,17 @@
     const storage = SQ.createSafeStorage(() => window.localStorage);
     const dashboard0 = SQ.migrateLegacyState(storage, SQ.loadDashboardState(storage));
     SQ.saveDashboardState(storage, dashboard0);
+    const workspace0 = Workspace ? Workspace.load(storage) : null;
     const state = {
       paused: dashboard0.paused,
       rate: dashboard0.rate,
       dragging: false,
       dashboard: dashboard0,
+      workspace: workspace0,
+      workspaceSensorTargetId: null,
+      workspaceSensorFilter: '',
+      workspaceSensorSignature: null,
+      workspaceNotice: null,
       lastData: null,
       allSensors: [],
       visibleSensors: [],
@@ -1275,6 +1312,11 @@
       // Cached rerenders (Studio preferences, order, expand/collapse) are paint
       // only. All telemetry mutation lives behind this fresh-data seam.
       const ingestion = SQ.ingestTelemetry(state, allSensors, freshTelemetry);
+      allSensors.forEach(sensor => {
+        sensor.presetType = SQ.isLimitSensor(sensor) || SQ.isStaticDriveAuxTemp(sensor) || SQ.isStaticMbTemp(sensor)
+          ? 'Auxiliary'
+          : sensor.type;
+      });
       const sensors = SQ.visibleSensors(allSensors, state.dashboard);
       const limits = SQ.deriveLimits(sensors);
       sensors.forEach(s => s.status = SQ.statusOf(s, limits));
@@ -1284,7 +1326,12 @@
       state.limits = limits;
 
       const alarm = sensors.filter(s => s.status !== 'info' && s.status !== 'off');
-      if (state.dashboard.viewTheme === 'cardTruth') {
+      if (state.dashboard.viewTheme === 'workspace') {
+        const workspaceLimits = SQ.deriveLimits(allSensors);
+        allSensors.forEach(s => s.status = SQ.statusOf(s, workspaceLimits));
+        state.limits = workspaceLimits;
+        renderWorkspace(host, allSensors, workspaceLimits, data.Version);
+      } else if (state.dashboard.viewTheme === 'cardTruth') {
         state.panelItems = SQ.buildPanelItems(sensors, state.dashboard);
         renderStudio(host, sensors, limits, alarm, data.Version);
       } else {
@@ -1690,6 +1737,379 @@
         item => JSON.stringify([item.label, item.ss.map(sensorRenderSignature)]), studioSystemEl);
       $('#studioFootLeft').textContent = `LibreHardwareMonitor ${version} · ${host} · ${state.rate}s poll`;
     }
+    function activeWorkspaceProfile() {
+      if (!Workspace || !state.workspace || !Array.isArray(state.workspace.profiles)) return null;
+      return state.workspace.profiles.find(profile => profile.id === state.workspace.activeProfileId)
+        || state.workspace.profiles[0] || null;
+    }
+    function workspacePanel(profile, panelId) {
+      return profile && profile.panels.find(panel => panel.id === panelId) || null;
+    }
+    function paintWorkspaceStatus(message, tone) {
+      const status = $('#workspaceStatus');
+      if (!status) return;
+      const nextTone = ['ok','warn','crit','error','info','off'].includes(tone) ? tone : 'info';
+      if (status.textContent === message && status.className === 'is-' + nextTone) return;
+      status.textContent = message;
+      status.className = 'is-' + nextTone;
+      const live = status.closest('.workspace-live');
+      if (live) {
+        ['ok','warn','crit','error','info','off'].forEach(value => live.classList.remove('is-' + value));
+        live.classList.add('is-' + nextTone);
+      }
+    }
+    function announceWorkspace(message, tone, durationMs) {
+      state.workspaceNotice = {
+        message,
+        tone: tone || 'info',
+        until: Date.now() + (Number(durationMs) || 6000)
+      };
+      paintWorkspaceStatus(message, tone);
+    }
+    function captureWorkspaceFocus() {
+      const active = document.activeElement;
+      if (!active || !active.closest || !active.closest('#workspaceView')) return null;
+      const keys = ['workspaceAct','panelId','sensorId','workspaceSensor','workspaceField'];
+      const data = {};
+      keys.forEach(key => {
+        if (typeof active.dataset?.[key] === 'string') data[key] = active.dataset[key];
+      });
+      return {id:active.id || '', data};
+    }
+    function restoreWorkspaceFocus(token) {
+      if (!token) return;
+      let target = token.id ? document.getElementById(token.id) : null;
+      const keys = Object.keys(token.data || {});
+      const candidates = [...document.querySelectorAll('#workspaceView [data-workspace-act], #workspaceView [data-workspace-sensor], #workspaceView [data-workspace-field]')];
+      const findData = data => {
+        const wanted = Object.keys(data);
+        return candidates.find(candidate => wanted.every(key => candidate.dataset?.[key] === data[key]));
+      };
+      if (!target && keys.length) target = findData(token.data);
+      if (target?.disabled && token.data?.workspaceAct) {
+        const opposite = {
+          'panel-up':'panel-down', 'panel-down':'panel-up',
+          'sensor-up':'sensor-down', 'sensor-down':'sensor-up'
+        }[token.data.workspaceAct];
+        if (opposite) target = findData({...token.data, workspaceAct:opposite}) || target;
+      }
+      if (target?.disabled && token.data?.sensorId) {
+        target = candidates.find(candidate => candidate.dataset?.workspaceSensor === token.data.sensorId) || target;
+      }
+      if (target?.disabled && token.data?.panelId) {
+        target = findData({workspaceAct:'manage', panelId:token.data.panelId}) || target;
+      }
+      if (target?.disabled && token.id) {
+        const fallbackId = {
+          workspaceAddPanel:'workspacePanelTitle',
+          workspaceProfileNew:'workspaceProfileSelect',
+          workspaceProfileDuplicate:'workspaceProfileSelect',
+          workspaceProfileDelete:'workspaceProfileSelect'
+        }[token.id];
+        if (fallbackId) target = document.getElementById(fallbackId) || target;
+      }
+      if (!target || target.disabled || typeof target.focus !== 'function') return;
+      try { target.focus({preventScroll:true}); } catch { target.focus(); }
+    }
+    function commitWorkspace(next, message, tone) {
+      if (!Workspace) return;
+      const focus = captureWorkspaceFocus();
+      const result = Workspace.saveResult(storage, next);
+      state.workspace = result.state;
+      state.workspaceSensorSignature = null;
+      if (!result.ok) {
+        state.workspaceNotice = {
+          message: 'Browser storage is unavailable; this change is temporary for this page.',
+          tone: 'warn',
+          until: Date.now() + 9000
+        };
+      } else if (message) {
+        state.workspaceNotice = {
+          message,
+          tone: tone || 'ok',
+          until: Date.now() + 6000
+        };
+      }
+      paintWorkspaceControls();
+      rerender();
+      restoreWorkspaceFocus(focus);
+    }
+    function paintWorkspaceControls(paintFallbackStatus = true) {
+      const profileSelect = $('#workspaceProfileSelect');
+      const profileName = $('#workspaceProfileName');
+      const targetSelect = $('#workspaceSensorTarget');
+      const interactive = [
+        '#workspaceProfileNew','#workspaceProfileDuplicate','#workspaceProfileDelete',
+        '#workspaceImport','#workspaceExport','#workspaceReset','#workspacePanelTitle',
+        '#workspacePanelKind','#workspaceAddPanel','#workspaceSensorSearch'
+      ].map($).filter(Boolean);
+      if (!Workspace || !state.workspace) {
+        interactive.forEach(control => { control.disabled = true; });
+        if (profileSelect) profileSelect.disabled = true;
+        if (profileName) profileName.disabled = true;
+        if (targetSelect) targetSelect.disabled = true;
+        paintWorkspaceStatus('Workspace model unavailable. Standard and Studio remain usable.', 'error');
+        return;
+      }
+
+      const profile = activeWorkspaceProfile();
+      const profiles = state.workspace.profiles;
+      setStableHtml(profileSelect, profiles.map(item =>
+        '<option value="' + esc(item.id) + '">' + esc(item.name) + '</option>').join(''));
+      profileSelect.disabled = !profiles.length;
+      if (profile) profileSelect.value = profile.id;
+      profileName.disabled = !profile;
+      if (profile && document.activeElement !== profileName) profileName.value = profile.name;
+      $('#workspaceProfileDuplicate').disabled = !profile || profiles.length >= Workspace.LIMITS.profiles;
+      $('#workspaceProfileDelete').disabled = !profile || profiles.length <= 1;
+      $('#workspaceExport').disabled = !profile || (!state.lastData && profile.panels.some(panel => panel.preset));
+      $('#workspaceProfileNew').disabled = profiles.length >= Workspace.LIMITS.profiles;
+
+      const panels = profile ? profile.panels : [];
+      if (!panels.some(panel => panel.id === state.workspaceSensorTargetId))
+        state.workspaceSensorTargetId = panels[0]?.id || null;
+      setStableHtml(targetSelect, panels.length
+        ? panels.map(panel => '<option value="' + esc(panel.id) + '">' + esc(panel.title) + '</option>').join('')
+        : '<option value="">Choose a panel</option>');
+      targetSelect.disabled = !panels.length;
+      targetSelect.value = state.workspaceSensorTargetId || '';
+      $('#workspaceSensorSearch').disabled = !panels.length;
+      $('#workspaceAddPanel').disabled = !profile || panels.length >= Workspace.LIMITS.panelsPerProfile;
+
+      if (state.workspaceNotice && state.workspaceNotice.until > Date.now())
+        paintWorkspaceStatus(state.workspaceNotice.message, state.workspaceNotice.tone);
+      else if (paintFallbackStatus) {
+        state.workspaceNotice = null;
+        paintWorkspaceStatus(profile
+          ? profile.name + ' ready · ' + panels.length + ' panels · read-only'
+          : 'No profile is available.', profile ? 'info' : 'off');
+      }
+      if ($('#workspaceSensorManager')?.open) renderWorkspaceSensorList();
+    }
+    function workspaceStatusClass(sensor) {
+      const status = sensor?.status || 'off';
+      return 'is-' + (['ok','warn','crit','info','off'].includes(status) ? status : 'off');
+    }
+    function workspaceSensorHeadMarkup(sensor) {
+      const label = SQ.sensorDisplayText(sensor, state.dashboard, sensor.text);
+      const raw = label !== sensor.text ? ' · raw ' + sensor.text : '';
+      return '<div class="workspace-sensor-head"><div><strong>' + esc(label) + '</strong>' +
+        '<span>' + esc(sensor.hw || 'Sensor') + ' · ' + esc(sensor.type || 'Unknown') + esc(raw) +
+        '</span></div><span class="lamp s-' + esc(sensor.status || 'off') +
+        '" title="' + esc(STLABEL[sensor.status] || 'Unavailable') + '"></span></div>';
+    }
+    function workspaceReadingMarkup(sensor) {
+      if (sensor.raw == null)
+        return '<div class="workspace-reading"><strong>—</strong><span>unavailable</span></div>';
+      const split = SQ.splitValue(sensor.value ?? String(sensor.raw));
+      return '<div class="workspace-reading"><strong>' + esc(split.n) + '</strong><span>' +
+        esc(split.unit || '') + '</span></div>';
+    }
+    function workspaceRangeMarkup(sensor, limits) {
+      const range = SQ.rangeFor(sensor, limits, state.dashboard);
+      return '<span>' + esc(range ? SQ.graphScaleText(range, sensor).replace(/^Scale /, '')
+        : SQ.rangeSourceLabel(null)) + '</span>';
+    }
+    function workspaceMissingSummary(ids) {
+      if (!ids.length) return '';
+      return '<div class="workspace-missing"><strong>' + ids.length + ' saved sensor' +
+        (ids.length === 1 ? '' : 's') + ' unavailable</strong><span>' +
+        ids.map(id => '<code>' + esc(id) + '</code>').join(' · ') +
+        '</span><span>The SensorIds remain in this profile and reconnect when the hardware returns.</span></div>';
+    }
+    function workspaceCardsMarkup(sensors, limits) {
+      return '<div class="workspace-card-grid">' + sensors.map(sensor => {
+        const range = SQ.rangeFor(sensor, limits, state.dashboard);
+        const history = SQ.historyFor(sensor.id);
+        return '<article class="workspace-sensor-card ' + workspaceStatusClass(sensor) + '">' +
+          workspaceSensorHeadMarkup(sensor) + workspaceReadingMarkup(sensor) +
+          '<div class="workspace-sensor-meta">' + workspaceRangeMarkup(sensor, limits) + '</div>' +
+          (history.length > 1 ? sparkAreaSVG(sensor, range ? [range.lo, range.hi] : null) : '') +
+          '</article>';
+      }).join('') + '</div>';
+    }
+    function workspaceTableMarkup(sensors) {
+      return '<div class="workspace-table-wrap"><table class="workspace-table"><thead><tr>' +
+        '<th>Sensor</th><th>Hardware</th><th>Type</th><th>Minimum</th><th>Maximum</th><th>Current</th>' +
+        '</tr></thead><tbody>' + sensors.map(sensor => {
+          const label = SQ.sensorDisplayText(sensor, state.dashboard, sensor.text);
+          return '<tr class="' + workspaceStatusClass(sensor) + '"><td><strong>' + esc(label) +
+            '</strong><br><code>' + esc(sensor.id) + '</code></td><td>' + esc(sensor.hw || '—') +
+            '</td><td>' + esc(sensor.type || '—') + '</td><td>' + esc(sensor.min || '—') +
+            '</td><td>' + esc(sensor.max || '—') + '</td><td>' + workspaceReadingMarkup(sensor) +
+            '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+    function workspaceGraphsMarkup(sensors, limits) {
+      return '<div class="workspace-trend-grid">' + sensors.map(sensor => {
+        const range = SQ.rangeFor(sensor, limits, state.dashboard);
+        const history = SQ.historyFor(sensor.id);
+        const scale = SQ.graphScaleFor(range, history);
+        const chart = history.length > 1
+          ? sparkAreaSVG(sensor, scale ? [scale.lo, scale.hi] : null)
+          : '<div class="workspace-trend-chart workspace-empty"><span>Collecting live history…</span></div>';
+        return '<article class="workspace-trend ' + workspaceStatusClass(sensor) + '">' +
+          workspaceSensorHeadMarkup(sensor) + workspaceReadingMarkup(sensor) +
+          '<div class="workspace-sensor-meta"><span>' + esc(SQ.graphScaleText(scale, sensor)) + '</span></div>' +
+          chart + '</article>';
+      }).join('') + '</div>';
+    }
+    function workspacePanelEl(profile, panel, index) {
+      const article = document.createElement('article');
+      article.className = 'workspace-panel workspace-panel-' + panel.type;
+      article.dataset.panelId = panel.id;
+      article.innerHTML = '<div class="workspace-panel-head">' +
+        '<input class="workspace-panel-title" data-workspace-field="title" data-panel-id="' + esc(panel.id) +
+        '" maxlength="80" value="' + esc(panel.title) + '" aria-label="Panel title">' +
+        '<div class="workspace-panel-actions">' +
+        '<select data-workspace-field="type" data-panel-id="' + esc(panel.id) +
+        '" aria-label="Presentation for ' + esc(panel.title) + '">' +
+        Workspace.PANEL_TYPES.map(type => '<option value="' + type + '"' +
+          (panel.type === type ? ' selected' : '') + '>' +
+          (type === 'card' ? 'Cards' : type === 'table' ? 'Table' : 'Graphs') + '</option>').join('') +
+        '</select><button class="iconbtn" data-workspace-act="manage" data-panel-id="' + esc(panel.id) +
+        '">Sensors</button><button class="iconbtn" data-workspace-act="panel-up" data-panel-id="' +
+        esc(panel.id) + '" aria-label="Move ' + esc(panel.title) + ' earlier"' +
+        (index === 0 ? ' disabled' : '') + '>▲</button><button class="iconbtn" data-workspace-act="panel-down" data-panel-id="' +
+        esc(panel.id) + '" aria-label="Move ' + esc(panel.title) + ' later"' +
+        (index === profile.panels.length - 1 ? ' disabled' : '') +
+        '>▼</button><button class="iconbtn workspace-danger" data-workspace-act="panel-remove" data-panel-id="' +
+        esc(panel.id) + '" aria-label="Remove ' + esc(panel.title) + '">Remove</button></div></div>' +
+        '<div class="workspace-panel-body"></div>';
+      return article;
+    }
+    function paintWorkspacePanelBody(node, panel, sensors, limits) {
+      const result = Workspace.resolvePanel(panel, sensors);
+      const missing = workspaceMissingSummary(result.missingSensorIds);
+      let content = '';
+      if (!result.sensors.length) {
+        const preset = result.source === 'preset';
+        content = '<div class="workspace-empty"><strong>' +
+          (result.missingSensorIds.length ? 'All selected sensors are unavailable'
+            : preset ? 'No live sensors match this preset' : 'No sensors selected') +
+          '</strong><span>' + (result.missingSensorIds.length
+            ? 'The saved SensorIds are retained above and will reconnect automatically.'
+            : preset
+            ? 'The host-neutral preset will populate when matching hardware is available.'
+            : 'Open Sensor manager to choose exact SensorIds for this panel.') + '</span></div>';
+      } else if (panel.type === 'card') content = workspaceCardsMarkup(result.sensors, limits);
+      else if (panel.type === 'graph') content = workspaceGraphsMarkup(result.sensors, limits);
+      else content = workspaceTableMarkup(result.sensors);
+      setStableHtml(node.querySelector('.workspace-panel-body'), missing + content);
+    }
+    function renderWorkspace(host, sensors, limits, version) {
+      paintWorkspaceControls(false);
+      const panelsHost = $('#workspacePanels');
+      if (!Workspace || !state.workspace) {
+        setStableHtml(panelsHost, '<div class="workspace-error"><strong>Workspace unavailable</strong>' +
+          '<span>The profile model did not load. Standard and Studio are unaffected.</span></div>');
+        return;
+      }
+      const profile = activeWorkspaceProfile();
+      if (!profile) {
+        setStableHtml(panelsHost, '<div class="workspace-empty"><strong>No profile available</strong>' +
+          '<span>Create or import a profile to begin.</span></div>');
+        return;
+      }
+
+      if (!profile.panels.length) {
+        setStableHtml(panelsHost, '<div class="workspace-empty"><strong>This profile has no panels</strong>' +
+          '<span>Add a card, table, or graph panel above.</span></div>');
+      } else {
+        stableHtmlSignatures.delete(panelsHost);
+        syncKeyedRegion(panelsHost, profile.panels,
+          panel => profile.id + ':' + panel.id,
+          panel => JSON.stringify([
+            profile.id, panel.id, panel.title, panel.type, panel.preset, panel.sensorIds,
+            profile.panels.indexOf(panel), profile.panels.length
+          ]),
+          panel => workspacePanelEl(profile, panel, profile.panels.indexOf(panel)));
+        const nodes = new Map([...panelsHost.children].map(node => [node.dataset.panelId, node]));
+        profile.panels.forEach(panel => {
+          const node = nodes.get(panel.id);
+          if (node) paintWorkspacePanelBody(node, panel, sensors, limits);
+        });
+      }
+
+      renderWorkspaceSensorList();
+      const selectedCount = profile.panels.reduce((count, panel) =>
+        count + Workspace.resolvePanel(panel, sensors).sensorIds.length, 0);
+      const presetCount = profile.panels.filter(panel => panel.preset).length;
+      $('#workspaceFootLeft').textContent = `LibreHardwareMonitor ${version} · ${host} · ${state.rate}s poll · ${selectedCount} panel entries`;
+      if (!state.workspaceNotice || state.workspaceNotice.until <= Date.now()) {
+        state.workspaceNotice = null;
+        paintWorkspaceStatus(`${profile.name} · ${profile.panels.length} panels · ${selectedCount} entries${presetCount ? ` · ${presetCount} adaptive presets` : ''} · ${sensors.length} live sensors`,
+          sensors.length ? 'ok' : 'off');
+      }
+    }
+    function renderWorkspaceSensorList() {
+      const manager = $('#workspaceSensorManager');
+      const list = $('#workspaceSensorList');
+      if (!manager || !list || !manager.open || !Workspace || !state.workspace) {
+        state.workspaceSensorSignature = null;
+        return;
+      }
+      const profile = activeWorkspaceProfile();
+      const panel = workspacePanel(profile, state.workspaceSensorTargetId);
+      if (!profile || !panel) {
+        setStableHtml(list, '<div class="workspace-empty"><strong>Choose a target panel</strong>' +
+          '<span>Available live sensors will be listed here.</span></div>');
+        return;
+      }
+
+      const resolved = Workspace.resolvePanel(panel, state.allSensors);
+      const selected = new Map(resolved.sensorIds.map((id, index) => [id, index]));
+      const liveById = new Map();
+      state.allSensors.forEach(sensor => { if (sensor.id && !liveById.has(sensor.id)) liveById.set(sensor.id, sensor); });
+      const rows = resolved.sensorIds.map(id => ({ id, sensor: liveById.get(id) || null, selected: true }));
+      [...liveById.values()]
+        .filter(sensor => !selected.has(sensor.id))
+        .sort((a, b) => {
+          const al = SQ.sensorDisplayText(a, state.dashboard, a.text).toLowerCase();
+          const bl = SQ.sensorDisplayText(b, state.dashboard, b.text).toLowerCase();
+          return al.localeCompare(bl) || String(a.id).localeCompare(String(b.id));
+        })
+        .forEach(sensor => rows.push({ id: sensor.id, sensor, selected: false }));
+      const filter = (state.workspaceSensorFilter || '').trim().toLowerCase();
+      const filtered = rows.filter(row => {
+        if (!filter) return true;
+        const sensor = row.sensor;
+        const text = sensor
+          ? [SQ.sensorDisplayText(sensor, state.dashboard, sensor.text), sensor.text, sensor.hw, sensor.type, row.id].join(' ')
+          : ['unavailable', row.id].join(' ');
+        return text.toLowerCase().includes(filter);
+      });
+      const signature = JSON.stringify([
+        profile.id, panel.id, panel.preset, resolved.sensorIds, filter,
+        rows.map(row => row.sensor
+          ? [row.id, row.sensor.text, row.sensor.hw, row.sensor.type, SQ.sensorAlias(state.dashboard, row.id)]
+          : [row.id, null])
+      ]);
+      if (signature === state.workspaceSensorSignature) return;
+      state.workspaceSensorSignature = signature;
+      const full = resolved.sensorIds.length >= Workspace.LIMITS.sensorIdsPerPanel;
+      const html = filtered.map(row => {
+        const sensor = row.sensor;
+        const index = selected.get(row.id);
+        const label = sensor ? SQ.sensorDisplayText(sensor, state.dashboard, sensor.text) : 'Unavailable SensorId';
+        const detail = sensor ? (sensor.hw || 'Sensor') + ' · ' + (sensor.type || 'Unknown') : 'Saved membership · hardware not present';
+        return '<div class="workspace-sensor-choice' + (sensor ? '' : ' workspace-missing') + '">' +
+          '<input type="checkbox" data-workspace-sensor="' + esc(row.id) + '"' +
+          (row.selected ? ' checked' : '') + (!row.selected && full ? ' disabled' : '') +
+          ' aria-label="' + esc((row.selected ? 'Remove ' : 'Add ') + label) + '">' +
+          '<div><strong>' + esc(label) + '</strong><span>' + esc(detail) +
+          '</span><code>' + esc(row.id) + '</code></div><div class="workspace-sensor-actions">' +
+          (row.selected
+            ? '<span>#' + (index + 1) + '</span><button class="iconbtn" data-workspace-act="sensor-up" data-sensor-id="' +
+              esc(row.id) + '" aria-label="Move ' + esc(label) + ' earlier"' + (index === 0 ? ' disabled' : '') +
+              '>▲</button><button class="iconbtn" data-workspace-act="sensor-down" data-sensor-id="' + esc(row.id) +
+              '" aria-label="Move ' + esc(label) + ' later"' +
+              (index === resolved.sensorIds.length - 1 ? ' disabled' : '') + '>▼</button>'
+            : '') + '</div></div>';
+      }).join('');
+      setStableHtml(list, html || '<div class="workspace-empty"><strong>No matching sensors</strong>' +
+        '<span>Try another name, hardware label, type, or SensorId.</span></div>');
+    }
     function rowEl(s, type, groupKey) {
       const st = s.status, showBar = (s.type === 'Load' || s.type === 'Level' || s.type === 'Control') && s.raw != null;
       const mm = (s.min != null && s.min !== '' && type === 'Temperature')
@@ -1896,12 +2316,16 @@
     function paintViewTheme() {
       const view = $('#viewTheme');
       const studio = state.dashboard.viewTheme === 'cardTruth';
+      const workspace = state.dashboard.viewTheme === 'workspace';
       document.documentElement.setAttribute('data-view-theme', state.dashboard.viewTheme);
       if (view) view.value = state.dashboard.viewTheme;
-      $('#standardView').hidden = studio;
+      $('#standardView').hidden = studio || workspace;
       $('#studioView').hidden = !studio;
-      $('#dashboardSubtitle').textContent = studio ? 'Telemetry Studio' : 'Hardware Telemetry Console';
+      $('#workspaceView').hidden = !workspace;
+      $('#dashboardSubtitle').textContent = studio ? 'Telemetry Studio'
+        : workspace ? 'Sensor Workspace' : 'Hardware Telemetry Console';
       paintStudioPreferences();
+      if (workspace) paintWorkspaceControls();
     }
     function paintTheme() {
       const light = state.dashboard.theme === 'light';
@@ -1993,6 +2417,221 @@
       renderSensorsPopover();
       $('#sensorsSearch').focus();
     };
+    $('#workspaceProfileSelect').onchange = event => {
+      if (!Workspace) return;
+      state.workspaceSensorTargetId = null;
+      commitWorkspace(Workspace.setActiveProfile(state.workspace, event.target.value),
+        'Profile selected.', 'info');
+    };
+    $('#workspaceProfileName').onchange = event => {
+      if (!Workspace) return;
+      const profile = activeWorkspaceProfile();
+      if (!profile) return;
+      commitWorkspace(Workspace.renameProfile(state.workspace, profile.id, event.target.value),
+        'Profile name saved.', 'ok');
+    };
+    $('#workspaceProfileName').onkeydown = event => {
+      if (event.key === 'Enter') event.currentTarget.blur();
+    };
+    $('#workspaceProfileNew').onclick = () => {
+      if (!Workspace) return;
+      const before = state.workspace.profiles.length;
+      const next = Workspace.createProfile(state.workspace, 'New profile', {
+        panels: [{ title:'Overview', type:'card', preset:null, sensorIds:[] }]
+      });
+      if (next.profiles.length === before) {
+        announceWorkspace('The profile limit has been reached.', 'warn');
+        return;
+      }
+      state.workspaceSensorTargetId = next.profiles.find(profile => profile.id === next.activeProfileId)?.panels[0]?.id || null;
+      commitWorkspace(next, 'New profile created. Name it and choose sensors.', 'ok');
+      setTimeout(() => { $('#workspaceProfileName').focus(); $('#workspaceProfileName').select(); }, 0);
+    };
+    $('#workspaceProfileDuplicate').onclick = () => {
+      if (!Workspace) return;
+      const profile = activeWorkspaceProfile();
+      if (!profile) return;
+      const before = state.workspace.profiles.length;
+      const next = Workspace.duplicateProfile(state.workspace, profile.id);
+      if (next.profiles.length === before) {
+        announceWorkspace('The profile limit has been reached.', 'warn');
+        return;
+      }
+      state.workspaceSensorTargetId = next.profiles.find(item => item.id === next.activeProfileId)?.panels[0]?.id || null;
+      commitWorkspace(next, 'Profile duplicated with its panel and sensor order.', 'ok');
+    };
+    $('#workspaceProfileDelete').onclick = () => {
+      if (!Workspace) return;
+      const profile = activeWorkspaceProfile();
+      if (!profile || state.workspace.profiles.length <= 1) return;
+      if (!window.confirm(`Delete the “${profile.name}” profile? This cannot be undone.`)) return;
+      state.workspaceSensorTargetId = null;
+      commitWorkspace(Workspace.deleteProfile(state.workspace, profile.id), 'Profile deleted.', 'ok');
+    };
+    $('#workspaceReset').onclick = () => {
+      if (!Workspace || !window.confirm('Reset Workspace to Main, Gaming, and Storage defaults? Local profiles and edits will be removed.')) return;
+      state.workspaceSensorTargetId = null;
+      state.workspaceSensorFilter = '';
+      $('#workspaceSensorSearch').value = '';
+      commitWorkspace(Workspace.createDefaults(), 'Workspace reset to host-neutral defaults.', 'ok');
+    };
+    $('#workspaceImport').onclick = () => $('#workspaceImportFile').click();
+    $('#workspaceImportFile').onchange = async event => {
+      if (!Workspace) return;
+      const input = event.currentTarget;
+      const file = input.files && input.files[0];
+      if (!file) return;
+      try {
+        if (file.size > Workspace.LIMITS.profileDocumentBytes) {
+          announceWorkspace('Import rejected: the profile document exceeds 256 KiB.', 'error');
+          return;
+        }
+        const text = await file.text();
+        const result = Workspace.importProfile(state.workspace, text);
+        if (!result.ok) {
+          announceWorkspace('Import rejected: ' + result.error.message, 'error', 9000);
+          return;
+        }
+        state.workspaceSensorTargetId = result.state.profiles.find(profile => profile.id === result.profileId)?.panels[0]?.id || null;
+        commitWorkspace(result.state, 'Profile imported without overwriting local profiles.', 'ok');
+      } catch {
+        announceWorkspace('Import failed while reading the selected file.', 'error', 9000);
+      } finally {
+        input.value = '';
+      }
+    };
+    $('#workspaceExport').onclick = () => {
+      if (!Workspace) return;
+      const profile = activeWorkspaceProfile();
+      if (!profile) return;
+      if (!state.lastData && profile.panels.some(panel => panel.preset)) {
+        announceWorkspace('Export needs one live snapshot to resolve adaptive presets safely.', 'warn', 9000);
+        return;
+      }
+      try {
+        const materialized = Workspace.materializeProfile(state.workspace, profile.id, state.allSensors);
+        const exactProfile = materialized.profiles.find(item => item.id === profile.id);
+        const json = Workspace.exportProfile(materialized, exactProfile.id, true);
+        const blob = new Blob([json], {type:'application/json'});
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = (exactProfile.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'sensor-profile') + '.json';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        announceWorkspace('Profile exported with exact ordered SensorIds; local adaptive presets were preserved.', 'ok');
+      } catch (error) {
+        announceWorkspace('Export failed: ' + (error?.message || 'unknown error'), 'error', 9000);
+      }
+    };
+    $('#workspaceAddPanel').onclick = () => {
+      if (!Workspace) return;
+      const profile = activeWorkspaceProfile();
+      if (!profile) return;
+      const titleInput = $('#workspacePanelTitle');
+      const title = titleInput.value.trim() || 'New panel';
+      const before = profile.panels.map(panel => panel.id);
+      const next = Workspace.addPanel(state.workspace, profile.id, {
+        title,
+        type: $('#workspacePanelKind').value,
+        preset: null,
+        sensorIds: []
+      });
+      const nextProfile = next.profiles.find(item => item.id === profile.id);
+      const added = nextProfile?.panels.find(panel => !before.includes(panel.id));
+      if (!added) {
+        announceWorkspace('This profile already has the maximum number of panels.', 'warn');
+        return;
+      }
+      state.workspaceSensorTargetId = added.id;
+      titleInput.value = '';
+      commitWorkspace(next, 'Panel added. Open Sensors to choose exact readings.', 'ok');
+    };
+    $('#workspacePanels').addEventListener('click', event => {
+      if (!Workspace) return;
+      const button = event.target.closest('[data-workspace-act]');
+      if (!button) return;
+      const profile = activeWorkspaceProfile();
+      const panel = workspacePanel(profile, button.dataset.panelId);
+      if (!profile || !panel) return;
+      const index = profile.panels.findIndex(item => item.id === panel.id);
+      switch (button.dataset.workspaceAct) {
+        case 'manage':
+          state.workspaceSensorTargetId = panel.id;
+          paintWorkspaceControls();
+          $('#workspaceSensorManager').open = true;
+          renderWorkspaceSensorList();
+          $('#workspaceSensorSearch').focus();
+          break;
+        case 'panel-up':
+        case 'panel-down':
+          commitWorkspace(Workspace.movePanel(state.workspace, profile.id, panel.id,
+            index + (button.dataset.workspaceAct === 'panel-up' ? -1 : 1)), 'Panel order saved.', 'ok');
+          break;
+        case 'panel-remove':
+          if (!window.confirm(`Remove the “${panel.title}” panel?`)) return;
+          if (state.workspaceSensorTargetId === panel.id) state.workspaceSensorTargetId = null;
+          commitWorkspace(Workspace.removePanel(state.workspace, profile.id, panel.id), 'Panel removed.', 'ok');
+          setTimeout(() => $('#workspaceAddPanel').focus(), 0);
+          break;
+      }
+    });
+    $('#workspacePanels').addEventListener('change', event => {
+      if (!Workspace) return;
+      const field = event.target.dataset.workspaceField;
+      const panelId = event.target.dataset.panelId;
+      if (!field || !panelId) return;
+      const profile = activeWorkspaceProfile();
+      if (!profile) return;
+      const patch = field === 'title' ? {title:event.target.value} : {type:event.target.value};
+      commitWorkspace(Workspace.updatePanel(state.workspace, profile.id, panelId, patch, state.allSensors),
+        field === 'title' ? 'Panel title saved.' : 'Panel presentation changed.', 'ok');
+    });
+    $('#workspacePanels').addEventListener('keydown', event => {
+      if (event.key === 'Enter' && event.target.matches('[data-workspace-field="title"]')) event.target.blur();
+    });
+    $('#workspaceSensorManager').addEventListener('toggle', () => {
+      state.workspaceSensorSignature = null;
+      if ($('#workspaceSensorManager').open) {
+        paintWorkspaceControls();
+        renderWorkspaceSensorList();
+      }
+    });
+    $('#workspaceSensorTarget').onchange = event => {
+      state.workspaceSensorTargetId = event.target.value || null;
+      state.workspaceSensorSignature = null;
+      renderWorkspaceSensorList();
+    };
+    $('#workspaceSensorSearch').oninput = event => {
+      state.workspaceSensorFilter = event.target.value;
+      state.workspaceSensorSignature = null;
+      renderWorkspaceSensorList();
+    };
+    $('#workspaceSensorList').addEventListener('change', event => {
+      if (!Workspace || !event.target.matches('[data-workspace-sensor]')) return;
+      const profile = activeWorkspaceProfile();
+      const panel = workspacePanel(profile, state.workspaceSensorTargetId);
+      if (!profile || !panel) return;
+      commitWorkspace(Workspace.togglePanelSensor(state.workspace, profile.id, panel.id,
+        event.target.dataset.workspaceSensor, event.target.checked, state.allSensors),
+        event.target.checked ? 'Sensor added to the panel.' : 'Sensor removed from the panel.', 'ok');
+    });
+    $('#workspaceSensorList').addEventListener('click', event => {
+      if (!Workspace) return;
+      const button = event.target.closest('[data-workspace-act="sensor-up"], [data-workspace-act="sensor-down"]');
+      if (!button) return;
+      const profile = activeWorkspaceProfile();
+      const panel = workspacePanel(profile, state.workspaceSensorTargetId);
+      if (!profile || !panel) return;
+      const ids = Workspace.resolvePanel(panel, state.allSensors).sensorIds;
+      const index = ids.indexOf(button.dataset.sensorId);
+      if (index < 0) return;
+      const nextIndex = index + (button.dataset.workspaceAct === 'sensor-up' ? -1 : 1);
+      commitWorkspace(Workspace.movePanelSensor(state.workspace, profile.id, panel.id,
+        button.dataset.sensorId, nextIndex, state.allSensors), 'Sensor order saved.', 'ok');
+    });
     const rate = $('#rate'); rate.value = state.rate; $('#ratev').textContent = state.rate + 's';
     rate.setAttribute('aria-valuetext', `${state.rate} seconds`);
     rate.oninput = e => {
@@ -2045,7 +2684,7 @@
     });
     // Escape / click-outside close for disclosure menus.
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') document.querySelectorAll('details.page-menu[open], details.sensors-menu[open], details.studio-customize[open]').forEach(d => { d.open = false; });
+      if (e.key === 'Escape') document.querySelectorAll('details.page-menu[open], details.sensors-menu[open], details.studio-customize[open], details.workspace-sensor-manager[open]').forEach(d => { d.open = false; });
     });
     // Capture phase: this must observe e.target BEFORE the #sensorsList action
     // handler (bubble phase) rebuilds the list and detaches the clicked button —

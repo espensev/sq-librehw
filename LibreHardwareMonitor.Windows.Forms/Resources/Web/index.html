@@ -20,6 +20,7 @@
     <label class="view-theme"><span>Dashboard</span><select id="viewTheme" aria-label="Dashboard">
       <option value="standard">Standard</option>
       <option value="cardTruth">Studio</option>
+      <option value="workspace">Workspace</option>
     </select></label>
     <details class="page-menu">
       <summary class="btn">Pages</summary>
@@ -185,5 +186,129 @@
     <span>Read-only · same telemetry truth as Standard</span>
   </footer>
 </main>
+
+<main class="wrap workspace-view" id="workspaceView" data-dashboard-view="workspace" hidden>
+  <section class="workspace-hero" aria-labelledby="workspaceTitle">
+    <div class="workspace-hero-copy">
+      <span class="workspace-kicker">Task-specific telemetry</span>
+      <h1 id="workspaceTitle">Sensor Workspace</h1>
+      <p>Compose named, ordered panels from live sensors without changing Standard or Studio.</p>
+    </div>
+    <div class="workspace-live">
+      <span>Workspace status</span>
+      <p id="workspaceStatus" role="status" aria-live="polite" aria-atomic="true">Preparing profiles and live telemetry.</p>
+    </div>
+  </section>
+
+  <section class="workspace-command-bar" aria-labelledby="workspaceProfilesTitle">
+    <div class="workspace-section-heading">
+      <div>
+        <span>Layout library</span>
+        <h2 id="workspaceProfilesTitle">Profiles</h2>
+      </div>
+      <p id="workspaceProfileHelp">Profiles keep their own ordered panels and exact sensor membership.</p>
+    </div>
+
+    <div class="workspace-profile-controls">
+      <label class="workspace-field workspace-profile-select" for="workspaceProfileSelect">
+        <span>Active profile</span>
+        <select id="workspaceProfileSelect" name="workspaceProfile" aria-describedby="workspaceProfileHelp">
+          <option value="">Loading profiles…</option>
+        </select>
+      </label>
+      <label class="workspace-field workspace-profile-name" for="workspaceProfileName">
+        <span>Profile name</span>
+        <input id="workspaceProfileName" name="workspaceProfileName" type="text" maxlength="80" autocomplete="off" placeholder="Name this profile">
+      </label>
+      <div class="workspace-button-group" role="group" aria-label="Profile actions">
+        <button class="btn" id="workspaceProfileNew" type="button">New</button>
+        <button class="btn" id="workspaceProfileDuplicate" type="button">Duplicate</button>
+        <button class="btn workspace-danger" id="workspaceProfileDelete" type="button">Delete</button>
+      </div>
+    </div>
+
+    <div class="workspace-file-actions" role="group" aria-label="Workspace file and reset actions">
+      <input id="workspaceImportFile" type="file" accept="application/json,.json" hidden>
+      <button class="iconbtn" id="workspaceImport" type="button">Import JSON</button>
+      <button class="iconbtn" id="workspaceExport" type="button">Export JSON</button>
+      <button class="iconbtn workspace-danger" id="workspaceReset" type="button">Reset workspace</button>
+    </div>
+  </section>
+
+  <section class="workspace-add-panel" aria-labelledby="workspaceAddPanelTitle">
+    <div class="workspace-section-heading">
+      <div>
+        <span>Panel builder</span>
+        <h2 id="workspaceAddPanelTitle">Add a panel</h2>
+      </div>
+      <p>Start with a title and presentation. Choose exact sensors after the panel is added.</p>
+    </div>
+    <div class="workspace-add-controls">
+      <label class="workspace-field" for="workspacePanelTitle">
+        <span>Panel title</span>
+        <input id="workspacePanelTitle" name="workspacePanelTitle" type="text" maxlength="80" autocomplete="off" placeholder="For example, Thermal headroom">
+      </label>
+      <label class="workspace-field" for="workspacePanelKind">
+        <span>Panel kind</span>
+        <select id="workspacePanelKind" name="workspacePanelKind">
+          <option value="card">Cards</option>
+          <option value="table">Table</option>
+          <option value="graph">Small-multiple graphs</option>
+        </select>
+      </label>
+      <button class="btn workspace-primary" id="workspaceAddPanel" type="button">Add panel</button>
+    </div>
+  </section>
+
+  <section class="workspace-panels-section" aria-labelledby="workspacePanelsTitle">
+    <div class="workspace-section-heading workspace-panels-heading">
+      <div>
+        <span>Active layout</span>
+        <h2 id="workspacePanelsTitle">Sensor panels</h2>
+      </div>
+      <p>Panels preserve sensor order and report unavailable hardware instead of hiding it.</p>
+    </div>
+    <div class="workspace-panels" id="workspacePanels">
+      <div class="workspace-empty" role="status">
+        <strong>Preparing your workspace</strong>
+        <span>Live panels will appear here when the active profile is ready.</span>
+      </div>
+    </div>
+  </section>
+
+  <details class="workspace-sensor-manager" id="workspaceSensorManager">
+    <summary>
+      <span><span class="workspace-kicker">Sensor manager</span><strong>Add and order exact sensors</strong></span>
+      <span class="workspace-summary-action" aria-hidden="true">Manage</span>
+    </summary>
+    <div class="workspace-sensor-manager-body">
+      <div class="workspace-sensor-tools">
+        <label class="workspace-field" for="workspaceSensorTarget">
+          <span>Target panel</span>
+          <select id="workspaceSensorTarget" name="workspaceSensorTarget">
+            <option value="">Choose a panel</option>
+          </select>
+        </label>
+        <label class="workspace-field" for="workspaceSensorSearch">
+          <span>Find sensors</span>
+          <input id="workspaceSensorSearch" name="workspaceSensorSearch" type="search" autocomplete="off" placeholder="Search name, hardware, type, or SensorId">
+        </label>
+      </div>
+      <p class="workspace-sensor-help" id="workspaceSensorHelp">Sensor membership is independent from Standard and Studio visibility. Missing SensorIds stay in the profile so returning hardware can reconnect.</p>
+      <div class="workspace-sensor-list" id="workspaceSensorList" role="region" aria-label="Available sensors" aria-describedby="workspaceSensorHelp">
+        <div class="workspace-empty">
+          <strong>Choose a target panel</strong>
+          <span>Available live sensors will be listed here.</span>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <footer class="workspace-footer">
+    <span id="workspaceFootLeft">Workspace is initializing.</span>
+    <span>Read-only telemetry · profile schema v1</span>
+  </footer>
+</main>
+<script src="workspace.js"></script>
 <script src="console.js"></script>
 </body></html>

@@ -5,6 +5,8 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 global.window = { SQ_NO_BOOT: true };
 const consoleJs = fs.readFileSync(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js'), 'utf8');
+const workspaceJs = fs.readFileSync(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/Web/workspace.js'), 'utf8');
+Function('window', 'module', workspaceJs)(global.window, undefined);
 eval(consoleJs);
 const runConsoleTests = require('./console.tests.js');
 const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture.data.json'), 'utf8'));
@@ -20,6 +22,44 @@ const menuChecks = [
   ['root selector is labelled Dashboard', indexHtml.includes('<span>Dashboard</span>') && indexHtml.includes('aria-label="Dashboard"')],
   ['root offers Standard with stable value', indexHtml.includes('<option value="standard">Standard</option>')],
   ['root offers Studio with cardTruth value', indexHtml.includes('<option value="cardTruth">Studio</option>')],
+  ['root offers Workspace with stable value', indexHtml.includes('<option value="workspace">Workspace</option>')],
+  ['Workspace model loads before dashboard boot',
+    indexHtml.indexOf('<script src="workspace.js"></script>') >= 0
+      && indexHtml.indexOf('<script src="workspace.js"></script>') < indexHtml.indexOf('<script src="console.js"></script>')],
+  ['root has Workspace view regions', [
+    'workspaceView','workspaceStatus','workspaceProfileSelect','workspaceProfileName','workspacePanels',
+    'workspaceSensorManager','workspaceSensorTarget','workspaceSensorSearch','workspaceSensorList','workspaceFootLeft'
+  ].every(id => indexHtml.includes(`id="${id}"`))],
+  ['root has Workspace profile, file, and panel controls', [
+    'workspaceProfileNew','workspaceProfileDuplicate','workspaceProfileDelete','workspaceImport','workspaceImportFile',
+    'workspaceExport','workspaceReset','workspacePanelTitle','workspacePanelKind','workspaceAddPanel'
+  ].every(id => indexHtml.includes(`id="${id}"`))],
+  ['Workspace status is an atomic live region', indexHtml.includes('id="workspaceStatus"')
+    && indexHtml.includes('role="status"') && indexHtml.includes('aria-live="polite"') && indexHtml.includes('aria-atomic="true"')],
+  ['Workspace CSS scopes its root and responsive panel surfaces', [
+    'data-view-theme="workspace"','.workspace-panel','.workspace-card-grid','.workspace-table-wrap',
+    '.workspace-trend-grid','.workspace-sensor-choice','@media (max-width:640px)'
+  ].every(token => consoleCss.includes(token))],
+  ['Workspace remains presentation-only', !workspaceJs.includes('/Sensor?action=Set')
+    && !consoleJs.includes('/Sensor?action=Set')],
+  ['Workspace export materializes a copy without replacing local adaptive state',
+    consoleJs.includes('Workspace.materializeProfile(state.workspace, profile.id, state.allSensors)')
+      && consoleJs.includes('Workspace.exportProfile(materialized, exactProfile.id, true)')
+      && !consoleJs.includes('state.workspace = Workspace.save(storage, materialized)')],
+  ['Workspace edits report storage fallback and restore keyboard focus',
+    consoleJs.includes('Workspace.saveResult(storage, next)')
+      && consoleJs.includes('this change is temporary for this page')
+      && consoleJs.includes('captureWorkspaceFocus()')
+      && consoleJs.includes('restoreWorkspaceFocus(focus)')
+      && consoleJs.includes("workspaceAddPanel:'workspacePanelTitle'")
+      && consoleJs.includes("workspaceProfileDuplicate:'workspaceProfileSelect'")],
+  ['Workspace poll rendering does not churn its live region',
+    consoleJs.includes("status.textContent === message && status.className === 'is-' + nextTone")
+      && consoleJs.includes('paintWorkspaceControls(false)')],
+  ['Workspace graph labels use the same scale as their plotted bounds',
+    consoleJs.includes('const scale = SQ.graphScaleFor(range, history)')
+      && consoleJs.includes('sparkAreaSVG(sensor, scale ? [scale.lo, scale.hi] : null)')
+      && consoleJs.includes('SQ.graphScaleText(scale, sensor)')],
   ['root has Studio view regions', ['studioView','studioHealth','studioAlertStatus','studioFocus','studioSystems','studioNetwork'].every(id => indexHtml.includes(`id="${id}"`)) && indexHtml.includes('class="studio-atmosphere"')],
   ['root has transition-only Studio alert status', indexHtml.includes('id="studioAlertStatus"') && indexHtml.includes('role="status"') && indexHtml.includes('aria-atomic="true"')],
   ['root has Studio customization controls', [

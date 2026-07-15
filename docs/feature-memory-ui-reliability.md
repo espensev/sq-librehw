@@ -1,8 +1,9 @@
 # Feature Spec: Memory, Lifetime, and UI Reliability
 
-**Status:** shipped, deployed, and verified; follow-ups below
+**Status:** reliability baseline shipped and deployed; scrollbar accessibility
+follow-up implemented and verified locally, promotion pending
 
-**Updated:** 2026-07-14
+**Updated:** 2026-07-15
 
 ## Problem and motivation
 
@@ -75,6 +76,13 @@ dashboard policy, or supported frameworks.
   sleep or wait for multi-second operations while blocking the UI thread.
 - Repeated form/theme/font/gadget operations remain within a stable GDI-handle
   envelope.
+- The sensor-tree scroll indicators mirror the native system-metric hit area
+  instead of collapsing it to a thin overlay. The painted hit target exposes a
+  distinct UI Automation `ScrollBar` with writable `RangeValue` that mirrors the
+  native scrollbar range and value. Its resting thumb has at least 3:1 contrast
+  in Light, Dark, and Black, grows and brightens on hover/drag, retains a 24 px
+  minimum length, and falls back to the native scrollbar when Windows enters
+  high-contrast mode.
 
 ### HTTP and dashboard
 
@@ -129,12 +137,19 @@ dashboard policy, or supported frameworks.
 - [x] Throwing browser storage still boots with usable in-memory state.
 - [x] Departed web sensor state is pruned and stable sections avoid full rebuilds.
 - [x] UI inputs and stateful controls pass accessible-name/focus checks.
+- [x] Sensor-tree scrollbars keep a native-sized gutter without creating an
+  overflow-only horizontal bar; all three themes meet the scrollbar contrast
+  floor and expose distinct hover/drag states. Both painted orientations are
+  discoverable by screen position as UI Automation `ScrollBar`/`RangeValue`
+  elements, and `SetValue` updates the native scrollbar.
 - [x] Contributor documentation contains no required links to absent files.
 - [x] The golden `data.json` contract remains unchanged; all tests and both
   Release target builds pass.
 
 ## Open follow-ups
 
+- [ ] Promote the verified scrollbar follow-up only with explicit deployment
+  approval, then repeat the real monitor hit-target and drag smoke.
 - [ ] Preserve the forced first dashboard snapshot when a persisted-paused page
   starts hidden, so first visibility does not stay blank until Resume.
 - [ ] Preserve the last bounded on-disk sensor histories across autosave until a
@@ -149,6 +164,9 @@ Use red-capable regression tests at the owning seam before or with each fix:
 - deterministic 24-hour history, bounded decompression, save-ordering, metrics,
   plot-delta, shutdown-coordinator, and HTTP-concurrency tests;
 - Win32 GDI-count loops for gadget resize/theme/font where practical;
+- focused WinForms checks for scrollbar contrast, native bounds/accessibility,
+  effective range endpoints, minimum thumb geometry, and shown-window UI
+  Automation hit-testing for both orientations;
 - Node tests with a throwing storage stub, delayed fetches, visibility/pause
   transitions, departed sensors, and cached Studio rerenders;
 - manual current-HEAD smoke for graph, gadget, tray, Studio/Standard, pause,
@@ -173,6 +191,16 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-07-15 scrollbar accessibility follow-up: five focused WinForms checks
+  and the full suite passed (129 passed, one existing opt-in skip); both x64
+  Release targets built in isolated output folders with zero warnings/errors.
+  A shown-window UI Automation hit-test found both painted orientations as
+  `ScrollBar`/`RangeValue`, propagated `SetValue` to the native controls, and
+  passed 10 consecutive stress iterations. A non-elevated real-control preview
+  confirmed the 17 px native gutter, 11 px resting thumb, brighter/wider hover
+  state, true bottom drag endpoint, readable value column, unchanged graph
+  split, and no incidental horizontal scrollbar. The deployed
+  `LibreHW-No-UAC` task/process was not modified or restarted.
 - Implementation `5b9c6f9` deployed as `0.9.6+5b9c6f9.2026-07-14` through
   `\SevGrp\AdminTask\LibreHW-No-UAC`; 71 candidate files matched. Rollback:
   `C:\ProgramData\LibreHardwareMonitor\backups\20260714-042926-pre-5b9c6f9`.

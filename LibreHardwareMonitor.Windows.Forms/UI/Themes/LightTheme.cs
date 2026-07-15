@@ -31,6 +31,11 @@ namespace LibreHardwareMonitor.Windows.Forms.UI.Themes
         public override Color[] PlotColorPalette => _plotColorPalette;
         public override Color PlotGridMajorColor => Color.FromArgb(192, 192, 192);
         public override Color PlotGridMinorColor => Color.FromArgb(232, 232, 232);
+        public override Color ScrollbarBackground => Color.FromArgb(242, 242, 242);
+        public override Color ScrollbarTrack => Color.FromArgb(112, 112, 112);
+        public override Color ScrollbarTrackHover => Color.FromArgb(72, 72, 72);
+        public override Color ScrollbarTrackPressed => Color.FromArgb(0, 102, 192);
+        public override Color ScrollbarBorder => Color.FromArgb(190, 190, 190);
         public override bool WindowTitlebarFallbackToImmersiveDarkMode => false;
 
         public LightTheme() : base("light", "Light") { }

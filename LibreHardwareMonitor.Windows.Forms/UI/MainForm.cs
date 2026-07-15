@@ -2366,13 +2366,22 @@ public sealed partial class MainForm : Form
 
     private void TreeView_SizeChanged(object sender, EventArgs e)
     {
-        int newWidth = treeView.Width;
+        // Keep a stable native-width gutter for the vertical scrollbar. The themed indicator now
+        // mirrors the real scrollbar instead of collapsing it to zero, so sizing columns against
+        // the full control width would create a horizontal scrollbar as soon as vertical overflow
+        // appears. Reserving the gutter at all times also prevents a visible column-width jump.
+        int newWidth = GetSensorTreeColumnViewportWidth();
         for (int i = 1; i < treeView.Columns.Count; i++)
         {
             if (treeView.Columns[i].IsVisible)
                 newWidth -= treeView.Columns[i].Width;
         }
         treeView.Columns[0].Width = newWidth;
+    }
+
+    private int GetSensorTreeColumnViewportWidth()
+    {
+        return Math.Max(0, treeView.ClientSize.Width - System.Windows.Forms.SystemInformation.VerticalScrollBarWidth);
     }
 
     private void TreeView_KeyDown(object sender, KeyEventArgs e)
@@ -2469,7 +2478,7 @@ public sealed partial class MainForm : Form
             nextColumnIndex++;
 
         if (nextColumnIndex < treeView.Columns.Count) {
-            int diff = treeView.Width - columnsWidth;
+            int diff = GetSensorTreeColumnViewportWidth() - columnsWidth;
             treeView.Columns[nextColumnIndex].Width = Math.Max(20, treeView.Columns[nextColumnIndex].Width + diff);
         }
     }

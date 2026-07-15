@@ -148,6 +148,7 @@
     eq('normalize theme light', S.normalizeDashboardState({theme:'light'}).theme, 'light');
     eq('normalize theme junk -> dark', S.normalizeDashboardState({theme:'x'}).theme, 'dark');
     eq('normalize viewTheme cardTruth', S.normalizeDashboardState({viewTheme:'cardTruth'}).viewTheme, 'cardTruth');
+    eq('normalize viewTheme workspace', S.normalizeDashboardState({viewTheme:'workspace'}).viewTheme, 'workspace');
     eq('normalize viewTheme junk -> standard', S.normalizeDashboardState({viewTheme:'x'}).viewTheme, 'standard');
     eq('default has studio settings', (() => { const d = S.defaultDashboardState();
       return [d.studioAccent, d.studioCanvas, d.studioCanvasOpacity, d.studioDensity, d.studioFocusLayout,
@@ -221,9 +222,17 @@
     eq('safe storage adapter retains an in-memory fallback', (() => {
       if (typeof S.createSafeStorage !== 'function') return 'missing';
       const safe = S.createSafeStorage(throwingStorage);
-      safe.setItem('x', 'kept');
-      return [safe.getItem('x'), safe.length, safe.key(0)];
-    })(), ['kept', 1, 'x']);
+      const durable = safe.setItem('x', 'kept');
+      return [safe.getItem('x'), safe.length, safe.key(0), durable];
+    })(), ['kept', 1, 'x', false]);
+    eq('safe storage adapter reports durable writes', (() => {
+      const primary = new Map();
+      const safe = S.createSafeStorage({
+        getItem:key => primary.get(key) ?? null,
+        setItem:(key, value) => primary.set(key, value)
+      });
+      return [safe.setItem('x', 'durable'), primary.get('x')];
+    })(), [true, 'durable']);
     eq('safe storage adapter tolerates a throwing browser storage getter', (() => {
       const safe = S.createSafeStorage(() => { throw new Error('security'); });
       S.saveDashboardState(safe, {theme:'light', rate:4});
@@ -472,8 +481,20 @@
       S.rangeSourceLabel({lo:0, hi:100, source:'band'}),
       S.rangeSourceLabel({lo:0, hi:100, source:'control'}),
       S.rangeSourceLabel({lo:0, hi:178.5, source:'peak'}),
+      S.rangeSourceLabel({lo:0, hi:178.5, source:'history'}),
       S.rangeSourceLabel(null)
-    ], ['operator override', 'derived hardware limit', 'hardware limit', 'semantic band', 'paired control %', 'observed peak', 'no known range']);
+    ], ['operator override', 'derived hardware limit', 'hardware limit', 'semantic band', 'paired control %', 'observed peak', 'visible history', 'no known range']);
+    eq('graphScaleFor keeps the plotted sensor range',
+      S.graphScaleFor({lo:0, hi:3000, source:'peak'}, [{raw:20}, {raw:80}]),
+      {lo:0, hi:3000, source:'peak'});
+    eq('graphScaleFor labels history-scaled sensors honestly', (() => {
+      const scale = S.graphScaleFor(null, [{raw:39.125}, {raw:41.5}, {raw:null}]);
+      return [scale, S.graphScaleText(scale, {value:'41.5 MB/s'})];
+    })(), [{lo:39.125, hi:41.5, source:'history'}, 'Scale 39.13 - 41.5 MB/s · visible history']);
+    eq('graphScaleFor expands a flat history without inventing zero',
+      S.graphScaleFor(null, [{raw:7}, {raw:7}]), {lo:6, hi:8, source:'history'});
+    eq('graphScaleFor keeps non-negative flat history non-negative',
+      S.graphScaleFor(null, [{raw:0}, {raw:0}]), {lo:0, hi:1, source:'history'});
 
     // --- Slice 3 pre-flight: telemetry saves must not clobber user state ---
     const freshUserState = S.normalizeDashboardState({
@@ -560,6 +581,16 @@
       mergedTelemetry.studioShowSparklines, mergedTelemetry.studioShowSystems,
       mergedTelemetry.studioShowNetwork
     ], ['plum', 'strata', 25, 'compact', 'grid', 12, false, false, false]);
+    const workspaceTelemetry = S.mergeTelemetryState(
+      S.normalizeDashboardState(Object.assign({}, freshUserState, {viewTheme:'workspace'})),
+      staleTelemetryState);
+    eq('telemetry merge preserves Workspace root plus Standard and Studio preferences', [
+      workspaceTelemetry.viewTheme, workspaceTelemetry.hiddenSensorIds,
+      workspaceTelemetry.sensorAliases, workspaceTelemetry.cardOrder,
+      workspaceTelemetry.studioAccent, workspaceTelemetry.studioCanvas,
+      workspaceTelemetry.studioDensity, workspaceTelemetry.studioFocusLayout
+    ], ['workspace', ['/new-hidden'], {'/fan':'Pump'}, ['/gpu/power','/cpu/temp'],
+      'plum', 'strata', 'compact', 'grid']);
     eq('telemetry merge combines telemetry accumulators',
       [mergedTelemetry.observedMax, mergedTelemetry.powerLimitSamples],
       [{'/fan':1500,'/pump':900}, {'/gpu/0':[100,110,120,130,140,150,160,170,180], '/gpu/1':[500,525,550,575,600,625,650,675,700,725]}]);
