@@ -1,6 +1,6 @@
 # Independent Text Scaling: Sensor Pane vs Graph
 
-Status: DRAFT (design approved pending operator review, 2026-07-18)
+Status: SHIPPED (live-verified by operator 2026-07-18; branch feature/independent-text-scaling)
 
 ## Problem
 
