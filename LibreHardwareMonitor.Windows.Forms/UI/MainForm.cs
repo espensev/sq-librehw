@@ -1096,7 +1096,7 @@ public sealed partial class MainForm : Form
 
     /// <summary>
     /// Single apply path for the Text Size scale: tree font + row height + value/min/max column
-    /// widths + tree glyphs + plot axis text. Order-independent and composes with Compact Mode.
+    /// widths + tree glyphs + plot tracker text. Order-independent and composes with Compact Mode.
     /// </summary>
     private void ApplyUiTextScale(bool deferMenuRefresh = false)
     {
