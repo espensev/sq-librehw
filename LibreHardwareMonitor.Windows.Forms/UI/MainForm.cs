@@ -89,6 +89,8 @@ public sealed partial class MainForm : Form
 
     // Debounced percent sliders (see TextScaleSliderMenu / UiTextScaleCommitGate).
     private TextScaleSliderMenu _textSizeSlider;
+    private TextScaleSliderMenu _plotTextSlider;
+    private int _plotTextScalePercent = UiScale.DefaultPercent;
     private int _baseValueColumnWidth = 100;
     private int _baseMinColumnWidth = 100;
     private int _baseMaxColumnWidth = 100;
@@ -113,6 +115,7 @@ public sealed partial class MainForm : Form
         _settings = new PersistentSettings();
         _settings.Load(Path.ChangeExtension(Application.ExecutablePath, ".config"));
         _uiTextScalePercent = UiScale.ClampPercent(_settings.GetValue("uiTextScale", UiScale.DefaultPercent));
+        _plotTextScalePercent = UiScale.ClampPercent(_settings.GetValue("plotTextScale", UiScale.DefaultPercent));
 
         _unitManager = new UnitManager(_settings);
 
@@ -255,6 +258,7 @@ public sealed partial class MainForm : Form
         // Apply once now that all column options (and compact mode) are wired, so the initial
         // layout does not depend on the eager Changed callback of whichever option subscribed last.
         ApplyUiTextScale();
+        ApplyPlotTextScale();
 
         _ = new UserOption("startMinMenuItem", false, startMinMenuItem, _settings);
         _minimizeToTray = new UserOption("minTrayMenuItem", true, minTrayMenuItem, _settings);
@@ -935,6 +939,11 @@ public sealed partial class MainForm : Form
         plotLocationMenuItem.Text = "Graph &Location";
         strokeThicknessMenuItem.Text = "&Stroke Thickness";
 
+        _plotTextSlider = new TextScaleSliderMenu("Graph Text Size", _plotTextScalePercent, DeviceDpi / 96.0,
+            mainMenu.Font, Theme.Current.MenuBackgroundColor);
+        _plotTextSlider.PercentChanged += percent => _plotTextScalePercent = percent;
+        _plotTextSlider.CommitRequested += deferMenuRefresh => ApplyPlotTextScale(deferMenuRefresh);
+
         plotWindowMenuItem.Text = "Separate Window";
         plotBottomMenuItem.Text = "Bottom";
         plotRightMenuItem.Text = "Right";
@@ -974,6 +983,7 @@ public sealed partial class MainForm : Form
         MoveMenuItem(graphMenuItem.DropDownItems, sensorValuesTimeWindowMenuItem);
         MoveMenuItem(graphMenuItem.DropDownItems, plotLocationMenuItem);
         MoveMenuItem(graphMenuItem.DropDownItems, strokeThicknessMenuItem);
+        _plotTextSlider.InstallAt(graphMenuItem, graphMenuItem.DropDownItems.IndexOf(strokeThicknessMenuItem) + 1);
     }
 
     private static void MoveMenuItem(ToolStripItemCollection target, ToolStripItem item)
@@ -1139,10 +1149,21 @@ public sealed partial class MainForm : Form
         // Row height + column visibility + repaint (recomputes RowHeight from the live font).
         ApplySensorTreeLayout();
 
-        // Plot axis text (single PlotPanel instance covers docked + separate-window modes).
-        _plotPanel?.SetAxisTextScale(_uiTextScalePercent);
+        // Plot tracker text (single PlotPanel instance covers docked + separate-window modes).
+        _plotPanel?.SetTrackerTextScale(_uiTextScalePercent);
 
         _settings.SetValue("uiTextScale", _uiTextScalePercent);
+    }
+
+    private void ApplyPlotTextScale(bool deferMenuRefresh = false)
+    {
+        _plotTextScalePercent = UiScale.ClampPercent(_plotTextScalePercent);
+        _plotPanel?.SetAxisTextScale(_plotTextScalePercent);
+
+        if (!deferMenuRefresh)
+            _plotTextSlider?.RefreshMenuText(_plotTextScalePercent, mainMenu.Font);
+
+        _settings.SetValue("plotTextScale", _plotTextScalePercent);
     }
 
     /// <summary>
@@ -1631,6 +1652,7 @@ public sealed partial class MainForm : Form
         }
 
         _settings.SetValue("uiTextScale", _uiTextScalePercent);
+        _settings.SetValue("plotTextScale", _plotTextScalePercent);
 
         _settings.SetValue("listenerIp", Server.ListenerIp);
         _settings.SetValue("listenerPort", Server.ListenerPort);
@@ -1783,6 +1805,7 @@ public sealed partial class MainForm : Form
             timer.Dispose();
             _autoSaveTimer.Dispose();
             _textSizeSlider?.Dispose();
+            _plotTextSlider?.Dispose();
             backgroundUpdater.Dispose();
             _hardwareLifecycleCancellation.Dispose();
             _hardwareLifecycleGate.Dispose();
