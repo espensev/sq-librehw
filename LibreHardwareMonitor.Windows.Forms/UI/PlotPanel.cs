@@ -961,12 +961,19 @@ public class PlotPanel : UserControl
             axis.IntervalLength = 60.0 * (_axisTextScalePercent / 100.0);
         }
 
+        InvalidatePlotCosmetic();
+    }
+
+    public void SetTrackerTextScale(int percent)
+    {
+        int clamped = UiScale.ClampPercent(percent);
+
         // Tracker/tooltip is a WinForms Label that inherits PlotView.Font ambiently.
         _trackerBaseFont ??= (Font)_plot.Font.Clone();
         Font old = _scaledTrackerFont;
         _scaledTrackerFont = new Font(
             _trackerBaseFont.FontFamily,
-            UiScale.ScaledFontSize(_trackerBaseFont.Size, _axisTextScalePercent),
+            UiScale.ScaledFontSize(_trackerBaseFont.Size, clamped),
             _trackerBaseFont.Style);
         _plot.Font = _scaledTrackerFont;
         old?.Dispose();
