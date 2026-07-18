@@ -335,7 +335,7 @@ public sealed class WinFormsUiLifetimeTests
             Assert.True(ready.Wait(TimeSpan.FromSeconds(10)), "Timed out waiting for the scrollbar test window.");
             Assert.Null(uiThreadFailure);
 
-            AutomationElement verticalElement = GetAutomationElementFromPoint(verticalPoint);
+            AutomationElement verticalElement = GetAutomationElementFromPoint(verticalPoint, ControlType.ScrollBar);
             Assert.Equal(ControlType.ScrollBar, verticalElement.Current.ControlType);
             Assert.Equal("Sensor list vertical scrollbar", verticalElement.Current.Name);
             Assert.True(verticalElement.TryGetCurrentPattern(RangeValuePattern.Pattern, out object verticalPatternObject));
@@ -345,7 +345,7 @@ public sealed class WinFormsUiLifetimeTests
             verticalPattern.SetValue(55);
             AssertScrollBarValue(shownForm, nativeVertical, 55);
 
-            AutomationElement horizontalElement = GetAutomationElementFromPoint(horizontalPoint);
+            AutomationElement horizontalElement = GetAutomationElementFromPoint(horizontalPoint, ControlType.ScrollBar);
             Assert.Equal(ControlType.ScrollBar, horizontalElement.Current.ControlType);
             Assert.Equal("Sensor list horizontal scrollbar", horizontalElement.Current.Name);
             Assert.True(horizontalElement.TryGetCurrentPattern(RangeValuePattern.Pattern, out object horizontalPatternObject));
@@ -513,15 +513,23 @@ public sealed class WinFormsUiLifetimeTests
 
     private const int GdiObjects = 0;
 
-    private static AutomationElement GetAutomationElementFromPoint(System.Drawing.Point point)
+    private static AutomationElement GetAutomationElementFromPoint(System.Drawing.Point point, ControlType expectedControlType)
     {
         var timeout = Stopwatch.StartNew();
         Win32Exception lastTransientFailure = null;
+        AutomationElement lastElement = null;
         do
         {
             try
             {
-                return AutomationElement.FromPoint(new System.Windows.Point(point.X, point.Y));
+                lastElement = AutomationElement.FromPoint(new System.Windows.Point(point.X, point.Y));
+                if (Equals(lastElement.Current.ControlType, expectedControlType))
+                    return lastElement;
+
+                // The indicator's automation provider is wired during its first paint; under CPU
+                // contention (parallel test collections) this hit-test can win that race and see
+                // only the plain host pane. Poll until the provider answers or the timeout ends.
+                Thread.Sleep(25);
             }
             catch (Win32Exception exception) when (exception.NativeErrorCode == 5)
             {
@@ -530,6 +538,9 @@ public sealed class WinFormsUiLifetimeTests
             }
         }
         while (timeout.Elapsed < TimeSpan.FromSeconds(2));
+
+        if (lastElement != null)
+            return lastElement; // let the caller's assertion report the actual mismatch
 
         throw new InvalidOperationException(
             "Windows UI Automation repeatedly denied the painted scrollbar hit-test.",
