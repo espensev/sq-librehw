@@ -940,10 +940,10 @@ public class PlotPanel : UserControl
     }
 
     /// <summary>
-    /// Scales all axis tick-label and title fonts, plus the hover tracker font, by <paramref name="percent"/>.
-    /// DPI-independent on purpose: today's axis fonts are NOT DPI-scaled (ScaledPlotModel scales only the
-    /// NaN/auto margins, a no-op), so 100% reproduces the current look at every DPI. Auto-margins absorb
-    /// larger labels, so no clipping math is needed.
+    /// Scales all axis tick-label and title fonts (plotTextScale; the hover tracker follows
+    /// <see cref="SetTrackerTextScale"/> instead). DPI-independent on purpose: today's axis fonts are
+    /// NOT DPI-scaled (ScaledPlotModel scales only the NaN/auto margins, a no-op), so 100% reproduces
+    /// the current look at every DPI. Auto-margins absorb larger labels, so no clipping math is needed.
     /// </summary>
     public void SetAxisTextScale(int percent)
     {
@@ -964,6 +964,7 @@ public class PlotPanel : UserControl
         InvalidatePlotCosmetic();
     }
 
+    /// <summary>Scales the hover tracker/tooltip font (follows the UI text scale, not plotTextScale).</summary>
     public void SetTrackerTextScale(int percent)
     {
         int clamped = UiScale.ClampPercent(percent);
