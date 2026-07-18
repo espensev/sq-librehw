@@ -11,9 +11,11 @@
   const STORAGE_KEY = 'sq.workspace.v1';
   const STATE_SCHEMA = 'sq.workspace';
   const PROFILE_SCHEMA = 'sq.workspace.profile';
-  const VERSION = 1;
+  const STATE_VERSION = 2;
+  const PROFILE_VERSION = 1;
+  const VERSION = STATE_VERSION;
   const PANEL_TYPES = Object.freeze(['card', 'table', 'graph']);
-  const BUILT_IN_IDS = Object.freeze(['main', 'gaming', 'storage']);
+  const BUILT_IN_IDS = Object.freeze(['main', 'gaming', 'storage', 'thermal']);
   const LIMITS = Object.freeze({
     profiles: 10,
     panelsPerProfile: 12,
@@ -30,7 +32,9 @@
     detail: Object.freeze(['Temperature', 'Load', 'Power', 'Clock', 'Fan', 'Control', 'Throughput', 'Data', 'SmallData', 'Level', 'Voltage', 'Current']),
     gaming: Object.freeze(['Temperature', 'Load', 'Power', 'Clock', 'Fan', 'Control']),
     storage: Object.freeze(['Temperature', 'Load', 'Throughput', 'Data', 'SmallData', 'Level']),
-    thermal: Object.freeze(['Temperature']),
+    thermal: Object.freeze(['Temperature', 'TemperatureRate']),
+    cooling: Object.freeze(['Fan', 'Control', 'Power', 'Load']),
+    thermalTrend: Object.freeze(['Temperature', 'TemperatureRate', 'Fan', 'Power']),
     performance: Object.freeze(['Temperature', 'Load', 'Power', 'Clock']),
     storageGraph: Object.freeze(['Temperature', 'Throughput', 'Load'])
   });
@@ -50,7 +54,10 @@
     'gaming-performance': freezePreset(TYPE_ORDER.performance, CLASS_ORDER.gaming, 12),
     'storage-primary': freezePreset(TYPE_ORDER.storage, CLASS_ORDER.storage, 8),
     'storage-details': freezePreset(TYPE_ORDER.storage, CLASS_ORDER.storage, 24),
-    'storage-activity': freezePreset(TYPE_ORDER.storageGraph, CLASS_ORDER.storage, 12)
+    'storage-activity': freezePreset(TYPE_ORDER.storageGraph, CLASS_ORDER.storage, 12),
+    'thermal-critical': freezePreset(TYPE_ORDER.thermal, CLASS_ORDER.main, 12, true),
+    'thermal-cooling': freezePreset(TYPE_ORDER.cooling, CLASS_ORDER.main, 24, true),
+    'thermal-trends': freezePreset(TYPE_ORDER.thermalTrend, CLASS_ORDER.main, 16, true)
   });
   const PRESET_IDS = Object.freeze(Object.keys(PRESETS));
 
@@ -197,6 +204,13 @@
           defaultPanel('storage-details', 'Storage details', 'table', 'storage-details'),
           defaultPanel('storage-activity', 'Drive activity', 'graph', 'storage-activity')
         ]
+      },
+      {
+        id: 'thermal', name: 'Thermal', builtIn: 'thermal', panels: [
+          defaultPanel('thermal-critical', 'Critical thermals', 'card', 'thermal-critical'),
+          defaultPanel('thermal-cooling', 'Cooling and power', 'table', 'thermal-cooling'),
+          defaultPanel('thermal-trends', 'Thermal trends', 'graph', 'thermal-trends')
+        ]
       }
     ];
   }
@@ -204,7 +218,7 @@
   function createDefaults() {
     return {
       schema: STATE_SCHEMA,
-      version: VERSION,
+      version: STATE_VERSION,
       activeProfileId: 'main',
       profiles: defaultProfiles().map(cloneProfile)
     };
@@ -252,7 +266,8 @@
   function normalizeState(value) {
     if (!isObject(value)) return createDefaults();
     if (hasOwn(value, 'schema') && value.schema !== STATE_SCHEMA) return createDefaults();
-    if (hasOwn(value, 'version') && value.version !== VERSION) return createDefaults();
+    const sourceVersion = hasOwn(value, 'version') ? value.version : STATE_VERSION;
+    if (sourceVersion !== 1 && sourceVersion !== STATE_VERSION) return createDefaults();
 
     const sourceProfiles = Array.isArray(value.profiles) ? value.profiles : [];
     if (sourceProfiles.length === 0) return createDefaults();
@@ -263,11 +278,20 @@
       .map((profile, index) => normalizeProfile(profile, index, usedIds, usedBuiltIns));
     if (profiles.length === 0) return createDefaults();
 
+    // v1 shipped with three built-ins. Add Thermal only while crossing the v1 -> v2
+    // boundary so a later user deletion is durable and never silently resurrected.
+    if (sourceVersion === 1 && !usedBuiltIns.has('thermal') && profiles.length < LIMITS.profiles) {
+      const thermal = defaultProfiles().find(profile => profile.builtIn === 'thermal');
+      const migrated = cloneProfile(thermal);
+      migrated.id = uniqueId(migrated.id, usedIds);
+      profiles.push(migrated);
+    }
+
     const requestedActive = typeof value.activeProfileId === 'string' ? value.activeProfileId : '';
     const activeProfileId = profiles.some(profile => profile.id === requestedActive)
       ? requestedActive
       : profiles[0].id;
-    return { schema: STATE_SCHEMA, version: VERSION, activeProfileId, profiles };
+    return { schema: STATE_SCHEMA, version: STATE_VERSION, activeProfileId, profiles };
   }
 
   function resolveStorage(storage) {
@@ -287,7 +311,8 @@
       if (utf8ByteLength(raw) > LIMITS.stateBytes)
         return { ok: false, source: 'default', state: createDefaults(), error: 'state-too-large' };
       const parsed = JSON.parse(raw);
-      if (!isObject(parsed) || parsed.schema !== STATE_SCHEMA || parsed.version !== VERSION)
+      if (!isObject(parsed) || parsed.schema !== STATE_SCHEMA ||
+          (parsed.version !== 1 && parsed.version !== STATE_VERSION))
         return { ok: false, source: 'default', state: createDefaults(), error: 'unsupported-state' };
       return { ok: true, source: 'storage', state: normalizeState(parsed), error: null };
     } catch {
@@ -642,7 +667,7 @@
       throw new WorkspaceError('empty-profile', 'A profile must contain at least one panel before it can be exported.');
     return {
       schema: PROFILE_SCHEMA,
-      version: VERSION,
+      version: PROFILE_VERSION,
       profile: {
         id: profile.id,
         name: profile.name,
@@ -680,7 +705,7 @@
 
     if (!isObject(document) || document.schema !== PROFILE_SCHEMA)
       throw new WorkspaceError('invalid-schema', 'The profile document has an unknown schema.');
-    if (document.version !== VERSION)
+    if (document.version !== PROFILE_VERSION)
       throw new WorkspaceError('unsupported-version', 'The profile document version is not supported.');
     if (!isObject(document.profile))
       throw new WorkspaceError('invalid-profile', 'The profile document does not contain a profile.');
@@ -744,6 +769,8 @@
     STORAGE_KEY,
     STATE_SCHEMA,
     PROFILE_SCHEMA,
+    STATE_VERSION,
+    PROFILE_VERSION,
     VERSION,
     LIMITS,
     PANEL_TYPES,

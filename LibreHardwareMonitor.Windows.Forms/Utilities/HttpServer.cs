@@ -886,6 +886,7 @@ public class HttpServer
         { SensorType.Power, ("watts", 1) },
         { SensorType.SmallData, ("bytes", 1024*1024) },                    //originally MiB
         { SensorType.Temperature, ("celsius", 1) },
+        { SensorType.TemperatureRate, ("celsius_per_second", 1) },
         { SensorType.Throughput, ("bytes_per_second", 1) },
         { SensorType.TimeSpan, ("seconds", 1) },
         { SensorType.Timing, ("seconds", 0.000000001 ) },                  //originally nanoseconds
@@ -1252,6 +1253,7 @@ public class HttpServer
             case SensorType.Load:
                 return "load.png";
             case SensorType.Temperature:
+            case SensorType.TemperatureRate:
                 return "temperature.png";
             case SensorType.Fan:
                 return "fan.png";

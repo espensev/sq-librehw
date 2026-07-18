@@ -180,6 +180,8 @@ public class SensorNotifyIcon : IDisposable
         {
             case SensorType.Temperature:
                 return _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit ? $"{UnitManager.CelsiusToFahrenheit(value):F0}" : $"{value:F0}";
+            case SensorType.TemperatureRate:
+                return _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit ? $"{UnitManager.CelsiusRateToFahrenheit(value):F1}" : $"{value:F1}";
             case SensorType.TimeSpan:
                 return $"{TimeSpan.FromSeconds(value.Value):g}";
             case SensorType.Timing:
@@ -318,6 +320,7 @@ public class SensorNotifyIcon : IDisposable
             case SensorType.Clock: format = "\n{0}: {1:F0} MHz"; break;
             case SensorType.Load: format = "\n{0}: {1:F1} %"; break;
             case SensorType.Temperature: format = "\n{0}: {1:F1} °C"; break;
+            case SensorType.TemperatureRate: format = "\n{0}: {1:F2} °C/s"; break;
             case SensorType.Fan: format = "\n{0}: {1:F0} RPM"; break;
             case SensorType.Flow: format = "\n{0}: {1:F0} L/h"; break;
             case SensorType.Control: format = "\n{0}: {1:F1} %"; break;
@@ -341,6 +344,11 @@ public class SensorNotifyIcon : IDisposable
         {
             format = "\n{0}: {1:F1} °F";
             formattedValue = string.Format(format, Sensor.Name, UnitManager.CelsiusToFahrenheit(sensorValue));
+        }
+        else if (Sensor.SensorType == SensorType.TemperatureRate && _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit)
+        {
+            format = "\n{0}: {1:F2} °F/s";
+            formattedValue = string.Format(format, Sensor.Name, UnitManager.CelsiusRateToFahrenheit(sensorValue));
         }
 
         string hardwareName = Sensor.Hardware.Name;

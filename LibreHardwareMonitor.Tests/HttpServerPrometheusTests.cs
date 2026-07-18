@@ -170,6 +170,26 @@ public sealed class HttpServerPrometheusTests
         Assert.Equal(expected, content);
     }
 
+    [Fact]
+    public void TemperatureRateUsesExplicitCelsiusPerSecondPrometheusUnit()
+    {
+        FakeHardware hardware = new(new Identifier("metrics", "0"), "Metric CPU", HardwareType.Cpu);
+        HistoryReaderSensor sensor = new(
+            hardware,
+            SensorType.TemperatureRate,
+            0,
+            "Package Rate",
+            new SensorValue(1.25f, _historyStart));
+        hardware.AddSensor(sensor);
+        HttpServer server = CreateServer(hardware);
+
+        (string content, _, _) = server.BuildPrometheusResponse(null);
+
+        Assert.Contains("# TYPE lhm_cpu_temperaturerate_celsius_per_second gauge\n", content);
+        Assert.Contains("\"sensorId\"=\"/temperaturerate/0\"", content);
+        Assert.EndsWith(" 1.25\n", content);
+    }
+
     private static (HttpServer Server, HistoryReaderSensor Sensor) CreateReaderServer(int historyCount)
     {
         FakeHardware hardware = new(new Identifier("metrics", "0"), "Metric CPU", HardwareType.Cpu);

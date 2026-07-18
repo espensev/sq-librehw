@@ -233,6 +233,15 @@ internal class Sensor : ISensor, ISensorHistoryReader
         }
     }
 
+    protected void ResetPendingHistoryBucket()
+    {
+        lock (_valuesLock)
+        {
+            _sum = 0;
+            _count = 0;
+        }
+    }
+
     public IEnumerable<SensorValue> Values
     {
         get

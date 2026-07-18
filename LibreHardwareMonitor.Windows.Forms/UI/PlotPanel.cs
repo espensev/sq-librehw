@@ -413,6 +413,7 @@ public class PlotPanel : UserControl
             { SensorType.Current, "A" },
             { SensorType.Clock, "MHz" },
             { SensorType.Temperature, "°C" },
+            { SensorType.TemperatureRate, "°C/s" },
             { SensorType.Load, "%" },
             { SensorType.Fan, "RPM" },
             { SensorType.Flow, "L/h" },
@@ -846,6 +847,8 @@ public class PlotPanel : UserControl
                 SensorType type = pair.Key;
                 if (type == SensorType.Temperature)
                     axis.Unit = _unitManager.TemperatureUnit == TemperatureUnit.Celsius ? "°C" : "°F";
+                else if (type == SensorType.TemperatureRate)
+                    axis.Unit = _unitManager.TemperatureUnit == TemperatureUnit.Celsius ? "°C/s" : "°F/s";
 
                 if (!_stackedAxes.Value)
                     continue;
@@ -1057,7 +1060,9 @@ internal sealed class PlotPanelHistoryStore
     {
         foreach (KeyValuePair<ISensor, PlotPanelSeriesState> pair in _states)
         {
-            bool rebuildForUnit = temperatureUnitChanged && pair.Key.SensorType == SensorType.Temperature;
+            bool rebuildForUnit = temperatureUnitChanged &&
+                                  (pair.Key.SensorType == SensorType.Temperature ||
+                                   pair.Key.SensorType == SensorType.TemperatureRate);
             pair.Value.Synchronize(pair.Key, _timeOrigin, temperatureUnit, rebuildForUnit);
         }
     }
@@ -1149,9 +1154,8 @@ internal sealed class PlotPanelSeriesState
         if (Points.Capacity < requiredCapacity)
             Points.Capacity = requiredCapacity;
 
-        bool toFahrenheit = sensorType == SensorType.Temperature && temperatureUnit == TemperatureUnit.Fahrenheit;
         for (int i = skipIncoming; i < values.Count; i++)
-            Points.Add(CreatePoint(values[i], timeOrigin, toFahrenheit));
+            Points.Add(CreatePoint(values[i], sensorType, timeOrigin, temperatureUnit));
     }
 
     private void AppendPoints
@@ -1161,8 +1165,6 @@ internal sealed class PlotPanelSeriesState
         DateTime timeOrigin,
         TemperatureUnit temperatureUnit)
     {
-        bool toFahrenheit = sensorType == SensorType.Temperature && temperatureUnit == TemperatureUnit.Fahrenheit;
-
         if (values is IReadOnlyList<SensorValue> list)
         {
             int requiredCapacity = Points.Count + list.Count;
@@ -1170,18 +1172,31 @@ internal sealed class PlotPanelSeriesState
                 Points.Capacity = requiredCapacity;
 
             for (int i = 0; i < list.Count; i++)
-                Points.Add(CreatePoint(list[i], timeOrigin, toFahrenheit));
+                Points.Add(CreatePoint(list[i], sensorType, timeOrigin, temperatureUnit));
 
             return;
         }
 
         foreach (SensorValue value in values)
-            Points.Add(CreatePoint(value, timeOrigin, toFahrenheit));
+            Points.Add(CreatePoint(value, sensorType, timeOrigin, temperatureUnit));
     }
 
-    private static DataPoint CreatePoint(SensorValue value, DateTime timeOrigin, bool toFahrenheit)
+    private static DataPoint CreatePoint
+    (
+        SensorValue value,
+        SensorType sensorType,
+        DateTime timeOrigin,
+        TemperatureUnit temperatureUnit)
     {
-        float displayedValue = toFahrenheit ? UnitManager.CelsiusToFahrenheit(value.Value).Value : value.Value;
+        float displayedValue = value.Value;
+        if (temperatureUnit == TemperatureUnit.Fahrenheit)
+        {
+            if (sensorType == SensorType.Temperature)
+                displayedValue = UnitManager.CelsiusToFahrenheit(value.Value).Value;
+            else if (sensorType == SensorType.TemperatureRate)
+                displayedValue = UnitManager.CelsiusRateToFahrenheit(value.Value).Value;
+        }
+
         return new DataPoint((value.Time - timeOrigin).TotalSeconds, displayedValue);
     }
 }

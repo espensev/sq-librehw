@@ -53,7 +53,7 @@ function jsonWithAsciiPadding(value, targetBytes) {
 function profileDocument(overrides) {
   return {
     schema:W.PROFILE_SCHEMA,
-    version:W.VERSION,
+    version:W.PROFILE_VERSION,
     profile:Object.assign({
       id:'imported',
       name:'Imported',
@@ -67,6 +67,7 @@ const sensors = [
   sensor('/cpu/temp-a', 'cpu', 'Temperature'),
   sensor('/cpu/load', 'cpu', 'Load'),
   sensor('/gpu/temp', 'gpu', 'Temperature'),
+  sensor('/gpu/hotspot-rate', 'gpu', 'TemperatureRate'),
   sensor('/gpu/load', 'gpu', 'Load'),
   sensor('/gpu/power', 'gpu', 'Power'),
   sensor('/gpu/voltage', 'gpu', 'Voltage'),
@@ -79,8 +80,10 @@ test('defaults and storage stay versioned, bounded, and isolated', () => {
   const defaults = W.createDefaults();
   assert.equal(W.STORAGE_KEY, 'sq.workspace.v1');
   assert.equal(defaults.schema, 'sq.workspace');
-  assert.equal(defaults.version, 1);
-  assert.deepEqual(defaults.profiles.map(profile => profile.name), ['Main', 'Gaming', 'Storage']);
+  assert.equal(defaults.version, 2);
+  assert.equal(W.STATE_VERSION, 2);
+  assert.equal(W.PROFILE_VERSION, 1);
+  assert.deepEqual(defaults.profiles.map(profile => profile.name), ['Main', 'Gaming', 'Storage', 'Thermal']);
   assert.deepEqual(defaults.profiles.flatMap(profile => profile.panels.map(panel => panel.type))
     .filter((value, index, all) => all.indexOf(value) === index), ['card', 'table', 'graph']);
 
@@ -102,6 +105,24 @@ test('defaults and storage stay versioned, bounded, and isolated', () => {
   assert.equal(fallbackResult.ok, false);
   assert.equal(fallbackResult.error, 'storage-write-failed');
   assert.equal(JSON.parse(safeFallback.getItem(W.STORAGE_KEY)).schema, W.STATE_SCHEMA);
+});
+
+test('v1 state gains Thermal once while v2 deletions remain durable', () => {
+  const legacy = W.createDefaults();
+  legacy.version = 1;
+  legacy.profiles = legacy.profiles.filter(profile => profile.builtIn !== 'thermal');
+  const storage = memoryStorage({[W.STORAGE_KEY]:JSON.stringify(legacy)});
+
+  const migrated = W.loadResult(storage);
+  assert.equal(migrated.ok, true);
+  assert.equal(migrated.source, 'storage');
+  assert.equal(migrated.state.version, 2);
+  assert.equal(migrated.state.profiles.filter(profile => profile.builtIn === 'thermal').length, 1);
+
+  const withoutThermal = W.deleteProfile(migrated.state, 'thermal');
+  assert.equal(withoutThermal.version, 2);
+  assert.equal(withoutThermal.profiles.some(profile => profile.builtIn === 'thermal'), false);
+  assert.equal(W.normalizeState(withoutThermal).profiles.some(profile => profile.builtIn === 'thermal'), false);
 });
 
 test('workspace and dashboard storage remain isolated in both directions', () => {
@@ -175,6 +196,16 @@ test('semantic presets are deterministic, label-independent, and class-scoped', 
     '/cpu/temp-a', '/gpu/temp', '/cpu/load', '/gpu/load', '/gpu/power', '/cpu/temp-b'
   ]);
   assert.deepEqual(W.resolvePreset('storage-primary', sensors), ['/nvme/temp', '/nvme/load']);
+  assert.deepEqual(W.resolvePreset('thermal-critical', sensors), [
+    '/cpu/temp-a', '/gpu/temp', '/nvme/temp', '/gpu/hotspot-rate', '/cpu/temp-b'
+  ]);
+  const thermalSensors = sensors.concat(
+    sensor('/gpu/fan', 'gpu', 'Fan'),
+    sensor('/gpu/control', 'gpu', 'Control'));
+  assert.ok(W.resolvePreset('thermal-cooling', thermalSensors).includes('/gpu/fan'));
+  assert.ok(W.resolvePreset('thermal-cooling', thermalSensors).includes('/gpu/control'));
+  assert.ok(W.resolvePreset('thermal-trends', sensors).includes('/gpu/hotspot-rate'));
+  assert.ok(!W.resolvePreset('thermal-trends', sensors).includes('/gpu/voltage'));
 
   const duplicate = Object.assign({}, sensors[0], {text:'same ID, different label'});
   assert.equal(W.resolvePreset('main-primary', sensors.concat(duplicate))
@@ -342,7 +373,7 @@ test('import failures report the complete bounded error surface', () => {
     typeof input === 'string' ? input : JSON.stringify(input)).error.code;
 
   assert.equal(errorFor('{'), 'invalid-json');
-  assert.equal(errorFor({schema:W.PROFILE_SCHEMA, version:W.VERSION, profile:null}), 'invalid-profile');
+  assert.equal(errorFor({schema:W.PROFILE_SCHEMA, version:W.PROFILE_VERSION, profile:null}), 'invalid-profile');
   assert.equal(errorFor(profileDocument({name:' '})), 'invalid-profile-name');
   assert.equal(errorFor(profileDocument({panels:[null]})), 'invalid-panel');
   assert.equal(errorFor(profileDocument({panels:[{
@@ -355,7 +386,7 @@ test('import failures report the complete bounded error surface', () => {
 
   const fullState = W.normalizeState({
     schema:W.STATE_SCHEMA,
-    version:W.VERSION,
+    version:W.STATE_VERSION,
     activeProfileId:'profile-0',
     profiles:Array.from({length:W.LIMITS.profiles}, (_, index) => ({
       id:'profile-' + index,
@@ -394,7 +425,7 @@ test('normalization applies documented collection and string bounds', () => {
   });
   const state = W.normalizeState({
     schema:W.STATE_SCHEMA,
-    version:W.VERSION,
+    version:W.STATE_VERSION,
     activeProfileId:'profile-0',
     profiles:Array.from({length:12}, (_, index) => profile(index))
   });

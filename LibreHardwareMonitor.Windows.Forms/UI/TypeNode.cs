@@ -50,6 +50,10 @@ public sealed class TypeNode : Node, IExpandPersistNode, IDisposable
                 Image = SensorTypeImageCache.Get("temperature.png");
                 Text = "Temperatures";
                 break;
+            case SensorType.TemperatureRate:
+                Image = SensorTypeImageCache.Get("temperature.png");
+                Text = "Temperature Rates";
+                break;
             case SensorType.Fan:
                 Image = SensorTypeImageCache.Get("fan.png");
                 Text = "Fans";

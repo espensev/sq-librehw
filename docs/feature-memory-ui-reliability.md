@@ -1,9 +1,9 @@
 # Feature Spec: Memory, Lifetime, and UI Reliability
 
 **Status:** reliability baseline shipped and deployed; scrollbar accessibility
-follow-up implemented and verified locally, promotion pending
+follow-up deployed on SND-HOST, manual host interaction smoke pending
 
-**Updated:** 2026-07-15
+**Updated:** 2026-07-18
 
 ## Problem and motivation
 
@@ -148,8 +148,10 @@ dashboard policy, or supported frameworks.
 
 ## Open follow-ups
 
-- [ ] Promote the verified scrollbar follow-up only with explicit deployment
-  approval, then repeat the real monitor hit-target and drag smoke.
+- [x] Promote the verified scrollbar follow-up only with explicit deployment
+  approval. It shipped in the verified 2026-07-18 SND-HOST build.
+- [ ] Repeat the real monitor hit-target, drag, and UI Automation smoke on
+  SND-HOST; deployment validation covered runtime and HTTP health, not manual UI.
 - [ ] Preserve the forced first dashboard snapshot when a persisted-paused page
   starts hidden, so first visibility does not stay blank until Resume.
 - [ ] Preserve the last bounded on-disk sensor histories across autosave until a
@@ -191,6 +193,11 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-07-18 SND-DESK -> SND-HOST deployment: the scrollbar follow-up shipped
+  in product version `0.9.6+ebedd8b-dirty.2026-07-18`. Identity, process/task,
+  HTTP, live telemetry, logging, and controller-to-host access checks passed.
+  The manual scrollbar hit-target/drag/UI Automation smoke was not repeated on
+  the target and remains explicitly open above.
 - 2026-07-15 scrollbar accessibility follow-up: five focused WinForms checks
   and the full suite passed (129 passed, one existing opt-in skip); both x64
   Release targets built in isolated output folders with zero warnings/errors.

@@ -1297,6 +1297,9 @@ public class SensorGadget : Gadget
                                 case SensorType.Temperature:
                                     format = "{0:F1} °C";
                                     break;
+                                case SensorType.TemperatureRate:
+                                    format = "{0:F2} °C/s";
+                                    break;
                                 case SensorType.Fan:
                                     format = "{0:F0} RPM";
                                     break;
@@ -1335,6 +1338,10 @@ public class SensorGadget : Gadget
                             if (sensor.SensorType == SensorType.Temperature && _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit)
                             {
                                 formatted = $"{UnitManager.CelsiusToFahrenheit(sensor.Value):F1} °F";
+                            }
+                            else if (sensor.SensorType == SensorType.TemperatureRate && _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit)
+                            {
+                                formatted = $"{UnitManager.CelsiusRateToFahrenheit(sensor.Value):F2} °F/s";
                             }
                             else if (sensor.SensorType == SensorType.Throughput)
                             {

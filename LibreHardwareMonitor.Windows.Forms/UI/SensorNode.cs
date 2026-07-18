@@ -43,6 +43,9 @@ public class SensorNode : Node
             case SensorType.Temperature:
                 Format = "{0:F1} °C";
                 break;
+            case SensorType.TemperatureRate:
+                Format = "{0:F2} °C/s";
+                break;
             case SensorType.Fan:
                 Format = "{0:F0} RPM";
                 break;
@@ -202,6 +205,10 @@ public class SensorNode : Node
                 case SensorType.Temperature when _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit:
                     {
                         return $"{value * 1.8 + 32:F1} °F";
+                    }
+                case SensorType.TemperatureRate when _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit:
+                    {
+                        return $"{UnitManager.CelsiusRateToFahrenheit(value):F2} °F/s";
                     }
                 case SensorType.Throughput:
                     {

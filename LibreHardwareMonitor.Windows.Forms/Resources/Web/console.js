@@ -1152,7 +1152,7 @@
     const STLABEL = { ok:'OK', warn:'WATCH', crit:'CRIT', info:'INFO', off:'IDLE' };
     const STGLYPH = { ok:'●', warn:'▲', crit:'✕', info:'·', off:'○' };
     const CLASSLABEL = { cpu:'CPU', gpu:'GPU', igpu:'iGPU', mem:'MEMORY', dimm:'DIMM', nvme:'STORAGE', disk:'DISK', mb:'BOARD', nic:'NET', other:'MISC' };
-    const TORDER = ['Temperature','Limits','Load','Power','Clock','Fan','Control','Voltage','Current','Data','SmallData','Throughput','Level','Factor','Timing'];
+    const TORDER = ['Temperature','TemperatureRate','Limits','Load','Power','Clock','Fan','Control','Voltage','Current','Data','SmallData','Throughput','Level','Factor','Timing'];
     const TICONS = {
       temp:  '<path d="M8 3a2 2 0 0 1 4 0v7.3a4.5 4.5 0 1 1-4 0z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="14" r="2" fill="currentColor"/>',
       load:  '<path d="M3 13a7 7 0 0 1 14 0" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 13 13.5 8" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="13" r="1.4" fill="currentColor"/>',
@@ -1594,7 +1594,7 @@
       return article;
     }
     function studioSensorPriority(s) {
-      const order = ['Temperature','Load','Power','Fan','Control','Clock','Throughput','Data','SmallData','Level'];
+      const order = ['Temperature','TemperatureRate','Load','Power','Fan','Control','Clock','Throughput','Data','SmallData','Level'];
       const typeRank = order.indexOf(s.type);
       return (SQ.RANK[s.status] + 1) * 100 - (typeRank < 0 ? 99 : typeRank);
     }

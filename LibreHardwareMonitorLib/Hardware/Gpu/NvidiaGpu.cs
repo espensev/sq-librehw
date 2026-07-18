@@ -32,6 +32,7 @@ internal sealed class NvidiaGpu : GenericGpu
     private readonly Sensor _gpuSharedMemoryUsage;
     private readonly NvApi.NvPhysicalGpuHandle _handle;
     private readonly Sensor _hotSpotTemperature;
+    private readonly TemperatureRateSensor _hotSpotTemperatureRate;
     private readonly Sensor[] _loads;
     private readonly Sensor _memoryFree;
     private readonly Sensor _memoryJunctionTemperature;
@@ -103,6 +104,7 @@ internal sealed class NvidiaGpu : GenericGpu
 
         // Thermal sensors.
         _hotSpotTemperature = new Sensor("GPU Hot Spot", (int)thermalSettings.Count + 1, SensorType.Temperature, this, settings);
+        _hotSpotTemperatureRate = new TemperatureRateSensor("GPU Hot Spot Rate", 0, this, settings);
         _memoryJunctionTemperature = new Sensor("GPU Memory Junction", (int)thermalSettings.Count + 2, SensorType.Temperature, this, settings);
         bool hasAnyThermalSensor = false;
 
@@ -606,15 +608,25 @@ internal sealed class NvidiaGpu : GenericGpu
                     }
                 }
 
-                if (_hotSpotTemperature.Value != 0)
+                if (status == NvApi.NvStatus.OK && _hotSpotTemperature.Value is float hotSpotTemperature && hotSpotTemperature != 0)
+                {
                     ActivateSensor(_hotSpotTemperature);
+                    _hotSpotTemperatureRate.Observe(hotSpotTemperature);
+                    if (_hotSpotTemperatureRate.Value.HasValue)
+                        ActivateSensor(_hotSpotTemperatureRate);
+                }
+                else
+                {
+                    _hotSpotTemperatureRate.Observe(null);
+                }
 
-                if (_memoryJunctionTemperature.Value != 0)
+                if (status == NvApi.NvStatus.OK && _memoryJunctionTemperature.Value is float memoryJunctionTemperature && memoryJunctionTemperature != 0)
                     ActivateSensor(_memoryJunctionTemperature);
             }
             else
             {
                 _hotSpotTemperature.Value = null;
+                _hotSpotTemperatureRate.Observe(null);
                 _memoryJunctionTemperature.Value = null;
             }
 

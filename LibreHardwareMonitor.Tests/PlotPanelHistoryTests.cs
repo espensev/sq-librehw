@@ -130,6 +130,25 @@ public sealed class PlotPanelHistoryTests
     }
 
     [Fact]
+    public void TemperatureRateUnitChangeScalesWithoutApplyingFahrenheitOffset()
+    {
+        ReaderSensor sensor = new(SensorType.TemperatureRate);
+        SensorValue first = new(0.5f, TimeOrigin.AddSeconds(1));
+        SensorValue second = new(1f, TimeOrigin.AddSeconds(2));
+        sensor.SetSlice(2, false, first, second);
+        PlotPanelHistoryStore store = CreateStore(sensor);
+        store.Synchronize(TemperatureUnit.Celsius, false);
+
+        sensor.SetSlice(2, false, first, second);
+        store.Synchronize(TemperatureUnit.Fahrenheit, true);
+
+        PlotPanelSeriesState state = GetState(store, sensor);
+        Assert.Equal(0.9d, state.Points[0].Y, 5);
+        Assert.Equal(1.8d, state.Points[1].Y, 5);
+        Assert.Equal((0L, PlotPanelHistoryStore.MaxPlotHistoryValues), sensor.ReadRequests[1]);
+    }
+
+    [Fact]
     public void NonReaderFallback_KeepsSnapshotReuseAndTemperatureConversionBehavior()
     {
         FallbackSensor sensor = new(SensorType.Temperature);

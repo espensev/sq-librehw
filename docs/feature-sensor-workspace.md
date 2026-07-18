@@ -1,7 +1,7 @@
 # Feature Spec: Sensor Workspace
 
-**Status:** implemented and verified; deployment pending
-**Updated:** 2026-07-15
+**Status:** deployed on SND-HOST; deterministic and live served-asset smoke verified
+**Updated:** 2026-07-18
 
 ## Problem
 
@@ -17,7 +17,7 @@ boundaries.
 
 The first slice must:
 
-- ship host-neutral `Main`, `Gaming`, and `Storage` profiles;
+- ship host-neutral `Main`, `Gaming`, `Storage`, and `Thermal` profiles;
 - support card, table, and honest small-multiple graph panels;
 - let operators add, rename, reorder, retarget, and remove panels;
 - let each panel select and order exact live `SensorId` values;
@@ -31,7 +31,8 @@ The first slice must:
 
 - No hardware writes, control sliders, or `/Sensor?action=Set` calls.
 - No change to `data.json`, CSV, Prometheus, routing, or assembly version.
-- No derived/virtual sensors or cross-unit multi-series overlays in this slice.
+- Workspace does not calculate derived sensors or render cross-unit multi-series
+  overlays. It may present an additive derived sensor supplied by the backend.
 - No replacement of Standard or Studio and no migration of their saved state.
 - No WebView2, native Sensor Manager, or Avalonia cutover in this slice. Those
   remain parallel frontends over the same future presentation contract.
@@ -46,8 +47,9 @@ ordered profiles, ordered panels, panel type, and exact sensor membership.
 
 Built-in profile panels begin with semantic presets instead of machine-specific
 IDs. `Main` chooses useful primary telemetry, `Gaming` emphasizes CPU/GPU
-telemetry, and `Storage` emphasizes storage devices. Editing a preset panel
-materializes its current ordered SensorIds. Export resolves presets into an
+telemetry, `Storage` emphasizes storage devices, and `Thermal` combines
+temperature, temperature-rate, fan, control, load, and power semantics. Editing
+a preset panel materializes its current ordered SensorIds. Export resolves presets into an
 explicit document without changing the local adaptive profile, and waits for a
 live snapshot rather than exporting an accidental empty preset. Raw labels and
 SensorIds remain available even when an alias is displayed.
@@ -72,8 +74,13 @@ suffixes and existing profiles are never overwritten. Imported panels never
 receive authority to activate internal adaptive presets: import clears `preset`
 and preserves only the document's normalized explicit SensorIds.
 
+Workspace state schema version `2` adds `Thermal` once while loading a version
+`1` state, provided the 10-profile safety bound has room. A migrated version `2`
+state never resurrects a Thermal profile that the operator later deletes.
+Portable profile documents remain version `1`.
+
 Built-in profiles are editable and deletable like other profiles. `Reset
-workspace` restores the three current built-ins and removes local profile
+workspace` restores the four current built-ins and removes local profile
 changes after confirmation. A single remaining profile cannot be deleted.
 
 ## Compatibility
@@ -91,7 +98,9 @@ owning hardware collection or the deployed `LibreHW-No-UAC` task.
 
 - [x] Standard and Studio retain their current markup, state, and behavior.
 - [x] Workspace persists independently and survives malformed local storage.
-- [x] Main, Gaming, and Storage resolve without hard-coded host IDs or labels.
+- [x] Main, Gaming, Storage, and Thermal resolve without hard-coded host IDs or
+  labels.
+- [x] Version 1 state gains Thermal once; version 2 deletion remains durable.
 - [x] Profile and panel operations persist and preserve ordered SensorIds.
 - [x] Import/export round-trips and rejects incompatible or unbounded input.
 - [x] Card, table, and graph panels show honest values and missing states.
@@ -103,8 +112,9 @@ owning hardware collection or the deployed `LibreHW-No-UAC` task.
 
 ## Roadmap
 
-1. Promote the verified checkpoint only after explicit deployment approval and
-   repeat the three-view browser smoke against the live task path.
+1. Continue hands-on three-view browser and native accessibility inspection
+   against the live task path; the deployed served assets, schema migration,
+   Thermal profile, telemetry, and polling endpoints are already verified.
 2. Specify a flexibility slice for resizable/reflowing layouts, density and
    appearance controls, sensor search/grouping, bulk membership edits, and
    graph presentation that remains honest about units and missing values.
@@ -133,6 +143,21 @@ SensorIds, pause, stale telemetry, keyboard focus, and browser-console output.
 
 ## Verification Log
 
+- 2026-07-18 SND-DESK -> SND-HOST deployment: both machine identities were
+  verified before mutation. Product version
+  `0.9.6+ebedd8b-dirty.2026-07-18` was installed under the recreated
+  LibreHardwareMonitor runtime and launched by the elevated interactive
+  `\LibreHardwareMonitor` task. The live index, `data.json`, and Prometheus
+  endpoints returned 200; the served Workspace module reported state version 2
+  and the Thermal built-in. The target exposed 468 sensors, and the dashboard
+  remained reachable from SND-DESK through the scoped TCP 20000 rule.
+- 2026-07-18 Thermal extension: Workspace state moved to version 2 with a
+  one-time v1 migration while portable profile documents stayed at version 1.
+  The 15-test Node model/polling suite and 285/285 dashboard self-test passed,
+  including durable deletion and semantic TemperatureRate selection. Both
+  Release targets built from isolated outputs with zero warnings/errors; the
+  full .NET suite passed 150 tests with the existing opt-in test skipped.
+
 - 2026-07-15 integrated closeout: `node --check` passed for `workspace.js` and
   `console.js`; the model/polling suites passed 14/14; the console/markup
   self-test passed 285/285; and the .NET suite passed 129 tests with one
@@ -153,6 +178,6 @@ SensorIds, pause, stale telemetry, keyboard focus, and browser-console output.
   errors. Import/export bounds, collision handling, malformed input, missing
   SensorId reconnection, and adaptive-preset export immutability are covered by
   the Node model suite.
-- Verification used a local fixture and isolated build outputs. No source was
-  copied into the deployed runtime and the `LibreHW-No-UAC` task was not
-  stopped, restarted, or modified.
+- The 2026-07-15 verification used a local fixture and isolated build outputs.
+  No source was copied into a deployed runtime and the `LibreHW-No-UAC` task was
+  not stopped, restarted, or modified during that earlier verification.
