@@ -87,13 +87,8 @@ public sealed partial class MainForm : Form
     private Font _baseMenuFont;     // owned clone captured once from mainMenu.Font
     private Font _scaledMenuFont;   // owned; disposed on replacement
 
-    // Text Size slider: heavy scaling is debounced to drag pauses and menu-strip mutations are
-    // deferred to menu close (see UiTextScaleCommitGate); per-tick feedback is the readout label.
-    private const int UiTextScaleCommitDelayMilliseconds = 150;
-    private readonly UiTextScaleCommitGate _uiTextScaleCommitGate = new();
-    private readonly System.Windows.Forms.Timer _uiTextScaleCommitTimer;
-    private ToolStripMenuItem _textSizeMenuItem;
-    private ToolStripLabel _textSizeReadout;
+    // Debounced percent sliders (see TextScaleSliderMenu / UiTextScaleCommitGate).
+    private TextScaleSliderMenu _textSizeSlider;
     private int _baseValueColumnWidth = 100;
     private int _baseMinColumnWidth = 100;
     private int _baseMaxColumnWidth = 100;
@@ -216,65 +211,12 @@ public sealed partial class MainForm : Form
         _compactMode = new UserOption("compactMode", false, compactModeMenuItem, _settings);
         _compactMode.Changed += delegate { ApplySensorTreeLayout(); };
 
-        _textSizeMenuItem = new ToolStripMenuItem($"Text Size ({_uiTextScalePercent}%)");
-        viewMenuItem.DropDownItems.Insert(5, _textSizeMenuItem);
-
         double dpiScale = DeviceDpi / 96.0;
-        TrackBar textSizeTrackBar = new()
-        {
-            Minimum = UiScale.MinPercent,
-            Maximum = UiScale.MaxPercent,
-            TickFrequency = 25,
-            SmallChange = 5,
-            LargeChange = 25,
-            AutoSize = false,
-            Value = _uiTextScalePercent,
-            Size = new Size((int)Math.Round(170 * dpiScale), (int)Math.Round(45 * dpiScale)),
-            BackColor = Theme.Current.MenuBackgroundColor
-        };
-
-        // Fixed-size so per-tick text updates never re-layout the open dropdown.
-        _textSizeReadout = new ToolStripLabel($"{_uiTextScalePercent}%")
-        {
-            AutoSize = false,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Size = new Size(textSizeTrackBar.Width, mainMenu.Font.Height + 6)
-        };
-        _textSizeMenuItem.DropDownItems.Add(_textSizeReadout);
-
-        ToolStripControlHost textSizeHost = new(textSizeTrackBar) { AutoSize = false, BackColor = Theme.Current.MenuBackgroundColor };
-        textSizeHost.Size = textSizeTrackBar.Size;
-        _textSizeMenuItem.DropDownItems.Add(textSizeHost);
-
-        _uiTextScaleCommitTimer = new System.Windows.Forms.Timer { Interval = UiTextScaleCommitDelayMilliseconds };
-        _uiTextScaleCommitTimer.Tick += (s, e) =>
-        {
-            _uiTextScaleCommitTimer.Stop();
-            ApplyUiTextScaleCommit(_uiTextScaleCommitGate.OnDebounceElapsed(menuOpen: viewMenuItem.DropDown.Visible));
-        };
-
-        textSizeTrackBar.ValueChanged += (s, e) =>
-        {
-            _uiTextScalePercent = UiScale.ClampPercent(textSizeTrackBar.Value);
-            _textSizeReadout.Text = $"{_uiTextScalePercent}%";
-            _uiTextScaleCommitGate.OnSliderTick();
-            _uiTextScaleCommitTimer.Stop();
-            _uiTextScaleCommitTimer.Start();
-        };
-
-        // Keep the dropdown open while dragging the slider (a drag is not an ItemClicked).
-        _textSizeMenuItem.DropDown.Closing += (s, e) =>
-        {
-            if (e.CloseReason == ToolStripDropDownCloseReason.ItemClicked)
-                e.Cancel = true;
-        };
-
-        // The deferred menu-strip refresh runs once the whole View dropdown chain is gone.
-        viewMenuItem.DropDown.Closed += (s, e) =>
-        {
-            _uiTextScaleCommitTimer.Stop();
-            ApplyUiTextScaleCommit(_uiTextScaleCommitGate.OnMenuClosed());
-        };
+        _textSizeSlider = new TextScaleSliderMenu("Text Size", _uiTextScalePercent, dpiScale,
+            mainMenu.Font, Theme.Current.MenuBackgroundColor);
+        _textSizeSlider.PercentChanged += percent => _uiTextScalePercent = percent;
+        _textSizeSlider.CommitRequested += deferMenuRefresh => ApplyUiTextScale(deferMenuRefresh);
+        _textSizeSlider.InstallAt(viewMenuItem, 5);
 
         ToolStripMenuItem autoFitColumnsMenuItem = new("Auto-Fit Columns");
         autoFitColumnsMenuItem.Click += delegate { AutoFitTreeColumns(); };
@@ -1146,14 +1088,6 @@ public sealed partial class MainForm : Form
     /// Single apply path for the Text Size scale: tree font + row height + value/min/max column
     /// widths + tree glyphs + plot axis text. Order-independent and composes with Compact Mode.
     /// </summary>
-    private void ApplyUiTextScaleCommit(UiTextScaleCommitGate.Commit commit)
-    {
-        if (commit == UiTextScaleCommitGate.Commit.None)
-            return;
-
-        ApplyUiTextScale(deferMenuRefresh: commit == UiTextScaleCommitGate.Commit.ScaleOnly);
-    }
-
     private void ApplyUiTextScale(bool deferMenuRefresh = false)
     {
         _uiTextScalePercent = UiScale.ClampPercent(_uiTextScalePercent);
@@ -1182,11 +1116,7 @@ public sealed partial class MainForm : Form
             mainMenu.Font = _scaledMenuFont;
             previousMenu?.Dispose();
 
-            if (_textSizeMenuItem != null)
-                _textSizeMenuItem.Text = $"Text Size ({_uiTextScalePercent}%)";
-
-            if (_textSizeReadout != null)
-                _textSizeReadout.Size = new Size(_textSizeReadout.Width, mainMenu.Font.Height + 6);
+            _textSizeSlider?.RefreshMenuText(_uiTextScalePercent, mainMenu.Font);
         }
 
         // Value/Min/Max column widths from their 100% base (guarded so our sets don't churn the base).
@@ -1852,7 +1782,7 @@ public sealed partial class MainForm : Form
 
             timer.Dispose();
             _autoSaveTimer.Dispose();
-            _uiTextScaleCommitTimer.Dispose();
+            _textSizeSlider?.Dispose();
             backgroundUpdater.Dispose();
             _hardwareLifecycleCancellation.Dispose();
             _hardwareLifecycleGate.Dispose();
