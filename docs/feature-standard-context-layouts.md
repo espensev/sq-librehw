@@ -1,9 +1,8 @@
 # Feature Spec: Standard Dashboard Context Layouts
 
 **Status:** source merged and browser-fixture-verified; PR #29 merged to master
-2026-07-21 (merge `04a04aa`, selftest 306/306 on master). No live runtime
-promotion was performed in this packet. Implementation plan at
-`docs/superpowers/plans/2026-07-21-standard-context-layouts.md`.
+2026-07-21 (merge `04a04aa`, selftest 306/306). No live runtime promotion was
+performed in this packet.
 **Updated:** 2026-07-21
 
 ## Problem
@@ -134,9 +133,9 @@ confined to embedded HTML/CSS/JS and browser-local storage; `net472` and
   green (record the new total; was 285/285).
 - [x] .NET suite passes and both x64 Release targets build clean from isolated
   outputs.
-- [x] Browser-served fixture matrix passes in dark/light at desktop and
-  390 px: switch isolation, reload persistence, disabled gating, no console
-  errors — with at-rest screenshots in both themes.
+- [x] Browser-served fixture matrix passes in dark/light at desktop and 390 px:
+  switch isolation, reload persistence, disabled gating, no console errors, and
+  screenshots inspected during the verification session.
 
 ## Roadmap (deferred)
 
@@ -163,33 +162,10 @@ verify the selector disables under Studio/Workspace; verify an empty console.
 
 ## Verification Log
 
-- 2026-07-21 SND-DESK: spec and implementation plan authored; implementation
-  pending on the PR #29 lane.
-- 2026-07-21 SND-DESK: implemented and verified at `14f39c0`. Deterministic
-  gate: `node --check` clean on console.js/workspace.js; selftest
-  **304/304** (285 baseline + 14 model + 4 markup + 1 wiring; the plan's
-  "306" projection was an arithmetic slip — its own test block holds 14
-  assertions, not 16); `node --test` console+workspace suites green; .NET
-  suite 150 passed / 1 skipped / 151 total; both x64 Release builds
-  (net10.0-windows, net472) 0 warnings 0 errors. Browser-served fixture matrix
-  (chrome-devtools, fixture.data.json on :8123): Main enabled under
-  Standard; hide+star in Main → switch seeds Gaming identically and parks
-  Main; second hide in Gaming stays out of Main and returns on re-entry;
-  reload restores active context and both trims; theme/pause/rate survive
-  switches (parked entries hold exactly 13 fields, `observedMax` 193 entries
-  intact); selector disabled with explanatory title under Studio AND
-  Workspace, re-enabled on Standard; console clean (zero errors/warnings);
-  at-rest screenshots dark+light at 1600px and dark at true 390px emulated
-  viewport (no horizontal overflow, selector usable — verified switch at
-  390px). Same-context no-op and throwing-storage safety covered by model
-  assertions t13/t14.
-- 2026-07-21 SND-DESK: post-review hardening — exact-13-key allowlist pin and
-  throwing-storage degradation assertion added (selftest 306/306);
-  partial-failure invariant wording tightened to the outgoing-trim guarantee.
-- 2026-07-21 SND-DESK: clean-handoff recheck on merged base `b39aa25` — PR #29
-  merge `04a04aa` and its GitHub `build` check are successful; Node syntax,
-  selftest 306/306, Node suites 18/18, .NET 150 passed / 1 skipped, and isolated
-  x64 Release builds for net10.0-windows and net472 all pass (0 build warnings,
-  0 errors). This proves merged source and the browser fixture, not a live
-  runtime promotion. Browser screenshots were session-only and are not retained
-  in the repository.
+- 2026-07-21 SND-DESK: PR #29 merged as `04a04aa` after exact-13-field and
+  throwing-storage hardening. Node syntax passed, selftest passed 306/306, Node
+  suites passed 18/18, .NET passed 150 with 1 skipped, and isolated x64 Release
+  builds for net10.0-windows and net472 completed with 0 warnings and 0 errors.
+  The dark/light desktop and 390 px browser-fixture matrix passed; screenshots
+  were session-only. Final master multi-architecture/packaging run
+  `29852462788` passed at `0b427c8`. This verifies source, not live promotion.

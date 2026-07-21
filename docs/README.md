@@ -21,6 +21,18 @@
   did not replace a live LibreHardwareMonitor runtime.
 - Keep `AssemblyVersion` at `0.9.6`; build with `-p:Platform=x64`.
 
+## Handoff — 2026-07-21
+
+- Product work and branch cleanup are complete; `master` is the only local and
+  origin branch.
+- PR #29 source-shipped Standard contexts. PRs #26 and #28 landed five central
+  package patch updates without redundant app-level references.
+- Final source gates passed: selftest 306/306, Node suites 18/18, .NET 150 passed
+  / 1 skipped, isolated x64 Release builds for both target frameworks, and
+  GitHub multi-architecture/packaging run `29852462788`.
+- No live LibreHardwareMonitor runtime was replaced. Runtime promotion and
+  manual interaction remain separate, identity-verified work.
+
 ## Deployed patch notes
 
 - Added a third read-only `Workspace` view with adaptive `Main`, `Gaming`,
@@ -90,6 +102,8 @@
   safety contract.
 - `docs/feature-host-operator-utilities.md` - planned portable thermal snapshot
   and evidence-gated log analysis.
+- `docs/feature-independent-text-scaling.md` - shipped independent sensor-pane,
+  tracker, and graph-axis text scaling contract.
 - `docs/feature-standard-context-layouts.md` - source-shipped,
   browser-fixture-verified per-context Standard trims (Main/Gaming/Storage) over
   a materialize-swap contexts key; live runtime promotion is not recorded.

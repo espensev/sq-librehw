@@ -41,8 +41,7 @@ dashboard policy, or supported frameworks.
 - No restored dashboard preview route or new server write capability.
 - No automatic deletion of runtime logs or deployment/configuration changes.
 - No upstream synchronization or unrelated visual redesign.
-- No whole-branch merge of campaign/tracker artifacts from
-  `codex/memory-reliability`.
+- No campaign or tracker artifacts are part of the shipped product contract.
 
 ## Required behavior and failure handling
 
