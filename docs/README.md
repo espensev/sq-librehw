@@ -17,6 +17,8 @@
   with a verified SYSTEM task. The first real prior-day rollover archive remains
   to be inspected because the cleaned host had no completed CSV candidate.
 - `/dash/cardtruth[/]` is retired; `data.json` and CSV IDs are contracts.
+- Standard context layouts are merged and browser-fixture-verified; this packet
+  did not replace a live LibreHardwareMonitor runtime.
 - Keep `AssemblyVersion` at `0.9.6`; build with `-p:Platform=x64`.
 
 ## Deployed patch notes
@@ -88,8 +90,9 @@
   safety contract.
 - `docs/feature-host-operator-utilities.md` - planned portable thermal snapshot
   and evidence-gated log analysis.
-- `docs/feature-standard-context-layouts.md` - shipped per-context Standard
-  trims (Main/Gaming/Storage) over a materialize-swap contexts key.
+- `docs/feature-standard-context-layouts.md` - source-shipped,
+  browser-fixture-verified per-context Standard trims (Main/Gaming/Storage) over
+  a materialize-swap contexts key; live runtime promotion is not recorded.
 - `docs/feature-memory-ui-reliability.md` - shipped reliability contract,
   deployment proof, and remaining follow-ups.
 - `LibreHardwareMonitorLib/Hardware/Sensor.cs` - history bounds/persistence.

@@ -1,8 +1,9 @@
 # Feature Spec: Standard Dashboard Context Layouts
 
-**Status:** shipped with verification; PR #29 merged to master 2026-07-21
-(merge `04a04aa`, selftest 306/306 on master); implementation plan at
-`docs/superpowers/plans/2026-07-21-standard-context-layouts.md`
+**Status:** source merged and browser-fixture-verified; PR #29 merged to master
+2026-07-21 (merge `04a04aa`, selftest 306/306 on master). No live runtime
+promotion was performed in this packet. Implementation plan at
+`docs/superpowers/plans/2026-07-21-standard-context-layouts.md`.
 **Updated:** 2026-07-21
 
 ## Problem
@@ -13,8 +14,9 @@ every change or leave the union of everything visible.
 
 The 2026-07-04 spike on `worktree-dashboard-templates` (PR #29) prototyped
 per-route dashboard layouts, but it predates the `sq.dashboard.v1` state model,
-the shipped Workspace view, and the current masthead. Its code stays archived in
-branch history and is not merged; this spec defines the proper rebuild.
+the shipped Workspace view, and the current masthead. The original spike remains
+only in the merged lineage: `0fde201` restored all three spike files to the
+master baseline before the proper rebuild, so none of the spike content shipped.
 
 ## Relationship to shipped Workspace profiles
 
@@ -132,7 +134,7 @@ confined to embedded HTML/CSS/JS and browser-local storage; `net472` and
   green (record the new total; was 285/285).
 - [x] .NET suite passes and both x64 Release targets build clean from isolated
   outputs.
-- [x] Live served-fixture browser matrix passes in dark/light at desktop and
+- [x] Browser-served fixture matrix passes in dark/light at desktop and
   390 px: switch isolation, reload persistence, disabled gating, no console
   errors — with at-rest screenshots in both themes.
 
@@ -154,7 +156,7 @@ dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.For
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
 ```
 
-Live matrix (served fixture, both themes, desktop + 390 px): hide a sensor and
+Browser-served fixture matrix (both themes, desktop + 390 px): hide a sensor and
 star a card in `Gaming`; verify `Main` unaffected; reload and verify both trims
 persist; verify globals (theme, pause, rate, Studio prefs) survive switches;
 verify the selector disables under Studio/Workspace; verify an empty console.
@@ -169,7 +171,7 @@ verify the selector disables under Studio/Workspace; verify an empty console.
   "306" projection was an arithmetic slip — its own test block holds 14
   assertions, not 16); `node --test` console+workspace suites green; .NET
   suite 150 passed / 1 skipped / 151 total; both x64 Release builds
-  (net10.0-windows, net472) 0 warnings 0 errors. Live served-fixture matrix
+  (net10.0-windows, net472) 0 warnings 0 errors. Browser-served fixture matrix
   (chrome-devtools, fixture.data.json on :8123): Main enabled under
   Standard; hide+star in Main → switch seeds Gaming identically and parks
   Main; second hide in Gaming stays out of Main and returns on re-entry;
@@ -184,3 +186,10 @@ verify the selector disables under Studio/Workspace; verify an empty console.
 - 2026-07-21 SND-DESK: post-review hardening — exact-13-key allowlist pin and
   throwing-storage degradation assertion added (selftest 306/306);
   partial-failure invariant wording tightened to the outgoing-trim guarantee.
+- 2026-07-21 SND-DESK: clean-handoff recheck on merged base `b39aa25` — PR #29
+  merge `04a04aa` and its GitHub `build` check are successful; Node syntax,
+  selftest 306/306, Node suites 18/18, .NET 150 passed / 1 skipped, and isolated
+  x64 Release builds for net10.0-windows and net472 all pass (0 build warnings,
+  0 errors). This proves merged source and the browser fixture, not a live
+  runtime promotion. Browser screenshots were session-only and are not retained
+  in the repository.
