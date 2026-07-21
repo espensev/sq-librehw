@@ -29,11 +29,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="DiskInfoToolkit" />
     <PackageReference Include="OxyPlot.Core" />
     <PackageReference Include="OxyPlot.WindowsForms" />
+    <PackageReference Include="System.IO.Ports" />
     <PackageReference Include="System.Management" />
     <PackageReference Include="System.Resources.Extensions" />
     <PackageReference Include="System.Text.Json" />
+    <PackageReference Include="System.Threading.AccessControl" />
     <PackageReference Include="TaskScheduler" />
   </ItemGroup>
 
