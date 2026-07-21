@@ -712,6 +712,8 @@
     eq('gaming trim parked separately', S.loadContextState(ctxStore).saved.gaming.hiddenSensorIds, ['/a/1','/b/2']);
     eq('same-context switch is a no-op', S.switchDashboardContext(ctxStore, sw2.dashboard, 'main').changed, false);
     eq('context storage failure stays safe', S.switchDashboardContext(null, ctxBase, 'storage').dashboard.hiddenSensorIds, ['/a/1']);
+    eq('layout extract pins the exact 13-field subset', Object.keys(S.extractContextLayout(ctxBase)).sort(), ['cardOrder','cardStyle','collapsedPanels','graphsEnabled','hiddenNetAdapters','hiddenSensorIds','netAdapterOrder','panelOrder','pinnedCards','pinnedOrder','primaryCards','primaryCardsCustomized','rowOrder'].sort());
+    eq('context throwing storage degrades to defaults', S.loadContextState(throwingStorage).active, 'main');
 
     return { pass, fail, log };
   }

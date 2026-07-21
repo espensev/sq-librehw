@@ -94,8 +94,9 @@ Invariants and behavior:
   live state through `normalizeDashboardState`; persist the contexts key first,
   then `sq.dashboard.v1`; repaint and rerender. Same-context selection is a
   no-op with no storage writes.
-- If a persist partially fails, the parked copy duplicates rather than loses a
-  trim; the safe-storage memory fallback keeps the session consistent.
+- If a persist partially fails, the outgoing trim is never lost (it is parked
+  before the live key is overwritten); the safe-storage memory fallback keeps
+  the session consistent within the session.
 - The selector is disabled (with an explanatory title) whenever
   `viewTheme !== 'standard'` and repainted on every view change.
 - Multi-tab: a tab running pre-context code keeps operating on `sq.dashboard.v1`
@@ -180,3 +181,6 @@ verify the selector disables under Studio/Workspace; verify an empty console.
   viewport (no horizontal overflow, selector usable — verified switch at
   390px). Same-context no-op and throwing-storage safety covered by model
   assertions t13/t14.
+- 2026-07-21 SND-DESK: post-review hardening — exact-13-key allowlist pin and
+  throwing-storage degradation assertion added (selftest 306/306);
+  partial-failure invariant wording tightened to the outgoing-trim guarantee.
