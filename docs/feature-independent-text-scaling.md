@@ -1,6 +1,7 @@
 # Independent Text Scaling: Sensor Pane vs Graph
 
-Status: SHIPPED (live-verified by operator 2026-07-18; branch feature/independent-text-scaling)
+**Status:** shipped and live-verified by the operator on 2026-07-18
+**Updated:** 2026-07-21
 
 ## Problem
 
@@ -47,16 +48,19 @@ Decisions:
   and updates the Graph menu item text ("Graph Text Size (N%)") on full commit.
 - `UiScale` / `UiTextScaleCommitGate`: unchanged, reused.
 
-## Testing
+## Acceptance and verification
 
-- Existing `UiScaleTests` and `UiTextScaleCommitGateTests` cover the shared math
-  and commit policy.
-- New tests (TDD): PlotPanel axis-vs-tracker split — `SetAxisTextScale` must not
-  touch `_plot.Font`; `SetTrackerTextScale` must not touch axis font sizes or
-  `IntervalLength`; both percents clamp via `UiScale`.
-- Live visual gate (operator): high UI text + 100% graph text → big tree text,
-  unscaled graph; graph slider alone enlarges axis text only; both dropdowns
-  drag without jitter.
+- [x] UI and graph text persist independently, clamp to 75–250%, and graph text
+  defaults to 100%.
+- [x] View → Text Size controls the sensor pane, menus, and tracker only; Graph
+  → Graph Text Size controls axis text and tick density only.
+- [x] Both sliders reuse the debounced, menu-deferred commit path without
+  mid-drag layout jitter.
+- [x] Focused scaling tests and the full x64 suite/build passed. The operator
+  verified high UI text with an unscaled graph, graph-only axis scaling, tracker
+  ownership, smooth dragging, and restart persistence.
+- 2026-07-18 implementation lineage: `8ebf19e`, `acd4b6b`, `8cfdfdc`; docs
+  correction `a006ca2`; closeout `ebedd8b`.
 
 ## Out of scope
 

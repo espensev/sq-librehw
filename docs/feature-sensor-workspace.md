@@ -1,7 +1,7 @@
 # Feature Spec: Sensor Workspace
 
 **Status:** deployed on SND-HOST; deterministic and live served-asset smoke verified
-**Updated:** 2026-07-18
+**Updated:** 2026-07-21
 
 ## Problem
 
@@ -115,15 +115,18 @@ owning hardware collection or the deployed `LibreHW-No-UAC` task.
 1. Continue hands-on three-view browser and native accessibility inspection
    against the live task path; the deployed served assets, schema migration,
    Thermal profile, telemetry, and polling endpoints are already verified.
-2. Specify a flexibility slice for resizable/reflowing layouts, density and
-   appearance controls, sensor search/grouping, bulk membership edits, and
-   graph presentation that remains honest about units and missing values.
-3. Extract the bounded profile document plus normalized read-only sensor model
-   behind a host-neutral presentation contract.
-4. Use that contract for a parallel Avalonia prototype. Do not cut over hardware
-   collection or `LibreHW-No-UAC` ownership until packaging, DPI, accessibility,
-   lifecycle, performance, and feature-parity acceptance gates are defined and
-   passed.
+2. Specify a web Workspace flexibility slice for resizable/reflowing layouts,
+   density and appearance controls, sensor search/grouping, bulk membership
+   edits, and graph presentation that remains honest about units and missing
+   values. Native tree, graph, and gadget modernization is owned by
+   `docs/feature-native-ui-modernization.md`.
+3. Stabilize and document the bounded profile document plus normalized
+   read-only sensor model as inputs to Phase 5 of
+   `docs/feature-native-ui-modernization.md`.
+4. Defer the parallel Avalonia prototype to that owning roadmap. Do not cut over
+   hardware collection or `LibreHW-No-UAC` ownership until packaging, DPI,
+   accessibility, lifecycle, performance, and feature-parity gates are defined
+   and passed.
 
 ## Verification
 
