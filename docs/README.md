@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor Docs
 
 **Status:** live map only
-**Updated:** 2026-07-18
+**Updated:** 2026-07-19
 
 ## Current
 
@@ -52,7 +52,10 @@
    until accessibility, DPI, packaging, lifecycle, and feature-parity gates pass.
 4. Inspect the first completed SND-HOST daily CSV rollover ZIP and its task
    history; current-day retention and the installed task already passed live.
-5. Close the remaining bounded reliability follow-ups in
+5. Implement the host-neutral operator-utility plan: a portable read-only
+   thermal snapshot first, then a report-only log evidence analyzer. Keep any
+   lossy converter and profile alias behind their separate gates.
+6. Close the remaining bounded reliability follow-ups in
    `docs/feature-memory-ui-reliability.md`; keep optional long-soak work separate
    from normal patch promotion.
 
@@ -83,6 +86,8 @@
 - `docs/feature-thermal-trends.md` - additive hotspot-rate contract.
 - `docs/feature-host-log-management.md` - archive, retention, and deployment
   safety contract.
+- `docs/feature-host-operator-utilities.md` - planned portable thermal snapshot
+  and evidence-gated log analysis.
 - `docs/feature-memory-ui-reliability.md` - shipped reliability contract,
   deployment proof, and remaining follow-ups.
 - `LibreHardwareMonitorLib/Hardware/Sensor.cs` - history bounds/persistence.
