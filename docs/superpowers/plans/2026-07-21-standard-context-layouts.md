@@ -1,6 +1,11 @@
 # Standard Dashboard Context Layouts Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status:** completed 2026-07-21. PR #29 merged as `04a04aa`; the
+> docs closeout landed on `master` as `b39aa25`. All checklist items below are
+> complete. The final selftest result is 306/306: 14 initial model assertions,
+> four markup checks, one wiring check, and two post-review hardening checks over
+> the 285-check baseline. This closes the merged source and browser-fixture lane;
+> it does not record promotion into a live LibreHardwareMonitor runtime.
 
 **Goal:** Rebuild PR #29's spike properly — a masthead `Context` selector that switches the Standard dashboard between three independently persisted trims (Main/Gaming/Storage) via a materialize-swap over a new `sq.dashboard.contexts.v1` key, leaving `sq.dashboard.v1` the single live authority.
 
@@ -35,7 +40,7 @@ The branch is 117 commits behind and its three files are superseded. Merge maste
 **Interfaces:**
 - Produces: branch `worktree-dashboard-templates` whose tree is identical to `master` for all files, green baseline for Tasks 2-6.
 
-- [ ] **Step 1: Create the worktree and merge**
+- [x] **Step 1: Create the worktree and merge**
 
 ```bash
 cd "E:/SQ_HQ/Monitoring/sq-librehw"
@@ -45,7 +50,7 @@ git merge master
 ```
 Expected: `CONFLICT (content): Merge conflict in LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js`
 
-- [ ] **Step 2: Resolve every spike file to master's content**
+- [x] **Step 2: Resolve every spike file to master's content**
 
 ```bash
 git checkout master -- \
@@ -55,7 +60,7 @@ git checkout master -- \
 git add -A
 ```
 
-- [ ] **Step 3: Commit the merge**
+- [x] **Step 3: Commit the merge**
 
 ```bash
 git commit -F - <<'EOF'
@@ -70,7 +75,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 EOF
 ```
 
-- [ ] **Step 4: Verify zero diff vs master and a green baseline**
+- [x] **Step 4: Verify zero diff vs master and a green baseline**
 
 ```bash
 git diff master...HEAD --stat
@@ -90,7 +95,7 @@ Expected: empty diffstat; `SELFTEST PASS 285/285`
 - Consumes: `SQ.normalizeDashboardState`, `SQ.defaultDashboardState`, `SQ.loadDashboardState`, `SQ.saveDashboardState` (all existing).
 - Produces (used by Task 4): `SQ.DASHBOARD_CONTEXTS: string[]`, `SQ.normalizeDashboardContext(value) -> 'main'|'gaming'|'storage'`, `SQ.extractContextLayout(dashboard) -> layoutSubset`, `SQ.applyContextLayout(dashboard, layout) -> dashboard`, `SQ.normalizeContextState(value) -> {version:1, active, saved}`, `SQ.loadContextState(storage)`, `SQ.saveContextState(storage, value)`, `SQ.switchDashboardContext(storage, dashboard, next) -> {dashboard, contexts, changed}`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append inside `runConsoleTests` (before its final `return`):
 
@@ -121,14 +126,14 @@ Append inside `runConsoleTests` (before its final `return`):
     eq('context storage failure stays safe', S.switchDashboardContext(null, ctxBase, 'storage').dashboard.hiddenSensorIds, ['/a/1']);
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 node webtests/selftest.node.js | tail -3
 ```
 Expected: FAIL lines mentioning `normalizeContextState is not a function` (or similar) and a non-zero fail count.
 
-- [ ] **Step 3: Implement the model**
+- [x] **Step 3: Implement the model**
 
 Insert into `console.js` immediately before `SQ.migrateLegacyState = function (storage, state) {`:
 
@@ -208,16 +213,17 @@ Insert into `console.js` immediately before `SQ.migrateLegacyState = function (s
   };
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 node --check LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js
 node webtests/selftest.node.js | tail -1
 node --test webtests/console.tests.js 2>&1 | tail -3
 ```
-Expected: syntax OK; `SELFTEST PASS <285+16>/<285+16>`; node --test all pass.
+Result: syntax OK; `SELFTEST PASS 299/299` at this task boundary (285 + 14);
+node --test passed. Two further model hardening checks landed during review.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js webtests/console.tests.js
@@ -228,7 +234,7 @@ Pure extract/apply/normalize/switch functions over a new
 sq.dashboard.contexts.v1 key. sq.dashboard.v1 stays the single live
 authority; only the 13-field curation subset forks per context, and
 telemetry caches, theme, view, pause, rate, Studio prefs, aliases, and
-range overrides never do. Covered by 16 new model assertions.
+range overrides never do. Covered by 14 new model assertions.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 EOF
@@ -246,7 +252,7 @@ EOF
 **Interfaces:**
 - Produces: `#dashContext` select with option values `main|gaming|storage` (Task 4 wires it); `.dash-context` CSS hook.
 
-- [ ] **Step 1: Write the failing markup assertions**
+- [x] **Step 1: Write the failing markup assertions**
 
 Append to `menuChecks` in `webtests/selftest.node.js`:
 
@@ -260,14 +266,14 @@ Append to `menuChecks` in `webtests/selftest.node.js`:
   ['context CSS covers the disabled state', consoleCss.includes('.dash-context')],
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 ```bash
 node webtests/selftest.node.js | tail -6
 ```
 Expected: 4 FAIL lines for the new checks.
 
-- [ ] **Step 3: Add the markup and CSS**
+- [x] **Step 3: Add the markup and CSS**
 
 `index.html`, immediately before the `Dashboard` selector label:
 
@@ -286,14 +292,14 @@ Expected: 4 FAIL lines for the new checks.
 .dash-context select:disabled{opacity:.55;cursor:not-allowed}
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 ```bash
 node webtests/selftest.node.js | tail -1
 ```
 Expected: `SELFTEST PASS <prev+4>/<prev+4>`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add LibreHardwareMonitor.Windows.Forms/Resources/Web/index.html LibreHardwareMonitor.Windows.Forms/Resources/Web/console.css webtests/selftest.node.js
@@ -324,7 +330,7 @@ EOF
 - Consumes: `SQ.loadContextState`, `SQ.switchDashboardContext` (Task 2); `#dashContext` (Task 3); existing `paintGraphs()`, `rerender()`, `state.dashboard`.
 - Produces: `state.contexts` (`{version, active, saved}`) live in the boot scope; selector disabled whenever `state.dashboard.viewTheme !== 'standard'`.
 
-- [ ] **Step 1: Write the failing wiring assertion**
+- [x] **Step 1: Write the failing wiring assertion**
 
 Append to `menuChecks` in `webtests/selftest.node.js`:
 
@@ -334,14 +340,14 @@ Append to `menuChecks` in `webtests/selftest.node.js`:
       && consoleJs.includes('paintDashContext')],
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 ```bash
 node webtests/selftest.node.js | tail -3
 ```
 Expected: 1 FAIL line (`console wires context switching`).
 
-- [ ] **Step 3: Implement the wiring**
+- [x] **Step 3: Implement the wiring**
 
 State init — where the boot creates its state from storage, load the contexts pointer too:
 
@@ -385,15 +391,16 @@ Handler, inserted before `$('#studioAccent').onchange = e => {`:
 
 Note: `switchDashboardContext` persists both keys itself — do **not** also call `saveDashboard()` here, which would be redundant but harmless; keep the single write path.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 ```bash
 node --check LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js
 node webtests/selftest.node.js | tail -1
 ```
-Expected: syntax OK; `SELFTEST PASS <prev+1>/<prev+1>` (record this final total — expected 285+16+4+1 = 306).
+Result: syntax OK; `SELFTEST PASS 304/304` at this task boundary
+(285 + 14 + 4 + 1). Post-review hardening raised the merged total to 306/306.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js webtests/selftest.node.js
@@ -414,7 +421,7 @@ EOF
 
 **Files:** none modified (verification only; fix-forward if anything fails, folding fixes into the responsible task's commit style).
 
-- [ ] **Step 1: Run the complete gate**
+- [x] **Step 1: Run the complete gate**
 
 ```bash
 node --check LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js
@@ -424,7 +431,7 @@ node --test webtests/console.tests.js webtests/workspace.tests.js 2>&1 | tail -3
 ```
 Expected: both checks silent; selftest green at the recorded total; node --test all pass.
 
-- [ ] **Step 2: .NET suite and both Release builds (isolated outputs)**
+- [x] **Step 2: .NET suite and both Release builds (isolated outputs)**
 
 ```bash
 dotnet test LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.csproj -p:Platform=x64 2>&1 | tail -5
@@ -440,7 +447,7 @@ Expected: tests pass (150 passed, one opt-in skip is normal); both builds zero w
 **Files:**
 - Modify: `docs/feature-standard-context-layouts.md` (check acceptance boxes, append Verification Log entry with the recorded selftest total and live results)
 
-- [ ] **Step 1: Stage and serve the fixture**
+- [x] **Step 1: Stage and serve the fixture**
 
 ```bash
 STAGE="$TMPDIR_OR_SCRATCH/ctx-live"   # use the session scratchpad dir
@@ -450,7 +457,7 @@ cp webtests/fixture.data.json "$STAGE/data.json"
 (cd "$STAGE" && python -m http.server 8123)   # run in background
 ```
 
-- [ ] **Step 2: Drive the matrix via chrome-devtools MCP**
+- [x] **Step 2: Drive the matrix via chrome-devtools MCP**
 
 Known session hazards (project memory): if the browser drops with "already running for chrome-profile", kill `chrome-devtools-mcp` Chrome processes and reopen; close any stale dashboard tabs first — old tabs running pre-context code can otherwise confuse persistence checks.
 
@@ -465,7 +472,7 @@ At `http://localhost:8123/`, dark theme, desktop size:
 8. Screenshots at rest in dark AND light (the measurement gate alone is not sufficient — visual check is required by project memory).
 9. Resize to 390 px width: selector usable, no horizontal overflow; screenshot.
 
-- [ ] **Step 3: Record results in the spec and commit**
+- [x] **Step 3: Record results in the spec and commit**
 
 Check off `docs/feature-standard-context-layouts.md` acceptance boxes that passed, append a dated Verification Log entry (selftest total, .NET counts, live matrix outcome), then:
 
@@ -482,7 +489,7 @@ EOF
 
 ### Task 7: Ship — push, update PR #29, merge, sync master
 
-- [ ] **Step 1: Push and update the PR to reflect the rebuild**
+- [x] **Step 1: Push and update the PR to reflect the rebuild**
 
 ```bash
 git push origin worktree-dashboard-templates
@@ -508,13 +515,13 @@ Rebuilds the Jul 4 template-tabs spike properly per
 EOF
 ```
 
-- [ ] **Step 2: Merge PR #29 with a merge commit (keeps the spike lineage)**
+- [x] **Step 2: Merge PR #29 with a merge commit (keeps the spike lineage)**
 
 ```bash
 gh pr merge 29 --repo espensev/sq-librehw --merge
 ```
 
-- [ ] **Step 3: Sync master, verify, clean up**
+- [x] **Step 3: Sync master, verify, clean up**
 
 ```bash
 cd "E:/SQ_HQ/Monitoring/sq-librehw"
@@ -526,7 +533,7 @@ git push origin --delete worktree-dashboard-templates   # optional: PR #29 prese
 ```
 Expected: selftest green on master at the recorded total.
 
-- [ ] **Step 4: Close the docs loop**
+- [x] **Step 4: Close the docs loop**
 
 Update `docs/README.md`: flip this feature's line from planned to shipped in the doc map, refresh `Updated:`, and remove the implement-step from `Current` once shipped. Update the spec `Status:` line to shipped-with-verification. Commit to master:
 

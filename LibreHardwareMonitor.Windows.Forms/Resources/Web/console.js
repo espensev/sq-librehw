@@ -356,6 +356,79 @@
     (removals?.powerLimitSamples || []).forEach(key => { delete merged.powerLimitSamples[key]; });
     return SQ.saveDashboardState(storage, merged);
   };
+  // Standard dashboard contexts: sq.dashboard.v1 always holds the ACTIVE
+  // context's trim; inactive trims park in CONTEXT_STORAGE_KEY. Only the
+  // curation subset forks; telemetry caches and device prefs never do.
+  const CONTEXT_STORAGE_KEY = 'sq.dashboard.contexts.v1';
+  const DASHBOARD_CONTEXTS = ['main', 'gaming', 'storage'];
+  const CONTEXT_LAYOUT_FIELDS = [
+    'hiddenSensorIds', 'pinnedCards', 'panelOrder', 'pinnedOrder',
+    'graphsEnabled', 'collapsedPanels', 'cardStyle',
+    'primaryCards', 'primaryCardsCustomized', 'cardOrder', 'rowOrder',
+    'netAdapterOrder', 'hiddenNetAdapters'
+  ];
+  function cleanContext(value) {
+    return DASHBOARD_CONTEXTS.includes(value) ? value : 'main';
+  }
+  SQ.DASHBOARD_CONTEXTS = DASHBOARD_CONTEXTS.slice();
+  SQ.normalizeDashboardContext = cleanContext;
+  SQ.extractContextLayout = function (dashboard) {
+    const cfg = SQ.normalizeDashboardState(dashboard);
+    const out = {};
+    CONTEXT_LAYOUT_FIELDS.forEach(k => { out[k] = cfg[k]; });
+    return out;
+  };
+  SQ.applyContextLayout = function (dashboard, layout) {
+    const cfg = SQ.normalizeDashboardState(dashboard);
+    const src = layout && typeof layout === 'object' ? layout : {};
+    CONTEXT_LAYOUT_FIELDS.forEach(k => { if (k in src) cfg[k] = src[k]; });
+    return SQ.normalizeDashboardState(cfg);
+  };
+  SQ.normalizeContextState = function (value) {
+    const base = { version: 1, active: 'main', saved: {} };
+    if (!value || typeof value !== 'object') return base;
+    base.active = cleanContext(value.active);
+    const saved = value.saved;
+    if (saved && typeof saved === 'object' && !Array.isArray(saved))
+      DASHBOARD_CONTEXTS.forEach(k => {
+        if (k !== base.active && saved[k] && typeof saved[k] === 'object')
+          base.saved[k] = SQ.extractContextLayout(SQ.applyContextLayout(SQ.defaultDashboardState(), saved[k]));
+      });
+    return base;
+  };
+  SQ.loadContextState = function (storage) {
+    if (!storage || typeof storage.getItem !== 'function') return SQ.normalizeContextState(null);
+    try {
+      const raw = storage.getItem(CONTEXT_STORAGE_KEY);
+      return SQ.normalizeContextState(raw ? JSON.parse(raw) : null);
+    } catch {
+      return SQ.normalizeContextState(null);
+    }
+  };
+  SQ.saveContextState = function (storage, value) {
+    const state = SQ.normalizeContextState(value);
+    try {
+      if (storage && typeof storage.setItem === 'function')
+        storage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(state));
+    } catch {}
+    return state;
+  };
+  SQ.switchDashboardContext = function (storage, dashboard, nextContext) {
+    const contexts = SQ.loadContextState(storage);
+    const next = cleanContext(nextContext);
+    const cfg = SQ.normalizeDashboardState(dashboard);
+    if (next === contexts.active) return { dashboard: cfg, contexts, changed: false };
+    const parked = Object.assign({}, contexts.saved);
+    parked[contexts.active] = SQ.extractContextLayout(cfg);
+    const seed = parked[next] || SQ.extractContextLayout(cfg);
+    delete parked[next];
+    const applied = SQ.applyContextLayout(cfg, seed);
+    // Persist the pointer+parked trims first: a partial failure duplicates a
+    // trim rather than losing one (see spec, State and behavior).
+    const nextContexts = SQ.saveContextState(storage, { version: 1, active: next, saved: parked });
+    const nextDashboard = SQ.saveDashboardState(storage, applied);
+    return { dashboard: nextDashboard, contexts: nextContexts, changed: true };
+  };
   SQ.migrateLegacyState = function (storage, state) {
     const cfg = SQ.normalizeDashboardState(state);
     if (!storage) return cfg;
@@ -1195,6 +1268,7 @@
       rate: dashboard0.rate,
       dragging: false,
       dashboard: dashboard0,
+      contexts: SQ.loadContextState(storage),
       workspace: workspace0,
       workspaceSensorTargetId: null,
       workspaceSensorFilter: '',
@@ -2349,6 +2423,16 @@
         : workspace ? 'Sensor Workspace' : 'Hardware Telemetry Console';
       paintStudioPreferences();
       if (workspace) paintWorkspaceControls();
+      paintDashContext();
+    }
+    function paintDashContext() {
+      const select = $('#dashContext');
+      if (!select) return;
+      const standard = state.dashboard.viewTheme === 'standard';
+      select.value = state.contexts.active;
+      select.disabled = !standard;
+      select.title = standard ? 'Standard dashboard context'
+        : 'Context applies to the Standard dashboard';
     }
     function paintTheme() {
       const light = state.dashboard.theme === 'light';
@@ -2371,6 +2455,14 @@
       state.dashboard.viewTheme = SQ.normalizeViewTheme(e.target.value);
       paintViewTheme();
       saveDashboard();
+      rerender();
+    };
+    $('#dashContext').onchange = e => {
+      const result = SQ.switchDashboardContext(storage, state.dashboard, e.target.value);
+      state.dashboard = result.dashboard;
+      state.contexts = result.contexts;
+      paintDashContext();
+      paintGraphs();
       rerender();
     };
     $('#studioAccent').onchange = e => {
