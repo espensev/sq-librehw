@@ -58,18 +58,23 @@
 1. Continue hands-on dashboard and native scrollbar/UI Automation inspection
    through the verified runtime owner; deterministic coverage and the live
    served-asset/telemetry smoke are already complete.
-2. Iterate Sensor Workspace around flexibility: resizable/reflowing panels,
+2. Execute `docs/feature-native-ui-modernization.md` in bounded slices: define
+   the presentation model first, then ship tree search/Favorites/order, native
+   visual and graph polish, Gadget 2.0, and portable multi-gadget layouts.
+   Canonical node order and downstream contracts must not change.
+3. Iterate Sensor Workspace around flexibility: resizable/reflowing panels,
    density and visual options, sensor search/grouping, bulk membership, and
    richer graphs that never combine incompatible units dishonestly.
-3. Extract a host-neutral, read-only sensor/profile presentation contract, then
-   prototype Avalonia in parallel. WinForms keeps hardware and task ownership
-   until accessibility, DPI, packaging, lifecycle, and feature-parity gates pass.
-4. Inspect the first completed SND-HOST daily CSV rollover ZIP and its task
+4. After the native slices and web Workspace contract stabilize, execute Phase
+   5 of `docs/feature-native-ui-modernization.md`: extract the host-neutral,
+   read-only presentation contract and prototype Avalonia in parallel. WinForms
+   keeps hardware and task ownership until every migration gate passes.
+5. Inspect the first completed SND-HOST daily CSV rollover ZIP and its task
    history; current-day retention and the installed task already passed live.
-5. Implement the host-neutral operator-utility plan: a portable read-only
+6. Implement the host-neutral operator-utility plan: a portable read-only
    thermal snapshot first, then a report-only log evidence analyzer. Keep any
    lossy converter and profile alias behind their separate gates.
-6. Close the remaining bounded reliability follow-ups in
+7. Close the remaining bounded reliability follow-ups in
    `docs/feature-memory-ui-reliability.md`; keep optional long-soak work separate
    from normal patch promotion.
 
@@ -80,6 +85,8 @@
 - Dashboard code must not call `/Sensor?action=Set`.
 - Do not hard-code host sensor IDs, labels, limits, or missing values as zero.
 - Preserve raw LibreHardwareMonitor labels and `SensorId` when aliases exist.
+- Native sensor organization is presentation-only; canonical node order and
+  `data.json` IDs/order remain unchanged.
 - Check dark/light, desktop/narrow, failure, and empty states for UI work.
 
 ## Runtime contracts
@@ -104,6 +111,8 @@
   and evidence-gated log analysis.
 - `docs/feature-independent-text-scaling.md` - shipped independent sensor-pane,
   tracker, and graph-axis text scaling contract.
+- `docs/feature-native-ui-modernization.md` - phased native tree organization,
+  graphics, graph, and Gadget 2.0 roadmap; implementation has not started.
 - `docs/feature-standard-context-layouts.md` - source-shipped,
   browser-fixture-verified per-context Standard trims (Main/Gaming/Storage) over
   a materialize-swap contexts key; live runtime promotion is not recorded.
