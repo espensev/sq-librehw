@@ -113,25 +113,25 @@ confined to embedded HTML/CSS/JS and browser-local storage; `net472` and
 
 ## Acceptance
 
-- [ ] Masthead has a labelled `Context` selector with stable option values
+- [x] Masthead has a labelled `Context` selector with stable option values
   `main` / `gaming` / `storage`, placed beside the `Dashboard` selector.
-- [ ] Selector is disabled under Studio and Workspace and re-enables on return
+- [x] Selector is disabled under Studio and Workspace and re-enables on return
   to Standard.
-- [ ] The 13 curation fields isolate per context; hiding/pinning/starring in one
+- [x] The 13 curation fields isolate per context; hiding/pinning/starring in one
   context never leaks into another.
-- [ ] `theme`, `viewTheme`, `paused`, `rate`, Studio preferences, aliases,
+- [x] `theme`, `viewTheme`, `paused`, `rate`, Studio preferences, aliases,
   range overrides, `observedMax`, and `powerLimitSamples` survive every switch
   unchanged.
-- [ ] Trims persist across reload; first entry to a context seeds from the
+- [x] Trims persist across reload; first entry to a context seeds from the
   current trim; same-context selection writes nothing.
-- [ ] Malformed or throwing storage degrades to defaults without breaking the
+- [x] Malformed or throwing storage degrades to defaults without breaking the
   session (safe-storage path).
-- [ ] Node model tests cover normalize/extract/apply/switch including telemetry
+- [x] Node model tests cover normalize/extract/apply/switch including telemetry
   preservation; markup self-test asserts the selector; full self-test suite
   green (record the new total; was 285/285).
-- [ ] .NET suite passes and both x64 Release targets build clean from isolated
+- [x] .NET suite passes and both x64 Release targets build clean from isolated
   outputs.
-- [ ] Live served-fixture browser matrix passes in dark/light at desktop and
+- [x] Live served-fixture browser matrix passes in dark/light at desktop and
   390 px: switch isolation, reload persistence, disabled gating, no console
   errors — with at-rest screenshots in both themes.
 
@@ -162,3 +162,21 @@ verify the selector disables under Studio/Workspace; verify an empty console.
 
 - 2026-07-21 SND-DESK: spec and implementation plan authored; implementation
   pending on the PR #29 lane.
+- 2026-07-21 SND-DESK: implemented and verified at `14f39c0`. Deterministic
+  gate: `node --check` clean on console.js/workspace.js; selftest
+  **304/304** (285 baseline + 14 model + 4 markup + 1 wiring; the plan's
+  "306" projection was an arithmetic slip — its own test block holds 14
+  assertions, not 16); `node --test` console+workspace suites green; .NET
+  suite 150 passed / 1 skipped / 151 total; both x64 Release builds
+  (net10.0-windows, net472) 0 warnings 0 errors. Live served-fixture matrix
+  (chrome-devtools, fixture.data.json on :8123): Main enabled under
+  Standard; hide+star in Main → switch seeds Gaming identically and parks
+  Main; second hide in Gaming stays out of Main and returns on re-entry;
+  reload restores active context and both trims; theme/pause/rate survive
+  switches (parked entries hold exactly 13 fields, `observedMax` 193 entries
+  intact); selector disabled with explanatory title under Studio AND
+  Workspace, re-enabled on Standard; console clean (zero errors/warnings);
+  at-rest screenshots dark+light at 1600px and dark at true 390px emulated
+  viewport (no horizontal overflow, selector usable — verified switch at
+  390px). Same-context no-op and throwing-storage safety covered by model
+  assertions t13/t14.
