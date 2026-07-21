@@ -3,6 +3,20 @@
 **Status:** live map only
 **Updated:** 2026-07-21
 
+## Repository
+
+- `origin` is `celine-anime/librehw-host`; the default and working branch is
+  `main`. Push and pull there unless a task says otherwise.
+- `upstream` is `espensev/sq-librehw`, whose branch is `master`. Full history is
+  preserved: `main` is a fast-forward ahead of `upstream/master`, so older
+  commit SHAs cited in these docs still resolve.
+- Docs and completed plans written before 2026-07-21 say `master`, cite PR
+  numbers on `espensev/sq-librehw`, and use `E:/SQ_HQ/Monitoring/sq-librehw`
+  paths. Those are accurate history, deliberately left unrewritten; read them
+  against this section. `main` is the branch for new work.
+- Upstream `LibreHardwareMonitor/LibreHardwareMonitor` links in the root
+  `README.md` point at the real upstream project and are not stale.
+
 ## Current
 
 - The product is the Windows app plus the read-only dashboard at `/`.
