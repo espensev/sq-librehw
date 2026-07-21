@@ -111,6 +111,16 @@ const menuChecks = [
       && indexHtml.includes('id="theme" aria-pressed="false"')],
   ['root index has network section', indexHtml.includes('id="netsec"') && indexHtml.includes('id="netPanels"') && indexHtml.includes('id="nettag"')],
   ['root index has adapter restore block', indexHtml.includes('id="netRestore"') && indexHtml.includes('id="netRestoreList"')],
+  ['root has Standard context selector', indexHtml.includes('id="dashContext"')],
+  ['context selector is labelled Context',
+    indexHtml.includes('<span>Context</span>') && indexHtml.includes('aria-label="Standard dashboard context"')],
+  ['context options are stable', ['<option value="main">Main</option>',
+    '<option value="gaming">Gaming</option>',
+    '<option value="storage">Storage</option>'].every(s => indexHtml.includes(s))],
+  ['context CSS covers the disabled state', consoleCss.includes('.dash-context')],
+  ['console wires context switching',
+    consoleJs.includes('SQ.switchDashboardContext') && consoleJs.includes("$('#dashContext')")
+      && consoleJs.includes('paintDashContext')],
 ];
 for (const [name, ok] of menuChecks) log.push(`${ok ? 'ok  ' : 'FAIL'}  ${name}  got=${ok} want=true`);
 const totalPass = pass + menuChecks.filter(([, ok]) => ok).length;

@@ -688,6 +688,33 @@
     eq('fanControlFor live fixture', (() => { const f = sensors.find(s => s.id === '/lpc/nct6701d/0/fan/1');
       return f ? S.fanControlFor(f, sensors)?.id : '/lpc/nct6701d/0/control/1'; })(), '/lpc/nct6701d/0/control/1');
 
+    // Standard dashboard contexts (feature-standard-context-layouts)
+    const ctxStore = (() => { const m = new Map(); return {
+      getItem: k => (m.has(k) ? m.get(k) : null),
+      setItem: (k, v) => { m.set(k, String(v)); },
+      removeItem: k => { m.delete(k); } }; })();
+    eq('context default state', S.normalizeContextState(null), {version:1, active:'main', saved:{}});
+    eq('context unknown active falls back', S.normalizeContextState({active:'x'}).active, 'main');
+    eq('context saved drops active entry', S.normalizeContextState({active:'gaming', saved:{gaming:{hiddenSensorIds:['/a/1']}, storage:{}}}).saved.gaming, undefined);
+    const ctxBase = S.normalizeDashboardState({hiddenSensorIds:['/a/1'], observedMax:{'/a/1':42}, theme:'light', graphsEnabled:true});
+    const ctxLayout = S.extractContextLayout(ctxBase);
+    eq('layout extract keeps curation', ctxLayout.hiddenSensorIds, ['/a/1']);
+    eq('layout extract excludes globals', ['observedMax','powerLimitSamples','theme','viewTheme','paused','rate'].map(k => k in ctxLayout), [false,false,false,false,false,false]);
+    const sw1 = S.switchDashboardContext(ctxStore, ctxBase, 'gaming');
+    eq('first switch seeds from current trim', sw1.dashboard.hiddenSensorIds, ['/a/1']);
+    eq('first switch parks main', S.loadContextState(ctxStore).saved.main.hiddenSensorIds, ['/a/1']);
+    eq('switch preserves telemetry cache', sw1.dashboard.observedMax, {'/a/1':42});
+    eq('switch preserves global theme', sw1.dashboard.theme, 'light');
+    eq('switch moves active pointer', S.loadContextState(ctxStore).active, 'gaming');
+    const ctxGaming = S.normalizeDashboardState(Object.assign({}, sw1.dashboard, {hiddenSensorIds:['/a/1','/b/2']}));
+    const sw2 = S.switchDashboardContext(ctxStore, ctxGaming, 'main');
+    eq('return restores main trim', sw2.dashboard.hiddenSensorIds, ['/a/1']);
+    eq('gaming trim parked separately', S.loadContextState(ctxStore).saved.gaming.hiddenSensorIds, ['/a/1','/b/2']);
+    eq('same-context switch is a no-op', S.switchDashboardContext(ctxStore, sw2.dashboard, 'main').changed, false);
+    eq('context storage failure stays safe', S.switchDashboardContext(null, ctxBase, 'storage').dashboard.hiddenSensorIds, ['/a/1']);
+    eq('layout extract pins the exact 13-field subset', Object.keys(S.extractContextLayout(ctxBase)).sort(), ['cardOrder','cardStyle','collapsedPanels','graphsEnabled','hiddenNetAdapters','hiddenSensorIds','netAdapterOrder','panelOrder','pinnedCards','pinnedOrder','primaryCards','primaryCardsCustomized','rowOrder'].sort());
+    eq('context throwing storage degrades to defaults', S.loadContextState(throwingStorage).active, 'main');
+
     return { pass, fail, log };
   }
   if (typeof module !== 'undefined' && module.exports) {
