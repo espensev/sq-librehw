@@ -58,10 +58,6 @@
 6. Close the remaining bounded reliability follow-ups in
    `docs/feature-memory-ui-reliability.md`; keep optional long-soak work separate
    from normal patch promotion.
-7. Implement Standard dashboard context layouts on the PR #29 lane per
-   `docs/feature-standard-context-layouts.md` and its step plan in
-   `docs/superpowers/plans/2026-07-21-standard-context-layouts.md`; the Jul 4
-   spike stays archived in branch history and merges with zero code carried.
 
 ## Rules
 
@@ -92,7 +88,7 @@
   safety contract.
 - `docs/feature-host-operator-utilities.md` - planned portable thermal snapshot
   and evidence-gated log analysis.
-- `docs/feature-standard-context-layouts.md` - planned per-context Standard
+- `docs/feature-standard-context-layouts.md` - shipped per-context Standard
   trims (Main/Gaming/Storage) over a materialize-swap contexts key.
 - `docs/feature-memory-ui-reliability.md` - shipped reliability contract,
   deployment proof, and remaining follow-ups.

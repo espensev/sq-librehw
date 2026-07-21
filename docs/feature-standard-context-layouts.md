@@ -1,8 +1,8 @@
 # Feature Spec: Standard Dashboard Context Layouts
 
-**Status:** planned; implementation plan at
-`docs/superpowers/plans/2026-07-21-standard-context-layouts.md`; delivery lane is
-PR #29 (`worktree-dashboard-templates`)
+**Status:** shipped with verification; PR #29 merged to master 2026-07-21
+(merge `04a04aa`, selftest 306/306 on master); implementation plan at
+`docs/superpowers/plans/2026-07-21-standard-context-layouts.md`
 **Updated:** 2026-07-21
 
 ## Problem
