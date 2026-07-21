@@ -100,6 +100,9 @@ header{position:sticky;top:0;z-index:30;border-bottom:1px solid var(--line);
 .rate{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--muted)}
 input[type=range]{accent-color:var(--cy)}
 
+/* Standard context selector: mirrors .view-theme; disabled outside Standard */
+.dash-context select:disabled{opacity:.55;cursor:not-allowed}
+
 /* section scaffold */
 main{padding:24px 0 60px}
 section{margin-top:30px}
