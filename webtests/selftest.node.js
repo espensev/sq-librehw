@@ -118,6 +118,9 @@ const menuChecks = [
     '<option value="gaming">Gaming</option>',
     '<option value="storage">Storage</option>'].every(s => indexHtml.includes(s))],
   ['context CSS covers the disabled state', consoleCss.includes('.dash-context')],
+  ['console wires context switching',
+    consoleJs.includes('SQ.switchDashboardContext') && consoleJs.includes("$('#dashContext')")
+      && consoleJs.includes('paintDashContext')],
 ];
 for (const [name, ok] of menuChecks) log.push(`${ok ? 'ok  ' : 'FAIL'}  ${name}  got=${ok} want=true`);
 const totalPass = pass + menuChecks.filter(([, ok]) => ok).length;

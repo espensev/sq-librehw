@@ -1268,6 +1268,7 @@
       rate: dashboard0.rate,
       dragging: false,
       dashboard: dashboard0,
+      contexts: SQ.loadContextState(storage),
       workspace: workspace0,
       workspaceSensorTargetId: null,
       workspaceSensorFilter: '',
@@ -2422,6 +2423,16 @@
         : workspace ? 'Sensor Workspace' : 'Hardware Telemetry Console';
       paintStudioPreferences();
       if (workspace) paintWorkspaceControls();
+      paintDashContext();
+    }
+    function paintDashContext() {
+      const select = $('#dashContext');
+      if (!select) return;
+      const standard = state.dashboard.viewTheme === 'standard';
+      select.value = state.contexts.active;
+      select.disabled = !standard;
+      select.title = standard ? 'Standard dashboard context'
+        : 'Context applies to the Standard dashboard';
     }
     function paintTheme() {
       const light = state.dashboard.theme === 'light';
@@ -2444,6 +2455,14 @@
       state.dashboard.viewTheme = SQ.normalizeViewTheme(e.target.value);
       paintViewTheme();
       saveDashboard();
+      rerender();
+    };
+    $('#dashContext').onchange = e => {
+      const result = SQ.switchDashboardContext(storage, state.dashboard, e.target.value);
+      state.dashboard = result.dashboard;
+      state.contexts = result.contexts;
+      paintDashContext();
+      paintGraphs();
       rerender();
     };
     $('#studioAccent').onchange = e => {
