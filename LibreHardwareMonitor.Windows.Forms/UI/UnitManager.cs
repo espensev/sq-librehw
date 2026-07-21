@@ -40,4 +40,9 @@ public class UnitManager
     {
         return valueInCelsius * 1.8f + 32;
     }
+
+    public static float? CelsiusRateToFahrenheit(float? rateInCelsiusPerSecond)
+    {
+        return rateInCelsiusPerSecond * 1.8f;
+    }
 }

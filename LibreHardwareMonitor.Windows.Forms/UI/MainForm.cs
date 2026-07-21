@@ -12,6 +12,8 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Aga.Controls.Tree;
 using Aga.Controls.Tree.NodeControls;
@@ -82,19 +84,38 @@ public sealed partial class MainForm : Form
     private int _standardMaxColumnWidth;
     private int _uiTextScalePercent = UiScale.DefaultPercent;
     private Font _scaledTreeFont;   // owned; disposed on replacement (never dispose SystemFonts.MessageBoxFont)
-    private Font _baseMenuFont;     // captured once from mainMenu.Font; never disposed
+    private Font _baseMenuFont;     // owned clone captured once from mainMenu.Font
     private Font _scaledMenuFont;   // owned; disposed on replacement
+
+    // Debounced percent sliders (see TextScaleSliderMenu / UiTextScaleCommitGate).
+    private TextScaleSliderMenu _textSizeSlider;
+    private TextScaleSliderMenu _plotTextSlider;
+    private int _plotTextScalePercent = UiScale.DefaultPercent;
     private int _baseValueColumnWidth = 100;
     private int _baseMinColumnWidth = 100;
     private int _baseMaxColumnWidth = 100;
 
+    // Persist settings on this cadence so a crash, forced kill or power loss cannot revert
+    // everything changed since launch; the app otherwise saves only on clean exit/log-off.
+    private const int AutoSaveIntervalMilliseconds = 5 * 60 * 1000;
+    private readonly System.Windows.Forms.Timer _autoSaveTimer;
+    private readonly UiShutdownCoordinator _shutdownCoordinator;
+    private readonly int _uiThreadId;
+    private readonly SemaphoreSlim _hardwareLifecycleGate = new(1, 1);
+    private readonly CancellationTokenSource _hardwareLifecycleCancellation = new();
+    private Task _hardwareInitializationTask;
+
+    private bool IsShutdownPending => _closing || (_shutdownCoordinator?.IsShutdownRequested ?? false);
+
     public MainForm()
     {
         InitializeComponent();
+        _uiThreadId = Environment.CurrentManagedThreadId;
 
         _settings = new PersistentSettings();
         _settings.Load(Path.ChangeExtension(Application.ExecutablePath, ".config"));
         _uiTextScalePercent = UiScale.ClampPercent(_settings.GetValue("uiTextScale", UiScale.DefaultPercent));
+        _plotTextScalePercent = UiScale.ClampPercent(_settings.GetValue("plotTextScale", UiScale.DefaultPercent));
 
         _unitManager = new UnitManager(_settings);
 
@@ -152,7 +173,7 @@ public sealed partial class MainForm : Form
 
         _computer = new Computer(_settings);
 
-        _systemTray = new SystemTray(_computer, _settings, _unitManager);
+        _systemTray = new SystemTray(_computer, _settings, _unitManager, this);
         _systemTray.HideShowCommand += HideShowClick;
         _systemTray.ExitCommand += ExitClick;
 
@@ -173,7 +194,7 @@ public sealed partial class MainForm : Form
         {
             // Windows
             treeView.RowHeight = Math.Max(treeView.Font.Height + 1, 18);
-            _gadget = new SensorGadget(_computer, _settings, _unitManager);
+            _gadget = new SensorGadget(_computer, _settings, _unitManager, this);
             _gadget.HideShowCommand += HideShowClick;
         }
 
@@ -193,39 +214,12 @@ public sealed partial class MainForm : Form
         _compactMode = new UserOption("compactMode", false, compactModeMenuItem, _settings);
         _compactMode.Changed += delegate { ApplySensorTreeLayout(); };
 
-        ToolStripMenuItem textSizeMenuItem = new($"Text Size ({_uiTextScalePercent}%)");
-        viewMenuItem.DropDownItems.Insert(5, textSizeMenuItem);
-
         double dpiScale = DeviceDpi / 96.0;
-        TrackBar textSizeTrackBar = new()
-        {
-            Minimum = UiScale.MinPercent,
-            Maximum = UiScale.MaxPercent,
-            TickFrequency = 25,
-            SmallChange = 5,
-            LargeChange = 25,
-            AutoSize = false,
-            Value = _uiTextScalePercent,
-            Size = new Size((int)Math.Round(170 * dpiScale), (int)Math.Round(45 * dpiScale)),
-            BackColor = Theme.Current.MenuBackgroundColor
-        };
-        ToolStripControlHost textSizeHost = new(textSizeTrackBar) { AutoSize = false, BackColor = Theme.Current.MenuBackgroundColor };
-        textSizeHost.Size = textSizeTrackBar.Size;
-        textSizeMenuItem.DropDownItems.Add(textSizeHost);
-
-        textSizeTrackBar.ValueChanged += (s, e) =>
-        {
-            _uiTextScalePercent = UiScale.ClampPercent(textSizeTrackBar.Value);
-            textSizeMenuItem.Text = $"Text Size ({_uiTextScalePercent}%)";
-            ApplyUiTextScale();
-        };
-
-        // Keep the dropdown open while dragging the slider (a drag is not an ItemClicked).
-        textSizeMenuItem.DropDown.Closing += (s, e) =>
-        {
-            if (e.CloseReason == ToolStripDropDownCloseReason.ItemClicked)
-                e.Cancel = true;
-        };
+        _textSizeSlider = new TextScaleSliderMenu("Text Size", _uiTextScalePercent, dpiScale,
+            mainMenu.Font, Theme.Current.MenuBackgroundColor);
+        _textSizeSlider.PercentChanged += percent => _uiTextScalePercent = percent;
+        _textSizeSlider.CommitRequested += deferMenuRefresh => ApplyUiTextScale(deferMenuRefresh);
+        _textSizeSlider.InstallAt(viewMenuItem, 5);
 
         ToolStripMenuItem autoFitColumnsMenuItem = new("Auto-Fit Columns");
         autoFitColumnsMenuItem.Click += delegate { AutoFitTreeColumns(); };
@@ -245,58 +239,9 @@ public sealed partial class MainForm : Form
         _computer.HardwareAdded += HardwareAdded;
         _computer.HardwareRemoved += HardwareRemoved;
 
-        if (PawnIo.PawnIo.IsInstalled)
-        {
-            if (PawnIo.PawnIo.Version < new Version(2, 0, 0, 0))
-            {
-                DialogResult result = MessageBox.Show("PawnIO is outdated, do you want to update it?", nameof(LibreHardwareMonitor), MessageBoxButtons.OKCancel);
-                if (result == DialogResult.OK)
-                    InstallPawnIO();
-            }
-        }
-        else
-        {
-            DialogResult result = MessageBox.Show("PawnIO is not installed, do you want to install it?", nameof(LibreHardwareMonitor), MessageBoxButtons.OKCancel);
-            if (result == DialogResult.OK)
-                InstallPawnIO();
-        }
-
-        _computer.Open();
-
-        static void InstallPawnIO()
-        {
-            string path = ExtractPawnIO();
-            if (!string.IsNullOrEmpty(path))
-            {
-                var process = Process.Start(new ProcessStartInfo(path, "-install"));
-                process?.WaitForExit();
-
-                File.Delete(path);
-            }
-        }
-
-        static string ExtractPawnIO()
-        {
-            string destination = Path.Combine(Directory.GetCurrentDirectory(), "PawnIO_setup.exe");
-
-            try
-            {
-
-                using Stream resourceStream = typeof(MainForm).Assembly.GetManifestResourceStream(typeof(MainForm).Assembly.GetName().Name + ".Resources.PawnIO_setup.exe");
-                using FileStream fileStream = new(destination, FileMode.Create, FileAccess.Write);
-                resourceStream.CopyTo(fileStream);
-
-                return destination;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
         backgroundUpdater.DoWork += BackgroundUpdater_DoWork;
         backgroundUpdater.RunWorkerCompleted += BackgroundUpdater_RunWorkerCompleted;
-        timer.Enabled = true;
+        timer.Enabled = false;
 
         UserOption showHiddenSensors = new("hiddenMenuItem", false, hiddenMenuItem, _settings);
         showHiddenSensors.Changed += delegate { treeModel.ForceVisible = showHiddenSensors.Value; };
@@ -313,6 +258,7 @@ public sealed partial class MainForm : Form
         // Apply once now that all column options (and compact mode) are wired, so the initial
         // layout does not depend on the eager Changed callback of whichever option subscribed last.
         ApplyUiTextScale();
+        ApplyPlotTextScale();
 
         _ = new UserOption("startMinMenuItem", false, startMinMenuItem, _settings);
         _minimizeToTray = new UserOption("minTrayMenuItem", true, minTrayMenuItem, _settings);
@@ -339,34 +285,34 @@ public sealed partial class MainForm : Form
         };
 
         _readMainboardSensors = new UserOption("mainboardMenuItem", true, mainboardMenuItem, _settings);
-        _readMainboardSensors.Changed += delegate { _computer.IsMotherboardEnabled = _readMainboardSensors.Value; };
+        _readMainboardSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsMotherboardEnabled = _readMainboardSensors.Value); };
 
         _readCpuSensors = new UserOption("cpuMenuItem", true, cpuMenuItem, _settings);
-        _readCpuSensors.Changed += delegate { _computer.IsCpuEnabled = _readCpuSensors.Value; };
+        _readCpuSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsCpuEnabled = _readCpuSensors.Value); };
 
         _readRamSensors = new UserOption("ramMenuItem", true, ramMenuItem, _settings);
-        _readRamSensors.Changed += delegate { _computer.IsMemoryEnabled = _readRamSensors.Value; };
+        _readRamSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsMemoryEnabled = _readRamSensors.Value); };
 
         _readGpuSensors = new UserOption("gpuMenuItem", true, gpuMenuItem, _settings);
-        _readGpuSensors.Changed += delegate { _computer.IsGpuEnabled = _readGpuSensors.Value; };
+        _readGpuSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsGpuEnabled = _readGpuSensors.Value); };
 
         _readPowerMonitorSensors = new UserOption("powerMonitorMenuItem", true, powerMonitorMenuItem, _settings);
-        _readPowerMonitorSensors.Changed += delegate { _computer.IsPowerMonitorEnabled = _readPowerMonitorSensors.Value; };
+        _readPowerMonitorSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsPowerMonitorEnabled = _readPowerMonitorSensors.Value); };
 
         _readFanControllersSensors = new UserOption("fanControllerMenuItem", true, fanControllerMenuItem, _settings);
-        _readFanControllersSensors.Changed += delegate { _computer.IsControllerEnabled = _readFanControllersSensors.Value; };
+        _readFanControllersSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsControllerEnabled = _readFanControllersSensors.Value); };
 
         _readHddSensors = new UserOption("hddMenuItem", true, hddMenuItem, _settings);
-        _readHddSensors.Changed += delegate { _computer.IsStorageEnabled = _readHddSensors.Value; };
+        _readHddSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsStorageEnabled = _readHddSensors.Value); };
 
         _readNicSensors = new UserOption("nicMenuItem", true, nicMenuItem, _settings);
-        _readNicSensors.Changed += delegate { _computer.IsNetworkEnabled = _readNicSensors.Value; };
+        _readNicSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsNetworkEnabled = _readNicSensors.Value); };
 
         _readPsuSensors = new UserOption("psuMenuItem", true, psuMenuItem, _settings);
-        _readPsuSensors.Changed += delegate { _computer.IsPsuEnabled = _readPsuSensors.Value; };
+        _readPsuSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsPsuEnabled = _readPsuSensors.Value); };
 
         _readBatterySensors = new UserOption("batteryMenuItem", true, batteryMenuItem, _settings);
-        _readBatterySensors.Changed += delegate { _computer.IsBatteryEnabled = _readBatterySensors.Value; };
+        _readBatterySensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsBatteryEnabled = _readBatterySensors.Value); };
 
         _showGadget = new UserOption("gadgetMenuItem", false, gadgetMenuItem, _settings);
 
@@ -409,12 +355,28 @@ public sealed partial class MainForm : Form
         }
 
         _runWebServer = new UserOption("runWebServerMenuItem", false, runWebServerMenuItem, _settings);
-        _runWebServer.Changed += delegate
+        _runWebServer.Changed += async delegate
         {
-            if (_runWebServer.Value)
-                Server.StartHttpListener();
-            else
-                Server.StopHttpListener();
+            try
+            {
+                if (_runWebServer.Value)
+                {
+                    Server.StartHttpListener();
+                }
+                else
+                {
+                    await Server.StopHttpListenerAsync().ConfigureAwait(true);
+
+                    // A quick off/on toggle can race the asynchronous drain. Reassert the latest
+                    // requested state after the old listener has fully stopped.
+                    if (_runWebServer.Value && !IsShutdownPending)
+                        Server.StartHttpListener();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Web server state change failed: " + ex);
+            }
         };
 
         authWebServerMenuItem.Checked = _settings.GetValue("authenticationEnabled", false);
@@ -563,44 +525,7 @@ public sealed partial class MainForm : Form
 
         _sensorValuesTimeWindow.Changed += (sender, e) =>
         {
-            TimeSpan timeWindow = TimeSpan.Zero;
-            switch (_sensorValuesTimeWindow.Value)
-            {
-                case 0:
-                    timeWindow = new TimeSpan(0, 0, 30);
-                    break;
-                case 1:
-                    timeWindow = new TimeSpan(0, 1, 0);
-                    break;
-                case 2:
-                    timeWindow = new TimeSpan(0, 2, 0);
-                    break;
-                case 3:
-                    timeWindow = new TimeSpan(0, 5, 0);
-                    break;
-                case 4:
-                    timeWindow = new TimeSpan(0, 10, 0);
-                    break;
-                case 5:
-                    timeWindow = new TimeSpan(0, 30, 0);
-                    break;
-                case 6:
-                    timeWindow = new TimeSpan(1, 0, 0);
-                    break;
-                case 7:
-                    timeWindow = new TimeSpan(2, 0, 0);
-                    break;
-                case 8:
-                    timeWindow = new TimeSpan(6, 0, 0);
-                    break;
-                case 9:
-                    timeWindow = new TimeSpan(12, 0, 0);
-                    break;
-                case 10:
-                    timeWindow = new TimeSpan(24, 0, 0);
-                    break;
-            }
-
+            TimeSpan timeWindow = GetSensorValuesTimeWindow();
             _computer.Accept(new SensorVisitor(delegate(ISensor sensor) { sensor.ValuesTimeWindow = timeWindow; }));
         };
 
@@ -609,6 +534,30 @@ public sealed partial class MainForm : Form
         InitializeSplitter();
 
         startupMenuItem.Visible = _startupManager.IsAvailable;
+
+        // Create a handle before background discovery starts. Hardware event dispatch must never
+        // infer UI-thread ownership merely because a handle has not been created yet.
+        // event marshaling (HardwareAdded/SensorAdded BeginInvoke) also requires the handle to
+        // exist even when starting minimized to tray, so do not rely on side effects for this.
+        _ = Handle;
+
+        _autoSaveTimer = new System.Windows.Forms.Timer { Interval = AutoSaveIntervalMilliseconds };
+        _autoSaveTimer.Tick += AutoSaveTimer_Tick;
+
+        // SystemEvents invokes SessionEnded on its monitoring thread. Invoke the request on the form
+        // thread so settings projection never reads controls concurrently with FormClosing or
+        // autosave, and so the logoff handler does not return before the final save completes. The
+        // coordinator still allows FormClosing to win if it starts before the callback is dispatched.
+        _shutdownCoordinator = new UiShutdownCoordinator(
+            () => Environment.CurrentManagedThreadId == _uiThreadId,
+            action => BeginInvoke(action),
+            CloseApplicationCoreAsync);
+
+        Microsoft.Win32.SystemEvents.SessionEnded += SystemEvents_SessionEnded;
+
+        Microsoft.Win32.SystemEvents.PowerModeChanged += PowerModeChanged;
+
+        _autoSaveTimer.Start();
 
         if (startMinMenuItem.Checked)
         {
@@ -623,21 +572,8 @@ public sealed partial class MainForm : Form
             Show();
         }
 
-        // Create a handle, otherwise calling Close() does not fire FormClosed. The hardware
-        // event marshaling (HardwareAdded/SensorAdded BeginInvoke) also requires the handle to
-        // exist even when starting minimized to tray, so do not rely on side effects for this.
-        _ = Handle;
-
-        // Make sure the settings are saved when the user logs off
-        Microsoft.Win32.SystemEvents.SessionEnded += delegate
-        {
-            _computer.Close();
-            SaveConfiguration();
-            if (_runWebServer.Value)
-                Server.Quit();
-        };
-
-        Microsoft.Win32.SystemEvents.PowerModeChanged += PowerModeChanged;
+        menuItemFileHardware.Enabled = false;
+        _hardwareInitializationTask = InitializeHardwareAsync();
     }
 
     private void StopFileHardwareMenuFromClosing(object sender, ToolStripDropDownClosingEventArgs e)
@@ -645,6 +581,221 @@ public sealed partial class MainForm : Form
         if (e.CloseReason == ToolStripDropDownCloseReason.ItemClicked)
         {
             e.Cancel = true;
+        }
+    }
+
+    private async Task InitializeHardwareAsync()
+    {
+        CancellationToken cancellationToken = _hardwareLifecycleCancellation.Token;
+        try
+        {
+            bool installPawnIo = false;
+            if (PawnIo.PawnIo.IsInstalled)
+            {
+                if (PawnIo.PawnIo.Version < new Version(2, 0, 0, 0))
+                {
+                    installPawnIo = MessageBox.Show(
+                        this,
+                        "PawnIO is outdated, do you want to update it?",
+                        nameof(LibreHardwareMonitor),
+                        MessageBoxButtons.OKCancel) == DialogResult.OK;
+                }
+            }
+            else
+            {
+                installPawnIo = MessageBox.Show(
+                    this,
+                    "PawnIO is not installed, do you want to install it?",
+                    nameof(LibreHardwareMonitor),
+                    MessageBoxButtons.OKCancel) == DialogResult.OK;
+            }
+
+            if (installPawnIo)
+                await Task.Run(InstallPawnIO).ConfigureAwait(true);
+
+            if (cancellationToken.IsCancellationRequested || IsShutdownPending || IsDisposed)
+                return;
+
+            // Hardware discovery can probe firmware, buses, storage and drivers for several
+            // seconds. Computer events are marshalled through the live form dispatcher.
+            await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(true);
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await Task.Run(() => _computer.Open()).ConfigureAwait(true);
+            }
+            finally
+            {
+                _hardwareLifecycleGate.Release();
+            }
+
+            if (!IsShutdownPending && !IsDisposed)
+                timer.Enabled = true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Normal close while installation/discovery is queued.
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine("Hardware initialization failed: " + ex);
+            if (!IsShutdownPending && !IsDisposed)
+            {
+                MessageBox.Show(
+                    this,
+                    "Hardware discovery could not be completed.\n\n" + ex.GetBaseException().Message,
+                    "Libre Hardware Monitor",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+        finally
+        {
+            if (!IsShutdownPending && !IsDisposed)
+            {
+                _systemTray.IsMainIconEnabled = _minimizeToTray.Value;
+                menuItemFileHardware.Enabled = true;
+            }
+        }
+    }
+
+    private void BeginHardwareReset()
+    {
+        if (IsShutdownPending || !menuItemFileHardware.Enabled)
+            return;
+
+        menuItemFileHardware.Enabled = false;
+        _systemTray.IsMainIconEnabled = false;
+        _ = ResetHardwareAsync();
+    }
+
+    private void ApplyHardwareOption(Action change)
+    {
+        // UserOption invokes each handler once during construction. Before Open starts, applying
+        // the flags synchronously is cheap and lets Computer.Open discover the selected groups in
+        // one pass. Later toggles can construct/close drivers and therefore use the lifecycle gate.
+        if (_hardwareInitializationTask == null)
+        {
+            change();
+            return;
+        }
+
+        if (IsShutdownPending || !menuItemFileHardware.Enabled)
+            return;
+
+        menuItemFileHardware.Enabled = false;
+        _ = ApplyHardwareOptionAsync(change);
+    }
+
+    private async Task ApplyHardwareOptionAsync(Action change)
+    {
+        CancellationToken cancellationToken = _hardwareLifecycleCancellation.Token;
+        try
+        {
+            await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(true);
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await Task.Run(change).ConfigureAwait(true);
+            }
+            finally
+            {
+                _hardwareLifecycleGate.Release();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Shutdown owns the next lifecycle turn.
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine("Hardware option change failed: " + ex);
+        }
+        finally
+        {
+            if (!IsShutdownPending && !IsDisposed)
+                menuItemFileHardware.Enabled = true;
+        }
+    }
+
+    private async Task ResetHardwareAsync()
+    {
+        CancellationToken cancellationToken = _hardwareLifecycleCancellation.Token;
+        try
+        {
+            await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(true);
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await Task.Run(() => _computer.Reset()).ConfigureAwait(true);
+            }
+            finally
+            {
+                _hardwareLifecycleGate.Release();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Shutdown owns the next lifecycle turn.
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine("Hardware reset failed: " + ex);
+        }
+        finally
+        {
+            if (!IsShutdownPending && !IsDisposed)
+            {
+                _systemTray.IsMainIconEnabled = _minimizeToTray.Value;
+                menuItemFileHardware.Enabled = true;
+            }
+        }
+    }
+
+    private static void InstallPawnIO()
+    {
+        string path = ExtractPawnIO();
+        if (string.IsNullOrEmpty(path))
+            return;
+
+        try
+        {
+            using Process process = Process.Start(new ProcessStartInfo(path, "-install"));
+            process?.WaitForExit();
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    private static string ExtractPawnIO()
+    {
+        string destination = Path.Combine(Directory.GetCurrentDirectory(), "PawnIO_setup.exe");
+
+        try
+        {
+            using Stream resourceStream = typeof(MainForm).Assembly.GetManifestResourceStream(
+                typeof(MainForm).Assembly.GetName().Name + ".Resources.PawnIO_setup.exe");
+            if (resourceStream == null)
+                return null;
+
+            using FileStream fileStream = new(destination, FileMode.Create, FileAccess.Write);
+            resourceStream.CopyTo(fileStream);
+            return destination;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
         }
     }
 
@@ -678,7 +829,7 @@ public sealed partial class MainForm : Form
         // _closing covers the window between CloseApplication disposing the tray/timer and the
         // form actually being disposed after Application.Run returns: a worker that was in
         // flight at exit still posts its completion to the message queue.
-        if (_closing || IsDisposed)
+        if (IsShutdownPending || IsDisposed)
             return;
 
         treeView.Invalidate();
@@ -693,7 +844,12 @@ public sealed partial class MainForm : Form
     {
         if (eventArgs.Mode == Microsoft.Win32.PowerModes.Resume)
         {
-            _computer.Reset();
+            RunOnUiThreadOrDrop(() =>
+            {
+                // Reset can re-enumerate every hardware group. Keep that work off the message
+                // loop; the resulting hardware/sensor callbacks marshal back through this form.
+                BeginHardwareReset();
+            });
         }
     }
 
@@ -783,6 +939,11 @@ public sealed partial class MainForm : Form
         plotLocationMenuItem.Text = "Graph &Location";
         strokeThicknessMenuItem.Text = "&Stroke Thickness";
 
+        _plotTextSlider = new TextScaleSliderMenu("Graph Text Size", _plotTextScalePercent, DeviceDpi / 96.0,
+            mainMenu.Font, Theme.Current.MenuBackgroundColor);
+        _plotTextSlider.PercentChanged += percent => _plotTextScalePercent = percent;
+        _plotTextSlider.CommitRequested += deferMenuRefresh => ApplyPlotTextScale(deferMenuRefresh);
+
         plotWindowMenuItem.Text = "Separate Window";
         plotBottomMenuItem.Text = "Bottom";
         plotRightMenuItem.Text = "Right";
@@ -822,6 +983,7 @@ public sealed partial class MainForm : Form
         MoveMenuItem(graphMenuItem.DropDownItems, sensorValuesTimeWindowMenuItem);
         MoveMenuItem(graphMenuItem.DropDownItems, plotLocationMenuItem);
         MoveMenuItem(graphMenuItem.DropDownItems, strokeThicknessMenuItem);
+        _plotTextSlider.InstallAt(graphMenuItem, graphMenuItem.DropDownItems.IndexOf(strokeThicknessMenuItem) + 1);
     }
 
     private static void MoveMenuItem(ToolStripItemCollection target, ToolStripItem item)
@@ -934,9 +1096,9 @@ public sealed partial class MainForm : Form
 
     /// <summary>
     /// Single apply path for the Text Size scale: tree font + row height + value/min/max column
-    /// widths + tree glyphs + plot axis text. Order-independent and composes with Compact Mode.
+    /// widths + tree glyphs + plot tracker text. Order-independent and composes with Compact Mode.
     /// </summary>
-    private void ApplyUiTextScale()
+    private void ApplyUiTextScale(bool deferMenuRefresh = false)
     {
         _uiTextScalePercent = UiScale.ClampPercent(_uiTextScalePercent);
 
@@ -951,14 +1113,21 @@ public sealed partial class MainForm : Form
 
         // Top menu-bar font (scaled from its captured base). Scaling a child MenuStrip's font does
         // NOT trigger the form's AutoScaleMode.Font cascade — that keys off the form's own Font.
-        _baseMenuFont ??= (Font)mainMenu.Font.Clone();
-        Font previousMenu = _scaledMenuFont;
-        _scaledMenuFont = new Font(
-            _baseMenuFont.FontFamily,
-            UiScale.ScaledFontSize(_baseMenuFont.SizeInPoints, _uiTextScalePercent),
-            _baseMenuFont.Style);
-        mainMenu.Font = _scaledMenuFont;
-        previousMenu?.Dispose();
+        // Deferred while the View dropdown is open: re-fonting or re-labeling the open menu makes
+        // it re-layout under the cursor mid-drag (the reported slider jitter).
+        if (!deferMenuRefresh)
+        {
+            _baseMenuFont ??= (Font)mainMenu.Font.Clone();
+            Font previousMenu = _scaledMenuFont;
+            _scaledMenuFont = new Font(
+                _baseMenuFont.FontFamily,
+                UiScale.ScaledFontSize(_baseMenuFont.SizeInPoints, _uiTextScalePercent),
+                _baseMenuFont.Style);
+            mainMenu.Font = _scaledMenuFont;
+            previousMenu?.Dispose();
+
+            _textSizeSlider?.RefreshMenuText(_uiTextScalePercent, mainMenu.Font);
+        }
 
         // Value/Min/Max column widths from their 100% base (guarded so our sets don't churn the base).
         _updatingSensorTreeLayout = true;
@@ -980,10 +1149,21 @@ public sealed partial class MainForm : Form
         // Row height + column visibility + repaint (recomputes RowHeight from the live font).
         ApplySensorTreeLayout();
 
-        // Plot axis text (single PlotPanel instance covers docked + separate-window modes).
-        _plotPanel?.SetAxisTextScale(_uiTextScalePercent);
+        // Plot tracker text (single PlotPanel instance covers docked + separate-window modes).
+        _plotPanel?.SetTrackerTextScale(_uiTextScalePercent);
 
         _settings.SetValue("uiTextScale", _uiTextScalePercent);
+    }
+
+    private void ApplyPlotTextScale(bool deferMenuRefresh = false)
+    {
+        _plotTextScalePercent = UiScale.ClampPercent(_plotTextScalePercent);
+        _plotPanel?.SetAxisTextScale(_plotTextScalePercent);
+
+        if (!deferMenuRefresh)
+            _plotTextSlider?.RefreshMenuText(_plotTextScalePercent, mainMenu.Font);
+
+        _settings.SetValue("plotTextScale", _plotTextScalePercent);
     }
 
     /// <summary>
@@ -1187,63 +1367,144 @@ public sealed partial class MainForm : Form
 
     private void SubHardwareAdded(IHardware hardware, Node node)
     {
+        if (hardware is StorageDevice storageDevice && _forceDriveWakeup != null)
+            storageDevice.ForceWakeup = _forceDriveWakeup.Value;
+
+        // Subscribe before HardwareNode takes its UI snapshot so any sensor activated during
+        // hot-plug still receives the selected window through the dynamic event path.
+        hardware.SensorAdded -= SensorAdded;
+        hardware.SensorAdded += SensorAdded;
+
         HardwareNode hardwareNode = new(hardware, _settings, _unitManager, this);
+        ApplySensorValuesTimeWindow(hardwareNode);
         hardwareNode.PlotSelectionChanged += PlotSelectionChanged;
         InsertSorted(node.Nodes, hardwareNode);
         foreach (IHardware subHardware in hardware.SubHardware)
             SubHardwareAdded(subHardware, hardwareNode);
     }
 
+    private void SystemEvents_SessionEnded(object sender, Microsoft.Win32.SessionEndedEventArgs eventArgs)
+    {
+        try
+        {
+            Task shutdown = _shutdownCoordinator.RequestAsync();
+            if (Environment.CurrentManagedThreadId != _uiThreadId)
+                shutdown.GetAwaiter().GetResult();
+        }
+        catch (ObjectDisposedException)
+        {
+            // FormClosing already completed while the system event was being dispatched.
+        }
+        catch (InvalidOperationException) when (IsDisposed || Disposing || !IsHandleCreated)
+        {
+            // The control handle was destroyed before the synchronous UI handoff completed.
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine("Session-end shutdown failed: " + ex);
+        }
+    }
+
+    private void ApplySensorValuesTimeWindow(HardwareNode hardwareNode)
+    {
+        TimeSpan timeWindow = GetSensorValuesTimeWindow();
+        foreach (TypeNode typeNode in hardwareNode.Nodes.OfType<TypeNode>())
+        {
+            foreach (SensorNode sensorNode in typeNode.Nodes.OfType<SensorNode>())
+                sensorNode.Sensor.ValuesTimeWindow = timeWindow;
+        }
+    }
+
+    private TimeSpan GetSensorValuesTimeWindow()
+    {
+        // The menu-backed setting is ready before asynchronous hardware discovery begins. Keep the
+        // fallback for tests and early construction paths that have not created the group yet.
+        return _sensorValuesTimeWindow?.Value switch
+        {
+            0 => TimeSpan.FromSeconds(30),
+            1 => TimeSpan.FromMinutes(1),
+            2 => TimeSpan.FromMinutes(2),
+            3 => TimeSpan.FromMinutes(5),
+            4 => TimeSpan.FromMinutes(10),
+            5 => TimeSpan.FromMinutes(30),
+            6 => TimeSpan.FromHours(1),
+            7 => TimeSpan.FromHours(2),
+            8 => TimeSpan.FromHours(6),
+            9 => TimeSpan.FromHours(12),
+            _ => TimeSpan.FromHours(24)
+        };
+    }
+
+    private void SensorAdded(ISensor sensor)
+    {
+        RunOnUiThreadOrDrop(() => sensor.ValuesTimeWindow = GetSensorValuesTimeWindow());
+    }
+
+    private void UnsubscribeSensorAdded(IHardware hardware)
+    {
+        hardware.SensorAdded -= SensorAdded;
+
+        foreach (IHardware subHardware in hardware.SubHardware)
+            UnsubscribeSensorAdded(subHardware);
+    }
+
     private void HardwareAdded(IHardware hardware)
     {
-        // Computer raises this from whatever thread detected the hardware (e.g. a
-        // NetworkChange thread-pool callback); the node tree and plot are UI-thread state.
-        if (IsHandleCreated && InvokeRequired)
+        RunOnUiThreadOrDrop(() =>
         {
-            // The handle can be destroyed between the check and the call during shutdown; an
-            // unhandled throw here would take down the process from a pool thread.
-            try
-            {
-                BeginInvoke((Action)(() => HardwareAdded(hardware)));
-            }
-            catch (ObjectDisposedException) { }
-            catch (InvalidOperationException) { }
-
-            return;
-        }
-
-        SubHardwareAdded(hardware, _root);
-        PlotSelectionChanged(this, null);
+            SubHardwareAdded(hardware, _root);
+            PlotSelectionChanged(this, null);
+        });
     }
 
     private void HardwareRemoved(IHardware hardware)
     {
-        if (IsHandleCreated && InvokeRequired)
+        RunOnUiThreadOrDrop(() =>
         {
-            try
-            {
-                BeginInvoke((Action)(() => HardwareRemoved(hardware)));
-            }
-            catch (ObjectDisposedException) { }
-            catch (InvalidOperationException) { }
+            UnsubscribeSensorAdded(hardware);
 
+            List<HardwareNode> nodesToRemove = new();
+            foreach (Node node in _root.Nodes)
+            {
+                if (node is HardwareNode hardwareNode && hardwareNode.Hardware == hardware)
+                    nodesToRemove.Add(hardwareNode);
+            }
+
+            foreach (HardwareNode hardwareNode in nodesToRemove)
+            {
+                _root.Nodes.Remove(hardwareNode);
+                hardwareNode.PlotSelectionChanged -= PlotSelectionChanged;
+                hardwareNode.Dispose();
+            }
+
+            PlotSelectionChanged(this, null);
+        });
+    }
+
+    private void RunOnUiThreadOrDrop(Action action)
+    {
+        if (action == null || IsShutdownPending || IsDisposed)
+            return;
+
+        if (Environment.CurrentManagedThreadId == _uiThreadId)
+        {
+            action();
             return;
         }
 
-        List<HardwareNode> nodesToRemove = new();
-        foreach (Node node in _root.Nodes)
-        {
-            if (node is HardwareNode hardwareNode && hardwareNode.Hardware == hardware)
-                nodesToRemove.Add(hardwareNode);
-        }
+        if (!IsHandleCreated)
+            return;
 
-        foreach (HardwareNode hardwareNode in nodesToRemove)
+        try
         {
-            _root.Nodes.Remove(hardwareNode);
-            hardwareNode.PlotSelectionChanged -= PlotSelectionChanged;
+            BeginInvoke((Action)(() =>
+            {
+                if (!IsShutdownPending && !IsDisposed)
+                    action();
+            }));
         }
-
-        PlotSelectionChanged(this, null);
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private void NodeTextBoxText_DrawText(object sender, DrawEventArgs e)
@@ -1358,11 +1619,19 @@ public sealed partial class MainForm : Form
 
     private void Timer_Tick(object sender, EventArgs e)
     {
-        if (!backgroundUpdater.IsBusy)
+        if (!IsShutdownPending && !backgroundUpdater.IsBusy)
             backgroundUpdater.RunWorkerAsync();
     }
 
-    private void SaveConfiguration()
+    private void AutoSaveTimer_Tick(object sender, EventArgs e)
+    {
+        if (IsShutdownPending)
+            return;
+
+        SaveConfiguration(autoSave: true);
+    }
+
+    private void SaveConfiguration(bool autoSave = false)
     {
         if (_plotPanel == null || _settings == null)
             return;
@@ -1383,6 +1652,7 @@ public sealed partial class MainForm : Form
         }
 
         _settings.SetValue("uiTextScale", _uiTextScalePercent);
+        _settings.SetValue("plotTextScale", _plotTextScalePercent);
 
         _settings.SetValue("listenerIp", Server.ListenerIp);
         _settings.SetValue("listenerPort", Server.ListenerPort);
@@ -1390,11 +1660,22 @@ public sealed partial class MainForm : Form
         _settings.SetValue("authenticationUserName", Server.UserName);
         _settings.SetValue("authenticationPassword", Server.PasswordSHA256);
 
+        // Nothing changed since the last save; skip the periodic write to avoid needless disk
+        // churn while the app sits idle in the tray.
+        if (autoSave && !_settings.Modified)
+            return;
+
         string fileName = Path.ChangeExtension(Application.ExecutablePath, ".config");
 
         try
         {
             _settings.Save(fileName);
+        }
+        catch (Exception ex) when (autoSave && (ex is UnauthorizedAccessException || ex is IOException))
+        {
+            // A periodic save must never interrupt the user with a modal dialog every cycle. The
+            // atomic write preserved the previous file/backup, so just log and retry next tick.
+            Debug.WriteLine("Autosave of settings failed: " + ex.Message);
         }
         catch (UnauthorizedAccessException)
         {
@@ -1447,7 +1728,7 @@ public sealed partial class MainForm : Form
 
         RestoreCollapsedNodeState(treeView);
 
-        FormClosed += MainForm_FormClosed;
+        FormClosing += MainForm_FormClosing;
     }
 
     private void RestoreCollapsedNodeState(TreeViewAdv treeViewAdv)
@@ -1463,34 +1744,100 @@ public sealed partial class MainForm : Form
         }
     }
 
-    private void CloseApplication()
+    private async void CloseApplication()
     {
-        _closing = true;
-        FormClosed -= MainForm_FormClosed;
-
-        Visible = false;
-        _systemTray.IsMainIconEnabled = false;
-        timer.Enabled = false;
-        _computer.Close();
-        SaveConfiguration();
-        if (_runWebServer.Value)
-            Server.Quit();
-
-        _systemTray.Dispose();
-        timer.Dispose();
-        backgroundUpdater.Dispose();
-
-        Application.Exit();
+        try
+        {
+            await _shutdownCoordinator.RequestAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine("Application shutdown failed: " + ex);
+        }
     }
 
-    private void MainForm_FormClosed(object sender, FormClosedEventArgs e)
+    private async Task CloseApplicationCoreAsync()
     {
+        if (_closing)
+            return;
+
+        _closing = true;
+        FormClosing -= MainForm_FormClosing;
+        Microsoft.Win32.SystemEvents.SessionEnded -= SystemEvents_SessionEnded;
+        Microsoft.Win32.SystemEvents.PowerModeChanged -= PowerModeChanged;
+        _computer.HardwareAdded -= HardwareAdded;
+        _computer.HardwareRemoved -= HardwareRemoved;
+
+        try
+        {
+            Visible = false;
+            _systemTray.IsMainIconEnabled = false;
+            timer.Enabled = false;
+            _autoSaveTimer.Stop();
+
+            _hardwareLifecycleCancellation.Cancel();
+            await Server.QuitAsync().ConfigureAwait(true);
+
+            if (_hardwareInitializationTask != null)
+                await _hardwareInitializationTask.ConfigureAwait(true);
+
+            await _hardwareLifecycleGate.WaitAsync().ConfigureAwait(true);
+            try
+            {
+                foreach (HardwareNode hardwareNode in _root.Nodes.OfType<HardwareNode>().ToList())
+                {
+                    hardwareNode.PlotSelectionChanged -= PlotSelectionChanged;
+                    hardwareNode.Dispose();
+                }
+
+                _root.Nodes.Clear();
+                _gadget?.Dispose();
+                _systemTray.Dispose();
+                await Task.Run(() => _computer.Close()).ConfigureAwait(true);
+            }
+            finally
+            {
+                _hardwareLifecycleGate.Release();
+            }
+
+            SaveConfiguration();
+
+            timer.Dispose();
+            _autoSaveTimer.Dispose();
+            _textSizeSlider?.Dispose();
+            _plotTextSlider?.Dispose();
+            backgroundUpdater.Dispose();
+            _hardwareLifecycleCancellation.Dispose();
+            _hardwareLifecycleGate.Dispose();
+
+            _scaledTreeFont?.Dispose();
+            _scaledTreeFont = null;
+            _scaledMenuFont?.Dispose();
+            _scaledMenuFont = null;
+            _baseMenuFont?.Dispose();
+            _baseMenuFont = null;
+
+            _root.Image?.Dispose();
+            _root.Image = null;
+            SensorTypeImageCache.DisposeAll();
+            HardwareTypeImage.Instance.DisposeAll();
+        }
+        finally
+        {
+            Application.Exit();
+        }
+    }
+
+    private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
+    {
+        e.Cancel = true;
         CloseApplication();
     }
 
     private void AboutMenuItem_Click(object sender, EventArgs e)
     {
-        _ = new AboutBox().ShowDialog();
+        using AboutBox aboutBox = new();
+        aboutBox.ShowDialog(this);
     }
 
     private List<SensorNode> GetSelectedSensorNodes(TreeNodeAdv clickedNode)
@@ -1568,6 +1915,16 @@ public sealed partial class MainForm : Form
             treeContextMenu.Items.Add(new ToolStripSeparator());
     }
 
+    private static void ClearAndDisposeMenuItems(ToolStripItemCollection items)
+    {
+        while (items.Count > 0)
+        {
+            ToolStripItem item = items[0];
+            items.RemoveAt(0);
+            item.Dispose();
+        }
+    }
+
     private void AddBulkMembershipMenuItems(string addText, string removeText, List<SensorNode> sensorNodes, Func<ISensor, bool> contains, Action<ISensor> add, Action<ISensor> remove)
     {
         // The add/remove items appear only when at least one selected sensor is missing/present,
@@ -1631,7 +1988,7 @@ public sealed partial class MainForm : Form
             bool multipleSensorsSelected = selectedSensorNodes.Count > 1;
             int count = selectedSensorNodes.Count;
 
-            treeContextMenu.Items.Clear();
+            ClearAndDisposeMenuItems(treeContextMenu.Items);
             if (!multipleSensorsSelected && node.Sensor.Parameters.Count > 0)
             {
                 ToolStripItem item = new ToolStripMenuItem("Parameters...");
@@ -1684,8 +2041,8 @@ public sealed partial class MainForm : Form
                 ToolStripItem item = new ToolStripMenuItem(multipleSensorsSelected ? $"Pen Color... ({count})" : "Pen Color...");
                 item.Click += delegate
                 {
-                    ColorDialog dialog = new() { Color = node.PenColor.GetValueOrDefault() };
-                    if (dialog.ShowDialog() == DialogResult.OK)
+                    using ColorDialog dialog = new() { Color = node.PenColor.GetValueOrDefault() };
+                    if (dialog.ShowDialog(this) == DialogResult.OK)
                         SetSensorNodesPenColor(selectedSensorNodes, dialog.Color);
                 };
 
@@ -1786,7 +2143,7 @@ public sealed partial class MainForm : Form
 
         if (viewNode.Tag is HardwareNode hardwareNode && hardwareNode.Hardware != null)
         {
-            treeContextMenu.Items.Clear();
+            ClearAndDisposeMenuItems(treeContextMenu.Items);
 
             if (nodeTextBoxText.EditEnabled)
             {
@@ -1807,7 +2164,7 @@ public sealed partial class MainForm : Form
                 return;
 
             int count = groupSensorNodes.Count;
-            treeContextMenu.Items.Clear();
+            ClearAndDisposeMenuItems(treeContextMenu.Items);
 
             if (groupSensorNodes.Any(groupNode => groupNode.IsVisible))
             {
@@ -1902,8 +2259,8 @@ public sealed partial class MainForm : Form
 
     private void ShowParameterForm(ISensor sensorForm)
     {
-        ParameterForm form = new() { Parameters = sensorForm.Parameters, captionLabel = { Text = sensorForm.Name } };
-        form.ShowDialog();
+        using ParameterForm form = new() { Parameters = sensorForm.Parameters, captionLabel = { Text = sensorForm.Name } };
+        form.ShowDialog(this);
     }
 
     private void TreeView_NodeMouseDoubleClick(object sender, TreeNodeAdvMouseEventArgs e)
@@ -1984,12 +2341,7 @@ public sealed partial class MainForm : Form
 
     private void ResetClick(object sender, EventArgs e)
     {
-        // disable the fallback MainIcon during reset, otherwise icon visibility
-        // might be lost
-        _systemTray.IsMainIconEnabled = false;
-        _computer.Reset();
-        // restore the MainIcon setting
-        _systemTray.IsMainIconEnabled = _minimizeToTray.Value;
+        BeginHardwareReset();
     }
 
     private void TreeView_MouseMove(object sender, MouseEventArgs e)
@@ -2021,13 +2373,22 @@ public sealed partial class MainForm : Form
 
     private void TreeView_SizeChanged(object sender, EventArgs e)
     {
-        int newWidth = treeView.Width;
+        // Keep a stable native-width gutter for the vertical scrollbar. The themed indicator now
+        // mirrors the real scrollbar instead of collapsing it to zero, so sizing columns against
+        // the full control width would create a horizontal scrollbar as soon as vertical overflow
+        // appears. Reserving the gutter at all times also prevents a visible column-width jump.
+        int newWidth = GetSensorTreeColumnViewportWidth();
         for (int i = 1; i < treeView.Columns.Count; i++)
         {
             if (treeView.Columns[i].IsVisible)
                 newWidth -= treeView.Columns[i].Width;
         }
         treeView.Columns[0].Width = newWidth;
+    }
+
+    private int GetSensorTreeColumnViewportWidth()
+    {
+        return Math.Max(0, treeView.ClientSize.Width - System.Windows.Forms.SystemInformation.VerticalScrollBarWidth);
     }
 
     private void TreeView_KeyDown(object sender, KeyEventArgs e)
@@ -2124,19 +2485,21 @@ public sealed partial class MainForm : Form
             nextColumnIndex++;
 
         if (nextColumnIndex < treeView.Columns.Count) {
-            int diff = treeView.Width - columnsWidth;
+            int diff = GetSensorTreeColumnViewportWidth() - columnsWidth;
             treeView.Columns[nextColumnIndex].Width = Math.Max(20, treeView.Columns[nextColumnIndex].Width + diff);
         }
     }
 
     private void ServerInterfacePortMenuItem_Click(object sender, EventArgs e)
     {
-        new InterfacePortForm(this).ShowDialog();
+        using InterfacePortForm form = new(this);
+        form.ShowDialog(this);
     }
 
     private void AuthWebServerMenuItem_Click(object sender, EventArgs e)
     {
-        new AuthForm(this).ShowDialog();
+        using AuthForm form = new(this);
+        form.ShowDialog(this);
     }
 
     private void perSessionFileRotationMenuItem_Click(object sender, EventArgs e)

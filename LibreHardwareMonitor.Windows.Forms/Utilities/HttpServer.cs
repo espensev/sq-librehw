@@ -5,6 +5,7 @@
 // All Rights Reserved.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Drawing;
@@ -26,10 +27,14 @@ namespace LibreHardwareMonitor.Windows.Forms.Utilities;
 
 public class HttpServer
 {
+    internal const int DefaultMaxConcurrentHandlers = 16;
+
     private readonly HttpListener _listener;
     private readonly Node _root;
     private readonly IElement _rootElement;
     private readonly Version _version = typeof(HttpServer).Assembly.GetName().Version;
+    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private readonly BoundedRequestHandlerPool _requestHandlers = new(DefaultMaxConcurrentHandlers);
 
     private Task _listenerTask;
     private CancellationTokenSource _cts;
@@ -59,9 +64,9 @@ public class HttpServer
         if (PlatformNotSupported)
             return;
 
-        StopHttpListener();
         try
         {
+            _cts?.Cancel();
             _listener?.Abort();
         }
         catch { }
@@ -92,10 +97,16 @@ public class HttpServer
         if (PlatformNotSupported)
             return false;
 
+        _lifecycleGate.Wait();
         try
         {
             if (_listener.IsListening)
                 return true;
+
+            // A timed-out stop retains its canceled session so a restart cannot overwrite the
+            // cancellation source while old handlers still own it. A later stop can drain it.
+            if (_cts != null || _listenerTask != null)
+                return false;
 
             // Validate that the selected IP exists (it could have been previously selected
             // before switching networks). Enumerate local interfaces instead of a DNS
@@ -138,23 +149,50 @@ public class HttpServer
         {
             return false;
         }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
 
         return true;
     }
 
     public bool StopHttpListener()
     {
+        return StopHttpListenerAsync().GetAwaiter().GetResult();
+    }
+
+    public async Task<bool> StopHttpListenerAsync()
+    {
         if (PlatformNotSupported)
             return false;
 
+        await _lifecycleGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            _cts?.Cancel();
+            CancellationTokenSource cancellation = _cts;
+            Task listenerTask = _listenerTask;
+
+            if (cancellation == null && listenerTask == null && !_listener.IsListening)
+                return true;
+
+            cancellation?.Cancel();
             // Stop() faults the pending GetContextAsync (which ignores the token) so the accept
-            // loop exits immediately; the Wait below is only a backstop.
+            // loop exits immediately. Active request registrations abort their responses.
             _listener?.Stop();
-            _listenerTask?.Wait(TimeSpan.FromSeconds(5));
-            _cts?.Dispose();
+
+            bool listenerStopped = await WaitForCompletionAsync(listenerTask, TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            bool handlersDrained = listenerStopped &&
+                                   await _requestHandlers.DrainAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+
+            if (listenerStopped && handlersDrained)
+            {
+                _listenerTask = null;
+                _cts = null;
+                cancellation?.Dispose();
+            }
+
+            return listenerStopped && handlersDrained;
         }
         catch (HttpListenerException)
         { }
@@ -164,8 +202,12 @@ public class HttpServer
         { }
         catch (Exception)
         { }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
 
-        return true;
+        return false;
     }
 
     private async Task ProcessRequestsAsync(CancellationToken cancellationToken)
@@ -174,8 +216,17 @@ public class HttpServer
         {
             try
             {
-                var context = await _listener.GetContextAsync();
-                _ = Task.Run(() => HandleContextAsync(context), cancellationToken);
+                HttpListenerContext context = await _listener.GetContextAsync();
+                try
+                {
+                    HttpListenerContext acceptedContext = context;
+                    await _requestHandlers.QueueAsync(token => HandleContextAsync(acceptedContext, token), cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    AbortContext(context);
+                    break;
+                }
             }
             catch (HttpListenerException ex) when (ex.ErrorCode == 50)
             {
@@ -200,6 +251,27 @@ public class HttpServer
                 System.Diagnostics.Debug.WriteLine($"Unexpected HttpListener error: {ex.Message}");
             }
         }
+    }
+
+    private static async Task<bool> WaitForCompletionAsync(Task task, TimeSpan timeout)
+    {
+        if (task == null)
+            return true;
+
+        Task completed = await Task.WhenAny(task, Task.Delay(timeout)).ConfigureAwait(false);
+        if (completed != task)
+            return false;
+
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException ||
+                                   ex is HttpListenerException ||
+                                   ex is ObjectDisposedException)
+        { }
+
+        return true;
     }
 
     public static IDictionary<string, string> ToDictionary(NameValueCollection col)
@@ -243,19 +315,59 @@ public class HttpServer
     }
     public void SetSensorControlValue(SensorNode sNode, string value)
     {
-        if (sNode.Sensor.Control == null)
+        IControl control = sNode.Sensor.Control;
+
+        if (control == null)
         {
             throw new ArgumentException("Specified sensor '" + sNode.Sensor.Identifier + "' can not be set");
         }
 
         if (value == "null")
         {
-            sNode.Sensor.Control.SetDefault();
+            control.SetDefault();
         }
         else
         {
-            sNode.Sensor.Control.SetSoftware(float.Parse(value, CultureInfo.InvariantCulture));
+            if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float softwareValue) ||
+                float.IsNaN(softwareValue) ||
+                float.IsInfinity(softwareValue))
+            {
+                throw new ArgumentException("Invalid control value '" + value + "' specified");
+            }
+
+            if (softwareValue < control.MinSoftwareValue)
+                softwareValue = control.MinSoftwareValue;
+            else if (softwareValue > control.MaxSoftwareValue)
+                softwareValue = control.MaxSoftwareValue;
+
+            control.SetSoftware(softwareValue);
         }
+    }
+
+    internal Dictionary<string, object> HandleGetSensorRequest(NameValueCollection queryString)
+    {
+        var result = new Dictionary<string, object>();
+
+        try
+        {
+            // Hardware control writes must not be reachable via GET (CSRF).
+            if (queryString["action"] == "Set")
+            {
+                result["result"] = "fail";
+                result["message"] = "Set requires a POST request";
+            }
+            else
+            {
+                HandleSensorRequest(queryString, null, result);
+            }
+        }
+        catch (Exception e)
+        {
+            result["result"] = "fail";
+            result["message"] = e.Message; // never e.ToString(): no stack traces to clients
+        }
+
+        return result;
     }
 
     //Handles "/Sensor" requests.
@@ -274,30 +386,47 @@ public class HttpServer
     //{"result":"fail","message":"Some error message"}
     //or:
     //{"result":"ok"}
-    private static bool IsCrossOriginBrowserRequest(HttpListenerRequest request)
+    internal static bool IsCrossOriginBrowserRequest(Uri requestUrl, string origin, string referer)
     {
-        string origin = request.Headers["Origin"];
         if (!string.IsNullOrEmpty(origin))
         {
             // "null" origins (sandboxed frames, file://) fail TryCreate and are rejected.
             return !(Uri.TryCreate(origin, UriKind.Absolute, out Uri originUri) &&
-                     string.Equals(originUri.Host, request.Url.Host, StringComparison.OrdinalIgnoreCase));
+                     IsSameOrigin(originUri, requestUrl));
         }
 
-        string referer = request.Headers["Referer"];
         if (!string.IsNullOrEmpty(referer))
         {
             return !(Uri.TryCreate(referer, UriKind.Absolute, out Uri refererUri) &&
-                     string.Equals(refererUri.Host, request.Url.Host, StringComparison.OrdinalIgnoreCase));
+                     IsSameOrigin(refererUri, requestUrl));
         }
 
         // No browser-context headers: a non-browser client (scripts, curl, the downstream poller).
         return false;
     }
 
+    private static bool IsCrossOriginBrowserRequest(HttpListenerRequest request)
+    {
+        return IsCrossOriginBrowserRequest(request.Url, request.Headers["Origin"], request.Headers["Referer"]);
+    }
+
+    private static bool IsSameOrigin(Uri browserUri, Uri requestUri)
+    {
+        return browserUri != null &&
+               requestUri != null &&
+               string.Equals(browserUri.Scheme, requestUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(browserUri.Host, requestUri.Host, StringComparison.OrdinalIgnoreCase) &&
+               browserUri.Port == requestUri.Port;
+    }
+
     private void HandleSensorRequest(HttpListenerRequest request, Dictionary<string, object> result)
     {
-        IDictionary<string, string> dict = ToDictionary(request.QueryString);
+        HandleSensorRequest(request.QueryString, request, result);
+    }
+
+    private void HandleSensorRequest(NameValueCollection queryString, HttpListenerRequest request, Dictionary<string, object> result)
+    {
+        IDictionary<string, string> dict = ToDictionary(queryString);
 
         if (dict.ContainsKey("action"))
         {
@@ -326,7 +455,7 @@ public class HttpServer
                         // against hardware control writes. Browsers always attach Origin
                         // (or at least Referer) to cross-site form posts; script clients
                         // like LiquidCool.py send neither and are unaffected.
-                        if (IsCrossOriginBrowserRequest(request))
+                        if (request != null && IsCrossOriginBrowserRequest(request))
                             throw new ArgumentException("Set rejected: cross-origin browser requests are not allowed");
 
                         SetSensorControlValue(sNode, dict["value"]);
@@ -386,15 +515,29 @@ public class HttpServer
         return System.Text.Json.JsonSerializer.Serialize(result);
     }
 
-    private async Task HandleContextAsync(HttpListenerContext context)
+    private async Task HandleContextAsync(HttpListenerContext context, CancellationToken cancellationToken)
     {
         // Backstop: any unhandled error while handling a request must still close the response.
         // Otherwise the client connection hangs until it times out — e.g. a JSON serialization
         // failure on a non-finite sensor value (NaN/Infinity), which System.Text.Json rejects.
+        using CancellationTokenRegistration cancellationRegistration =
+            cancellationToken.Register(state => AbortContext((HttpListenerContext)state), context);
+
         try
         {
-            await DispatchRequestAsync(context);
+            cancellationToken.ThrowIfCancellationRequested();
+            await DispatchRequestAsync(context, cancellationToken).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        { }
+        catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
+        { }
+        catch (HttpListenerException) when (cancellationToken.IsCancellationRequested)
+        { }
+        catch (InvalidOperationException) when (cancellationToken.IsCancellationRequested)
+        { }
+        catch (IOException) when (cancellationToken.IsCancellationRequested)
+        { }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"HTTP request handler error: {ex.Message}");
@@ -408,7 +551,19 @@ public class HttpServer
         }
     }
 
-    private async Task DispatchRequestAsync(HttpListenerContext context)
+    private static void AbortContext(HttpListenerContext context)
+    {
+        try
+        {
+            context?.Response.Abort();
+        }
+        catch
+        {
+            // The response may already have completed or been aborted by the client.
+        }
+    }
+
+    private async Task DispatchRequestAsync(HttpListenerContext context, CancellationToken cancellationToken)
     {
         HttpListenerRequest request = context.Request;
         bool authenticated = true;
@@ -433,68 +588,51 @@ public class HttpServer
                 case "POST":
                     {
                         string postResult = HandlePostRequest(request);
-                        await SendResponseAsync(context.Response, postResult, "application/json");
+                        await SendResponseAsync(context.Response, postResult, "application/json", cancellationToken).ConfigureAwait(false);
                         break;
                     }
                 case "GET":
                     {
-                        string requestedFile = request.RawUrl.Substring(1);
+                        string path = request.Url.AbsolutePath;
+                        string requestedFile = path.TrimStart('/');
 
-                        if (requestedFile == "data.json")
+                        if (string.Equals(path, "/data.json", StringComparison.OrdinalIgnoreCase))
                         {
-                            await SendJsonAsync(context.Response, request);
+                            await SendJsonAsync(context.Response, request, cancellationToken).ConfigureAwait(false);
                             return;
                         }
 
-                        if (requestedFile.Contains("images_icon"))
+                        if (path.StartsWith("/images_icon/", StringComparison.OrdinalIgnoreCase))
                         {
-                            await ServeResourceImageAsync(context.Response, requestedFile.Replace("images_icon/", string.Empty));
+                            await ServeResourceImageAsync(context.Response, requestedFile.Substring("images_icon/".Length), cancellationToken).ConfigureAwait(false);
                             return;
                         }
 
-                        if (requestedFile.StartsWith("metrics?") || requestedFile == "metrics")
+                        if (string.Equals(path, "/metrics", StringComparison.OrdinalIgnoreCase))
                         {
-                            await SendPrometheusAsync(context.Response, request);
+                            await SendPrometheusAsync(context.Response, request, cancellationToken).ConfigureAwait(false);
                             return;
                         }
 
-                        if (requestedFile.Contains("Sensor"))
+                        if (string.Equals(path, "/Sensor", StringComparison.OrdinalIgnoreCase))
                         {
-                            var sensorResult = new Dictionary<string, object>();
-
-                            // Hardware control writes must not be reachable via GET (CSRF).
-                            if (request.QueryString["action"] == "Set")
-                            {
-                                sensorResult["result"] = "fail";
-                                sensorResult["message"] = "Set requires a POST request";
-                            }
-                            else
-                            {
-                                HandleSensorRequest(request, sensorResult);
-                            }
-
-                            await SendJsonSensorAsync(context.Response, sensorResult);
+                            await SendJsonSensorAsync(context.Response, HandleGetSensorRequest(request.QueryString), cancellationToken).ConfigureAwait(false);
                             return;
                         }
 
-                        if (requestedFile.Contains("ResetAllMinMax"))
+                        if (string.Equals(path, "/ResetAllMinMax", StringComparison.OrdinalIgnoreCase))
                         {
                             _rootElement.Accept(new SensorVisitor(delegate (ISensor sensor)
                             {
                                 sensor.ResetMin();
                                 sensor.ResetMax();
                             }));
-                            await SendJsonAsync(context.Response, request);
+                            await SendJsonAsync(context.Response, request, cancellationToken).ConfigureAwait(false);
                             return;
                         }
 
-                        // default file to be served
-                        if (string.IsNullOrEmpty(requestedFile))
-                            requestedFile = "index.html";
-
-                        string[] splits = requestedFile.Split('.');
-                        string ext = splits[splits.Length - 1];
-                        await ServeResourceFileAsync(context.Response, "Web." + requestedFile.Replace('/', '.'), ext);
+                        if (TryMapStableWebResource(path, out string resourcePath, out string ext))
+                            await ServeResourceFileAsync(context.Response, resourcePath, ext, cancellationToken).ConfigureAwait(false);
                         break;
                     }
                 default:
@@ -515,11 +653,29 @@ public class HttpServer
   <BODY><H4>401 Unauthorized</H4>
   Authorization required.</BODY></HTML> ";
 
-            await SendResponseAsync(context.Response, responseString, "text/html");
+            await SendResponseAsync(context.Response, responseString, "text/html", cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private async Task ServeResourceFileAsync(HttpListenerResponse response, string name, string ext)
+    internal static bool TryMapStableWebResource(string absolutePath, out string resourcePath, out string ext)
+    {
+        resourcePath = null;
+        ext = null;
+
+        if (absolutePath == null)
+            return false;
+
+        string requestedFile = absolutePath.TrimStart('/');
+        if (string.IsNullOrEmpty(requestedFile))
+            requestedFile = "index.html";
+
+        string[] splits = requestedFile.Split('.');
+        ext = splits[splits.Length - 1];
+        resourcePath = "Web." + requestedFile.Replace('/', '.');
+        return true;
+    }
+
+    private async Task ServeResourceFileAsync(HttpListenerResponse response, string name, string ext, CancellationToken cancellationToken)
     {
         // resource names do not support the hyphen
         name = Assembly.GetExecutingAssembly().GetName().Name + ".Resources." +
@@ -539,12 +695,12 @@ public class HttpServer
                 try
                 {
                     int len;
-                    while ((len = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                    while ((len = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
                     {
-                        await response.OutputStream.WriteAsync(buffer, 0, len);
+                        await response.OutputStream.WriteAsync(buffer, 0, len, cancellationToken).ConfigureAwait(false);
                     }
 
-                    await response.OutputStream.FlushAsync();
+                    await response.OutputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
                     response.OutputStream.Close();
                     response.Close();
                 }
@@ -561,7 +717,7 @@ public class HttpServer
         response.Close();
     }
 
-    private async Task ServeResourceImageAsync(HttpListenerResponse response, string name)
+    private async Task ServeResourceImageAsync(HttpListenerResponse response, string name, CancellationToken cancellationToken)
     {
         name = Assembly.GetExecutingAssembly().GetName().Name + ".Resources." + name;
 
@@ -580,7 +736,7 @@ public class HttpServer
                     using var ms = new MemoryStream();
                     image.Save(ms, ImageFormat.Png);
                     byte[] buffer = ms.ToArray();
-                    await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
+                    await response.OutputStream.WriteAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
                     response.OutputStream.Close();
                 }
                 catch (HttpListenerException)
@@ -597,7 +753,8 @@ public class HttpServer
 
     // Serialization buffer reused across data.json requests: the payload is ~155 KB, so a fresh
     // array per 1 Hz poll would be a Large Object Heap allocation every second for the lifetime
-    // of the process. Contexts are handled concurrently, hence the gate.
+    // of the process. Each response copies into an ArrayPool lease before releasing the gate, so
+    // a slow network write never blocks the next serialization or owns this shared buffer.
     private readonly MemoryStream _dataJsonBuffer = new();
     private readonly SemaphoreSlim _dataJsonBufferGate = new(1, 1);
 
@@ -632,7 +789,7 @@ public class HttpServer
         System.Text.Json.JsonSerializer.Serialize(output, BuildDataJsonObject());
     }
 
-    private async Task SendJsonAsync(HttpListenerResponse response, HttpListenerRequest request = null)
+    private async Task SendJsonAsync(HttpListenerResponse response, HttpListenerRequest request, CancellationToken cancellationToken)
     {
         bool acceptGzip;
         try
@@ -648,40 +805,61 @@ public class HttpServer
         response.AddHeader("Access-Control-Allow-Origin", "*");
         response.ContentType = "application/json";
 
-        await _dataJsonBufferGate.WaitAsync();
+        byte[] responseBuffer = null;
+        int responseLength = 0;
+
+        await _dataJsonBufferGate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
             _dataJsonBuffer.SetLength(0);
             WriteDataJson(_dataJsonBuffer);
-
-            try
+            responseLength = checked((int)_dataJsonBuffer.Length);
+            responseBuffer = ArrayPool<byte>.Shared.Rent(Math.Max(1, responseLength));
+            Buffer.BlockCopy(_dataJsonBuffer.GetBuffer(), 0, responseBuffer, 0, responseLength);
+        }
+        catch
+        {
+            if (responseBuffer != null)
             {
-                if (acceptGzip)
-                {
-                    response.AddHeader("Content-Encoding", "gzip");
-                    using var ms = new MemoryStream();
-                    using (var zip = new GZipStream(ms, CompressionMode.Compress, true))
-                        await zip.WriteAsync(_dataJsonBuffer.GetBuffer(), 0, (int)_dataJsonBuffer.Length);
-
-                    // Write the stream's internal buffer directly instead of copying it via ToArray().
-                    response.ContentLength64 = ms.Length;
-                    await response.OutputStream.WriteAsync(ms.GetBuffer(), 0, (int)ms.Length);
-                }
-                else
-                {
-                    response.ContentLength64 = _dataJsonBuffer.Length;
-                    await response.OutputStream.WriteAsync(_dataJsonBuffer.GetBuffer(), 0, (int)_dataJsonBuffer.Length);
-                }
-
-                response.OutputStream.Close();
+                ArrayPool<byte>.Shared.Return(responseBuffer);
+                responseBuffer = null;
             }
-            catch (HttpListenerException)
-            { }
+
+            throw;
         }
         finally
         {
             _dataJsonBufferGate.Release();
+        }
+
+        try
+        {
+            if (acceptGzip)
+            {
+                response.AddHeader("Content-Encoding", "gzip");
+                using var compressed = new MemoryStream();
+                using (var zip = new GZipStream(compressed, CompressionMode.Compress, true))
+                    await zip.WriteAsync(responseBuffer, 0, responseLength, cancellationToken).ConfigureAwait(false);
+
+                // Write the stream's internal buffer directly instead of copying it via ToArray().
+                response.ContentLength64 = compressed.Length;
+                await response.OutputStream.WriteAsync(compressed.GetBuffer(), 0, (int)compressed.Length, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                response.ContentLength64 = responseLength;
+                await response.OutputStream.WriteAsync(responseBuffer, 0, responseLength, cancellationToken).ConfigureAwait(false);
+            }
+
+            response.OutputStream.Close();
+        }
+        catch (HttpListenerException)
+        { }
+        finally
+        {
+            if (responseBuffer != null)
+                ArrayPool<byte>.Shared.Return(responseBuffer);
         }
 
         response.Close();
@@ -708,6 +886,7 @@ public class HttpServer
         { SensorType.Power, ("watts", 1) },
         { SensorType.SmallData, ("bytes", 1024*1024) },                    //originally MiB
         { SensorType.Temperature, ("celsius", 1) },
+        { SensorType.TemperatureRate, ("celsius_per_second", 1) },
         { SensorType.Throughput, ("bytes_per_second", 1) },
         { SensorType.TimeSpan, ("seconds", 1) },
         { SensorType.Timing, ("seconds", 0.000000001 ) },                  //originally nanoseconds
@@ -785,14 +964,14 @@ public class HttpServer
                         lastTagName = tagName;
                     }
 
-                    // Iterate newest-to-oldest by index instead of LINQ Reverse(): Reverse would
-                    // buffer the entire history snapshot per sensor per scrape, and this loop
-                    // runs while holding Node.SyncRoot (shared with data.json).
-                    IEnumerable<SensorValue> sensorValues = sensor.Sensor.Values;
-                    SensorValue[] history = sensorValues as SensorValue[] ?? sensorValues.ToArray();
+                    // The built-in Sensor implements the optional bounded reader, so the default
+                    // scrape copies one point instead of materializing its full history. Third-party
+                    // sensors that only implement ISensor retain the existing Values fallback.
+                    int maxValues = prometheusSettings["archivelength"] + 1;
+                    IReadOnlyList<SensorValue> history = ReadPrometheusHistory(sensor.Sensor, maxValues);
 
                     int counter = 0;
-                    for (int v = history.Length - 1; v >= 0; v--)
+                    for (int v = history.Count - 1; v >= 0; v--)
                     {
                         SensorValue val = history[v];
                         if (counter++ > prometheusSettings["archivelength"])
@@ -823,7 +1002,39 @@ public class HttpServer
         }
     }
 
-    private async Task SendPrometheusAsync(HttpListenerResponse response, HttpListenerRequest request = null)
+    private static IReadOnlyList<SensorValue> ReadPrometheusHistory(ISensor sensor, int maxValues)
+    {
+        if (sensor is ISensorHistoryReader historyReader)
+            return historyReader.ReadHistory(0, maxValues);
+
+        IEnumerable<SensorValue> sensorValues = sensor.Values;
+        return sensorValues as SensorValue[] ?? sensorValues.ToArray();
+    }
+
+    internal (string Content, string ContentType, IReadOnlyList<KeyValuePair<string, string>> Headers) BuildPrometheusResponse(NameValueCollection queryString)
+    {
+        Dictionary<string, int> prometheusSettings = GetPrometheusSettings(queryString);
+        StringBuilder responseBuilder = new();
+
+        // Snapshot the node tree under the lock; the response is written outside it.
+        lock (Node.SyncRoot)
+        {
+            GeneratePrometheusResponse(_root, prometheusSettings, responseBuilder);
+        }
+
+        KeyValuePair<string, string>[] headers =
+        {
+            new("Cache-Control", "no-cache"),
+            new("Access-Control-Allow-Origin", "*"),
+            new("X-archivelength", prometheusSettings["archivelength"].ToString()),
+            new("X-timestamps", prometheusSettings["timestamps"].ToString()),
+            new("X-lastvalue", prometheusSettings["lastvalue"].ToString())
+        };
+
+        return (responseBuilder.ToString(), "text/plain", headers);
+    }
+
+    private static Dictionary<string, int> GetPrometheusSettings(NameValueCollection queryString)
     {
         Dictionary<string, int> prometheusSettings = new Dictionary<string, int>();
         //Default values: archivelength=0, timestamps=0, lastvalue=1
@@ -831,16 +1042,16 @@ public class HttpServer
         prometheusSettings["timestamps"] = 0;
         prometheusSettings["lastvalue"] = 1;
 
-        if (request != null && request.QueryString != null && request.QueryString.Count > 0)
+        if (queryString != null && queryString.Count > 0)
         {
             int archive = 0, timestamps = 0, lastvalue = 1;
-            
-            foreach (string key in request.QueryString.AllKeys)
+
+            foreach (string key in queryString.AllKeys)
             {
                 switch (key)
                 {
                     case "timestamps":
-                        int.TryParse(request.QueryString[key], out timestamps);     
+                        int.TryParse(queryString[key], out timestamps);
 
                         if (timestamps < 0 || timestamps > 1)
                             timestamps = 0;     // Enforce boolean range 0 to 1
@@ -850,7 +1061,7 @@ public class HttpServer
 
                         break;
                     case "archivelength":
-                        int.TryParse(request.QueryString[key], out archive);
+                        int.TryParse(queryString[key], out archive);
                         archive = Math.Min(10, archive); // Enforce max 10
                         archive = Math.Max(0, archive); // Enforce min 0
 
@@ -862,12 +1073,12 @@ public class HttpServer
 
                         break;
                     case "lastvalue":
-                        int.TryParse(request.QueryString[key], out lastvalue);
+                        int.TryParse(queryString[key], out lastvalue);
 
                         if (lastvalue < 0 || lastvalue > 1)
                             lastvalue = 1; // Enforce boolean range 0 to 1
 
-                        if (lastvalue == 0 && archive  == 0)
+                        if (lastvalue == 0 && archive == 0)
                         {
                             archive = 1;
                             timestamps = 1;
@@ -884,33 +1095,27 @@ public class HttpServer
             prometheusSettings["lastvalue"] = lastvalue;
         }
 
-        StringBuilder responseBuilder = new StringBuilder();
-
-        // Snapshot the node tree under the lock; the response is written outside it.
-        lock (Node.SyncRoot)
-        {
-            GeneratePrometheusResponse(_root, prometheusSettings, responseBuilder);
-        }
-
-        string responseContent = responseBuilder.ToString();
-        response.AddHeader("Cache-Control", "no-cache");
-        response.AddHeader("Access-Control-Allow-Origin", "*");
-
-        // Add custom headers to inform the user what settings are in effect
-        response.AddHeader("X-archivelength", prometheusSettings["archivelength"].ToString());
-        response.AddHeader("X-timestamps", prometheusSettings["timestamps"].ToString());
-        response.AddHeader("X-lastvalue", prometheusSettings["lastvalue"].ToString());
-
-        await SendResponseAsync(response, responseContent, "text/plain");
+        return prometheusSettings;
     }
 
-    private async Task SendJsonSensorAsync(HttpListenerResponse response, Dictionary<string, object> sensorData)
+    private async Task SendPrometheusAsync(HttpListenerResponse response, HttpListenerRequest request, CancellationToken cancellationToken)
+    {
+        (string content, string contentType, IReadOnlyList<KeyValuePair<string, string>> headers) =
+            BuildPrometheusResponse(request?.QueryString);
+
+        foreach (KeyValuePair<string, string> header in headers)
+            response.AddHeader(header.Key, header.Value);
+
+        await SendResponseAsync(response, content, contentType, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task SendJsonSensorAsync(HttpListenerResponse response, Dictionary<string, object> sensorData, CancellationToken cancellationToken)
     {
         // Convert the JObject to a JSON string
         string responseContent = System.Text.Json.JsonSerializer.Serialize(sensorData);
         response.AddHeader("Cache-Control", "no-cache");
         response.AddHeader("Access-Control-Allow-Origin", "*");
-        await SendResponseAsync(response, responseContent, "application/json");
+        await SendResponseAsync(response, responseContent, "application/json", cancellationToken).ConfigureAwait(false);
     }
         
     private Dictionary<string, object> GenerateJsonForNode(Node n, ref int nodeIndex)
@@ -1048,6 +1253,7 @@ public class HttpServer
             case SensorType.Load:
                 return "load.png";
             case SensorType.Temperature:
+            case SensorType.TemperatureRate:
                 return "temperature.png";
             case SensorType.Fan:
                 return "fan.png";
@@ -1082,18 +1288,25 @@ public class HttpServer
 
     public void Quit()
     {
+        QuitAsync().GetAwaiter().GetResult();
+    }
+
+    public async Task QuitAsync()
+    {
         if (PlatformNotSupported)
             return;
 
-        StopHttpListener();
+        await StopHttpListenerAsync().ConfigureAwait(false);
         try
         {
             _listener?.Abort();
         }
         catch { }
+
+        GC.SuppressFinalize(this);
     }
 
-    private static async Task SendResponseAsync(HttpListenerResponse response, string content, string contentType)
+    private static async Task SendResponseAsync(HttpListenerResponse response, string content, string contentType, CancellationToken cancellationToken)
     {
         byte[] buffer = Encoding.UTF8.GetBytes(content);
         response.ContentType = contentType;
@@ -1101,11 +1314,132 @@ public class HttpServer
 
         try
         {
-            await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
+            await response.OutputStream.WriteAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
             response.OutputStream.Close();
         }
         catch (HttpListenerException)
         { }
     }
 
+}
+
+internal sealed class BoundedRequestHandlerPool
+{
+    private readonly HashSet<Task> _activeHandlers = new();
+    private readonly object _activeHandlersLock = new();
+    private readonly SemaphoreSlim _handlerSlots;
+    private int _activeCount;
+    private int _peakActiveCount;
+
+    public BoundedRequestHandlerPool(int maxConcurrency)
+    {
+        if (maxConcurrency <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxConcurrency));
+
+        MaxConcurrency = maxConcurrency;
+        _handlerSlots = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+    }
+
+    public int MaxConcurrency { get; }
+
+    internal int ActiveCount => Volatile.Read(ref _activeCount);
+
+    internal int PeakActiveCount => Volatile.Read(ref _peakActiveCount);
+
+    public async Task QueueAsync(Func<CancellationToken, Task> handler, CancellationToken cancellationToken)
+    {
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+
+        await _handlerSlots.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        Task handlerTask;
+        try
+        {
+            handlerTask = ExecuteAsync(handler, cancellationToken);
+        }
+        catch
+        {
+            _handlerSlots.Release();
+            throw;
+        }
+
+        lock (_activeHandlersLock)
+            _activeHandlers.Add(handlerTask);
+
+        _ = handlerTask.ContinueWith(completedTask =>
+        {
+            // Observe a delegate fault even though production handlers contain their own
+            // exception boundary. This keeps test/injected handlers from becoming unobserved.
+            _ = completedTask.Exception;
+            lock (_activeHandlersLock)
+                _activeHandlers.Remove(completedTask);
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    public async Task<bool> DrainAsync(TimeSpan timeout)
+    {
+        if (timeout < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout));
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        while (true)
+        {
+            Task[] handlers;
+            lock (_activeHandlersLock)
+                handlers = _activeHandlers.ToArray();
+
+            if (handlers.Length == 0)
+                return true;
+
+            TimeSpan remaining = timeout - stopwatch.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+                return false;
+
+            Task allHandlers = Task.WhenAll(handlers);
+            Task completed = await Task.WhenAny(allHandlers, Task.Delay(remaining)).ConfigureAwait(false);
+            if (completed != allHandlers)
+                return false;
+
+            try
+            {
+                await allHandlers.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Completion, rather than success, is the lifetime condition. Individual
+                // failures are observed by the tracking continuation above.
+            }
+        }
+    }
+
+    private async Task ExecuteAsync(Func<CancellationToken, Task> handler, CancellationToken cancellationToken)
+    {
+        int activeCount = Interlocked.Increment(ref _activeCount);
+        UpdatePeakActiveCount(activeCount);
+
+        try
+        {
+            await handler(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeCount);
+            _handlerSlots.Release();
+        }
+    }
+
+    private void UpdatePeakActiveCount(int activeCount)
+    {
+        int observedPeak = Volatile.Read(ref _peakActiveCount);
+        while (activeCount > observedPeak)
+        {
+            int priorPeak = Interlocked.CompareExchange(ref _peakActiveCount, activeCount, observedPeak);
+            if (priorPeak == observedPeak)
+                return;
+
+            observedPeak = priorPeak;
+        }
+    }
 }

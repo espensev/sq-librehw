@@ -98,9 +98,14 @@ namespace LibreHardwareMonitor.Windows.Forms.UI.Themes
                 TextRenderer.DrawText(g, text, font, rect, Current.TreeTextColor, TextFormatFlags.Left);
             };
 
+            Pen previousLinePen = TreeViewAdv.CustomHorizontalLinePen;
+            Brush previousSelectionBrush = TreeViewAdv.CustomSelectedRowBrush;
             TreeViewAdv.CustomHorizontalLinePen = new Pen(Current.TreeRowSepearatorColor);
             TreeViewAdv.CustomSelectedRowBrush = new SolidBrush(Current.TreeSelectedBackgroundColor);
             TreeViewAdv.CustomSelectedTextColor = Current.TreeSelectedTextColor;
+
+            previousLinePen?.Dispose();
+            previousSelectionBrush?.Dispose();
         }
 
         private static List<Theme> _all;
@@ -200,9 +205,13 @@ namespace LibreHardwareMonitor.Windows.Forms.UI.Themes
         public abstract Color PlotGridMinorColor { get; }
         public virtual Color PlotTextColor => ForegroundColor;
 
-        // scrollbar
+        // scrollbar. "Track" is the movable thumb retained for compatibility
+        // with the original themed indicator naming.
         public virtual Color ScrollbarBackground => BackgroundColor;
         public virtual Color ScrollbarTrack => StrongLineColor;
+        public virtual Color ScrollbarTrackHover => ForegroundColor;
+        public virtual Color ScrollbarTrackPressed => HyperlinkColor;
+        public virtual Color ScrollbarBorder => StrongLineColor;
 
         // splitter
         public virtual Color SplitterColor => BackgroundColor;

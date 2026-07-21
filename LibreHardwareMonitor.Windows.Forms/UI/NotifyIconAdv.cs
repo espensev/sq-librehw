@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 // Copyright (C) LibreHardwareMonitor and Contributors.
-// Partial Copyright (C) Michael Möller <mmoeller@openhardwaremonitor.org> and Contributors.
+// Partial Copyright (C) Michael MÃ¶ller <mmoeller@openhardwaremonitor.org> and Contributors.
 // All Rights Reserved.
 
 using System;
@@ -365,7 +365,8 @@ public class NotifyIconAdv : IDisposable
 
     private class NotifyIconWindowsImplementation : Component
     {
-
+        private const int MaxRetryAttempts = 40;
+        private const int RetryIntervalMilliseconds = 200;
         private static int _nextId;
         private readonly object _syncObj = new object();
         private Icon _icon;
@@ -376,6 +377,10 @@ public class NotifyIconAdv : IDisposable
         private bool _doubleClickDown;
         private bool _visible;
         private readonly MethodInfo _commandDispatch;
+        private readonly Timer _retryTimer;
+        private int _retryAttempts;
+        private bool _retryShow;
+        private bool _disposed;
 
         public event EventHandler BalloonTipClicked;
         public event EventHandler BalloonTipClosed;
@@ -458,8 +463,10 @@ public class NotifyIconAdv : IDisposable
                                                                                               BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public,
                                                                                               null, new[] { typeof(int) }, null);
 
-            _id = ++_nextId;
+            _id = System.Threading.Interlocked.Increment(ref _nextId);
             _window = new NotifyIconNativeWindow(this);
+            _retryTimer = new Timer { Interval = RetryIntervalMilliseconds };
+            _retryTimer.Tick += RetryTimer_Tick;
             UpdateNotifyIcon(_visible);
         }
 
@@ -467,15 +474,35 @@ public class NotifyIconAdv : IDisposable
         {
             if (disposing)
             {
-                if (_window != null)
+                lock (_syncObj)
                 {
-                    _icon = null;
-                    _text = "";
-                    UpdateNotifyIcon(false);
-                    _window.DestroyHandle();
-                    _window = null;
-                    ContextMenuStrip = null;
+                    if (_disposed)
+                        return;
+
+                    _disposed = true;
+                    _retryTimer.Stop();
+                    _visible = false;
+
+                    if (_window != null)
+                    {
+                        _window.LockReference(false);
+                        if (_created)
+                        {
+                            NativeMethods.NotifyIconData data = CreateNotifyIconData(false);
+                            NativeMethods.Shell_NotifyIcon(NativeMethods.NotifyIconMessage.Delete, data);
+                            _created = false;
+                        }
+
+                        _icon = null;
+                        _text = "";
+                        _window.DestroyHandle();
+                        _window = null;
+                        ContextMenuStrip = null;
+                    }
                 }
+
+                _retryTimer.Tick -= RetryTimer_Tick;
+                _retryTimer.Dispose();
             }
             else
             {
@@ -538,29 +565,16 @@ public class NotifyIconAdv : IDisposable
 
         private void UpdateNotifyIcon(bool showNotifyIcon)
         {
-            if (DesignMode)
+            if (DesignMode || _disposed)
                 return;
 
             lock (_syncObj)
             {
+                if (_disposed || _window == null)
+                    return;
+
                 _window.LockReference(showNotifyIcon);
-
-                NativeMethods.NotifyIconData data = new NativeMethods.NotifyIconData { CallbackMessage = WM_TRAYMOUSEMESSAGE, Flags = NativeMethods.NotifyIconDataFlags.Message };
-
-                if (showNotifyIcon && _window.Handle == IntPtr.Zero)
-                    _window.CreateHandle(new CreateParams());
-
-                data.Window = _window.Handle;
-                data.ID = _id;
-
-                if (_icon != null)
-                {
-                    data.Flags |= NativeMethods.NotifyIconDataFlags.Icon;
-                    data.Icon = _icon.Handle;
-                }
-
-                data.Flags |= NativeMethods.NotifyIconDataFlags.Tip;
-                data.Tip = _text;
+                NativeMethods.NotifyIconData data = CreateNotifyIconData(showNotifyIcon);
 
                 if (showNotifyIcon && _icon != null)
                 {
@@ -572,42 +586,107 @@ public class NotifyIconAdv : IDisposable
                         }
                         else
                         {
-                            int i = 0;
-                            do
-                            {
-                                _created = NativeMethods.Shell_NotifyIcon(NativeMethods.NotifyIconMessage.Add, data);
-                                if (!_created)
-                                {
-                                    System.Threading.Thread.Sleep(200);
-                                    i++;
-                                }
-                            } while (!_created && i < 40);
+                            _created = NativeMethods.Shell_NotifyIcon(NativeMethods.NotifyIconMessage.Add, data);
                         }
+
+                        if (_created)
+                            CancelRetry();
+                        else
+                            ScheduleRetry(showNotifyIcon);
                     }
                     else
                     {
                         NativeMethods.Shell_NotifyIcon(NativeMethods.NotifyIconMessage.Modify, data);
+                        CancelRetry();
                     }
                 }
                 else
                 {
                     if (_created)
                     {
-                        int i = 0;
-                        bool deleted;
-                        do
+                        bool deleted = NativeMethods.Shell_NotifyIcon(NativeMethods.NotifyIconMessage.Delete, data);
+                        if (deleted)
                         {
-                            deleted = NativeMethods.Shell_NotifyIcon(NativeMethods.NotifyIconMessage.Delete, data);
-                            if (!deleted)
-                            {
-                                System.Threading.Thread.Sleep(200);
-                                i++;
-                            }
-                        } while (!deleted && i < 40);
-                        _created = false;
+                            _created = false;
+                            CancelRetry();
+                        }
+                        else
+                        {
+                            ScheduleRetry(showNotifyIcon);
+                        }
                     }
+                    else
+                        CancelRetry();
                 }
             }
+        }
+
+        private NativeMethods.NotifyIconData CreateNotifyIconData(bool showNotifyIcon)
+        {
+            var data = new NativeMethods.NotifyIconData
+            {
+                CallbackMessage = WM_TRAYMOUSEMESSAGE,
+                Flags = NativeMethods.NotifyIconDataFlags.Message
+            };
+
+            if (showNotifyIcon && _window.Handle == IntPtr.Zero)
+                _window.CreateHandle(new CreateParams());
+
+            data.Window = _window.Handle;
+            data.ID = _id;
+
+            if (_icon != null)
+            {
+                data.Flags |= NativeMethods.NotifyIconDataFlags.Icon;
+                data.Icon = _icon.Handle;
+            }
+
+            data.Flags |= NativeMethods.NotifyIconDataFlags.Tip;
+            data.Tip = _text;
+            return data;
+        }
+
+        private void ScheduleRetry(bool showNotifyIcon)
+        {
+            if (_retryAttempts > 0 && _retryShow != showNotifyIcon)
+                _retryAttempts = 0;
+
+            _retryShow = showNotifyIcon;
+            if (_retryAttempts >= MaxRetryAttempts)
+            {
+                _retryTimer.Stop();
+                if (!showNotifyIcon)
+                    _created = false;
+
+                // A later shell/taskbar event should get a fresh bounded retry window.
+                _retryAttempts = 0;
+                return;
+            }
+
+            _retryAttempts++;
+            _retryTimer.Stop();
+            _retryTimer.Start();
+        }
+
+        private void CancelRetry()
+        {
+            _retryTimer.Stop();
+            _retryAttempts = 0;
+        }
+
+        private void RetryTimer_Tick(object sender, EventArgs e)
+        {
+            bool showNotifyIcon;
+            lock (_syncObj)
+            {
+                _retryTimer.Stop();
+                if (_disposed)
+                    return;
+
+                showNotifyIcon = _retryShow;
+            }
+
+            UpdateNotifyIcon(showNotifyIcon);
         }
 
         private void ProcessMouseDown(MouseButtons button, bool doubleClick)

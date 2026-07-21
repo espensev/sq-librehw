@@ -29,7 +29,9 @@ public class SensorNotifyIcon : IDisposable
     private readonly Pen _pen;
     private readonly Font _font;
     private readonly Font _smallFont;
+    private readonly ContextMenuStrip _contextMenuStrip;
     private byte[] _iconBytes;
+    private bool _disposed;
 
     // Rendered-state cache: most ticks produce a pixel-identical icon, so skip the GDI
     // rebuild, native handle churn, and Shell_NotifyIcon(Modify) IPC when nothing changed.
@@ -51,24 +53,24 @@ public class SensorNotifyIcon : IDisposable
         Color = settings.GetValue(new Identifier(sensor.Identifier, "traycolor").ToString(), defaultColor);
 
         _pen = new Pen(Color.FromArgb(96, Color.Black));
-        ContextMenuStrip contextMenuStrip = new ContextMenuStrip();
+        _contextMenuStrip = new ContextMenuStrip();
         ToolStripItem hideShowItem = new ToolStripMenuItem("Hide/Show");
         hideShowItem.Click += delegate
         {
             sensorSystemTray.SendHideShowCommand();
         };
-        contextMenuStrip.Items.Add(hideShowItem);
-        contextMenuStrip.Items.Add(new ToolStripSeparator());
+        _contextMenuStrip.Items.Add(hideShowItem);
+        _contextMenuStrip.Items.Add(new ToolStripSeparator());
         ToolStripItem removeItem = new ToolStripMenuItem("Remove Sensor");
         removeItem.Click += delegate
         {
             sensorSystemTray.Remove(Sensor);
         };
-        contextMenuStrip.Items.Add(removeItem);
+        _contextMenuStrip.Items.Add(removeItem);
         ToolStripItem colorItem = new ToolStripMenuItem("Change Color...");
         colorItem.Click += delegate
         {
-            ColorDialog dialog = new ColorDialog { Color = Color };
+            using ColorDialog dialog = new() { Color = Color };
             if (dialog.ShowDialog() == DialogResult.OK)
             {
                 Color = dialog.Color;
@@ -76,15 +78,15 @@ public class SensorNotifyIcon : IDisposable
                                                  "traycolor").ToString(), Color);
             }
         };
-        contextMenuStrip.Items.Add(colorItem);
-        contextMenuStrip.Items.Add(new ToolStripSeparator());
+        _contextMenuStrip.Items.Add(colorItem);
+        _contextMenuStrip.Items.Add(new ToolStripSeparator());
         ToolStripItem exitItem = new ToolStripMenuItem("Exit");
         exitItem.Click += delegate
         {
             sensorSystemTray.SendExitCommand();
         };
-        contextMenuStrip.Items.Add(exitItem);
-        _notifyIcon.ContextMenuStrip = contextMenuStrip;
+        _contextMenuStrip.Items.Add(exitItem);
+        _notifyIcon.ContextMenuStrip = _contextMenuStrip;
         _notifyIcon.DoubleClick += delegate
         {
             sensorSystemTray.SendHideShowCommand();
@@ -148,10 +150,16 @@ public class SensorNotifyIcon : IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
         Icon icon = _notifyIcon.Icon;
         _notifyIcon.Icon = null;
         icon?.Destroy();
+        _notifyIcon.ContextMenuStrip = null;
         _notifyIcon.Dispose();
+        _contextMenuStrip.Dispose();
 
         _brush?.Dispose();
         _darkBrush?.Dispose();
@@ -160,6 +168,7 @@ public class SensorNotifyIcon : IDisposable
         _bitmap.Dispose();
         _font.Dispose();
         _smallFont.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     private string GetString(float? value)
@@ -171,6 +180,8 @@ public class SensorNotifyIcon : IDisposable
         {
             case SensorType.Temperature:
                 return _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit ? $"{UnitManager.CelsiusToFahrenheit(value):F0}" : $"{value:F0}";
+            case SensorType.TemperatureRate:
+                return _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit ? $"{UnitManager.CelsiusRateToFahrenheit(value):F1}" : $"{value:F1}";
             case SensorType.TimeSpan:
                 return $"{TimeSpan.FromSeconds(value.Value):g}";
             case SensorType.Timing:
@@ -262,6 +273,9 @@ public class SensorNotifyIcon : IDisposable
 
     public void Update()
     {
+        if (_disposed)
+            return;
+
         // One snapshot per update: the background updater writes Sensor.Value concurrently, so
         // repeated property reads could observe different values within one render.
         float? sensorValue = Sensor.Value;
@@ -306,6 +320,7 @@ public class SensorNotifyIcon : IDisposable
             case SensorType.Clock: format = "\n{0}: {1:F0} MHz"; break;
             case SensorType.Load: format = "\n{0}: {1:F1} %"; break;
             case SensorType.Temperature: format = "\n{0}: {1:F1} °C"; break;
+            case SensorType.TemperatureRate: format = "\n{0}: {1:F2} °C/s"; break;
             case SensorType.Fan: format = "\n{0}: {1:F0} RPM"; break;
             case SensorType.Flow: format = "\n{0}: {1:F0} L/h"; break;
             case SensorType.Control: format = "\n{0}: {1:F1} %"; break;
@@ -329,6 +344,11 @@ public class SensorNotifyIcon : IDisposable
         {
             format = "\n{0}: {1:F1} °F";
             formattedValue = string.Format(format, Sensor.Name, UnitManager.CelsiusToFahrenheit(sensorValue));
+        }
+        else if (Sensor.SensorType == SensorType.TemperatureRate && _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit)
+        {
+            format = "\n{0}: {1:F2} °F/s";
+            formattedValue = string.Format(format, Sensor.Name, UnitManager.CelsiusRateToFahrenheit(sensorValue));
         }
 
         string hardwareName = Sensor.Hardware.Name;

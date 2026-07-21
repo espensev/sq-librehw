@@ -73,4 +73,12 @@ public class HardwareTypeImage
         _images.Add(hardwareType, image);
         return image;
     }
+
+    public void DisposeAll()
+    {
+        foreach (Image image in _images.Values)
+            image.Dispose();
+
+        _images.Clear();
+    }
 }

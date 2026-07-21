@@ -59,7 +59,7 @@ public class PlotPanel : UserControl
     // being re-aged, which lets OxyPlot reuse the materialized point lists (and render only the
     // visible window, since X is monotonic).
     private readonly DateTime _timeOrigin;
-    private readonly Dictionary<ISensor, SeriesState> _seriesStates = new();
+    private readonly PlotPanelHistoryStore _historyStore;
     private double _windowAgeMin;
     private double _windowAgeMax;
     private double _lastNowX;
@@ -67,15 +67,6 @@ public class PlotPanel : UserControl
     private TemperatureUnit _lastTemperatureUnit;
     private readonly bool _autoFitYOnStart;
     private bool _didAutoFitYAxesOnStart;
-
-    private sealed class SeriesState
-    {
-        public readonly List<DataPoint> Points = new();
-
-        // Last snapshot returned by ISensor.Values; the sensor returns the same array reference
-        // until its history actually changes, so reference equality is an O(1) "dirty" check.
-        public IEnumerable<SensorValue> LastValues;
-    }
 
     // The default tracker fills its X slot with TimeSpan.FromSeconds(axis value), which since the
     // session-origin rework would read as time-since-launch. Substitute a value that matches the
@@ -95,6 +86,7 @@ public class PlotPanel : UserControl
         _settings = settings;
         _unitManager = unitManager;
         _timeOrigin = DateTime.UtcNow;
+        _historyStore = new PlotPanelHistoryStore(_timeOrigin);
         _lastTemperatureUnit = unitManager.TemperatureUnit;
 
         // One-time gate for the startup Y-axis auto-fit (see InvalidatePlot()): reclaims empty
@@ -322,9 +314,9 @@ public class PlotPanel : UserControl
 
     private void CreateOptionsButton()
     {
-        // Graph-local entry point to the same option set as the plot right-click menu
-        // (docs/feature-graph-panel-controls.md). Overlay button so the plot keeps its
-        // footprint; fixed glyph size so nothing clips in narrow panel placements.
+        // Graph-local entry point to the same option set as the plot right-click menu.
+        // Overlay the button so the plot keeps its footprint; use a fixed glyph size
+        // so nothing clips in narrow panel placements.
         int size = (int)Math.Round(24 * _dpiYScale);
         int margin = (int)Math.Round(6 * _dpiXScale);
 
@@ -421,6 +413,7 @@ public class PlotPanel : UserControl
             { SensorType.Current, "A" },
             { SensorType.Clock, "MHz" },
             { SensorType.Temperature, "°C" },
+            { SensorType.TemperatureRate, "°C/s" },
             { SensorType.Load, "%" },
             { SensorType.Fan, "RPM" },
             { SensorType.Flow, "L/h" },
@@ -597,23 +590,16 @@ public class PlotPanel : UserControl
         _model.Series.Clear();
         var types = new HashSet<SensorType>();
 
-        var retained = new HashSet<ISensor>(sensors);
-        var stale = _seriesStates.Keys.Where(sensor => !retained.Contains(sensor)).ToList();
-        foreach (ISensor sensor in stale)
-            _seriesStates.Remove(sensor);
+        _historyStore.RetainSensors(sensors);
 
         foreach (ISensor sensor in sensors)
         {
-            if (!_seriesStates.TryGetValue(sensor, out SeriesState state))
-            {
-                state = new SeriesState();
-                _seriesStates.Add(sensor, state);
-            }
+            PlotPanelSeriesState state = _historyStore.GetOrCreateState(sensor);
 
             var series = new LineSeries
             {
                 // A List<DataPoint> ItemsSource takes OxyPlot's zero-copy fast path; the list is
-                // owned by SeriesState and refreshed in SyncSeriesPoints only when the sensor's
+                // owned by PlotPanelSeriesState and refreshed in SyncSeriesPoints only when the sensor's
                 // history snapshot actually changed.
                 ItemsSource = state.Points,
                 Decimator = DecimateIfDense,
@@ -645,45 +631,7 @@ public class PlotPanel : UserControl
         if (temperatureUnitChanged)
             _lastTemperatureUnit = _unitManager.TemperatureUnit;
 
-        foreach (KeyValuePair<ISensor, SeriesState> pair in _seriesStates)
-        {
-            ISensor sensor = pair.Key;
-            SeriesState state = pair.Value;
-
-            IEnumerable<SensorValue> values = sensor.Values;
-            bool unitAffectsSeries = temperatureUnitChanged && sensor.SensorType == SensorType.Temperature;
-            if (!unitAffectsSeries && ReferenceEquals(values, state.LastValues))
-                continue;
-
-            state.LastValues = values;
-            RebuildPoints(state.Points, values, sensor.SensorType);
-        }
-    }
-
-    private void RebuildPoints(List<DataPoint> points, IEnumerable<SensorValue> values, SensorType type)
-    {
-        points.Clear();
-        bool toFahrenheit = type == SensorType.Temperature && _unitManager.TemperatureUnit == TemperatureUnit.Fahrenheit;
-
-        if (values is SensorValue[] array)
-        {
-            if (points.Capacity < array.Length)
-                points.Capacity = array.Length;
-
-            for (int i = 0; i < array.Length; i++)
-                points.Add(CreatePoint(array[i], toFahrenheit));
-
-            return;
-        }
-
-        foreach (SensorValue value in values)
-            points.Add(CreatePoint(value, toFahrenheit));
-    }
-
-    private DataPoint CreatePoint(SensorValue value, bool toFahrenheit)
-    {
-        float displayedValue = toFahrenheit ? UnitManager.CelsiusToFahrenheit(value.Value).Value : value.Value;
-        return new DataPoint((value.Time - _timeOrigin).TotalSeconds, displayedValue);
+        _historyStore.Synchronize(_unitManager.TemperatureUnit, temperatureUnitChanged);
     }
 
     private void DecimateIfDense(List<ScreenPoint> input, List<ScreenPoint> output)
@@ -882,7 +830,7 @@ public class PlotPanel : UserControl
         // One-shot: reclaim empty Y-axis bands left over from a stale persisted zoom
         // (CreatePlotModel's axis.Zoom(...) restore) once real data exists, then never again
         // this session so a later manual/menu zoom sticks.
-        if (_autoFitYOnStart && !_didAutoFitYAxesOnStart && _seriesStates.Values.Any(state => state.Points.Count > 0))
+        if (_autoFitYOnStart && !_didAutoFitYAxesOnStart && _historyStore.States.Any(state => state.Points.Count > 0))
         {
             _didAutoFitYAxesOnStart = true;
             AutoscaleAllYAxes();
@@ -899,6 +847,8 @@ public class PlotPanel : UserControl
                 SensorType type = pair.Key;
                 if (type == SensorType.Temperature)
                     axis.Unit = _unitManager.TemperatureUnit == TemperatureUnit.Celsius ? "°C" : "°F";
+                else if (type == SensorType.TemperatureRate)
+                    axis.Unit = _unitManager.TemperatureUnit == TemperatureUnit.Celsius ? "°C/s" : "°F/s";
 
                 if (!_stackedAxes.Value)
                     continue;
@@ -993,10 +943,10 @@ public class PlotPanel : UserControl
     }
 
     /// <summary>
-    /// Scales all axis tick-label and title fonts, plus the hover tracker font, by <paramref name="percent"/>.
-    /// DPI-independent on purpose: today's axis fonts are NOT DPI-scaled (ScaledPlotModel scales only the
-    /// NaN/auto margins, a no-op), so 100% reproduces the current look at every DPI. Auto-margins absorb
-    /// larger labels, so no clipping math is needed.
+    /// Scales all axis tick-label and title fonts (plotTextScale; the hover tracker follows
+    /// <see cref="SetTrackerTextScale"/> instead). DPI-independent on purpose: today's axis fonts are
+    /// NOT DPI-scaled (ScaledPlotModel scales only the NaN/auto margins, a no-op), so 100% reproduces
+    /// the current look at every DPI. Auto-margins absorb larger labels, so no clipping math is needed.
     /// </summary>
     public void SetAxisTextScale(int percent)
     {
@@ -1014,16 +964,239 @@ public class PlotPanel : UserControl
             axis.IntervalLength = 60.0 * (_axisTextScalePercent / 100.0);
         }
 
+        InvalidatePlotCosmetic();
+    }
+
+    /// <summary>Scales the hover tracker/tooltip font (follows the UI text scale, not plotTextScale).</summary>
+    public void SetTrackerTextScale(int percent)
+    {
+        int clamped = UiScale.ClampPercent(percent);
+
         // Tracker/tooltip is a WinForms Label that inherits PlotView.Font ambiently.
         _trackerBaseFont ??= (Font)_plot.Font.Clone();
         Font old = _scaledTrackerFont;
         _scaledTrackerFont = new Font(
             _trackerBaseFont.FontFamily,
-            UiScale.ScaledFontSize(_trackerBaseFont.Size, _axisTextScalePercent),
+            UiScale.ScaledFontSize(_trackerBaseFont.Size, clamped),
             _trackerBaseFont.Style);
         _plot.Font = _scaledTrackerFont;
         old?.Dispose();
 
         InvalidatePlotCosmetic();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _historyStore.RetainSensors(Array.Empty<ISensor>());
+            _toolTip.Dispose();
+
+            if (_plot != null)
+                _plot.ContextMenuStrip = null;
+
+            _menu?.Dispose();
+            _menu = null;
+
+            _scaledTrackerFont?.Dispose();
+            _scaledTrackerFont = null;
+            _trackerBaseFont?.Dispose();
+            _trackerBaseFont = null;
+        }
+
+        base.Dispose(disposing);
+    }
+}
+
+/// <summary>
+/// Owns the materialized plot histories separately from the WinForms control so history updates
+/// can be verified without constructing a window. A state exists only while its sensor is plotted.
+/// </summary>
+internal sealed class PlotPanelHistoryStore
+{
+    // Sensor currently caps its retained history at this value. Keeping the consumer request
+    // explicit also bounds reset, decimation, expiry, and temperature-unit rebuilds for other
+    // implementations of the optional history-reader contract.
+    internal const int MaxPlotHistoryValues = 10_000;
+
+    private readonly Dictionary<ISensor, PlotPanelSeriesState> _states = new();
+    private readonly DateTime _timeOrigin;
+
+    internal PlotPanelHistoryStore(DateTime timeOrigin)
+    {
+        _timeOrigin = timeOrigin;
+    }
+
+    internal IEnumerable<PlotPanelSeriesState> States => _states.Values;
+
+    internal PlotPanelSeriesState GetOrCreateState(ISensor sensor)
+    {
+        if (!_states.TryGetValue(sensor, out PlotPanelSeriesState state))
+        {
+            state = new PlotPanelSeriesState();
+            _states.Add(sensor, state);
+        }
+
+        return state;
+    }
+
+    internal bool TryGetState(ISensor sensor, out PlotPanelSeriesState state)
+    {
+        return _states.TryGetValue(sensor, out state);
+    }
+
+    internal void RetainSensors(IEnumerable<ISensor> sensors)
+    {
+        if (sensors == null)
+            throw new ArgumentNullException(nameof(sensors));
+
+        HashSet<ISensor> retained = sensors as HashSet<ISensor> ?? new HashSet<ISensor>(sensors);
+        List<ISensor> stale = _states.Keys.Where(sensor => !retained.Contains(sensor)).ToList();
+        foreach (ISensor sensor in stale)
+            _states.Remove(sensor);
+    }
+
+    internal void Synchronize(TemperatureUnit temperatureUnit, bool temperatureUnitChanged)
+    {
+        foreach (KeyValuePair<ISensor, PlotPanelSeriesState> pair in _states)
+        {
+            bool rebuildForUnit = temperatureUnitChanged &&
+                                  (pair.Key.SensorType == SensorType.Temperature ||
+                                   pair.Key.SensorType == SensorType.TemperatureRate);
+            pair.Value.Synchronize(pair.Key, _timeOrigin, temperatureUnit, rebuildForUnit);
+        }
+    }
+}
+
+internal sealed class PlotPanelSeriesState
+{
+    private IEnumerable<SensorValue> _lastValues;
+
+    internal List<DataPoint> Points { get; } = new();
+
+    internal long LastHistoryVersion { get; private set; }
+
+    internal void Synchronize
+    (
+        ISensor sensor,
+        DateTime timeOrigin,
+        TemperatureUnit temperatureUnit,
+        bool rebuildForTemperatureUnit)
+    {
+        if (sensor is ISensorHistoryReader reader)
+        {
+            SynchronizeReader(sensor.SensorType, reader, timeOrigin, temperatureUnit, rebuildForTemperatureUnit);
+            return;
+        }
+
+        SynchronizeFallback(sensor, timeOrigin, temperatureUnit, rebuildForTemperatureUnit);
+    }
+
+    private void SynchronizeReader
+    (
+        SensorType sensorType,
+        ISensorHistoryReader reader,
+        DateTime timeOrigin,
+        TemperatureUnit temperatureUnit,
+        bool rebuildForTemperatureUnit)
+    {
+        // HistoryVersion is an allocation-free dirty check. Expiry can advance it without a new
+        // sample; ReadHistory then returns ResetRequired and replaces the plotted tail once.
+        long currentVersion = reader.HistoryVersion;
+        if (!rebuildForTemperatureUnit && currentVersion == LastHistoryVersion)
+            return;
+
+        // Version zero is the documented initial-read request. It also gives a temperature-unit
+        // change one bounded current tail even when the reader reports ResetRequired == false.
+        long sinceVersion = rebuildForTemperatureUnit ? 0 : LastHistoryVersion;
+        SensorHistorySlice history = reader.ReadHistory(sinceVersion, PlotPanelHistoryStore.MaxPlotHistoryValues);
+        bool rebuild = rebuildForTemperatureUnit || history.ResetRequired;
+
+        if (rebuild)
+            Points.Clear();
+
+        AppendBoundedPoints(history.Values, sensorType, timeOrigin, temperatureUnit);
+        LastHistoryVersion = history.Version;
+        _lastValues = null;
+    }
+
+    private void SynchronizeFallback
+    (
+        ISensor sensor,
+        DateTime timeOrigin,
+        TemperatureUnit temperatureUnit,
+        bool rebuildForTemperatureUnit)
+    {
+        IEnumerable<SensorValue> values = sensor.Values;
+        if (!rebuildForTemperatureUnit && ReferenceEquals(values, _lastValues))
+            return;
+
+        _lastValues = values;
+        Points.Clear();
+        AppendPoints(values, sensor.SensorType, timeOrigin, temperatureUnit);
+    }
+
+    private void AppendBoundedPoints
+    (
+        IReadOnlyList<SensorValue> values,
+        SensorType sensorType,
+        DateTime timeOrigin,
+        TemperatureUnit temperatureUnit)
+    {
+        int excess = Math.Max(0, Points.Count + values.Count - PlotPanelHistoryStore.MaxPlotHistoryValues);
+        int removeExisting = Math.Min(Points.Count, excess);
+        if (removeExisting > 0)
+            Points.RemoveRange(0, removeExisting);
+
+        int skipIncoming = excess - removeExisting;
+        int appendCount = values.Count - skipIncoming;
+        int requiredCapacity = Points.Count + appendCount;
+        if (Points.Capacity < requiredCapacity)
+            Points.Capacity = requiredCapacity;
+
+        for (int i = skipIncoming; i < values.Count; i++)
+            Points.Add(CreatePoint(values[i], sensorType, timeOrigin, temperatureUnit));
+    }
+
+    private void AppendPoints
+    (
+        IEnumerable<SensorValue> values,
+        SensorType sensorType,
+        DateTime timeOrigin,
+        TemperatureUnit temperatureUnit)
+    {
+        if (values is IReadOnlyList<SensorValue> list)
+        {
+            int requiredCapacity = Points.Count + list.Count;
+            if (Points.Capacity < requiredCapacity)
+                Points.Capacity = requiredCapacity;
+
+            for (int i = 0; i < list.Count; i++)
+                Points.Add(CreatePoint(list[i], sensorType, timeOrigin, temperatureUnit));
+
+            return;
+        }
+
+        foreach (SensorValue value in values)
+            Points.Add(CreatePoint(value, sensorType, timeOrigin, temperatureUnit));
+    }
+
+    private static DataPoint CreatePoint
+    (
+        SensorValue value,
+        SensorType sensorType,
+        DateTime timeOrigin,
+        TemperatureUnit temperatureUnit)
+    {
+        float displayedValue = value.Value;
+        if (temperatureUnit == TemperatureUnit.Fahrenheit)
+        {
+            if (sensorType == SensorType.Temperature)
+                displayedValue = UnitManager.CelsiusToFahrenheit(value.Value).Value;
+            else if (sensorType == SensorType.TemperatureRate)
+                displayedValue = UnitManager.CelsiusRateToFahrenheit(value.Value).Value;
+        }
+
+        return new DataPoint((value.Time - timeOrigin).TotalSeconds, displayedValue);
     }
 }

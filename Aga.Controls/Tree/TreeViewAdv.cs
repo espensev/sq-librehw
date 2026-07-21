@@ -48,6 +48,7 @@ namespace Aga.Controls.Tree
 		private NodePlusMinus _plusMinus;
 		private ToolTip _toolTip;
 		private DrawContext _measureContext;
+		private Bitmap _measureBitmap;
 		private TreeColumn _hotColumn;
 		private IncrementalSearch _search;
 		private List<TreeNodeAdv> _expandingNodes = new List<TreeNodeAdv>();
@@ -247,7 +248,8 @@ namespace Aga.Controls.Tree
 
 			_measureContext = new DrawContext();
 			_measureContext.Font = Font;
-			_measureContext.Graphics = Graphics.FromImage(new Bitmap(1, 1));
+			_measureBitmap = new Bitmap(1, 1);
+			_measureContext.Graphics = Graphics.FromImage(_measureBitmap);
 
 			Input = new NormalInputState(this);
 			_search = new IncrementalSearch(this);
@@ -308,7 +310,14 @@ namespace Aga.Controls.Tree
 		void ExpandingIconChanged(object sender, EventArgs e)
 		{
 			if (IsHandleCreated && !IsDisposed)
-				BeginInvoke(new MethodInvoker(DrawIcons));
+			{
+				try
+				{
+					BeginInvoke(new MethodInvoker(DrawIcons));
+				}
+				catch (ObjectDisposedException) { }
+				catch (InvalidOperationException) { }
+			}
 		}
 
 		private void DrawIcons()

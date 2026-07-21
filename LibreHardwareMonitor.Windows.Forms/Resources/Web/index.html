@@ -1,4 +1,4 @@
-<!doctype html><html lang="en" data-theme="dark"><head>
+<!doctype html><html lang="en" data-theme="dark" data-view-theme="standard"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SQ Telemetry Console</title>
 <link rel="shortcut icon" href="favicon.ico">
@@ -8,46 +8,64 @@
 <header><div class="wrap mast">
   <div class="brand">
     <div class="sigil">SQ</div>
-    <div class="wordmark"><b id="host">—</b><span>Hardware Telemetry Console</span></div>
+    <div class="wordmark"><b id="host">—</b><span id="dashboardSubtitle">Hardware Telemetry Console</span></div>
   </div>
-  <nav class="dash-nav" role="tablist" aria-label="Dashboard templates">
-    <a href="#/main" class="dash-tab active" data-route="main" aria-current="page">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-      <span class="label">Main</span>
-    </a>
-    <a href="#/gaming" class="dash-tab" data-route="gaming">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 12h4m-2-2v4m8-2a4 4 0 11-8 0 4 4 0 018 0z"/><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
-      <span class="label">Gaming</span>
-    </a>
-    <a href="#/storage" class="dash-tab" data-route="storage">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-      <span class="label">Storage</span>
-    </a>
-  </nav>
   <div class="spacer"></div>
   <div class="controls">
     <div class="fresh"><span class="lamp s-ok" id="freshdot"></span><span id="freshtxt">live</span></div>
-    <div class="rate"><span>rate</span><input type="range" id="rate" min="1" max="10" value="2"><span id="ratev">2s</span></div>
-    <button class="btn" id="pause">❚❚ Pause</button>
+    <label class="rate" for="rate"><span id="rateLabel">Poll rate</span><input type="range" id="rate" min="1" max="10" value="2" aria-labelledby="rateLabel" aria-describedby="ratev"><span id="ratev">2s</span></label>
+    <button class="btn" id="pause" aria-pressed="false">❚❚ Pause</button>
     <button class="btn" id="graphs" aria-pressed="false">Graphs</button>
-    <button class="btn" id="theme">◐ Theme</button>
-    <button class="btn" id="customize">Customize</button>
+    <button class="btn" id="theme" aria-pressed="false" aria-label="Switch to light theme" title="Current theme: dark">◐ Dark</button>
+    <label class="view-theme"><span>Dashboard</span><select id="viewTheme" aria-label="Dashboard">
+      <option value="standard">Standard</option>
+      <option value="cardTruth">Studio</option>
+      <option value="workspace">Workspace</option>
+    </select></label>
+    <details class="page-menu">
+      <summary class="btn">Pages</summary>
+      <nav class="page-menu-panel" aria-label="Dashboard pages">
+        <a href="/">Stable Dashboard</a>
+        <a href="/data.json">data.json</a>
+        <a href="/metrics">metrics</a>
+      </nav>
+    </details>
+    <details class="sensors-menu" id="sensorsMenu">
+      <summary class="btn" id="sensorsSummary">Sensors <span class="count" id="sensorsCount"></span></summary>
+      <div class="sensors-panel" aria-label="Sensor visibility">
+        <div class="sensors-tools">
+          <input id="sensorsSearch" type="search" placeholder="Search all sensors" autocomplete="off" aria-label="Search all sensors">
+          <button class="iconbtn" data-action="reset-hidden">Reset hidden</button>
+        </div>
+        <div class="sensor-list" id="sensorsList"></div>
+        <div class="net-restore" id="netRestore" style="display:none">
+          <div class="net-restore-head">Hidden network adapters</div>
+          <div class="sensor-list" id="netRestoreList"></div>
+        </div>
+      </div>
+    </details>
   </div>
 </div></header>
 
-<main class="wrap">
+<div class="studio-atmosphere" aria-hidden="true"></div>
+
+<main class="wrap" id="standardView" data-dashboard-view="standard">
   <section id="pinnedsec" style="display:none">
     <div class="sec-head"><h2>Pinned</h2><div class="rule"></div><span class="tag" id="pinnedtag">0 pinned</span></div>
     <div class="pfd" id="pinned"></div>
   </section>
   <section>
-    <div class="sec-head"><h2>Primary Flight Display</h2><div class="rule"></div><span class="tag" id="pfdtag">auto-selected</span></div>
+    <div class="sec-head"><h2>Primary Flight Display</h2><div class="rule"></div><span class="tag" id="pfdtag">auto-selected</span><button class="iconbtn" id="pfdReset" style="display:none" title="Return primary cards to auto">Auto</button></div>
     <div class="pfd" id="pfd"></div>
   </section>
   <section id="placardsec" style="display:none"></section>
   <section>
-    <div class="sec-head"><h2>Subsystems</h2><div class="rule"></div><span class="tag" id="subtag"></span></div>
+    <div class="sec-head"><h2>Subsystems</h2><div class="rule"></div><span class="tag" id="subtag"></span><button class="iconbtn" id="panelsReset" style="display:none" title="Return panels to default order">Reset order</button></div>
     <div class="grid" id="panels"></div>
+  </section>
+  <section id="netsec" style="display:none">
+    <div class="sec-head"><h2>Network</h2><div class="rule"></div><span class="tag" id="nettag"></span></div>
+    <div class="grid" id="netPanels"></div>
   </section>
   <footer>
     <span id="foot-left"></span>
@@ -58,38 +76,239 @@
     </span>
   </footer>
 </main>
-<div class="scrim" id="customizeScrim"></div>
-<aside class="drawer" id="customizeDrawer" aria-hidden="true" aria-label="Customize dashboard">
-  <div class="drawer-head">
-    <div><b>Customize</b><span>Browser-local dashboard state</span></div>
-    <button class="iconbtn" id="drawerClose" aria-label="Close customize panel">Close</button>
-  </div>
-  <div class="tabs" role="tablist">
-    <button class="tab active" data-tab="hidden" role="tab">Hidden</button>
-    <button class="tab" data-tab="cards" role="tab">Cards</button>
-    <button class="tab" data-tab="layout" role="tab">Layout</button>
-  </div>
-  <div class="pane" data-pane="hidden">
-    <div class="drawer-tools">
-      <input id="hiddenSearch" type="search" placeholder="Search sensors">
-      <button class="iconbtn" data-action="reset-hidden">Reset hidden</button>
+
+<main class="wrap studio-view" id="studioView" data-dashboard-view="studio" hidden>
+  <section class="studio-hero">
+    <div class="studio-hero-copy">
+      <span class="studio-kicker">Live system canvas</span>
+      <h1><span id="studioHost">—</span> at a glance</h1>
+      <p id="studioSummary">Waiting for live telemetry.</p>
+      <div class="studio-health" id="studioHealth"></div>
     </div>
-    <div class="sensor-list" id="hiddenList"></div>
-  </div>
-  <div class="pane" data-pane="cards" hidden>
-    <div class="drawer-tools">
-      <input id="cardSearch" type="search" placeholder="Search sensors">
-      <button class="iconbtn" data-action="clear-pinned">Clear pinned</button>
+    <details class="studio-customize" id="studioCustomize">
+      <summary class="btn">Customize Studio</summary>
+      <div class="studio-customize-panel">
+        <div class="studio-customize-head">
+          <div><span>Studio controls</span><strong>Shape the view</strong></div>
+          <button class="iconbtn" id="studioReset" aria-label="Reset Studio">Reset</button>
+        </div>
+        <fieldset class="studio-control-group">
+          <legend>Atmosphere</legend>
+          <div class="studio-control-grid">
+            <label>Accent
+              <select id="studioAccent">
+                <option value="coral">Coral</option>
+                <option value="rose">Rose</option>
+                <option value="amber">Amber</option>
+                <option value="plum">Plum</option>
+              </select>
+            </label>
+            <label>Canvas
+              <select id="studioCanvas">
+                <option value="ember">Ember</option>
+                <option value="strata">Strata</option>
+                <option value="plain">Plain</option>
+              </select>
+            </label>
+            <div class="studio-range-control studio-wide">
+              <span><label for="studioCanvasOpacity">Atmosphere opacity</label><output id="studioCanvasOpacityValue" for="studioCanvasOpacity">55%</output></span>
+              <input type="range" id="studioCanvasOpacity" min="0" max="100" step="5" value="55">
+            </div>
+          </div>
+        </fieldset>
+        <fieldset class="studio-control-group">
+          <legend>Layout</legend>
+          <div class="studio-control-grid">
+            <label>Density
+              <select id="studioDensity">
+                <option value="comfortable">Comfortable</option>
+                <option value="compact">Compact</option>
+              </select>
+            </label>
+            <label>Focus layout
+              <select id="studioFocusLayout">
+                <option value="spotlight">Spotlight</option>
+                <option value="grid">Even grid</option>
+              </select>
+            </label>
+            <label>Focus cards
+              <select id="studioFocusCount">
+                <option value="4">4</option>
+                <option value="6">6</option>
+                <option value="8">8</option>
+                <option value="12">12</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+        <fieldset class="studio-control-group">
+          <legend>Content</legend>
+          <div class="studio-toggle-grid">
+            <label class="studio-check"><input type="checkbox" id="studioShowSparklines"> Live sparklines</label>
+            <label class="studio-check"><input type="checkbox" id="studioShowSystems"> System summaries</label>
+            <label class="studio-check"><input type="checkbox" id="studioShowNetwork"> Network summaries</label>
+          </div>
+        </fieldset>
+        <p class="studio-customize-note">These controls affect Studio only. Sensor choices, aliases, ranges, pins, and visibility stay shared with Standard.</p>
+      </div>
+    </details>
+  </section>
+
+  <section class="studio-alerts" id="studioAlerts" style="display:none"></section>
+  <div class="sr-only" id="studioAlertStatus" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <section class="studio-section">
+    <div class="studio-section-head">
+      <div><span>Curated telemetry</span><h2>Focus deck</h2></div>
+      <button class="iconbtn" id="studioOpenSensors">Choose sensors</button>
     </div>
-    <div class="order-list" id="pinnedList"></div>
-    <div class="sensor-list" id="cardList"></div>
-  </div>
-  <div class="pane" data-pane="layout" hidden>
-    <div class="drawer-tools">
-      <button class="iconbtn" data-action="reset-panels">Reset panel order</button>
+    <div class="studio-focus" id="studioFocus"></div>
+  </section>
+
+  <section class="studio-section" id="studioSystemsSection">
+    <div class="studio-section-head">
+      <div><span>Hardware map</span><h2>Systems</h2></div>
+      <span class="studio-section-count" id="studioSystemsCount"></span>
     </div>
-    <div class="order-list" id="panelOrderList"></div>
-  </div>
-</aside>
+    <div class="studio-system-grid" id="studioSystems"></div>
+  </section>
+
+  <section class="studio-section" id="studioNetworkSection">
+    <div class="studio-section-head">
+      <div><span>Active paths</span><h2>Network</h2></div>
+      <span class="studio-section-count" id="studioNetworkCount"></span>
+    </div>
+    <div class="studio-system-grid" id="studioNetwork"></div>
+  </section>
+
+  <footer class="studio-footer">
+    <span id="studioFootLeft"></span>
+    <span>Read-only · same telemetry truth as Standard</span>
+  </footer>
+</main>
+
+<main class="wrap workspace-view" id="workspaceView" data-dashboard-view="workspace" hidden>
+  <section class="workspace-hero" aria-labelledby="workspaceTitle">
+    <div class="workspace-hero-copy">
+      <span class="workspace-kicker">Task-specific telemetry</span>
+      <h1 id="workspaceTitle">Sensor Workspace</h1>
+      <p>Compose named, ordered panels from live sensors without changing Standard or Studio.</p>
+    </div>
+    <div class="workspace-live">
+      <span>Workspace status</span>
+      <p id="workspaceStatus" role="status" aria-live="polite" aria-atomic="true">Preparing profiles and live telemetry.</p>
+    </div>
+  </section>
+
+  <section class="workspace-command-bar" aria-labelledby="workspaceProfilesTitle">
+    <div class="workspace-section-heading">
+      <div>
+        <span>Layout library</span>
+        <h2 id="workspaceProfilesTitle">Profiles</h2>
+      </div>
+      <p id="workspaceProfileHelp">Profiles keep their own ordered panels and exact sensor membership.</p>
+    </div>
+
+    <div class="workspace-profile-controls">
+      <label class="workspace-field workspace-profile-select" for="workspaceProfileSelect">
+        <span>Active profile</span>
+        <select id="workspaceProfileSelect" name="workspaceProfile" aria-describedby="workspaceProfileHelp">
+          <option value="">Loading profiles…</option>
+        </select>
+      </label>
+      <label class="workspace-field workspace-profile-name" for="workspaceProfileName">
+        <span>Profile name</span>
+        <input id="workspaceProfileName" name="workspaceProfileName" type="text" maxlength="80" autocomplete="off" placeholder="Name this profile">
+      </label>
+      <div class="workspace-button-group" role="group" aria-label="Profile actions">
+        <button class="btn" id="workspaceProfileNew" type="button">New</button>
+        <button class="btn" id="workspaceProfileDuplicate" type="button">Duplicate</button>
+        <button class="btn workspace-danger" id="workspaceProfileDelete" type="button">Delete</button>
+      </div>
+    </div>
+
+    <div class="workspace-file-actions" role="group" aria-label="Workspace file and reset actions">
+      <input id="workspaceImportFile" type="file" accept="application/json,.json" hidden>
+      <button class="iconbtn" id="workspaceImport" type="button">Import JSON</button>
+      <button class="iconbtn" id="workspaceExport" type="button">Export JSON</button>
+      <button class="iconbtn workspace-danger" id="workspaceReset" type="button">Reset workspace</button>
+    </div>
+  </section>
+
+  <section class="workspace-add-panel" aria-labelledby="workspaceAddPanelTitle">
+    <div class="workspace-section-heading">
+      <div>
+        <span>Panel builder</span>
+        <h2 id="workspaceAddPanelTitle">Add a panel</h2>
+      </div>
+      <p>Start with a title and presentation. Choose exact sensors after the panel is added.</p>
+    </div>
+    <div class="workspace-add-controls">
+      <label class="workspace-field" for="workspacePanelTitle">
+        <span>Panel title</span>
+        <input id="workspacePanelTitle" name="workspacePanelTitle" type="text" maxlength="80" autocomplete="off" placeholder="For example, Thermal headroom">
+      </label>
+      <label class="workspace-field" for="workspacePanelKind">
+        <span>Panel kind</span>
+        <select id="workspacePanelKind" name="workspacePanelKind">
+          <option value="card">Cards</option>
+          <option value="table">Table</option>
+          <option value="graph">Small-multiple graphs</option>
+        </select>
+      </label>
+      <button class="btn workspace-primary" id="workspaceAddPanel" type="button">Add panel</button>
+    </div>
+  </section>
+
+  <section class="workspace-panels-section" aria-labelledby="workspacePanelsTitle">
+    <div class="workspace-section-heading workspace-panels-heading">
+      <div>
+        <span>Active layout</span>
+        <h2 id="workspacePanelsTitle">Sensor panels</h2>
+      </div>
+      <p>Panels preserve sensor order and report unavailable hardware instead of hiding it.</p>
+    </div>
+    <div class="workspace-panels" id="workspacePanels">
+      <div class="workspace-empty" role="status">
+        <strong>Preparing your workspace</strong>
+        <span>Live panels will appear here when the active profile is ready.</span>
+      </div>
+    </div>
+  </section>
+
+  <details class="workspace-sensor-manager" id="workspaceSensorManager">
+    <summary>
+      <span><span class="workspace-kicker">Sensor manager</span><strong>Add and order exact sensors</strong></span>
+      <span class="workspace-summary-action" aria-hidden="true">Manage</span>
+    </summary>
+    <div class="workspace-sensor-manager-body">
+      <div class="workspace-sensor-tools">
+        <label class="workspace-field" for="workspaceSensorTarget">
+          <span>Target panel</span>
+          <select id="workspaceSensorTarget" name="workspaceSensorTarget">
+            <option value="">Choose a panel</option>
+          </select>
+        </label>
+        <label class="workspace-field" for="workspaceSensorSearch">
+          <span>Find sensors</span>
+          <input id="workspaceSensorSearch" name="workspaceSensorSearch" type="search" autocomplete="off" placeholder="Search name, hardware, type, or SensorId">
+        </label>
+      </div>
+      <p class="workspace-sensor-help" id="workspaceSensorHelp">Sensor membership is independent from Standard and Studio visibility. Missing SensorIds stay in the profile so returning hardware can reconnect.</p>
+      <div class="workspace-sensor-list" id="workspaceSensorList" role="region" aria-label="Available sensors" aria-describedby="workspaceSensorHelp">
+        <div class="workspace-empty">
+          <strong>Choose a target panel</strong>
+          <span>Available live sensors will be listed here.</span>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <footer class="workspace-footer">
+    <span id="workspaceFootLeft">Workspace is initializing.</span>
+    <span>Read-only telemetry · profile schema v1</span>
+  </footer>
+</main>
+<script src="workspace.js"></script>
 <script src="console.js"></script>
 </body></html>

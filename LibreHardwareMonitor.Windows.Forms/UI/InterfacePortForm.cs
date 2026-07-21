@@ -5,12 +5,12 @@
 // All Rights Reserved.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Forms;
 using System.Net;
 using System.Net.Sockets;
 using System.Diagnostics;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement;
-using System.Net.NetworkInformation;
 
 namespace LibreHardwareMonitor.Windows.Forms.UI;
 
@@ -18,47 +18,72 @@ public partial class InterfacePortForm : Form
 {
     private readonly MainForm _parent;
     private string _localIP;
+    private bool _closed;
     
     public InterfacePortForm(MainForm m)
     {
         InitializeComponent();
         _parent = m;
-        _localIP = LoadNetworkInterfaces(_parent.Server.ListenerIp);
+        PopulateNetworkInterfaces(Array.Empty<IPAddress>(), _parent.Server.ListenerIp);
+        Shown += InterfacePortForm_Shown;
     }
 
-    private string LoadNetworkInterfaces(string selectedListenerIp)
+    private async void InterfacePortForm_Shown(object sender, EventArgs e)
     {
-        IPHostEntry host;
-        interfaceComboBox.Items.Clear();
-        host = Dns.GetHostEntry(Dns.GetHostName());
-        foreach (IPAddress ip in host.AddressList)
+        try
         {
-            if (ip.AddressFamily == AddressFamily.InterNetwork)
-                interfaceComboBox.Items.Add(ip.ToString());
+            IPAddress[] addresses = await Dns.GetHostAddressesAsync(Dns.GetHostName()).ConfigureAwait(true);
+            if (!_closed && !IsDisposed)
+                PopulateNetworkInterfaces(addresses, _localIP);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine("Network interface discovery failed: " + ex.Message);
+        }
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _closed = true;
+        Shown -= InterfacePortForm_Shown;
+        base.OnFormClosed(e);
+    }
+
+    private void PopulateNetworkInterfaces(IEnumerable<IPAddress> addresses, string selectedListenerIp)
+    {
+        string[] listenerIps = addresses
+            .Where(ip => ip.AddressFamily == AddressFamily.InterNetwork)
+            .Select(ip => ip.ToString())
+            .Concat(new[] { selectedListenerIp, "0.0.0.0" })
+            .Where(ip => !string.IsNullOrWhiteSpace(ip) && ip != "?")
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        interfaceComboBox.BeginUpdate();
+        try
+        {
+            interfaceComboBox.Items.Clear();
+            interfaceComboBox.Items.AddRange(listenerIps);
+
+            if (interfaceComboBox.Items.Contains(selectedListenerIp))
+                interfaceComboBox.SelectedItem = selectedListenerIp;
+            else if (interfaceComboBox.Items.Count > 0)
+                interfaceComboBox.SelectedIndex = interfaceComboBox.Items.Count - 1;
+        }
+        finally
+        {
+            interfaceComboBox.EndUpdate();
         }
 
-        interfaceComboBox.Items.Add("0.0.0.0");
-
-        // select the last one by default to match the existing behavior
-        if (interfaceComboBox.Items.Count > 0)
-        {
-            interfaceComboBox.SelectedIndex = interfaceComboBox.Items.Count - 1;
-        }
-
-        // check to see if the selected listener IP is in our list.
-        if (interfaceComboBox.Items.Contains(selectedListenerIp))
-        {
-            // default it to the previously selected IP.
-            interfaceComboBox.SelectedItem = selectedListenerIp;
-        }
-        return interfaceComboBox.SelectedItem as string;
+        _localIP = interfaceComboBox.SelectedItem as string ?? "0.0.0.0";
+        PortNumericUpDn_ValueChanged(null, EventArgs.Empty);
     }
 
     private void PortNumericUpDn_ValueChanged(object sender, EventArgs e)
     {
         string url = "http://" + _localIP + ":" + portNumericUpDn.Value + "/";
         webServerLinkLabel.Text = url;
-        webServerLinkLabel.Links.Remove(webServerLinkLabel.Links[0]);
+        webServerLinkLabel.Links.Clear();
         webServerLinkLabel.Links.Add(0, webServerLinkLabel.Text.Length, url);
     }
 

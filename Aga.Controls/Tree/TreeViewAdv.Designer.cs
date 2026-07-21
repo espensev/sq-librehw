@@ -1,4 +1,5 @@
 using System.Windows.Forms;
+using Aga.Controls.Tree.NodeControls;
 
 namespace Aga.Controls.Tree
 {
@@ -8,13 +9,25 @@ namespace Aga.Controls.Tree
 
 		protected override void Dispose(bool disposing)
 		{
-			if (disposing && (components != null))
+			if (disposing)
 			{
-				components.Dispose();
-				if (_dragBitmap != null) _dragBitmap.Dispose();
-				if (_dragTimer != null) _dragTimer.Dispose();
-				if (_linePen != null) _linePen.Dispose();
-				if (_markPen != null) _markPen.Dispose();
+				ExpandingIcon.IconChanged -= ExpandingIconChanged;
+				_threadPool?.CancelAll(false);
+				_toolTip?.Dispose();
+				_measureContext.Graphics?.Dispose();
+				_measureBitmap?.Dispose();
+				components?.Dispose();
+				_dragBitmap?.Dispose();
+				_dragTimer?.Dispose();
+				_linePen?.Dispose();
+				_markPen?.Dispose();
+
+				_toolTip = null;
+				_measureBitmap = null;
+				_dragBitmap = null;
+				_dragTimer = null;
+				_linePen = null;
+				_markPen = null;
 			}
 			base.Dispose(disposing);
 		}
