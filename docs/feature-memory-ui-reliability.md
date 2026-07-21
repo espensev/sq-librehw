@@ -152,7 +152,7 @@ dashboard policy, or supported frameworks.
   approval. It shipped in the verified 2026-07-18 SND-HOST build.
 - [ ] Repeat the real monitor hit-target, drag, and UI Automation smoke on
   SND-HOST; deployment validation covered runtime and HTTP health, not manual UI.
-- [ ] Preserve the forced first dashboard snapshot when a persisted-paused page
+- [x] Preserve the forced first dashboard snapshot when a persisted-paused page
   starts hidden, so first visibility does not stay blank until Resume.
 - [ ] Preserve the last bounded on-disk sensor histories across autosave until a
   clean hardware close refreshes `/values`.
@@ -193,6 +193,18 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-07-18 SND-DESK persisted-paused hidden-start follow-up: an exact Node
+  regression first observed zero requests and zero paints after first visibility.
+  A second red regression showed that hide-before-settlement could consume the
+  intent with one request and no paint; a third reproduced the same loss during
+  poll-rate reconfiguration. All passed after the poll controller retained the
+  forced-snapshot intent until successful data handling and queued a forced
+  single-flight follow-up after either cancellation. Pause remained active and
+  no recurring timer was scheduled. JavaScript syntax, 18 focused
+  polling/workspace tests, the 285/285 dashboard self-test, and the .NET suite
+  (150 passed, one opt-in skip) passed. Both x64 Release targets built in isolated
+  output folders with zero warnings/errors because the running local process held
+  the standard `net10.0-windows` output; it was not stopped or replaced.
 - 2026-07-18 SND-DESK -> SND-HOST deployment: the scrollbar follow-up shipped
   in product version `0.9.6+ebedd8b-dirty.2026-07-18`. Identity, process/task,
   HTTP, live telemetry, logging, and controller-to-host access checks passed.

@@ -1056,6 +1056,7 @@
     let active = null;
     let generation = 0;
     let followup = null;
+    let forcedSnapshotPending = false;
 
     const canPoll = () => !stopped && !paused && !hidden;
     function clearScheduled() {
@@ -1067,16 +1068,25 @@
       scheduled = setTimer(() => { scheduled = null; poll(); }, intervalMs);
     }
     function runFollowup(mode) {
+      if (mode === 'forced') {
+        if (!stopped && !hidden && forcedSnapshotPending) poll(true);
+        return;
+      }
       if (!canPoll()) return;
       if (mode === 'immediate') poll();
       else schedule();
+    }
+    function queueFollowup(next) {
+      if (next == null) { followup = null; return; }
+      if (followup === 'forced') return;
+      if (next === 'forced' || next === 'immediate' || followup == null) followup = next;
     }
     function cancelActive(reason, next) {
       generation++;
       clearScheduled();
       if (active) {
         active.cancelReason = reason;
-        if (next === 'immediate' || followup !== 'immediate') followup = next || null;
+        queueFollowup(next);
         try { active.controller.abort(); } catch {}
       } else {
         runFollowup(next);
@@ -1085,7 +1095,10 @@
     function poll(forceSnapshot) {
       if (stopped || hidden || (paused && !forceSnapshot)) return Promise.resolve(null);
       clearScheduled();
-      if (active) { followup = 'immediate'; return active.promise; }
+      if (active) {
+        queueFollowup(forceSnapshot && forcedSnapshotPending ? 'forced' : 'immediate');
+        return active.promise;
+      }
       const controller = AbortCtor ? new AbortCtor() : {signal:undefined, abort() {}};
       const record = {generation:++generation, controller, cancelReason:null, timeout:null, promise:null};
       record.timeout = setTimer(() => {
@@ -1096,6 +1109,7 @@
           const data = await request(controller.signal);
           if (record.generation !== generation || record.cancelReason || stopped) return null;
           await onData(data);
+          if (forceSnapshot) forcedSnapshotPending = false;
           return data;
         } catch (error) {
           if (record.generation === generation && !record.cancelReason && !stopped)
@@ -1116,6 +1130,7 @@
       start(snapshotWhenPaused) {
         if (!stopped) return active?.promise || null;
         stopped = false;
+        forcedSnapshotPending = paused && snapshotWhenPaused === true;
         return !hidden && (!paused || snapshotWhenPaused === true) ? poll(snapshotWhenPaused === true) : null;
       },
       refresh() { if (!canPoll()) return active?.promise || null; return poll(); },
@@ -1123,21 +1138,29 @@
         const next = value === true;
         if (paused === next) return;
         paused = next;
+        if (!paused) {
+          forcedSnapshotPending = false;
+          if (followup === 'forced') followup = null;
+        }
         cancelActive('pause', next ? null : 'immediate');
       },
       setHidden(value) {
         const next = value === true;
         if (hidden === next) return;
         hidden = next;
+        if (!hidden && forcedSnapshotPending) {
+          return poll(true);
+        }
         cancelActive('visibility', next ? null : 'immediate');
       },
       setInterval(value) {
         intervalMs = Math.max(1, Number(value) || intervalMs);
-        cancelActive('reconfigure', 'scheduled');
+        cancelActive('reconfigure', forcedSnapshotPending ? 'forced' : 'scheduled');
       },
       stop() {
         if (stopped) return;
         stopped = true;
+        forcedSnapshotPending = false;
         followup = null;
         cancelActive('stop', null);
       },

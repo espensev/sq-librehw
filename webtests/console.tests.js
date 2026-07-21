@@ -775,6 +775,87 @@
         assert.deepEqual([requests, paints, poller.status().scheduled], [1, 1, false]);
         poller.stop();
       });
+
+      test('a hidden persisted paused dashboard takes its forced snapshot on first visibility', async () => {
+        let requests = 0, paints = 0;
+        const poller = S.createPollController({
+          paused:true,
+          hidden:true,
+          intervalMs:10,
+          timeoutMs:1000,
+          request:async () => { requests++; return {snapshot:true}; },
+          onData:() => { paints++; }
+        });
+
+        assert.equal(poller.start(true), null);
+        assert.deepEqual([requests, paints], [0, 0]);
+
+        poller.setHidden(false);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual([requests, paints, poller.status().scheduled], [1, 1, false]);
+
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.deepEqual([requests, paints], [1, 1], 'the forced snapshot must not resume recurring polling');
+        poller.stop();
+      });
+
+      test('a hidden paused dashboard retries its forced snapshot after visibility cancellation', async () => {
+        const pending = [], painted = [];
+        const poller = S.createPollController({
+          paused:true,
+          hidden:true,
+          intervalMs:10,
+          timeoutMs:1000,
+          request:signal => new Promise(resolve => pending.push({signal, resolve})),
+          onData:data => painted.push(data)
+        });
+
+        poller.start(true);
+        poller.setHidden(false);
+        assert.equal(pending.length, 1);
+
+        poller.setHidden(true);
+        assert.equal(pending[0].signal.aborted, true);
+        poller.setHidden(false);
+        assert.equal(pending.length, 1, 'the cancelled request keeps ownership until it settles');
+        pending[0].resolve({snapshot:'cancelled'});
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(painted, []);
+
+        assert.equal(pending.length, 2, 'the unpainted forced snapshot must remain pending');
+        pending[1].resolve({snapshot:'visible'});
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual([painted, poller.status().paused, poller.status().scheduled], [
+          [{snapshot:'visible'}], true, false
+        ]);
+        poller.stop();
+      });
+
+      test('a paused dashboard retries its forced snapshot after a rate change', async () => {
+        const pending = [], painted = [];
+        const poller = S.createPollController({
+          paused:true,
+          intervalMs:10,
+          timeoutMs:1000,
+          request:signal => new Promise(resolve => pending.push({signal, resolve})),
+          onData:data => painted.push(data)
+        });
+
+        poller.start(true);
+        assert.equal(pending.length, 1);
+        poller.setInterval(20);
+        assert.equal(pending[0].signal.aborted, true);
+        pending[0].resolve({snapshot:'cancelled'});
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.equal(pending.length, 2, 'rate reconfiguration must preserve the forced snapshot');
+        pending[1].resolve({snapshot:'retried'});
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual([painted, poller.status().paused, poller.status().scheduled], [
+          [{snapshot:'retried'}], true, false
+        ]);
+        poller.stop();
+      });
     }
   }
   else root.runConsoleTests = runConsoleTests;
