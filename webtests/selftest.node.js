@@ -104,6 +104,21 @@ const menuChecks = [
   ['Studio stable regions skip unchanged DOM replacement',
     consoleJs.includes('function syncKeyedRegion')
       && ['syncKeyedRegion(focusHost','syncKeyedRegion(systems','syncKeyedRegion(network'].every(token => consoleJs.includes(token))],
+  ['Standard keyed regions preserve exact focus context',
+    consoleJs.includes('function captureStandardFocus(element)')
+      && consoleJs.includes('.xp-overlay[data-sid], .rowxp[data-sid], .panel[data-key]')
+      && consoleJs.includes("host?.closest?.('#pinned, #pfd, #panels, #netPanels')")
+      && consoleJs.includes('element.dataset?.mv')
+      && consoleJs.includes('el.dataset.sid = s.id')
+      && consoleJs.includes('focus.element?.isConnected')
+      && consoleJs.includes('restoreStandardFocus(standardFocus)')],
+  ['Standard keyed signatures cover controls, ranges, and bounded arc progress',
+    consoleJs.includes('SQ.isPinned(state.dashboard, s.id), state.primaryIds.has(s.id)')
+      && consoleJs.includes('SQ.rangeRenderSignature(range), SQ.rangeRenderSignature(gaugeRange)')
+      && consoleJs.includes('SMOOTH_FRACTIONS.get(s.id) ?? null')
+      && consoleJs.includes('expanded ? SQ.rangeRenderSignature(SQ.rangeFor(s, state.limits, state.dashboard)) : null')
+      && consoleJs.includes("effects.spark ? SQ.historyFor(s.id).map")
+      && consoleJs.includes('control ? [control.raw, control.value] : null')],
   ['poll rate and stateful controls expose accessible state',
     indexHtml.includes('<label class="rate" for="rate">')
       && indexHtml.includes('aria-describedby="ratev"')

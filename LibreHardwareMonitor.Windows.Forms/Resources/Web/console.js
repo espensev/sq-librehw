@@ -967,6 +967,27 @@
     if (rangeInfo.source === 'peak') return null;
     return rangeInfo;
   };
+  SQ.rangeRenderSignature = function (rangeInfo) {
+    return rangeInfo
+      ? [rangeInfo.lo ?? null, rangeInfo.hi ?? null, rangeInfo.source || null, !!rangeInfo.derived]
+      : null;
+  };
+  SQ.arcTargetFor = function (sensor, control, rangeInfo, enabled) {
+    if (!enabled) return null;
+    const raw = control
+      ? control.raw / 100
+      : rangeInfo && sensor ? (sensor.raw - rangeInfo.lo) / (rangeInfo.hi - rangeInfo.lo) : null;
+    if (raw == null) return null;
+    return Math.max(0, Math.min(1, Number.isFinite(raw) ? raw : 0));
+  };
+  SQ.stepFraction = function (previous, target, maxStep) {
+    const t = Math.max(0, Math.min(1, Number.isFinite(target) ? target : 0));
+    if (!Number.isFinite(previous)) return t;
+    const step = Number.isFinite(maxStep) && maxStep > 0 ? maxStep : 1;
+    const p = Math.max(0, Math.min(1, previous));
+    const delta = t - p;
+    return p + Math.sign(delta) * Math.min(Math.abs(delta), step);
+  };
   // Display-model helper: maps a rangeFor result to a short ceiling label.
   // Peak/unknown return null (no label) so peak-derived cards stay number/sparkline-only.
   SQ.rangeLabelFor = function (rangeInfo, sensor) {
@@ -1298,6 +1319,50 @@
       state.inlineEditing = false;
       state.inlineEditingUntil = 0;
     }
+    function captureStandardFocus(element) {
+      const host = element?.closest?.(
+        '.cell[data-sid], .row[data-sid], .xp-overlay[data-sid], .rowxp[data-sid], .panel[data-key]');
+      const region = host?.closest?.('#pinned, #pfd, #panels, #netPanels');
+      if (!host || !region) return null;
+      let hostSelector = null;
+      if (host.classList.contains('cell')) hostSelector = `.cell[data-sid="${CSS.escape(host.dataset.sid)}"]`;
+      else if (host.classList.contains('row')) hostSelector = `.row[data-sid="${CSS.escape(host.dataset.sid)}"]`;
+      else if (host.classList.contains('xp-overlay')) hostSelector = `.xp-overlay[data-sid="${CSS.escape(host.dataset.sid)}"]`;
+      else if (host.classList.contains('rowxp')) hostSelector = `.rowxp[data-sid="${CSS.escape(host.dataset.sid)}"]`;
+      else if (host.classList.contains('panel')) hostSelector = `.panel[data-key="${CSS.escape(host.dataset.key)}"]`;
+      if (!hostSelector) return null;
+      let controlSelector = null;
+      if (element !== host) {
+        if (element.classList?.contains('pin')) controlSelector = '.pin';
+        else if (element.classList?.contains('star')) controlSelector = '.star';
+        else if (element.classList?.contains('row-grip')) controlSelector = '.row-grip';
+        else if (element.classList?.contains('grip'))
+          controlSelector = host.classList.contains('panel') ? '.panel-head > .grip' : '.grip';
+        else if (element.dataset?.mv) controlSelector = `[data-mv="${CSS.escape(element.dataset.mv)}"]`;
+        else if (element.dataset?.moreGroup)
+          controlSelector = `[data-more-group="${CSS.escape(element.dataset.moreGroup)}"]`;
+        else if (element.dataset?.act === 'pin' || element.dataset?.act === 'unpin')
+          controlSelector = '[data-act="pin"], [data-act="unpin"]';
+        else if (element.dataset?.act === 'primary-add' || element.dataset?.act === 'primary-remove')
+          controlSelector = '[data-act="primary-add"], [data-act="primary-remove"]';
+        else if (element.dataset?.act) controlSelector = `[data-act="${CSS.escape(element.dataset.act)}"]`;
+      }
+      if (element !== host && !controlSelector) return null;
+      return {
+        element,
+        regionId: region.id,
+        hostSelector,
+        controlSelector
+      };
+    }
+    function restoreStandardFocus(focus) {
+      if (!focus || focus.element?.isConnected) return;
+      const region = document.getElementById(focus.regionId);
+      if (!region) return;
+      const host = region.querySelector(focus.hostSelector);
+      const target = focus.controlSelector ? host?.querySelector(focus.controlSelector) : host;
+      (target || host)?.focus({ preventScroll: true });
+    }
     function ctlCluster(id, label, opts) {
       const pinned = SQ.isPinned(state.dashboard, id);
       const primary = state.primaryIds.has(id);
@@ -1432,10 +1497,12 @@
         state.panelItems = SQ.buildPanelItems(sensors, state.dashboard);
         renderStudio(host, sensors, limits, alarm, data.Version);
       } else {
+        const standardFocus = captureStandardFocus(ae);
         renderPinnedCards(sensors, limits);
         renderPFD(sensors, limits);
         renderPlacard(alarm);
         renderPanels(sensors);
+        restoreStandardFocus(standardFocus);
       }
       renderSensorsPopover();
       $('#host').textContent = host;
@@ -1452,12 +1519,9 @@
     }
 
     function smoothFraction(id, target) {
-      const t = Math.max(0, Math.min(1, Number.isFinite(target) ? target : 0));
       const prev = SMOOTH_FRACTIONS.get(id);
-      if (prev == null) { SMOOTH_FRACTIONS.set(id, t); return t; }
       const maxStep = state.rate <= 1 ? 0.14 : 0.18;
-      const delta = t - prev;
-      const next = prev + Math.sign(delta) * Math.min(Math.abs(delta), maxStep);
+      const next = SQ.stepFraction(prev, target, maxStep);
       SMOOTH_FRACTIONS.set(id, next);
       return next;
     }
@@ -1520,6 +1584,7 @@
            <button class="iconbtn" data-act="${opts.rowGroup ? 'row-down' : 'move-right'}" data-id="${esc(s.id)}"${opts.rowGroup ? ` data-row-group="${esc(opts.rowGroup)}"` : ''} aria-label="Move later" title="Move later">&#9660;</button>` : '';
       const el = document.createElement('div');
       el.className = opts.cls;
+      el.dataset.sid = s.id;
       el.innerHTML = `
         <div class="xp-grid">
           <div><span>label</span><b>${esc(SQ.sensorDisplayText(s, state.dashboard, opts.fallbackLabel))}</b></div>
@@ -1562,9 +1627,8 @@
       const ctrl = kind === 'fan' ? SQ.fanControlFor(h.s, state.allSensors) : null;
       const gaugeRange = SQ.gaugeRangeFor(rr, h.s, ctrl);
       const fx = SQ.cardStyleFor(styleVal, !!gaugeRange && h.s.raw != null, state.dashboard.graphsEnabled);
-      let arc = '';
-      if (fx.arc && ctrl) arc = arcSVG(h.s.id, ctrl.raw / 100);
-      else if (fx.arc && gaugeRange) arc = arcSVG(h.s.id, (h.s.raw - gaugeRange.lo) / (gaugeRange.hi - gaugeRange.lo));
+      const arcTarget = SQ.arcTargetFor(h.s, ctrl, gaugeRange, fx.arc);
+      const arc = arcTarget == null ? '' : arcSVG(h.s.id, arcTarget);
       const isHealth = (h.s.type === 'Temperature' && !SQ.isLimitSensor(h.s)) ||
                        (h.s.type === 'Level' && (h.s.text || '').toLowerCase().includes('life'));
       const chip = isHealth && (st === 'ok' || st === 'warn' || st === 'crit')
@@ -1622,9 +1686,8 @@
     function renderPinnedCards(sensors, limits) {
       const cards = SQ.resolvePinnedCards(sensors, state.dashboard, limits);
       const sec = $('#pinnedsec'), grid = $('#pinned');
-      grid.innerHTML = '';
       sec.style.display = cards.length ? '' : 'none';
-      cards.forEach(h => grid.appendChild(cardEl(h, true)));
+      syncKeyedRegion(grid, cards, h => h.s.id, standardCardSignature, h => cardEl(h, true));
       placeCardOverlay(grid, cards);
       $('#pinnedtag').textContent = `${cards.length} pinned`;
     }
@@ -1636,8 +1699,7 @@
         base.map((h, index) => Object.assign(h, { index })),
         state.dashboard.cardOrder, h => h.s.id);
       const pfd = $('#pfd');
-      pfd.innerHTML = '';
-      H.forEach(h => pfd.appendChild(cardEl(h, false)));
+      syncKeyedRegion(pfd, H, h => h.s.id, standardCardSignature, h => cardEl(h, false));
       placeCardOverlay(pfd, H);
       const reset = $('#pfdReset');
       if (reset) reset.style.display = custom ? '' : 'none';
@@ -1719,6 +1781,41 @@
     function sensorRenderSignature(s) {
       return [s.id, s.hwid, s.cls, s.type, s.raw, s.rawMin, s.rawMax, s.value, s.min, s.max, s.status, s.text, s.hw,
         SQ.sensorAlias(state.dashboard, s.id)].join('\u001f');
+    }
+    function standardCardSignature(h) {
+      const s = h.s;
+      const kind = SQ.kindOf(s.type);
+      const ctrl = kind === 'fan' ? SQ.fanControlFor(s, state.allSensors) : null;
+      const range = cardRange(h);
+      const gaugeRange = SQ.gaugeRangeFor(range, s, ctrl);
+      const style = state.dashboard.cardStyle[s.id] || 'auto';
+      const effects = SQ.cardStyleFor(style, !!gaugeRange && s.raw != null, state.dashboard.graphsEnabled);
+      const trend = SQ.trendFor(s.id, kind);
+      const arcTarget = SQ.arcTargetFor(s, ctrl, gaugeRange, effects.arc);
+      return JSON.stringify([sensorRenderSignature(s), h.label, h.unit, h.bounded, h.status,
+        style, state.dashboard.graphsEnabled, SQ.isPinned(state.dashboard, s.id), state.primaryIds.has(s.id),
+        state.expanded.has('c:' + s.id), state.dashboard.rangeOverrides[s.id] || null,
+        SQ.rangeRenderSignature(range), SQ.rangeRenderSignature(gaugeRange), effects.arc, effects.spark,
+        arcTarget, arcTarget == null ? null : (SMOOTH_FRACTIONS.get(s.id) ?? null),
+        ctrl ? [ctrl.raw, ctrl.value] : null,
+        trend ? [trend.direction, trend.rate, trend.rateUnit] : null,
+        effects.spark ? SQ.historyFor(s.id).map(p => [p.t, p.raw]) : null]);
+    }
+    function panelSignature(item) {
+      const collapsed = SQ.isPanelCollapsed(state.dashboard, item.key, item.hw, item.collapsed);
+      const rowOrderKeys = Object.keys(state.dashboard.rowOrder)
+        .filter(k => k.startsWith(item.key + '|'))
+        .map(k => k + ':' + state.dashboard.rowOrder[k].join(','));
+      return JSON.stringify([item.key, item.label, item.net, collapsed,
+        item.ss.map(s => {
+          const expanded = state.expanded.has('r:' + s.id);
+          const control = s.type === 'Fan' ? SQ.fanControlFor(s, state.allSensors) : null;
+          return [sensorRenderSignature(s), expanded, state.dashboard.rangeOverrides[s.id] || null,
+            SQ.isPinned(state.dashboard, s.id), state.primaryIds.has(s.id),
+            expanded ? SQ.rangeRenderSignature(SQ.rangeFor(s, state.limits, state.dashboard)) : null,
+            control ? [control.raw, control.value] : null];
+        }),
+        rowOrderKeys]);
     }
     function syncKeyedRegion(host, items, keyFor, signatureFor, createNode) {
       const current = new Map([...host.children]
@@ -2032,8 +2129,8 @@
           const label = SQ.sensorDisplayText(sensor, state.dashboard, sensor.text);
           return '<tr class="' + workspaceStatusClass(sensor) + '"><td><strong>' + esc(label) +
             '</strong><br><code>' + esc(sensor.id) + '</code></td><td>' + esc(sensor.hw || '—') +
-            '</td><td>' + esc(sensor.type || '—') + '</td><td>' + esc(sensor.min || '—') +
-            '</td><td>' + esc(sensor.max || '—') + '</td><td>' + workspaceReadingMarkup(sensor) +
+            '</td><td>' + esc(sensor.type || '—') + '</td><td>' + esc(sensor.min == null || sensor.min === '' ? '—' : sensor.min) +
+            '</td><td>' + esc(sensor.max == null || sensor.max === '' ? '—' : sensor.max) + '</td><td>' + workspaceReadingMarkup(sensor) +
             '</td></tr>';
         }).join('') + '</tbody></table></div>';
     }
@@ -2246,7 +2343,7 @@
       const p = document.createElement('div'); p.className = 'panel' + (startCollapsed ? ' collapsed' : '');
       p.dataset.key = item.key;
       const temps = ss.filter(s => s.type === 'Temperature' && s.raw != null && !SQ.isLimitSensor(s)).sort((a,b)=>b.raw-a.raw);
-      const head = temps[0] ? temps[0].value : (ss.find(s => s.type === 'Load')?.value || '');
+      const head = temps[0] ? temps[0].value : (ss.find(s => s.type === 'Load')?.value ?? '');
       const h = document.createElement('div'); h.className = 'panel-head';
       const netHide = item.net
         ? `<button class="ctl" data-mv="hide" aria-label="Hide adapter ${esc(label)}" title="Hide adapter">&#8856;</button>`
@@ -2284,6 +2381,7 @@
           const box = document.createElement('div'); box.className = 'extra'; box.dataset.rowGroup = groupKey;
           extra.forEach(s => appendRow(box, s, type, groupKey));
           const btn = document.createElement('button'); btn.className = 'morebtn';
+          btn.dataset.moreGroup = groupKey;
           btn.textContent = `+ ${extra.length} per-core ${type.toLowerCase()}`;
           btn.onclick = e => { e.stopPropagation(); box.classList.toggle('open'); btn.textContent =
             box.classList.contains('open') ? `- hide per-core ${type.toLowerCase()}` : `+ ${extra.length} per-core ${type.toLowerCase()}`; };
@@ -2294,18 +2392,16 @@
     }
     function renderPanels(sensors) {
       const panels = $('#panels');
-      panels.innerHTML = '';
       state.panelItems = SQ.buildPanelItems(sensors, state.dashboard);
       const hwItems = state.panelItems.filter(i => !i.net);
       const netItems = state.panelItems.filter(i => i.net);
       const ordered = SQ.applyOrder(hwItems, state.dashboard.panelOrder, item => item.key);
-      ordered.forEach(item => panels.appendChild(panelEl(item)));
+      syncKeyedRegion(panels, ordered, item => item.key, panelSignature, panelEl);
       $('#subtag').textContent = `${ordered.length} components`;
       const preset = $('#panelsReset');
       if (preset) preset.style.display = state.dashboard.panelOrder.length ? '' : 'none';
       const netPanels = $('#netPanels');
-      netPanels.innerHTML = '';
-      netItems.forEach(item => netPanels.appendChild(panelEl(item)));   // already ordered by netAdapterOrder
+      syncKeyedRegion(netPanels, netItems, item => item.key, panelSignature, panelEl);
       const hiddenNet = new Set(state.dashboard.hiddenNetAdapters);
       const hiddenCount = SQ.buildNetAdapters(state.allSensors).filter(a => hiddenNet.has(a.key)).length;
       $('#netsec').style.display = (netItems.length || hiddenCount) ? '' : 'none';

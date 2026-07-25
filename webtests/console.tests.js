@@ -16,6 +16,14 @@
     eq('splitValue temp', S.splitValue('65.5 °C'), {n:'65.5', unit:'°C'});
     eq('splitValue pct', S.splitValue('27.1 %'), {n:'27.1', unit:'%'});
     eq('splitValue null', S.splitValue(null), {n:'—', unit:''});
+    eq('splitValue zero is a valid reading', S.splitValue('0'), {n:'0', unit:''});
+    eq('splitValue zero load is a valid reading', S.splitValue('0.0 %'), {n:'0.0', unit:'%'});
+    eq('zero min/max strings survive flatten', (() => {
+      const zeroNode = {SensorId:'/test/0', Type:'Load', Text:'Test Load', Value:'0.0 %', Min:'0.0 %', Max:'0.0 %',
+        RawValue:0, RawMin:0, RawMax:0, Children:[]};
+      const flat = S.flatten({Text:'HW', HardwareId:'/hw/0', Children:[zeroNode]});
+      return [flat[0].value, flat[0].min, flat[0].max, flat[0].raw];
+    })(), ['0.0 %', '0.0 %', '0.0 %', 0]);
 
     const sensors = S.flatten(data.Children[0]);
     const limits = S.deriveLimits(sensors);
@@ -365,6 +373,35 @@
       {lo:0, hi:575, source:'override'});
     eq('gauge allows paired fan control', S.gaugeRangeFor({lo:0, hi:2000, source:'peak'}, {id:'/f', type:'Fan', raw:900}, {raw:45}),
       {lo:0, hi:100, source:'control'});
+    eq('range render signature tracks derived provenance',
+      [S.rangeRenderSignature({lo:0, hi:500, source:'limit'}),
+        S.rangeRenderSignature({lo:0, hi:500, source:'limit', derived:true}),
+        S.rangeRenderSignature(null)],
+      [[0,500,'limit',false], [0,500,'limit',true], null]);
+    eq('eighth GPU power sample changes the rendered range signature', (() => {
+      const power = {id:'/sig-g/0/power/0', hwid:'/sig-g/0', cls:'gpu',
+        type:'Power', text:'GPU Package', raw:150, rawMax:150};
+      const samples7 = Array(S.POWER_LIMIT_MIN_SAMPLES - 1).fill(500);
+      const samples8 = samples7.concat(500);
+      return [
+        S.rangeRenderSignature(S.rangeFor(power, {}, {powerLimitSamples:{'/sig-g/0':samples7}})),
+        S.rangeRenderSignature(S.rangeFor(power, {}, {powerLimitSamples:{'/sig-g/0':samples8}}))
+      ];
+    })(), [[0,200,'peak',false], [0,500,'limit',true]]);
+    eq('arc target uses paired control and clamps',
+      [S.arcTargetFor({raw:900}, {raw:45}, {lo:0, hi:2000}, true),
+        S.arcTargetFor({raw:125}, null, {lo:0, hi:100}, true),
+        S.arcTargetFor({raw:50}, null, {lo:0, hi:100}, false)],
+      [0.45, 1, null]);
+    eq('fraction stepping advances and converges without overshoot', (() => {
+      let fraction = 0.1;
+      const steps = [];
+      for (let i = 0; i < 7; i++) {
+        fraction = S.stepFraction(fraction, 0.9, 0.14);
+        steps.push(Number(fraction.toFixed(2)));
+      }
+      return steps;
+    })(), [0.24,0.38,0.52,0.66,0.8,0.9,0.9]);
 
     // --- Slice 1: range truth + machine-agnostic limit derivation ---
     const sPwr = {id:'/gpu-nvidia/0/power/0', type:'Power', raw:233};
