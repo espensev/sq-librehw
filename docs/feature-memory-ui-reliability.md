@@ -2,7 +2,7 @@
 
 **Status:** reliability baseline shipped and deployed; 2026-07-25 hardware-option
 queue, scrollbar teardown, transactional open, and dynamic-group snapshot fixes
-source-verified; runtime promotion pending
+deployed and live-verified on SND-HOST
 
 **Updated:** 2026-07-25
 
@@ -294,6 +294,26 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-07-25 SND-HOST clean deployment: candidate
+  `0.9.6-20260725-165558646-d693da7` was created from clean commit
+  `d693da7b1cd23159732123ba1a672ed8d9cf244b` under
+  `E:\SQ_HQ\Monitoring\LibreHardwareMonitor-Releases`. Both PowerShell engines
+  independently accepted it as current-source and promotable. The manifest
+  SHA-256 is
+  `B65E7A7C4E3A38E6AFA57683323B239B72325FECCADE1A68A73670EC0E984CC5`;
+  the deployed 35-file framework-dependent net10/win-x64 ZIP SHA-256 is
+  `e6408c4023bc578f5aea97e19dad5693442aad70baac8f88ce0327ea389d990e`.
+  The app exited normally through its hidden WinForms window; no force stop was
+  needed. A clean directory swap preserved only configuration, backup
+  configuration, and the active CSV alongside the manifest-declared payload.
+  Product version `0.9.6+d693da7.2026-07-25` then ran as the sole exact-path
+  process through `\LibreHardwareMonitor`, whose result was `0x41301`. `/`,
+  `/data.json`, and `/metrics` returned 200, the retired route returned 404,
+  all 443 baseline sensors stabilized with identical group counts, and the CSV
+  resumed growth. The complete old runtime and task XML are recoverable at
+  `E:\SQ_HQ\Monitoring\LibreHardwareMonitor-Rollback\20260725-175907-pre-0.9.6-20260725-165558646-d693da7`.
+  Historical `LibreHW-No-UAC` and `C:\ProgramData` entries below describe older
+  deployments, not the current runtime owner/path.
 - 2026-07-25 SND-HOST source fix: a red shown-window regression captured the
   managed `ArgumentNullException` escaping vertical scrollbar `WM_DESTROY`
   after UI Automation queried both indicators. It passed after both indicators

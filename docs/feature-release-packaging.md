@@ -1,6 +1,6 @@
 # External Release Candidate Packaging
 
-**Status:** implemented and adversarially source-verified; dirty development candidate proof complete; runtime promotion is out of scope
+**Status:** implemented; clean promotable candidate verified; separate SND-HOST promotion verified; packaging remains non-deploying
 **Updated:** 2026-07-25
 
 ## Problem
@@ -242,9 +242,10 @@ rollback reference to a previously accepted package.
   and one for `net10.0-windows`; both are framework-dependent `win-x64`
   payloads, contain no `runtimes/` subtree, and never package source `bin` or
   `obj`.
-- [ ] Repeat the full candidate run from clean source and verify
+- [x] Repeat the full candidate run from clean source and verify
   `promotable: true`, no `-dirty` suffix, and no recorded source changes. The
-  first full proof deliberately used the current dirty implementation tree.
+  first full proof deliberately used the then-dirty implementation tree; the
+  clean proof is recorded below.
 - [x] Dirty source fails by default, and an explicitly allowed dirty candidate
   is unambiguously labelled in its ID and manifest.
 - [x] Every declared relative path, byte length, and SHA-256 digest validates;
@@ -258,7 +259,9 @@ rollback reference to a previously accepted package.
   and after handled failure.
 - [x] Candidate validation performs no runtime, task, repository, or candidate
   mutation.
-- [x] No candidate is described as accepted, deployed, signed, or live-verified.
+- [x] Candidate creation and validation never describe a candidate as accepted,
+  deployed, signed, or live-verified; separate promotion evidence is recorded
+  explicitly as a different workflow.
 
 ## Verification
 
@@ -280,6 +283,20 @@ verifying the cleanup contract.
 
 ## Verification log
 
+- 2026-07-25 SND-HOST clean candidate and separate promotion: candidate
+  `0.9.6-20260725-165558646-d693da7` came from clean `main` commit
+  `d693da7b1cd23159732123ba1a672ed8d9cf244b`, recorded no source changes, and
+  was independently accepted with both `-RequirePromotable` and
+  `-RequireCurrentSource` under PowerShell 7 and Windows PowerShell 5.1. The
+  gate passed 306/306 dashboard checks, 18/18 focused Node tests, 182 .NET tests
+  with one documented opt-in skip, and both Release builds with zero warnings
+  or errors. Net10 contains 35 files and net472 45; both are
+  framework-dependent `win-x64` packages with no `runtimes/` subtree.
+  Repository `bin`/`obj` and external staging were empty afterward. Through a
+  separate maintainer-approved, identity-verified workflow, the net10 package
+  was clean-materialized at `E:\SQ_HQ\Monitoring\LibreHardwareMonitor` with a
+  complete rollback and live HTTP/sensor/log-growth proof. The release scripts
+  did not perform that promotion.
 - 2026-07-25 SND-HOST: the hardened release-system fixture suite passed all 114
   assertions under PowerShell 7 and Windows PowerShell 5.1. It covers disjoint
   and live-junction roots, descendant reparse rejection, case-insensitive

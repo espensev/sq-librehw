@@ -19,10 +19,31 @@
 - Upstream `LibreHardwareMonitor/LibreHardwareMonitor` links in the root
   `README.md` point at the real upstream project and are not stale.
 
+## Current SND-HOST paths
+
+- Source checkout:
+  `E:\SQ_HQ\Monitoring\libre-dev\librehw-host`
+- Immutable release candidates:
+  `E:\SQ_HQ\Monitoring\LibreHardwareMonitor-Releases\candidates`
+- Live application:
+  `E:\SQ_HQ\Monitoring\LibreHardwareMonitor`
+- Deployment rollback packets:
+  `E:\SQ_HQ\Monitoring\LibreHardwareMonitor-Rollback`
+- Installed log manager and archive:
+  `E:\SQ_HQ\Monitoring\LhmLogManagement` and
+  `E:\SQ_HQ\Monitoring\LogArchive`
+
+The user-level `LHM_RELEASE_ROOT` is
+`E:\SQ_HQ\Monitoring\LibreHardwareMonitor-Releases`. Source, release, live,
+rollback, and log/archive state are separate; no release payload belongs under
+`libre-dev`.
+
 ## Current
 
 - The product is the Windows app plus the read-only dashboard at `/`.
-- Studio and the memory/UI reliability baseline are deployed and verified.
+- Studio and the 2026-07-25 memory/UI/hardware-lifetime reliability baseline
+  are deployed and verified as product version
+  `0.9.6+d693da7.2026-07-25`.
 - Sensor Workspace, its four-profile Thermal extension, and the GPU hotspot
   rate sensor are deployed on identity-verified SND-HOST. Live `/`,
   `data.json`, Prometheus, RTX 3080 rate, CSV logging, and controller-to-host
@@ -30,14 +51,17 @@
   a separate visual/UI Automation host inspection was not part of this smoke.
 - Host-neutral log archival/retention tooling is source-controlled under
   `ops/log-management` and installed on SND-HOST in a separate stable runtime
-  with a verified SYSTEM task. The first real prior-day rollover archive remains
-  to be inspected because the cleaned host had no completed CSV candidate.
+  with a verified SYSTEM task. Its active configuration now targets the current
+  runtime and archive roots above. Seven July 18-24 archives passed structural
+  inspection; the current-day CSV and 365-day retention previews selected
+  nothing for removal.
 - Release-candidate tooling is source-controlled under `ops/release`. It builds
-  both x64 application frameworks through a clean external staging root and
-  publishes independently verified ZIP packages plus `release-manifest.json`
-  outside the repository; candidate creation and validation do not promote or
-  deploy a runtime. The first full dirty development candidate passed; it is
-  explicitly non-promotable, and clean-source candidate proof remains open.
+  framework-dependent `win-x64` payloads for both application frameworks
+  through a clean external staging root and publishes independently verified
+  ZIP packages plus `release-manifest.json` outside the repository. Candidate
+  `0.9.6-20260725-165558646-d693da7` is clean and promotable; its net10 package
+  was promoted through a separate identity-verified workflow. Candidate
+  creation and validation themselves remain non-deploying.
 - `/dash/cardtruth[/]` is retired; `data.json` and CSV IDs are contracts.
 - Standard context layouts are merged and browser-fixture-verified; this packet
   did not replace a live LibreHardwareMonitor runtime.
@@ -57,6 +81,11 @@
 
 ## Deployed patch notes
 
+- Deployed the confirmed scrollbar teardown fix, ordered hardware-option
+  coordinator, transactional `Computer.Open`/cleanup, stable Storage/NVIDIA
+  snapshots, shared NVIDIA ML ownership, and related lifetime regressions from
+  clean commit `d693da7`. The live `\LibreHardwareMonitor` task, configuration,
+  backup configuration, and active CSV were preserved.
 - Added a third read-only `Workspace` view with adaptive `Main`, `Gaming`,
   `Storage`, and `Thermal` profiles, editable/reorderable card, table, and honest
   graph panels, exact sensor membership, and bounded portable JSON import/export.

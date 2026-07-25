@@ -92,7 +92,7 @@ old dashboard state loads unchanged.
 
 The Workspace module must stay presentation-only so a later WebView2 shell or
 parallel Avalonia frontend can consume an equivalent profile document without
-owning hardware collection or the deployed `LibreHW-No-UAC` task.
+owning hardware collection or the deployed `\LibreHardwareMonitor` task.
 
 ## Acceptance
 
@@ -124,7 +124,7 @@ owning hardware collection or the deployed `LibreHW-No-UAC` task.
    read-only sensor model as inputs to Phase 5 of
    `docs/feature-native-ui-modernization.md`.
 4. Defer the parallel Avalonia prototype to that owning roadmap. Do not cut over
-   hardware collection or `LibreHW-No-UAC` ownership until packaging, DPI,
+   hardware collection or `\LibreHardwareMonitor` ownership until packaging, DPI,
    accessibility, lifecycle, performance, and feature-parity gates are defined
    and passed.
 
@@ -182,5 +182,6 @@ SensorIds, pause, stale telemetry, keyboard focus, and browser-console output.
   SensorId reconnection, and adaptive-preset export immutability are covered by
   the Node model suite.
 - The 2026-07-15 verification used a local fixture and isolated build outputs.
-  No source was copied into a deployed runtime and the `LibreHW-No-UAC` task was
-  not stopped, restarted, or modified during that earlier verification.
+  No source was copied into a deployed runtime and the then-current historical
+  `LibreHW-No-UAC` task was not stopped, restarted, or modified during that
+  earlier verification.

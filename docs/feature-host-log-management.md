@@ -1,7 +1,7 @@
 # Feature Spec: Host-Neutral Log Management
 
-**Status:** deployed on SND-HOST; task/current-day retention smoke verified
-**Updated:** 2026-07-18
+**Status:** deployed on SND-HOST; current paths, archives, and dry-run retention verified
+**Updated:** 2026-07-25
 
 ## Problem
 
@@ -71,8 +71,8 @@ source and write the archive/runtime roots.
 - [x] No live runtime or scheduled task is changed during repository verification.
 - [x] Identity-verified SND-HOST deployment retains the current-day live CSV,
   and the installed SYSTEM task completes with result `0`.
-- [ ] Inspect the first real completed prior-day SND-HOST ZIP after rollover;
-  the cleaned target had no prior-day source candidate during deployment.
+- [x] Inspect real completed prior-day SND-HOST ZIPs after rollover; seven
+  July 18-24 archives have the recognized one-entry layout and are readable.
 
 ## Verification and deployment gate
 
@@ -88,6 +88,15 @@ then register the new task. Legacy task retirement is a separate approved step.
 
 ## Verification log
 
+- 2026-07-25 SND-HOST path repair: the installed configuration was backed up
+  with the LibreHardwareMonitor deployment rollback packet, then its only stale
+  values were corrected from the retired `Thermal_Control` tree to
+  `E:\SQ_HQ\Monitoring\LibreHardwareMonitor` and
+  `E:\SQ_HQ\Monitoring\LogArchive`. The SYSTEM task, scripts, working
+  directory, 03:45 schedule, machine name, and 365-day retention stayed
+  unchanged. The isolated integration suite passed. Live `-WhatIf` retained the
+  growing current-day CSV, retention selected nothing, and all seven existing
+  archives remained present. The config-driven destructive invoker was not run.
 - 2026-07-18 SND-DESK -> SND-HOST deployment: controller and target identities
   matched their enrolled IDs before each mutation. Previews and the first
   manual cycle found no completed source after the user's old-runtime cleanup.
