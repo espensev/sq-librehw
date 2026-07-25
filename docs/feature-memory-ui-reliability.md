@@ -3,7 +3,7 @@
 **Status:** reliability baseline shipped and deployed; scrollbar accessibility
 follow-up deployed on SND-HOST, manual host interaction smoke pending
 
-**Updated:** 2026-07-18
+**Updated:** 2026-07-25
 
 ## Problem and motivation
 
@@ -26,6 +26,8 @@ dashboard policy, or supported frameworks.
   saves, and bound decompression expansion.
 - Keep shutdown exactly once and on the UI thread; drop late hardware callbacks.
 - Bound HTTP request ownership and browser polling to one cancellable generation.
+- Keep state-changing HTTP actions off GET and reject cross-origin browser
+  mutations before changing sensor state.
 - Separate dashboard telemetry ingestion from cached rerendering.
 - Make storage failures, empty states, focus, labels, and reduced-motion behavior
   safe and accessible.
@@ -102,8 +104,10 @@ dashboard policy, or supported frameworks.
 ## Compatibility and risks
 
 - Both `net472` and `net10.0-windows` x64 remain supported.
-- `ISensor` and external HTTP/data contracts remain unchanged; optimized history
-  is an optional additive interface with legacy fallbacks.
+- `ISensor` and external data contracts remain unchanged; optimized history is
+  an optional additive interface with legacy fallbacks. The legacy reset HTTP
+  actions intentionally move from GET to POST; header-less automation remains
+  supported by posting the same query.
 - Existing XML settings and browser-local `sq.dashboard.v1` state remain readable.
 - A 24-hour graph still represents 24 hours, with older density compacted rather
   than truncating the selected time range.
@@ -129,6 +133,10 @@ dashboard policy, or supported frameworks.
   closing.
 - [x] HTTP request bursts and slow clients stay within configured concurrency;
   stop cancels and drains active handlers.
+- [x] `ResetMinMax` and `/ResetAllMinMax` mutate only on POST; GET cannot reset
+  telemetry, and cross-origin browser POSTs are rejected before mutation.
+- [x] Prometheus label values escape backslash, quote, and line feed without
+  changing metric names, label names, units, or numeric values.
 - [x] Dashboard appearance changes leave telemetry sample counts and derived
   values byte-for-byte unchanged.
 - [x] Poll pause/reconfigure/visibility changes leave no overlapping or stale
@@ -149,6 +157,9 @@ dashboard policy, or supported frameworks.
 
 - [x] Promote the verified scrollbar follow-up only with explicit deployment
   approval. It shipped in the verified 2026-07-18 SND-HOST build.
+- [x] Extend keyed DOM reuse and focus preservation to the Standard view
+  (`renderPinnedCards`, `renderPFD`, `renderPanels`). The "stable regions reuse
+  keyed DOM nodes" acceptance now covers Studio, Workspace, and Standard.
 - [ ] Repeat the real monitor hit-target, drag, and UI Automation smoke on
   SND-HOST; deployment validation covered runtime and HTTP health, not manual UI.
 - [x] Preserve the forced first dashboard snapshot when a persisted-paused page
@@ -163,7 +174,8 @@ Use red-capable regression tests at the owning seam before or with each fix:
 
 - weak-reference/event-count reset tests for storage groups and static UI events;
 - deterministic 24-hour history, bounded decompression, save-ordering, metrics,
-  plot-delta, shutdown-coordinator, and HTTP-concurrency tests;
+  plot-delta, shutdown-coordinator, HTTP-concurrency, reset-method/origin, and
+  Prometheus label-escaping tests;
 - Win32 GDI-count loops for gadget resize/theme/font where practical;
 - focused WinForms checks for scrollbar contrast, native bounds/accessibility,
   effective range endpoints, minimum thumb geometry, and shown-window UI
@@ -192,6 +204,18 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-07-25 dashboard review hardening: `ResetMinMax` and `/ResetAllMinMax`
+  are POST-only, GET cannot mutate min/max telemetry, and cross-origin browser
+  POSTs are rejected before reset; header-less automation may POST the same
+  query. Prometheus label values escape `\`, `"`, and newline;
+  workspace table min/max and panel-head Load guards use explicit null/empty
+  checks; Standard-view `renderPinnedCards`, `renderPFD`, and `renderPanels`
+  converted from full `innerHTML=''` rebuilds to `syncKeyedRegion` keyed reuse
+  with exhaustive range, control, and bounded-animation signatures; keyboard
+  focus is captured/restored across cards, rows, detail overlays, and panel
+  controls during polls. `System.Text.Json` bumped 10.0.8 -> 10.0.10 to match
+  sibling `System.*` packages. Node selftest 315/315, Node suites 18/18, and the .NET
+  suite passed 163 with 1 skipped; both x64 Release targets built cleanly.
 - 2026-07-18 SND-DESK persisted-paused hidden-start follow-up: an exact Node
   regression first observed zero requests and zero paints after first visibility.
   A second red regression showed that hide-before-settlement could consume the

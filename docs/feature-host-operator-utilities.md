@@ -1,7 +1,7 @@
 # Feature Plan: Host-Neutral Operator Utilities
 
 **Status:** ready for implementation; lossy conversion remains gated
-**Updated:** 2026-07-19
+**Updated:** 2026-07-25
 
 ## Problem
 
@@ -55,8 +55,8 @@ route, scheduled task, runtime deployment, profile mutation, or data deletion.
 - No blind decimal rounding by sensor type.
 - No converter, raw-log deletion, archive replacement, or scheduled processing
   in the first implementation campaign.
-- No modification of the current polling-reliability WIP in `console.js`, its
-  tests, or `feature-memory-ui-reliability.md`.
+- No product-code or dashboard-reliability changes in the utility
+  implementation lane.
 
 ## Thermal snapshot contract
 
@@ -143,7 +143,7 @@ and stop after the report-only analyzer.
 
 | Phase | Work | Files | Depends on | Exit |
 |-------|------|-------|------------|------|
-| 0 | Preserve the current polling WIP and establish an isolated utility checkpoint. | No product edits | — | Existing three-file diff is unchanged. |
+| 0 | Start from a clean, immutable `origin/master` checkpoint and isolate utility work on its own branch or worktree. | No product edits | — | Starting SHA is recorded and the utility lane has no inherited dirty files. |
 | 1 | Implement and fixture-test the portable thermal snapshot client. | `ops/thermal-snapshot/*` | 0 | Intel/AMD, multi-GPU, missing, zero, malformed, timeout, text, and JSON cases pass in PS 5.1/7. |
 | 2 | Implement and fixture-test the streaming log evidence analyzer. | `ops/log-analysis/*` | 0 | Mixed cadence, gaps, nulls, malformed rows, current-day marking, ZIP validation, and bounded-memory cases pass in PS 5.1/7. |
 | 3 | Reconcile docs and run contract regression checks. | This spec, `docs/README.md` | 1, 2 | Docs and external contracts remain current and unchanged. |

@@ -2,7 +2,7 @@
 
 **Project:** LibreHardwareMonitor Sev IQ local fork  
 **Status:** Active implementation fork  
-**Updated:** 2026-07-14
+**Updated:** 2026-07-25
 **Purpose:** keep feature work spec-first without blocking normal review, build, launch, and bugfix work.
 
 This repository is not specs-only: product code exists and normal maintenance can proceed. The rule is narrower: **new features and meaningful behavior changes need a clear feature spec before implementation starts**, unless the maintainer explicitly asks for a small direct fix or exploratory spike.
@@ -24,6 +24,13 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
 - `docs/README.md`: **start here** — compact current-state, contract, implementation, and verification map.
 - `docs/feature-memory-ui-reliability.md`: shipped memory, ownership, efficiency, and UI-reliability contract, verification, and open follow-ups.
 - `docs/feature-web-dashboard-studio-view.md`: shipped Studio dashboard behavior and verification record.
+- `docs/feature-sensor-workspace.md`: deployed Workspace view with named profiles, ordered panels, and bounded import/export.
+- `docs/feature-standard-context-layouts.md`: merged Standard context trims (Main/Gaming/Storage) over a materialize-swap contexts key.
+- `docs/feature-thermal-trends.md`: deployed NVIDIA GPU hotspot rate sensor across native, web, CSV, and Prometheus.
+- `docs/feature-independent-text-scaling.md`: shipped independent sensor-pane and graph-axis text scaling.
+- `docs/feature-host-log-management.md`: deployed host-neutral CSV archive, retention, and task-install package.
+- `docs/feature-host-operator-utilities.md`: planned portable thermal snapshot and report-only log evidence analyzer.
+- `docs/feature-native-ui-modernization.md`: phased native tree, graphics, graph, and Gadget 2.0 roadmap; implementation not started.
 
 Completed discovery and review evidence belongs in Git history. Keep unresolved
 findings and current verification in the nearest feature spec instead of a

@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor Docs
 
 **Status:** live map only
-**Updated:** 2026-07-21
+**Updated:** 2026-07-25
 
 ## Current
 
@@ -21,15 +21,19 @@
   did not replace a live LibreHardwareMonitor runtime.
 - Keep `AssemblyVersion` at `0.9.6`; build with `-p:Platform=x64`.
 
-## Handoff — 2026-07-21
+## Handoff — 2026-07-25
 
-- Product work and branch cleanup are complete; `master` is the only local and
-  origin branch.
+- `master` is the only local and origin branch. The current source packet
+  hardens reset-route method/origin handling, Prometheus label escaping,
+  Standard dashboard DOM/focus reuse, zero-value rendering, and contributor
+  documentation.
 - PR #29 source-shipped Standard contexts. PRs #26 and #28 landed five central
   package patch updates without redundant app-level references.
-- Final source gates passed: selftest 306/306, Node suites 18/18, .NET 150 passed
-  / 1 skipped, isolated x64 Release builds for both target frameworks, and
-  GitHub multi-architecture/packaging run `29852462788`.
+- Final source gates passed: web selftest 315/315, Node suites 18/18, .NET
+  163 passed / 1 skipped, log-management checks, both isolated x64 Release
+  target builds with 0 warnings/errors, and `git diff --check`.
+- Upstream synchronization remains a separate audited follow-up; it is not
+  mixed into this focused reliability shipment.
 - No live LibreHardwareMonitor runtime was replaced. Runtime promotion and
   manual interaction remain separate, identity-verified work.
 
@@ -91,9 +95,11 @@
 
 ## Runtime contracts
 
-- GET `/Sensor` failures return JSON; GET Set is rejected.
-- Legacy POST Set validates/clamps values and requires same-origin browser calls.
-- Public reset routes are blocked by the proxy guard.
+- GET `/Sensor` failures return JSON; GET Set and ResetMinMax are rejected.
+- POST Set validates/clamps values. `ResetMinMax` and `/ResetAllMinMax` mutate
+  only on POST. Cross-origin browser POSTs are rejected before mutation;
+  header-less script clients remain allowed when they POST. Any external proxy
+  is deployment-only.
 - Sensor history, decompression, HTTP ownership, and dashboard state are bounded.
 - Settings writes are ordered, atomic, backup-aware, and compact stale history.
 - RTX 5090 hot spot and its rate remain unavailable until live telemetry proves
