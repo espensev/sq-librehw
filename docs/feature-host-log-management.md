@@ -92,7 +92,7 @@ then register the new task. Legacy task retirement is a separate approved step.
   matched their enrolled IDs before each mutation. Previews and the first
   manual cycle found no completed source after the user's old-runtime cleanup.
   After live logging began, the stable runtime at
-  `E:\SQ_HQ\Thermal_Control\Monitoring\LhmLogManagement` retained the growing
+  `E:\SQ_HQ\Monitoring\LhmLogManagement` retained the growing
   current-day CSV, and `\SevGrp\Log-mangment\SQ LibreHardwareMonitor Log
   Management` completed under SYSTEM with result `0`. The verified-dead legacy
   `librehwlogs` task was retired only after replacement health passed.
