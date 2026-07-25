@@ -124,6 +124,8 @@
   a materialize-swap contexts key; live runtime promotion is not recorded.
 - `docs/feature-memory-ui-reliability.md` - shipped reliability contract,
   deployment proof, and remaining follow-ups.
+- `docs/feature-upstream-sync-2026-07-25.md` - audited upstream integration
+  boundary, conflict decisions, compatibility requirements, and verification.
 - `LibreHardwareMonitorLib/Hardware/Sensor.cs` - history bounds/persistence.
 - `LibreHardwareMonitorLib/Hardware/TemperatureRateSensor.cs` - bounded direct
   sample regression for temperature rate.
