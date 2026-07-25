@@ -14,7 +14,7 @@
     <StartupObject>LibreHardwareMonitor.Windows.Forms.Program</StartupObject>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationHighDpiMode Condition="'$(TargetFramework)' != 'net472'">SystemAware</ApplicationHighDpiMode>
-    <OutputPath>..\bin\$(Configuration)\</OutputPath>
+    <OutputPath Condition="'$(UseArtifactsOutput)' != 'true'">..\bin\$(Configuration)\</OutputPath>
 	  <LangVersion>latest</LangVersion>
     <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
     <NoWarn>$(NoWarn);WFO1000</NoWarn>

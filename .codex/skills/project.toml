@@ -1,0 +1,12 @@
+[project]
+name = "librehw-host"
+conventions = "AGENTS.md"
+
+[commands]
+build = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\release\\New-LhmRelease.ps1"
+test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\release\\Test-LhmReleaseSystem.ps1"
+
+[build-gate.release-candidate]
+build = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\release\\New-LhmRelease.ps1"
+verify = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\release\\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource"
+test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\release\\Test-LhmReleaseSystem.ps1"

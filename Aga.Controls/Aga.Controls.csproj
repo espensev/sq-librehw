@@ -14,7 +14,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <UseWindowsForms>true</UseWindowsForms>
     <NoWarn Condition="'$(TargetFramework)' != 'net472'">$(NoWarn);WFO1000</NoWarn>
-    <OutputPath>..\bin\$(Configuration)\</OutputPath>
+    <OutputPath Condition="'$(UseArtifactsOutput)' != 'true'">..\bin\$(Configuration)\</OutputPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DebugType>full</DebugType>

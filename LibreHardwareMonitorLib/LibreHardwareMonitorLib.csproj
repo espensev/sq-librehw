@@ -41,11 +41,11 @@
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+  <PropertyGroup Condition="'$(Configuration)'=='Debug' AND '$(UseArtifactsOutput)' != 'true'">
     <OutputPath>..\bin\Debug\$(Platform)\</OutputPath>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+  <PropertyGroup Condition="'$(Configuration)'=='Release' AND '$(UseArtifactsOutput)' != 'true'">
     <OutputPath>..\bin\Release\$(Platform)\</OutputPath>
   </PropertyGroup>
 
