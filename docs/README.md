@@ -1,15 +1,17 @@
 # SQ LibreHardwareMonitor Docs
 
 **Status:** live map only
-**Updated:** 2026-07-21
+**Updated:** 2026-07-25
 
 ## Repository
 
 - `origin` is `celine-anime/librehw-host`; the default and working branch is
   `main`. Push and pull there unless a task says otherwise.
-- `upstream` is `espensev/sq-librehw`, whose branch is `master`. Full history is
-  preserved: `main` is a fast-forward ahead of `upstream/master`, so older
-  commit SHAs cited in these docs still resolve.
+- `upstream` is the fetch-only source `espensev/sq-librehw`, whose source branch
+  is named `master`. Never develop on or push to that branch. Development stays
+  on local `main`, which tracks and pushes to `origin/main`. Full history is
+  preserved: `main` contains `upstream/master`, so older commit SHAs cited in
+  these docs still resolve.
 - Docs and completed plans written before 2026-07-21 say `master`, cite PR
   numbers on `espensev/sq-librehw`, and use `E:/SQ_HQ/Monitoring/sq-librehw`
   paths. Those are accurate history, deliberately left unrewritten; read them
@@ -30,6 +32,12 @@
   `ops/log-management` and installed on SND-HOST in a separate stable runtime
   with a verified SYSTEM task. The first real prior-day rollover archive remains
   to be inspected because the cleaned host had no completed CSV candidate.
+- Release-candidate tooling is source-controlled under `ops/release`. It builds
+  both x64 application frameworks through a clean external staging root and
+  publishes independently verified ZIP packages plus `release-manifest.json`
+  outside the repository; candidate creation and validation do not promote or
+  deploy a runtime. The first full dirty development candidate passed; it is
+  explicitly non-promotable, and clean-source candidate proof remains open.
 - `/dash/cardtruth[/]` is retired; `data.json` and CSV IDs are contracts.
 - Standard context layouts are merged and browser-fixture-verified; this packet
   did not replace a live LibreHardwareMonitor runtime.
@@ -80,9 +88,10 @@
    density and visual options, sensor search/grouping, bulk membership, and
    richer graphs that never combine incompatible units dishonestly.
 4. After the native slices and web Workspace contract stabilize, execute Phase
-   5 of `docs/feature-native-ui-modernization.md`: extract the host-neutral,
-   read-only presentation contract and prototype Avalonia in parallel. WinForms
-   keeps hardware and task ownership until every migration gate passes.
+   5 of `docs/feature-native-ui-modernization.md`: stabilize the host-neutral,
+   read-only presentation seam for WinForms reuse, fixtures, and portable
+   layouts. Any Avalonia prototype is a separately approved spike; WinForms
+   keeps hardware and task ownership.
 5. Inspect the first completed SND-HOST daily CSV rollover ZIP and its task
    history; current-day retention and the installed task already passed live.
 6. Implement the host-neutral operator-utility plan: a portable read-only
@@ -121,12 +130,15 @@
 - `docs/feature-thermal-trends.md` - additive hotspot-rate contract.
 - `docs/feature-host-log-management.md` - archive, retention, and deployment
   safety contract.
+- `docs/feature-release-packaging.md` - fail-closed, external dual-framework
+  release-candidate packaging and validation contract.
 - `docs/feature-host-operator-utilities.md` - planned portable thermal snapshot
   and evidence-gated log analysis.
 - `docs/feature-independent-text-scaling.md` - shipped independent sensor-pane,
   tracker, and graph-axis text scaling contract.
 - `docs/feature-native-ui-modernization.md` - phased native tree organization,
-  graphics, graph, and Gadget 2.0 roadmap; implementation has not started.
+  graphics, graph, and Gadget 2.0 roadmap; the Phase 0 packet is drafted and
+  product implementation has not started.
 - `docs/feature-standard-context-layouts.md` - source-shipped,
   browser-fixture-verified per-context Standard trims (Main/Gaming/Storage) over
   a materialize-swap contexts key; live runtime promotion is not recorded.
@@ -143,6 +155,9 @@
 - `LibreHardwareMonitor.Windows.Forms/Resources/Web/workspace.js` - bounded
   Workspace model, presets, profile operations, and import/export.
 - `ops/log-management/` - host-neutral log operations and task-install package.
+- `ops/release/` - external clean staging, candidate manifest/hash validation,
+  guarded repository-output cleanup, and release-system regression tests; no
+  deployment or promotion.
 - `LibreHardwareMonitor.Windows.Forms/UI/Themes/ThemedVScrollIndicator.cs` and
   `LibreHardwareMonitor.Windows.Forms/UI/Themes/ThemedHScrollIndicator.cs` -
   visible native-sized sensor-tree hit targets.
@@ -157,6 +172,9 @@ node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\workspace.js
 node webtests\selftest.node.js
 node --test webtests\console.tests.js webtests\workspace.tests.js
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-LhmLogManagement.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseSystem.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\New-LhmRelease.ps1 -ReleaseRoot <external-release-root>
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -ReleaseRoot <external-release-root>
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64

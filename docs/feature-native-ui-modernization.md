@@ -1,7 +1,7 @@
-# Feature Roadmap: Native UI Modernization
+# Feature Roadmap: WinForms UI Modernization
 
-**Status:** roadmap defined; implementation not started
-**Updated:** 2026-07-21
+**Status:** WinForms-first roadmap defined; Phase 0 implementation packet drafted
+**Updated:** 2026-07-25
 
 ## Problem and motivation
 
@@ -33,8 +33,9 @@ downstream telemetry contract.
   reorderable compact-list, card, gauge, and mini-sparkline layouts.
 - Support keyboard, UI Automation, text scaling, DPI, multi-monitor recovery,
   and bounded resource use as acceptance gates rather than follow-up polish.
-- Create a read-only presentation seam that a future Avalonia prototype can
-  consume without taking hardware or process ownership from WinForms.
+- Create a read-only presentation seam that simplifies WinForms and can support
+  tests, exports, or a future alternate host without making another UI stack a
+  condition of success.
 
 ## Non-goals
 
@@ -43,8 +44,9 @@ downstream telemetry contract.
 - No mutation of the canonical hardware/type/sensor hierarchy or its ordering.
 - No change to `data.json`, CSV, Prometheus, routes, sensor identifiers, raw
   labels, value units, missing-value semantics, or `AssemblyVersion`.
-- No full native rewrite, WebView2 shell, or Avalonia cutover in the early
-  phases.
+- No full native rewrite, WebView2 shell, or Avalonia dependency/cutover. Any
+  alternate-host prototype is a separately approved exploratory spike, not an
+  implementation phase or promotion gate in this roadmap.
 - No alert automation or automatic hardware action. Visual thresholds remain
   display-only until a separate feature spec says otherwise.
 - No live runtime promotion as part of a source/spec packet.
@@ -59,7 +61,7 @@ downstream telemetry contract.
 | Graph | `PlotPanel` / OxyPlot | Add accessible series controls and richer honest presentation while preserving bounded history/render paths |
 | Gadget | `SensorGadget`, `GadgetWindow` | Preserve the layered-window compatibility path while extracting state, layout, and formatting |
 | Web Workspace | `workspace.js` bounded profiles/panels | Reuse state and honesty semantics only; do not couple browser storage to native settings |
-| Persistence | `PersistentSettings` and stable `Sensor.Identifier` | Store a versioned, bounded native layout document with safe fallback |
+| Persistence | `PersistentSettings` and stable `Sensor.Identifier` | Add a dedicated bounded layout codec before storing a versioned native layout document; `/values` cleanup does not bound arbitrary layout JSON |
 
 ## Governing decisions
 
@@ -100,20 +102,115 @@ last valid settings file.
 - New paints, fonts, icons, menus, bitmaps, handles, timers, and subscriptions
   have deterministic ownership and disposal.
 
+### DPI, high contrast, and formatting stay explicit
+
+- The application remains SystemAware in this roadmap. Mixed-monitor recovery
+  and current scaling behavior are tested and documented, but switching the
+  process to PerMonitorV2 is a separate compatibility project because it
+  changes WinForms/Aga/OxyPlot coordinate, font, image, and window-lifetime
+  behavior across both target frameworks.
+- High contrast is a product-wide semantic-theme mode, not a scrollbar-only
+  exception. New controls, owner drawing, dialogs, graph annotations, and
+  gadgets must fall back to system colors/cues and remain operable without
+  decorative fills or color alone.
+- Shared presentation formatting owns units, unavailable/stale states, and
+  value classification. Each surface retains an explicit precision profile;
+  tree, graph, tray, CSV/data contracts, and compact gadget text are not forced
+  into one lossy display string.
+- Dialogs created after a theme change apply the current theme during their own
+  initialization. The roadmap includes the currently inconsistent Auth,
+  Interface/Port, and Parameter dialogs rather than relying only on
+  `Theme.Current` walking forms that were already open.
+
 ## Phased roadmap
 
 | Phase | Priority | Outcome | Depends on |
 |---|---|---|---|
 | 0. Foundation and interaction prototype | P0 | Accepted layout/theme contracts, bounded schemas, prototypes, and baselines | Current shipped UI |
 | 1. Find and organize sensors | P0 | Search, Favorites, and presentation-only tree ordering | Phase 0 |
-| 2. Native visual and graph polish | P1 | Coherent scalable graphics and clearer graph interaction | Phase 0; may overlap late Phase 1 |
+| 2. Native visual and graph polish | P1 | Coherent scalable graphics and clearer graph interaction | Phase 0; graph-only packet may overlap late Phase 1, while tree/theme/dialog integration waits |
 | 3. Gadget 2.0 vertical slice | P1 | One modern, accessible, reorderable gadget backed by extracted state/layout | Phases 0–2 |
 | 4. Multiple gadgets and portable layouts | P2 | Named gadget profiles, monitor recovery, bounded import/export | Phase 3 |
-| 5. Host-neutral presentation prototype | P3 | Read-only contract plus parallel Avalonia feasibility build | Stable Phases 1–4 |
+| 5. Host-neutral presentation seam | P3 | Reusable read-only contracts and fixtures; no alternate UI required | Stable Phases 1–4 |
 
 Each phase receives a focused implementation/verification update in this spec
 before product code starts. This roadmap is sequencing authority, not blanket
 approval for all phases at once.
+
+## Delivery model — semi-parallel and WinForms-first
+
+The roadmap is intentionally split into narrow ownership lanes. Pure contracts,
+tests, and visual foundations can advance beside hardware reliability work, but
+shared WinForms integration points are serialized.
+
+| Lane | Owns | Can start | Must wait for / conflict boundary |
+|---|---|---|---|
+| R. Reliability | `Computer`, dynamic groups, lifecycle coordination, failure reconciliation | Now | Owns `Computer`, `MainForm` lifecycle, and the reliability spec while active |
+| P. Presentation contracts | Immutable sensor presentation items, layout schemas, projection/search/order logic, pure tests | After contract review | New presentation files only; may run beside Lane R |
+| T. Tree and theme | Search/Favorites UI, organize interaction, semantic theme tokens, cached scalable assets | Theme proof may follow the baseline; tree integration follows Lane P | One owner at a time for `MainForm`, `TreeViewAdv`, and `Theme` |
+| V. Graph and gadget | Graph summaries/actions, honest state visuals, Gadget 2.0 state/layout/editor | After shared formatter and theme-token contracts | Graph and gadget may run in parallel if they do not edit the shared formatter or `MainForm` |
+| I. Integration and promotion | Settings migration, menu wiring, complete UI matrix, packaging/live smoke | After the contributing slice is green | Serial integration owner; never mixes source verification with runtime promotion |
+
+Coordination rules:
+
+- Lane R can proceed beside Phase 0 contract, baseline, and theme-proof work.
+  UI integration that touches `MainForm` waits until the active lifecycle patch
+  is merged and green.
+- New UI code consumes immutable presentation snapshots. It does not enumerate
+  live hardware-group collections or take hardware/process ownership.
+- One packet owns each shared entry point. Parallel agents contribute new pure
+  modules, tests, assets, or isolated controls and hand them to that owner.
+- Every shipping phase or packet lands as a usable WinForms improvement. Phase
+  0 contracts, baselines, and the non-shipping interaction harness are
+  acceptance foundations; none is justified solely as preparation for Avalonia.
+
+## First bounded implementation packet
+
+Phase 0 should be delivered as four reviewable slices:
+
+1. **0A — contracts and baselines:** specify bounded `SensorPresentationItem`
+   and versioned native-layout documents; record migration/fallback rules and
+   reproducible Light/Dark/Black/high-contrast, DPI, latency, allocation, and
+   GDI/USER baselines. Define independent byte, string, profile, group, sensor,
+   and gadget limits plus pure codec/migration tests before any layout payload
+   reaches `PersistentSettings`. Record the current SystemAware DPI behavior;
+   do not turn the baseline packet into a PerMonitorV2 switch. This is
+   docs/tests only.
+2. **0B — pure projection seam:** implement and test immutable presentation
+   snapshots plus search, Favorites, canonical fallback, and presentation-order
+   resolution. It has no controls, no hardware writes, and no persistence side
+   effects.
+3. **0C — visual foundation proof:** add semantic theme tokens and prove one
+   cached scalable icon path across both target frameworks. This may run beside
+   0B after 0A fixes the token/asset contract.
+4. **0D — interaction harness:** exercise explicit Organize mode, drag handles,
+   keyboard/context-menu parity, multi-selection, and focus against the pure
+   projection in a non-shipping harness. It depends on 0B.
+
+Only after 0A–0D pass should Phase 1 wire search, Favorites, or ordering into
+`MainForm` and `PersistentSettings`. This keeps early work reversible and lets
+reliability fixes continue semi-parallel without competing edits.
+
+## Low-risk WinForms polish packet
+
+After 0A records the baseline, these bounded improvements can be prepared
+semi-parallel without waiting for tree projection or Gadget 2.0:
+
+- apply the active theme when Auth, Interface/Port, and Parameter dialogs open;
+- centralize high-contrast/system-color resolution and use it beyond the
+  scrollbar indicators;
+- complete accessible names, keyboard mnemonics, focus cues, and UI Automation
+  roles for tree, graph, and dialog controls;
+- scale custom ToolStrip checkmarks with UI text size and render genuine
+  hover/pressed states for owner-drawn tree headers;
+- add honest graph `empty`, `warming`, `paused`, `stale`, and `no data` overlays
+  without another timer or telemetry mutation;
+- add a pure monitor-bounds recovery helper with unit tests, then integrate it
+  only after the active `MainForm` reliability lane is settled.
+
+These remain separate review slices. Theme/high-contrast work shares one token
+owner; graph overlays do not change history/series membership; monitor recovery
+does not change the process DPI mode.
 
 ## Phase 0 — foundation and interaction prototype
 
@@ -175,8 +272,12 @@ User-visible behavior:
 - Icons remain crisp at 100/150/200% and do not allocate per paint.
 - Optional density presets compose with the existing independent UI and graph
   text scales.
-- The graph gains a keyboard-accessible series list/legend with show, isolate,
-  color, and reset actions plus current/min/max summaries.
+- Auth, Interface/Port, Parameter, and future dialogs apply the active theme
+  when opened, including after an automatic theme change.
+- The existing keyboard-accessible Graph Inputs search/current-value/bulk
+  selection surface remains the owning series editor. Extend it with isolate,
+  color, reset, and current/min/max actions, then add a compact in-graph summary
+  that reuses the same model instead of creating a second membership editor.
 - Optional point markers, restrained fills, and display-only thresholds are
   disabled by default and preserve separate axes for incompatible units.
 - Empty, warming, paused, stale, and no-data graph states are explicit.
@@ -184,12 +285,15 @@ User-visible behavior:
 Acceptance:
 
 - [ ] Light, Dark, Black, and high-contrast states meet contrast, focus, and
-  non-color-cue requirements at supported text scales.
+  non-color-cue requirements at supported text scales; high contrast applies
+  consistently to native controls, owner drawing, graph, dialogs, and gadget.
 - [ ] Plot history bounds, zero-copy materialization, density decimation, zoom,
   time windows, and cosmetic-only invalidation remain intact.
 - [ ] Theme/icon/graph changes do not introduce unbounded GDI/USER handles,
   steady-state allocations, timers, or redraw loops.
 - [ ] Keyboard and UI Automation can identify and operate new controls.
+- [ ] SystemAware DPI behavior is unchanged and verified. Any PerMonitorV2
+  proposal remains outside this phase and requires its own compatibility spec.
 
 ## Phase 3 — Gadget 2.0 vertical slice
 
@@ -242,26 +346,47 @@ Acceptance:
   net472 and net10.0-windows; unsupported per-monitor behavior is documented
   and never corrupts gadget size, position, or saved layout.
 
-## Phase 5 — host-neutral presentation prototype
+## Phase 5 — host-neutral presentation seam
 
-- Extract a normalized, read-only sensor snapshot and bounded presentation
-  profile contract from the proven native/web semantics.
-- Build an Avalonia prototype in parallel for tree organization, graph summary,
-  and one gadget/profile—not hardware collection or control.
-- Compare keyboard/UIA, DPI, multi-monitor, packaging, startup, lifetime,
-  performance, and feature parity before any cutover proposal.
-- WinForms and the existing sanctioned task remain the hardware/process owner
-  until a separate migration spec is accepted and every gate passes.
+- Stabilize, version, and expose the read-only sensor snapshot and bounded
+  presentation-profile contracts proven in Phases 0–4; do not extract a second
+  competing model.
+- Keep the seam useful inside the current product: deterministic fixtures,
+  formatter reuse, layout validation, import/export, and UI tests must justify
+  it without another frontend.
+- Do not add Avalonia packages, projects, packaging, or runtime ownership in
+  this roadmap. A later feasibility prototype, if wanted, receives a separate
+  spike spec and consumes recorded fixtures without opening hardware.
+- WinForms and the existing sanctioned task remain the hardware/process owner.
+  A cutover would require a separate migration spec and explicit approval.
 
 Exit gate:
 
 - [ ] The shared snapshot/profile contracts are versioned, bounded, and proven
   against native and web fixture data without coupling their storage keys.
-- [ ] Prototype parity measurements cover keyboard/UIA, DPI, multi-monitor,
-  startup, packaging, lifecycle, performance, and the selected feature slice.
-- [ ] The prototype performs no hardware writes, opens no independent hardware
-  owner, and does not replace WinForms process/task ownership.
-- [ ] Any cutover remains blocked behind a separate accepted migration spec.
+- [ ] Existing WinForms tree, graph, gadget, and import/export tests consume the
+  seam where it removes duplicate presentation logic.
+- [ ] No alternate UI package, process, hardware owner, or promotion dependency
+  has been introduced.
+- [ ] Any future prototype or cutover remains blocked behind a separate accepted
+  spike or migration spec.
+
+## Common rollback and promotion gate
+
+- Parse, validate, bound, and migrate layout/profile documents into temporary
+  state. Persist or swap only after the complete document passes; never
+  overwrite the last valid settings with a partial or rejected migration.
+- Phase 1 can bypass the projection and return to canonical node order while
+  preserving older settings keys. Resetting presentation never mutates the
+  source tree or downstream ordering.
+- Phase 2 retains the current theme, icon, and graph paths if contrast,
+  high-contrast, handle/allocation, keyboard, or UI Automation gates fail.
+- Gadget work retains the legacy renderer until the new editor/profile path
+  reaches parity. Import/export is validate-then-swap and collision-safe.
+- Any `data.json` golden change, unbounded handle/allocation result, failed
+  dual-target build, or failed attended accessibility/DPI matrix blocks
+  promotion. Source rollback is a normal commit revert; runtime rollback uses
+  the last separately accepted package and never an unverified build folder.
 
 ## Related roadmap boundaries
 
