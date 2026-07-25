@@ -118,6 +118,9 @@ git diff --cached --check
 
 Source integration was verified on `snd-desk` on 2026-07-25:
 
+- merge `3a805fa` preserves official upstream ancestry through `81e8f83`;
+  `git merge-base --is-ancestor upstream/master HEAD` passed and the
+  upstream-only commit count is zero;
 - official `upstream/master` resolved to `81e8f83`; its Dependabot and build
   checks were successful;
 - all staged conflict resolutions passed three independent cross-lane reviews,

@@ -23,17 +23,19 @@
 
 ## Handoff — 2026-07-25
 
-- `master` is the only local and origin branch. The current source packet
-  hardens reset-route method/origin handling, Prometheus label escaping,
-  Standard dashboard DOM/focus reuse, zero-value rendering, and contributor
-  documentation.
+- `master` is the only local and origin branch. Local source now includes the
+  audited official upstream history through `81e8f83` in merge `3a805fa`, with
+  the fork's central packages, `data.json` contract, async PawnIO path, and
+  retryable NCT6687DR default restoration preserved.
 - PR #29 source-shipped Standard contexts. PRs #26 and #28 landed five central
   package patch updates without redundant app-level references.
 - Final source gates passed: web selftest 315/315, Node suites 18/18, .NET
-  163 passed / 1 skipped, log-management checks, both isolated x64 Release
-  target builds with 0 warnings/errors, and `git diff --check`.
-- Upstream synchronization remains a separate audited follow-up; it is not
-  mixed into this focused reliability shipment.
+  194 passed / 1 skipped, log-management checks, both isolated x64 Release
+  target builds with 0 warnings/errors, the library platform matrix, NuGet
+  packing, and staged hygiene scans.
+- Official `upstream/master` is an ancestor of local `master`, with zero
+  upstream-only commits remaining. Three independent integration reviews found
+  no remaining blockers.
 - No live LibreHardwareMonitor runtime was replaced. Runtime promotion and
   manual interaction remain separate, identity-verified work.
 
