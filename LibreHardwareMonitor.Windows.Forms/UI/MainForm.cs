@@ -33,8 +33,8 @@ public sealed partial class MainForm : Form
     private readonly SensorGadget _gadget;
     private readonly Logger _logger;
     private readonly UserRadioGroup _loggingInterval;
+    private readonly UserRadioGroup _smartUpdateCycle;
     private readonly UserRadioGroup _updateInterval;
-    private readonly UserOption _throttleAtaUpdate;
     private readonly UserOption _logSensors;
     private readonly UserOption _forceDriveWakeup;
     private readonly UserOption _minimizeOnClose;
@@ -487,19 +487,21 @@ public sealed partial class MainForm : Form
             }
         };
 
-        _throttleAtaUpdate = new UserOption("throttleAtaUpdateMenuItem", false, throttleAtaUpdateMenuItem, _settings);
-        _throttleAtaUpdate.Changed += (sender, e) =>
-        {
-            switch (_throttleAtaUpdate.Value)
-            {
-                case true:
-                    StorageDevice.ThrottleInterval = TimeSpan.FromSeconds(30);
-                    break;
+        _smartUpdateCycle = new UserRadioGroup("smartUpdateCycle",
+                                               SmartUpdateCyclePolicy.ResolveSelection(_settings),
+                                               new[]
+                                               {
+                                                   smartUpdateFollowUpdateIntervalMenuItem,
+                                                   smartUpdate10CyclesMenuItem,
+                                                   smartUpdate25CyclesMenuItem,
+                                                   smartUpdate50CyclesMenuItem,
+                                                   smartUpdate100CyclesMenuItem
+                                               },
+                                               _settings);
 
-                case false:
-                    StorageDevice.ThrottleInterval = TimeSpan.Zero;
-                    break;
-            }
+        _smartUpdateCycle.Changed += (sender, e) =>
+        {
+            StorageDevice.SmartUpdateCycleCount = SmartUpdateCyclePolicy.ToCycleCount(_smartUpdateCycle.Value);
         };
 
         _sensorValuesTimeWindow = new UserRadioGroup("sensorValuesTimeWindow",

@@ -376,5 +376,8 @@ public enum Model
     FRANMGCP09, // FW13 AMD Ryzen AI 9 HX 370
 
     // Unknown
-    Unknown
+    Unknown,
+
+    // New models are appended so existing public enum numeric values stay stable.
+    ROG_STRIX_Z370_G_GAMING
 }

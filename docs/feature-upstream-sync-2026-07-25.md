@@ -1,6 +1,6 @@
 # Audited upstream sync — 2026-07-25
 
-**Status:** implementation ready
+**Status:** source verified; attended hardware smoke pending
 
 **Upstream range:** `abfc4f5..81e8f83` (17 commits)
 
@@ -101,7 +101,7 @@ remain intact so a later reset or close can retry.
 ## Verification plan
 
 ```powershell
-rg -n '^(<<<<<<<|=======|>>>>>>>)'
+git diff --cached --no-ext-diff | rg -n '^\+(<<<<<<< |=======|>>>>>>> )'
 rg -n '<PackageReference\b[^>]*\bVersion\s*=' -g '*.csproj'
 node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js
 node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\workspace.js
@@ -111,9 +111,32 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
-git diff --check
+git diff --cached --check
 ```
 
 ## Verification record
 
-Pending implementation.
+Source integration was verified on `snd-desk` on 2026-07-25:
+
+- official `upstream/master` resolved to `81e8f83`; its Dependabot and build
+  checks were successful;
+- all staged conflict resolutions passed three independent cross-lane reviews,
+  including a second review of the NCT6687DR acknowledgment and retry-state
+  correction;
+- the focused NCT6687DR regression suite passed 9/9, and the full .NET suite
+  passed 194 with one intentional opt-in skip and no failures;
+- isolated x64 Release builds for `net10.0-windows` and `net472` both completed
+  with zero warnings and zero errors;
+- library Release builds passed for x64, x86, and ARM64 across their supported
+  target frameworks; the reference build completed with no errors and its 30
+  known AnyCPU `PInvoke005` warnings;
+- NuGet packing completed successfully;
+- web syntax checks passed, the dashboard self-test passed 315/315, the Node
+  suites passed 18/18, and log-management checks passed;
+- staged whitespace, conflict-marker, inline-package-version, secret, and
+  debug/temp scans were clean.
+
+An attended smoke of the newly mapped motherboards/NCT6687DR hardware and a
+manual check of the S.M.A.R.T. menu remain pending because matching hardware
+was not available in this source-only integration. No runtime payload, task,
+service, or deployed copy was changed.
