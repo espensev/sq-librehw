@@ -28,7 +28,7 @@
     <PackageVersion Include="System.Management" Version="10.0.10" />
     <PackageVersion Include="System.Memory" Version="4.6.3" />
     <PackageVersion Include="System.Resources.Extensions" Version="10.0.10" />
-    <PackageVersion Include="System.Text.Json" Version="10.0.8" />
+    <PackageVersion Include="System.Text.Json" Version="10.0.10" />
     <PackageVersion Include="System.Threading.AccessControl" Version="10.0.10" />
     <PackageVersion Include="TaskScheduler" Version="2.12.2" />
     <PackageVersion Include="xunit" Version="2.9.2" />
