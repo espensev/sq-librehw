@@ -15,9 +15,10 @@ internal static class NvidiaML
     private const string LinuxDllName = "nvidia-ml";
     private const string WindowsDllName = "nvml.dll";
 
-    private static readonly object _syncRoot = new();
+    private static readonly LeaseOwner _leaseOwner = new(InitializeCore, CloseCore);
 
     private static FreeLibrarySafeHandle _windowsDll;
+    private static volatile bool _isAvailable;
 
     private static WindowsNvmlGetHandleDelegate _windowsNvmlDeviceGetHandleByIndex;
     private static WindowsNvmlGetHandleByPciBusIdDelegate _windowsNvmlDeviceGetHandleByPciBusId;
@@ -136,36 +137,40 @@ internal static class NvidiaML
         Unknown = 999
     }
 
-    public static bool IsAvailable { get; private set; }
-
-    public static bool Initialize()
+    public static bool IsAvailable
     {
-        lock (_syncRoot)
-        {
-            if (IsAvailable)
-            {
-                return true;
-            }
+        get => _isAvailable;
+        private set => _isAvailable = value;
+    }
 
-            if (Software.OperatingSystem.IsUnix)
+    public static bool Initialize() => _leaseOwner.Acquire();
+
+    private static bool InitializeCore()
+    {
+        if (IsAvailable)
+            return true;
+
+        if (Software.OperatingSystem.IsUnix)
+        {
+            try
+            {
+                IsAvailable = nvmlInit() == NvmlReturn.Success;
+            }
+            catch (DllNotFoundException)
+            { }
+            catch (EntryPointNotFoundException)
             {
                 try
                 {
-                    IsAvailable = nvmlInit() == NvmlReturn.Success;
+                    IsAvailable = nvmlInitLegacy() == NvmlReturn.Success;
                 }
-                catch (DllNotFoundException)
-                { }
                 catch (EntryPointNotFoundException)
-                {
-                    try
-                    {
-                        IsAvailable = nvmlInitLegacy() == NvmlReturn.Success;
-                    }
-                    catch (EntryPointNotFoundException)
-                    { }
-                }
+                { }
             }
-            else if (IsNvmlCompatibleWindowsVersion())
+        }
+        else if (IsNvmlCompatibleWindowsVersion())
+        {
+            try
             {
                 // Attempt to load the Nvidia Management Library from the
                 // windows standard search order for applications. This will
@@ -177,6 +182,7 @@ internal static class NvidiaML
                 // from program files
                 if (_windowsDll.IsInvalid)
                 {
+                    _windowsDll.Dispose();
                     string programFilesDirectory = Environment.ExpandEnvironmentVariables("%ProgramW6432%");
                     string dllPath = Path.Combine(programFilesDirectory, @"NVIDIA Corporation\NVSMI", WindowsDllName);
 
@@ -185,9 +191,17 @@ internal static class NvidiaML
 
                 IsAvailable = !_windowsDll.IsInvalid && InitialiseDelegates() && (_windowsNvmlInit() == NvmlReturn.Success);
             }
-
-            return IsAvailable;
+            finally
+            {
+                if (!IsAvailable)
+                {
+                    _windowsDll?.Dispose();
+                    _windowsDll = null;
+                }
+            }
         }
+
+        return IsAvailable;
     }
 
     private static bool IsNvmlCompatibleWindowsVersion()
@@ -257,23 +271,86 @@ internal static class NvidiaML
         return true;
     }
 
-    public static void Close()
+    public static void Close() => _leaseOwner.Release();
+
+    private static void CloseCore()
     {
-        lock (_syncRoot)
+        if (!IsAvailable)
+            return;
+
+        try
         {
-            if (IsAvailable)
+            if (Software.OperatingSystem.IsUnix)
             {
-                if (Software.OperatingSystem.IsUnix)
+                nvmlShutdown();
+            }
+            else if (_windowsDll != null && !_windowsDll.IsInvalid)
+            {
+                _windowsNvmlShutdown();
+            }
+        }
+        finally
+        {
+            if (!Software.OperatingSystem.IsUnix)
+            {
+                _windowsDll?.Dispose();
+                _windowsDll = null;
+            }
+
+            IsAvailable = false;
+        }
+    }
+
+    internal sealed class LeaseOwner
+    {
+        private readonly Func<bool> _initialize;
+        private readonly Action _shutdown;
+        private readonly object _sync = new();
+        private int _leaseCount;
+
+        internal LeaseOwner(Func<bool> initialize, Action shutdown)
+        {
+            _initialize = initialize ?? throw new ArgumentNullException(nameof(initialize));
+            _shutdown = shutdown ?? throw new ArgumentNullException(nameof(shutdown));
+        }
+
+        internal int LeaseCount
+        {
+            get
+            {
+                lock (_sync)
+                    return _leaseCount;
+            }
+        }
+
+        internal bool Acquire()
+        {
+            lock (_sync)
+            {
+                if (_leaseCount > 0)
                 {
-                    nvmlShutdown();
-                }
-                else if (!_windowsDll.IsInvalid)
-                {
-                    _windowsNvmlShutdown();
-                    _windowsDll.Dispose();
+                    _leaseCount++;
+                    return true;
                 }
 
-                IsAvailable = false;
+                if (!_initialize())
+                    return false;
+
+                _leaseCount = 1;
+                return true;
+            }
+        }
+
+        internal void Release()
+        {
+            lock (_sync)
+            {
+                if (_leaseCount == 0)
+                    return;
+
+                _leaseCount--;
+                if (_leaseCount == 0)
+                    _shutdown();
             }
         }
     }

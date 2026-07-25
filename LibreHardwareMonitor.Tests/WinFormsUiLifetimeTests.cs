@@ -260,6 +260,9 @@ public sealed class WinFormsUiLifetimeTests
 
         var uiThread = new Thread(() =>
         {
+            System.Threading.ThreadExceptionEventHandler threadExceptionHandler =
+                (_, eventArgs) => uiThreadFailure ??= eventArgs.Exception;
+            Application.ThreadException += threadExceptionHandler;
             try
             {
                 shownForm = new Form
@@ -326,6 +329,10 @@ public sealed class WinFormsUiLifetimeTests
                 uiThreadFailure = exception;
                 ready.Set();
             }
+            finally
+            {
+                Application.ThreadException -= threadExceptionHandler;
+            }
         })
         {
             IsBackground = true,
@@ -377,6 +384,7 @@ public sealed class WinFormsUiLifetimeTests
             shownForm?.Dispose();
             nativeVertical?.Dispose();
             nativeHorizontal?.Dispose();
+            Assert.Null(uiThreadFailure);
         }
     }
 

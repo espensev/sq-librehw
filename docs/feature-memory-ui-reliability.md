@@ -1,9 +1,10 @@
 # Feature Spec: Memory, Lifetime, and UI Reliability
 
-**Status:** reliability baseline shipped and deployed; scrollbar accessibility
-follow-up deployed on SND-HOST, manual host interaction smoke pending
+**Status:** reliability baseline shipped and deployed; 2026-07-25 hardware-option
+queue, scrollbar teardown, transactional open, and dynamic-group snapshot fixes
+source-verified; runtime promotion pending
 
-**Updated:** 2026-07-18
+**Updated:** 2026-07-25
 
 ## Problem and motivation
 
@@ -49,6 +50,33 @@ dashboard policy, or supported frameworks.
 
 - Closing or resetting a hardware group releases all event subscriptions,
   devices, sensors, histories, tasks, and native resources it owns.
+- `Computer.Open()` is transactional. A constructor, group-add, or consumer
+  event failure unwinds partial groups and attempted global owners in reverse
+  order, preserves the initiating exception even if cleanup also fails, leaves
+  `Hardware` empty, and permits an idempotent close and clean retry.
+- `Computer.Open()` and `Computer.Reset()` commit a replacement group
+  generation only when the desired hardware-option version remains stable
+  across construction. A reentrant option change discards that generation and
+  rebuilds from the latest flags; continuous churn stops after four attempts,
+  cleans the partial generation, and reports a deterministic failure.
+- Process-global Mutex, OpCode, and NVIDIA ML ownership is reference-counted
+  across concurrent `Computer` instances. One close or failed acquisition
+  cannot release another open instance's lease.
+- Dynamic Storage and NVIDIA groups publish stable read-only copy-on-write
+  hardware snapshots. A Computer traversal/report/removal captures a snapshot
+  once instead of combining count/index/enumeration reads from different
+  generations. Close publishes empty state before external cleanup, and a late
+  or blocked refresh cannot republish hardware after ownership is detached.
+- Storage subscribes before its initial enumeration behind a serialized,
+  bounded initialization gate. Synchronous changes are coalesced by stable
+  device identity and replayed once; overflow fails and rolls back instead of
+  dropping topology. Failed unsubscribe ownership remains retryable without
+  closing devices twice.
+- An NVIDIA monitor-cycle failure is retained in a bounded error history and
+  does not stop later hot-plug refreshes. An in-flight refresh cannot reacquire
+  NVIDIA ML after close, including when enumeration was blocked. Once
+  detachment commits, the group's NVIDIA ML lease is released before external
+  callbacks or device cleanup can block.
 - Sensor history remains time-window compatible but retains at most 10,000
   representative points per sensor, preserving the newest point and old-bucket
   extrema. `ISensor` stays compatible through an optional history-reader seam.
@@ -73,6 +101,17 @@ dashboard policy, or supported frameworks.
   cloned images are deterministically released.
 - Tray retry, DNS resolution, server stop, PawnIO setup, and discovery do not
   sleep or wait for multi-second operations while blocking the UI thread.
+- Hardware-option clicks capture their desired value before asynchronous work.
+  One bounded drain retains the latest pending value per option, preserves
+  request order across distinct options, and never treats the disabled busy
+  presentation as permission to discard a click. Manual and resume resets are
+  coalesced and run after pending option values; shutdown cancels and drains the
+  coordinator before disposing its lifecycle gate.
+- Option setters invoked reentrantly during open, close, or reset retain the
+  requested backing flag but do not mutate the group collection being built or
+  drained. Open/reset version reconciliation either rebuilds from those latest
+  flags or fails cleanly at the bounded churn limit. Normal open-state option
+  changes keep their existing synchronous commit-on-success behavior.
 - Repeated form/theme/font/gadget operations remain within a stable GDI-handle
   envelope.
 - The sensor-tree scroll indicators mirror the native system-metric hit area
@@ -81,7 +120,9 @@ dashboard policy, or supported frameworks.
   native scrollbar range and value. Its resting thumb has at least 3:1 contrast
   in Light, Dark, and Black, grows and brightens on hover/drag, retains a 24 px
   minimum length, and falls back to the native scrollbar when Windows enters
-  high-contrast mode.
+  high-contrast mode. Once queried, either indicator can destroy or recreate its
+  HWND without passing a null provider through the managed UI Automation API or
+  truncating WinForms teardown.
 
 ### HTTP and dashboard
 
@@ -115,6 +156,19 @@ dashboard policy, or supported frameworks.
 
 - [x] Repeated storage reset/resume/toggle does not retain closed groups or add
   duplicate device-change callbacks.
+- [x] A failed `Computer.Open()` closes partial groups/global owners, preserves
+  the original failure, leaves no hardware, and can retry without duplicate
+  events.
+- [x] Captured Storage/NVIDIA snapshots remain stable across add, remove,
+  driver availability changes, and close; Computer traversals and reports use
+  one captured generation per group.
+- [x] Storage initialization reconciles synchronous add/remove callbacks without
+  duplicates, retries failed unsubscribe, and rolls back on bounded-buffer
+  overflow; NVIDIA monitor failures remain observable and later cycles recover.
+- [x] Multiple NVIDIA groups hold independent process-wide ML leases; closing
+  either group cannot release the other's lease. Detachment releases the local
+  lease before blocking removal callbacks/device cleanup, and a blocked late
+  refresh cannot reacquire after close.
 - [x] A simulated 24 hours at 250 ms retains no more than 10,000 history points,
   preserves newest/extrema, and does not change current/min/max values.
 - [x] Large-config loading stays bounded, compacts cleanup, orders overlapping
@@ -127,6 +181,18 @@ dashboard policy, or supported frameworks.
   do not leak GDI/native handles or freeze the UI.
 - [x] Late hardware events cannot mutate controls before handle creation or after
   closing.
+- [x] A second hardware-option click made while the first is still applying is
+  retained, same-option bursts remain bounded and last-value-wins, and a
+  concurrent manual/resume reset runs after the pending option values.
+- [x] Reentrant option requests during close/reset cannot add replacement groups
+  or prevent teardown from terminating; the requested flag remains available
+  for the next explicit lifecycle reconciliation.
+- [x] An option request that arrives after its category was visited during
+  open/reset causes a complete rebuild from the latest configuration; continuous
+  reentrant churn stops after four attempts, leaves no partial generation, and
+  permits a clean retry.
+- [x] Destroying either queried scroll-indicator HWND reaches base WinForms
+  teardown without an escaped `ArgumentNullException`.
 - [x] HTTP request bursts and slow clients stay within configured concurrency;
   stop cancels and drains active handlers.
 - [x] Dashboard appearance changes leave telemetry sample counts and derived
@@ -155,6 +221,30 @@ dashboard policy, or supported frameworks.
   starts hidden, so first visibility does not stay blank until Resume.
 - [ ] Preserve the last bounded on-disk sensor histories across autosave until a
   clean hardware close refreshes `/values`.
+- [x] Make `Computer.Open()` transactional: on any group-construction or
+  add-event failure, close every partial group/global owner, leave `Hardware`
+  empty, preserve the original exception, and permit a clean retry.
+- [x] Publish stable snapshots from dynamic Storage/NVIDIA groups and capture one
+  snapshot per Computer traversal/report/removal. Concurrent hotplug, driver
+  restart, and close must not skip, double-close, or index a changing list.
+- [x] Reference-count process-global Mutex, OpCode, and NVIDIA ML leases across
+  multiple `Computer` instances, and make close/reset cleanup continue after
+  consumer or device cleanup failures.
+- [x] Select rollback-to-confirmed-state for failed hardware-option
+  reconciliation. Automatic retry/reset is rejected because it can repeatedly
+  probe a failing driver without a fresh operator action.
+- [ ] Make each runtime hardware-option mutation transactional, then implement
+  that rollback policy: retain the prior group membership/backing flag on
+  failure, restore the checkbox and persisted value without recursively queuing
+  another operation, and show one concise UI-thread error. A later click or
+  explicit Reset is the deliberate retry. Checkbox, persisted flag, backing
+  flag, and group membership must never remain contradictory.
+- [x] Give process-global NVIDIA ML state an explicit multi-`Computer` lease
+  contract, including phase-aware release while enumeration is blocked and
+  bounded monitor-error recovery.
+- [ ] Decide whether failed `Computer.Reset()` must reconstruct the last known
+  group set. The current failure path closes every partial replacement and
+  leaves no mixed generation, but already-closed prior groups cannot be restored.
 - [ ] Optional confidence gate: run a 60-minute current-commit live soak.
 
 ## Verification plan
@@ -168,6 +258,17 @@ Use red-capable regression tests at the owning seam before or with each fix:
 - focused WinForms checks for scrollbar contrast, native bounds/accessibility,
   effective range endpoints, minimum thumb geometry, and shown-window UI
   Automation hit-testing for both orientations;
+- deterministic hardware-operation coordinator tests that block one option,
+  enqueue distinct and same-key updates, coalesce reset/resume intent, and
+  cancel/drain pending work during shutdown;
+- injected `Computer.Open()` owner/group/event failures with cleanup failures
+  and retry, reentrant open/reset, shared global-owner leases, cleanup after
+  throwing removal handlers, bounded configuration-version rebuild/churn,
+  immutable Storage/NVIDIA snapshot generations,
+  Storage initialization/subscription/callback failures, two NVIDIA ML lease
+  holders, monitor-cycle recovery, acquired-lease NVIDIA refresh blocked while
+  close detaches ownership, and lease release before blocking removal/device
+  cleanup;
 - Node tests with a throwing storage stub, delayed fetches, visibility/pause
   transitions, departed sensors, and cached Studio rerenders;
 - manual current-HEAD smoke for graph, gadget, tray, Studio/Standard, pause,
@@ -177,8 +278,9 @@ Required final commands:
 
 ```powershell
 node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js
+node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\workspace.js
 node webtests\selftest.node.js
-node --test webtests\console.tests.js
+node --test webtests\console.tests.js webtests\workspace.tests.js
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
@@ -192,6 +294,28 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-07-25 SND-HOST source fix: a red shown-window regression captured the
+  managed `ArgumentNullException` escaping vertical scrollbar `WM_DESTROY`
+  after UI Automation queried both indicators. It passed after both indicators
+  stopped calling the managed null-provider overload and always continued into
+  base teardown. Five coordinator regressions passed for queued distinct
+  options, ordered same-key coalescing, reset coalescing, initialization
+  barrier retention, and shutdown cancellation. A follow-on lifecycle pass
+  verified transactional-Open failure/retry and reentrancy, shared global-owner
+  leases, best-effort close/reset cleanup, single-generation Computer
+  traversal/reporting, stable Storage/NVIDIA snapshots, bounded Storage
+  initialization replay and unsubscribe retry, shared NVIDIA ML leases,
+  monitor-cycle recovery, and an acquired-lease NVIDIA refresh blocked while
+  close detaches ownership. Final clearance added immediate NVIDIA ML lease
+  release before potentially blocking removal/device cleanup and
+  configuration-version reconciliation that rebuilds open/reset generations
+  from late option changes with a four-attempt churn bound. The final
+  affected-surface gate passed 45/45. The full .NET suite passed (182 passed,
+  one opt-in skip), including the unchanged `data.json` golden contract;
+  JavaScript syntax, the 306/306 dashboard self-test, and all 18 focused
+  console/workspace tests passed; both x64 Release targets built with zero
+  warnings/errors. This was source verification only: no installed runtime,
+  task, or live configuration was replaced.
 - 2026-07-18 SND-DESK persisted-paused hidden-start follow-up: an exact Node
   regression first observed zero requests and zero paints after first visibility.
   A second red regression showed that hide-before-settlement could consume the

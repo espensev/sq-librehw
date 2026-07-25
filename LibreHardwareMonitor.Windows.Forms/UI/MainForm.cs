@@ -103,6 +103,10 @@ public sealed partial class MainForm : Form
     private readonly int _uiThreadId;
     private readonly SemaphoreSlim _hardwareLifecycleGate = new(1, 1);
     private readonly CancellationTokenSource _hardwareLifecycleCancellation = new();
+    private readonly TaskCompletionSource<object> _hardwareInitializationCompletion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly HardwareOperationCoordinator _hardwareOperations;
+    private bool _hardwareInitializationInProgress;
     private Task _hardwareInitializationTask;
 
     private bool IsShutdownPending => _closing || (_shutdownCoordinator?.IsShutdownRequested ?? false);
@@ -172,6 +176,13 @@ public sealed partial class MainForm : Form
         treeView.Model = treeModel;
 
         _computer = new Computer(_settings);
+        _hardwareOperations = new HardwareOperationCoordinator(
+            ExecuteHardwareOptionAsync,
+            ExecuteHardwareResetAsync,
+            _hardwareLifecycleCancellation.Token);
+        _hardwareOperations.StateChanged += HardwareOperations_StateChanged;
+        _hardwareOperations.OptionFailed += HardwareOperations_OptionFailed;
+        _hardwareOperations.ResetFailed += HardwareOperations_ResetFailed;
 
         _systemTray = new SystemTray(_computer, _settings, _unitManager, this);
         _systemTray.HideShowCommand += HideShowClick;
@@ -262,7 +273,7 @@ public sealed partial class MainForm : Form
 
         _ = new UserOption("startMinMenuItem", false, startMinMenuItem, _settings);
         _minimizeToTray = new UserOption("minTrayMenuItem", true, minTrayMenuItem, _settings);
-        _minimizeToTray.Changed += delegate { _systemTray.IsMainIconEnabled = _minimizeToTray.Value; };
+        _minimizeToTray.Changed += delegate { UpdateHardwareOperationUi(); };
 
         _minimizeOnClose = new UserOption("minCloseMenuItem", false, minCloseMenuItem, _settings);
 
@@ -285,34 +296,34 @@ public sealed partial class MainForm : Form
         };
 
         _readMainboardSensors = new UserOption("mainboardMenuItem", true, mainboardMenuItem, _settings);
-        _readMainboardSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsMotherboardEnabled = _readMainboardSensors.Value); };
+        _readMainboardSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Motherboard, _readMainboardSensors.Value); };
 
         _readCpuSensors = new UserOption("cpuMenuItem", true, cpuMenuItem, _settings);
-        _readCpuSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsCpuEnabled = _readCpuSensors.Value); };
+        _readCpuSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Cpu, _readCpuSensors.Value); };
 
         _readRamSensors = new UserOption("ramMenuItem", true, ramMenuItem, _settings);
-        _readRamSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsMemoryEnabled = _readRamSensors.Value); };
+        _readRamSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Memory, _readRamSensors.Value); };
 
         _readGpuSensors = new UserOption("gpuMenuItem", true, gpuMenuItem, _settings);
-        _readGpuSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsGpuEnabled = _readGpuSensors.Value); };
+        _readGpuSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Gpu, _readGpuSensors.Value); };
 
         _readPowerMonitorSensors = new UserOption("powerMonitorMenuItem", true, powerMonitorMenuItem, _settings);
-        _readPowerMonitorSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsPowerMonitorEnabled = _readPowerMonitorSensors.Value); };
+        _readPowerMonitorSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.PowerMonitor, _readPowerMonitorSensors.Value); };
 
         _readFanControllersSensors = new UserOption("fanControllerMenuItem", true, fanControllerMenuItem, _settings);
-        _readFanControllersSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsControllerEnabled = _readFanControllersSensors.Value); };
+        _readFanControllersSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Controller, _readFanControllersSensors.Value); };
 
         _readHddSensors = new UserOption("hddMenuItem", true, hddMenuItem, _settings);
-        _readHddSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsStorageEnabled = _readHddSensors.Value); };
+        _readHddSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Storage, _readHddSensors.Value); };
 
         _readNicSensors = new UserOption("nicMenuItem", true, nicMenuItem, _settings);
-        _readNicSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsNetworkEnabled = _readNicSensors.Value); };
+        _readNicSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Network, _readNicSensors.Value); };
 
         _readPsuSensors = new UserOption("psuMenuItem", true, psuMenuItem, _settings);
-        _readPsuSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsPsuEnabled = _readPsuSensors.Value); };
+        _readPsuSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Psu, _readPsuSensors.Value); };
 
         _readBatterySensors = new UserOption("batteryMenuItem", true, batteryMenuItem, _settings);
-        _readBatterySensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsBatteryEnabled = _readBatterySensors.Value); };
+        _readBatterySensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Battery, _readBatterySensors.Value); };
 
         _showGadget = new UserOption("gadgetMenuItem", false, gadgetMenuItem, _settings);
 
@@ -572,6 +583,7 @@ public sealed partial class MainForm : Form
             Show();
         }
 
+        _hardwareInitializationInProgress = true;
         menuItemFileHardware.Enabled = false;
         _hardwareInitializationTask = InitializeHardwareAsync();
     }
@@ -651,105 +663,138 @@ public sealed partial class MainForm : Form
         }
         finally
         {
+            _hardwareInitializationInProgress = false;
+            _hardwareInitializationCompletion.TrySetResult(null);
             if (!IsShutdownPending && !IsDisposed)
-            {
-                _systemTray.IsMainIconEnabled = _minimizeToTray.Value;
-                menuItemFileHardware.Enabled = true;
-            }
+                UpdateHardwareOperationUi();
         }
     }
 
     private void BeginHardwareReset()
     {
-        if (IsShutdownPending || !menuItemFileHardware.Enabled)
+        if (IsShutdownPending)
             return;
 
-        menuItemFileHardware.Enabled = false;
-        _systemTray.IsMainIconEnabled = false;
-        _ = ResetHardwareAsync();
+        _hardwareOperations.RequestReset();
     }
 
-    private void ApplyHardwareOption(Action change)
+    private void ApplyHardwareOption(HardwareOptionKind option, bool value)
     {
         // UserOption invokes each handler once during construction. Before Open starts, applying
         // the flags synchronously is cheap and lets Computer.Open discover the selected groups in
         // one pass. Later toggles can construct/close drivers and therefore use the lifecycle gate.
         if (_hardwareInitializationTask == null)
         {
-            change();
+            SetHardwareOption(option, value);
             return;
         }
 
-        if (IsShutdownPending || !menuItemFileHardware.Enabled)
+        if (IsShutdownPending)
             return;
 
-        menuItemFileHardware.Enabled = false;
-        _ = ApplyHardwareOptionAsync(change);
+        _hardwareOperations.RequestOption(option, value);
     }
 
-    private async Task ApplyHardwareOptionAsync(Action change)
+    private async Task ExecuteHardwareOptionAsync(
+        HardwareOptionKind option,
+        bool value,
+        CancellationToken cancellationToken)
     {
-        CancellationToken cancellationToken = _hardwareLifecycleCancellation.Token;
+        await _hardwareInitializationCompletion.Task.ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(true);
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await Task.Run(change).ConfigureAwait(true);
-            }
-            finally
-            {
-                _hardwareLifecycleGate.Release();
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // Shutdown owns the next lifecycle turn.
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine("Hardware option change failed: " + ex);
+            cancellationToken.ThrowIfCancellationRequested();
+            SetHardwareOption(option, value);
         }
         finally
         {
-            if (!IsShutdownPending && !IsDisposed)
-                menuItemFileHardware.Enabled = true;
+            _hardwareLifecycleGate.Release();
         }
     }
 
-    private async Task ResetHardwareAsync()
+    private async Task ExecuteHardwareResetAsync(CancellationToken cancellationToken)
     {
-        CancellationToken cancellationToken = _hardwareLifecycleCancellation.Token;
+        await _hardwareInitializationCompletion.Task.ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(true);
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await Task.Run(() => _computer.Reset()).ConfigureAwait(true);
-            }
-            finally
-            {
-                _hardwareLifecycleGate.Release();
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // Shutdown owns the next lifecycle turn.
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine("Hardware reset failed: " + ex);
+            cancellationToken.ThrowIfCancellationRequested();
+            _computer.Reset();
         }
         finally
         {
-            if (!IsShutdownPending && !IsDisposed)
-            {
-                _systemTray.IsMainIconEnabled = _minimizeToTray.Value;
-                menuItemFileHardware.Enabled = true;
-            }
+            _hardwareLifecycleGate.Release();
         }
+    }
+
+    private void HardwareOperations_OptionFailed(
+        HardwareOptionKind option,
+        bool value,
+        Exception exception)
+    {
+        Debug.WriteLine($"Hardware option change failed ({option}={value}): {exception}");
+    }
+
+    private void HardwareOperations_ResetFailed(Exception exception)
+    {
+        Debug.WriteLine("Hardware reset failed: " + exception);
+    }
+
+    private void HardwareOperations_StateChanged()
+    {
+        RunOnUiThreadOrDrop(UpdateHardwareOperationUi);
+    }
+
+    private void SetHardwareOption(HardwareOptionKind option, bool value)
+    {
+        switch (option)
+        {
+            case HardwareOptionKind.Motherboard:
+                _computer.IsMotherboardEnabled = value;
+                break;
+            case HardwareOptionKind.Cpu:
+                _computer.IsCpuEnabled = value;
+                break;
+            case HardwareOptionKind.Memory:
+                _computer.IsMemoryEnabled = value;
+                break;
+            case HardwareOptionKind.Gpu:
+                _computer.IsGpuEnabled = value;
+                break;
+            case HardwareOptionKind.PowerMonitor:
+                _computer.IsPowerMonitorEnabled = value;
+                break;
+            case HardwareOptionKind.Controller:
+                _computer.IsControllerEnabled = value;
+                break;
+            case HardwareOptionKind.Storage:
+                _computer.IsStorageEnabled = value;
+                break;
+            case HardwareOptionKind.Network:
+                _computer.IsNetworkEnabled = value;
+                break;
+            case HardwareOptionKind.Psu:
+                _computer.IsPsuEnabled = value;
+                break;
+            case HardwareOptionKind.Battery:
+                _computer.IsBatteryEnabled = value;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(option), option, null);
+        }
+    }
+
+    private void UpdateHardwareOperationUi()
+    {
+        bool hasResetWork = _hardwareOperations.HasResetWork;
+        bool isBusy = _hardwareOperations.IsBusy;
+        menuItemFileHardware.Enabled = !_hardwareInitializationInProgress && !isBusy;
+        _systemTray.IsMainIconEnabled =
+            !hasResetWork &&
+            _minimizeToTray.Value;
     }
 
     private static void InstallPawnIO()
@@ -1781,6 +1826,7 @@ public sealed partial class MainForm : Form
             if (_hardwareInitializationTask != null)
                 await _hardwareInitializationTask.ConfigureAwait(true);
 
+            await _hardwareOperations.WhenIdleAsync().ConfigureAwait(true);
             await _hardwareLifecycleGate.WaitAsync().ConfigureAwait(true);
             try
             {
@@ -1807,6 +1853,9 @@ public sealed partial class MainForm : Form
             _textSizeSlider?.Dispose();
             _plotTextSlider?.Dispose();
             backgroundUpdater.Dispose();
+            _hardwareOperations.StateChanged -= HardwareOperations_StateChanged;
+            _hardwareOperations.OptionFailed -= HardwareOperations_OptionFailed;
+            _hardwareOperations.ResetFailed -= HardwareOperations_ResetFailed;
             _hardwareLifecycleCancellation.Dispose();
             _hardwareLifecycleGate.Dispose();
 
