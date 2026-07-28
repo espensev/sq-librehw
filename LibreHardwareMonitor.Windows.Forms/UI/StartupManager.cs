@@ -10,6 +10,7 @@ using System.Linq;
 using System.Security;
 using System.Security.Principal;
 using System.Windows.Forms;
+using LibreHardwareMonitor.Windows.Forms.Utilities;
 using Microsoft.Win32;
 using Microsoft.Win32.TaskScheduler;
 using Action = Microsoft.Win32.TaskScheduler.Action;
@@ -22,7 +23,22 @@ public class StartupManager
     private bool _startup;
 
     public StartupManager()
+        : this(RuntimePaths.Current.ManagedStartupTaskPath)
     {
+    }
+
+    internal StartupManager(string managedStartupTaskPath)
+    {
+        // A managed installation owns one permanent elevated task for both logon and
+        // on-demand launches. The in-app checkbox must never delete or recreate that
+        // task (especially in the scheduler root), so deployment tooling exclusively
+        // owns startup while an explicit managed task path is configured.
+        if (!string.IsNullOrWhiteSpace(managedStartupTaskPath))
+        {
+            IsAvailable = false;
+            return;
+        }
+
         if (Environment.OSVersion.Platform >= PlatformID.Unix)
         {
             IsAvailable = false;

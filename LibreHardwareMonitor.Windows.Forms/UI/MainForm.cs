@@ -52,6 +52,7 @@ public sealed partial class MainForm : Form
     private readonly UserOption _readRamSensors;
     private readonly Node _root;
     private readonly UserOption _runWebServer;
+    private readonly RuntimePaths _runtimePaths;
     private readonly UserRadioGroup _sensorValuesTimeWindow;
     private readonly PersistentSettings _settings;
     private readonly UserOption _showGadget;
@@ -109,11 +110,12 @@ public sealed partial class MainForm : Form
 
     public MainForm()
     {
+        _runtimePaths = RuntimePaths.Current;
         InitializeComponent();
         _uiThreadId = Environment.CurrentManagedThreadId;
 
         _settings = new PersistentSettings();
-        _settings.Load(Path.ChangeExtension(Application.ExecutablePath, ".config"));
+        _settings.Load(_runtimePaths.SettingsFilePath);
         _uiTextScalePercent = UiScale.ClampPercent(_settings.GetValue("uiTextScale", UiScale.DefaultPercent));
         _plotTextScalePercent = UiScale.ClampPercent(_settings.GetValue("plotTextScale", UiScale.DefaultPercent));
 
@@ -194,7 +196,7 @@ public sealed partial class MainForm : Form
         {
             // Windows
             treeView.RowHeight = Math.Max(treeView.Font.Height + 1, 18);
-            _gadget = new SensorGadget(_computer, _settings, _unitManager, this);
+            _gadget = new SensorGadget(_computer, _settings, _unitManager, this, _runtimePaths.DataRoot);
             _gadget.HideShowCommand += HideShowClick;
         }
 
@@ -230,7 +232,7 @@ public sealed partial class MainForm : Form
         NodeToolTipProvider tooltipProvider = new();
         nodeTextBoxText.ToolTipProvider = tooltipProvider;
         nodeTextBoxValue.ToolTipProvider = tooltipProvider;
-        _logger = new Logger(_computer);
+        _logger = new Logger(_computer, _runtimePaths.LogDirectory);
         var saved = _settings.GetValue("logger.fileRotation", 0); // 0 = PerSession, 1 = Daily.
         _logger.FileRotationMethod = (LoggerFileRotation)Math.Max(0, Math.Min(saved, 1));
         perSessionFileRotationMenuItem.Checked = _logger.FileRotationMethod == LoggerFileRotation.PerSession;
@@ -754,31 +756,21 @@ public sealed partial class MainForm : Form
         }
     }
 
-    private static void InstallPawnIO()
+    private void InstallPawnIO()
     {
-        string path = ExtractPawnIO();
-        if (string.IsNullOrEmpty(path))
+        using PawnIoInstallerLease installer = ExtractPawnIO();
+        if (installer == null)
             return;
 
-        try
-        {
-            using Process process = Process.Start(new ProcessStartInfo(path, "-install"));
-            process?.WaitForExit();
-        }
-        finally
-        {
-            try
-            {
-                File.Delete(path);
-            }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
-        }
+        using Process process =
+            Process.Start(new ProcessStartInfo(installer.FilePath, "-install"));
+        process?.WaitForExit();
     }
 
-    private static string ExtractPawnIO()
+    private static PawnIoInstallerLease ExtractPawnIO()
     {
-        string destination = Path.Combine(Directory.GetCurrentDirectory(), "PawnIO_setup.exe");
+        if (Software.OperatingSystem.IsUnix)
+            return null;
 
         try
         {
@@ -787,15 +779,23 @@ public sealed partial class MainForm : Form
             if (resourceStream == null)
                 return null;
 
-            using FileStream fileStream = new(destination, FileMode.Create, FileAccess.Write);
-            resourceStream.CopyTo(fileStream);
-            return destination;
+            string trustedTemporaryRoot =
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            return PawnIoInstallerLease.Create(resourceStream, trustedTemporaryRoot);
         }
         catch (IOException)
         {
             return null;
         }
         catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+        catch (System.Security.SecurityException)
+        {
+            return null;
+        }
+        catch (PlatformNotSupportedException)
         {
             return null;
         }
@@ -1667,10 +1667,13 @@ public sealed partial class MainForm : Form
         if (autoSave && !_settings.Modified)
             return;
 
-        string fileName = Path.ChangeExtension(Application.ExecutablePath, ".config");
+        string fileName = _runtimePaths.SettingsFilePath;
 
         try
         {
+            RuntimePaths.EnsureSafeMutableFile(fileName, "The runtime settings file");
+            RuntimePaths.EnsureSafeMutableFile(fileName + ".backup", "The runtime settings backup");
+            RuntimePaths.EnsureSafeMutableFile(fileName + ".new", "The runtime settings staging file");
             _settings.Save(fileName);
         }
         catch (Exception ex) when (autoSave && (ex is UnauthorizedAccessException || ex is IOException))

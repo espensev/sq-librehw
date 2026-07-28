@@ -8,6 +8,7 @@ using System;
 using System.IO;
 using System.Windows.Forms;
 using LibreHardwareMonitor.Windows.Forms.UI;
+using LibreHardwareMonitor.Windows.Forms.Utilities;
 
 namespace LibreHardwareMonitor.Windows.Forms;
 
@@ -16,8 +17,26 @@ public static class Program
     [STAThread]
     public static void Main()
     {
+#if !NETCOREAPP
         if (!AllRequiredFilesAvailable())
             Environment.Exit(0);
+#endif
+
+        try
+        {
+            RuntimePaths.Initialize(Application.ExecutablePath);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                "Libre Hardware Monitor could not initialize its runtime data paths.\n\n" +
+                exception.Message,
+                "Runtime configuration error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            Environment.ExitCode = 1;
+            return;
+        }
 
 #if NETCOREAPP
         Application.SetHighDpiMode(HighDpiMode.SystemAware);

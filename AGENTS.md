@@ -2,7 +2,7 @@
 
 **Project:** LibreHardwareMonitor Sev IQ local fork  
 **Status:** Active implementation fork  
-**Updated:** 2026-07-25
+**Updated:** 2026-07-28
 **Purpose:** keep feature work spec-first without blocking normal review, build, launch, and bugfix work.
 
 This repository is not specs-only: product code exists and normal maintenance can proceed. The rule is narrower: **new features and meaningful behavior changes need a clear feature spec before implementation starts**, unless the maintainer explicitly asks for a small direct fix or exploratory spike.
@@ -31,6 +31,11 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
 - `docs/feature-host-log-management.md`: deployed host-neutral CSV archive, retention, and task-install package.
 - `docs/feature-host-operator-utilities.md`: planned portable thermal snapshot and report-only log evidence analyzer.
 - `docs/feature-native-ui-modernization.md`: phased native tree, graphics, graph, and Gadget 2.0 roadmap; implementation not started.
+- `docs/feature-local-release-system.md`: installed shallow stable runtime,
+  isolated publish/promotion/rollback, and public launcher contract.
+- `docs/repository-build-output-cleanup.md`: completed `bin`/`obj` cleanup,
+  preserved historical archive, repeatable cleanup command, and retired
+  pre-stable recovery boundary.
 
 Completed discovery and review evidence belongs in Git history. Keep unresolved
 findings and current verification in the nearest feature spec instead of a

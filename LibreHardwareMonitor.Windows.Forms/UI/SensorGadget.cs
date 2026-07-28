@@ -69,12 +69,31 @@ public class SensorGadget : Gadget
     private Color _backgroundColor;
     private bool _disposed;
 
-    public SensorGadget(IComputer computer, PersistentSettings settings, UnitManager unitManager, Control uiMarshaller = null)
+    public SensorGadget(
+        IComputer computer,
+        PersistentSettings settings,
+        UnitManager unitManager,
+        Control uiMarshaller = null)
+        : this(computer, settings, unitManager, uiMarshaller, RuntimePaths.Current.DataRoot)
+    { }
+
+    public SensorGadget(
+        IComputer computer,
+        PersistentSettings settings,
+        UnitManager unitManager,
+        Control uiMarshaller,
+        string customImageDirectory)
     {
         _computer = computer ?? throw new ArgumentNullException(nameof(computer));
         _unitManager = unitManager;
         _settings = settings;
         _uiMarshaller = uiMarshaller;
+        if (customImageDirectory == null)
+            throw new ArgumentNullException(nameof(customImageDirectory));
+        if (!Path.IsPathRooted(customImageDirectory))
+            throw new ArgumentException("The custom image directory must be an absolute path.", nameof(customImageDirectory));
+
+        customImageDirectory = Path.GetFullPath(customImageDirectory);
         _uiContext = System.Threading.SynchronizationContext.Current;
         _uiThreadId = Environment.CurrentManagedThreadId;
         computer.HardwareAdded += HardwareAdded;
@@ -88,40 +107,44 @@ public class SensorGadget : Gadget
         // the paint loop measures with it per sensor per tick, so hold one instance instead.
         _measureStringFormat = StringFormat.GenericTypographic;
 
-        if (File.Exists("gadget_background.png"))
+        string gadgetBackgroundPath = Path.Combine(customImageDirectory, "gadget_background.png");
+        if (File.Exists(gadgetBackgroundPath))
         {
             try
             {
-                Image newBack = new Bitmap("gadget_background.png");
+                Image newBack = new Bitmap(gadgetBackgroundPath);
                 _back.Dispose();
                 _back = newBack;
             }
             catch { }
         }
 
-        if (File.Exists("gadget_image.png"))
+        string gadgetImagePath = Path.Combine(customImageDirectory, "gadget_image.png");
+        if (File.Exists(gadgetImagePath))
         {
             try
             {
-                _image = new Bitmap("gadget_image.png");
+                _image = new Bitmap(gadgetImagePath);
             }
             catch { }
         }
 
-        if (File.Exists("gadget_foreground.png"))
+        string gadgetForegroundPath = Path.Combine(customImageDirectory, "gadget_foreground.png");
+        if (File.Exists(gadgetForegroundPath))
         {
             try
             {
-                _fore = new Bitmap("gadget_foreground.png");
+                _fore = new Bitmap(gadgetForegroundPath);
             }
             catch { }
         }
 
-        if (File.Exists("gadget_bar_background.png"))
+        string gadgetBarBackgroundPath = Path.Combine(customImageDirectory, "gadget_bar_background.png");
+        if (File.Exists(gadgetBarBackgroundPath))
         {
             try
             {
-                Image newBarBack = new Bitmap("gadget_bar_background.png");
+                Image newBarBack = new Bitmap(gadgetBarBackgroundPath);
                 _barBack.Dispose();
                 _barBack = newBarBack;
                 _customBarBack = true;
@@ -129,11 +152,12 @@ public class SensorGadget : Gadget
             catch { }
         }
 
-        if (File.Exists("gadget_bar_foreground.png"))
+        string gadgetBarForegroundPath = Path.Combine(customImageDirectory, "gadget_bar_foreground.png");
+        if (File.Exists(gadgetBarForegroundPath))
         {
             try
             {
-                Image newBarColor = new Bitmap("gadget_bar_foreground.png");
+                Image newBarColor = new Bitmap(gadgetBarForegroundPath);
                 _barFore.Dispose();
                 _barFore = newBarColor;
                 _customBarFore = true;

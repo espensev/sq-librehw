@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor Docs
 
 **Status:** live map only
-**Updated:** 2026-07-25
+**Updated:** 2026-07-28
 
 ## Current
 
@@ -19,6 +19,19 @@
 - `/dash/cardtruth[/]` is retired; `data.json` and CSV IDs are contracts.
 - Standard context layouts are merged and browser-fixture-verified; this packet
   did not replace a live LibreHardwareMonitor runtime.
+- The shallow local release/runtime system is implemented and its first
+  identity-verified install is running from
+  `E:\SQ_HQ\Monitoring\LibreHW\LibreHardwareMonitor.Windows.Forms.exe`.
+  Mutable config/logs now use machine-local `sqdata`; the public
+  `librehw.cmd` is unchanged. Normal-user foreground restoration passed, both
+  shortcuts converge through that command, and the duplicate root task is
+  retired. The delegated launcher is now regression-tested through the same
+  Windows PowerShell 5.1 host used by the CMD shim, including its zero-process
+  StrictMode branch.
+- Every ignored repo-local `bin`/`obj` tree has been cleaned. All 32
+  non-authoritative output EXEs are gone; the 3,361 historical CSVs and three
+  old config files are preserved under the collision-isolated
+  `sqdata\LibreHardwareMonitor\historical` archive.
 - Keep `AssemblyVersion` at `0.9.6`; build with `-p:Platform=x64`.
 
 ## Handoff — 2026-07-25
@@ -36,8 +49,15 @@
 - Official `upstream/master` is an ancestor of local `master`, with zero
   upstream-only commits remaining. Three independent integration reviews found
   no remaining blockers.
-- No live LibreHardwareMonitor runtime was replaced. Runtime promotion and
-  manual interaction remain separate, identity-verified work.
+- SND-DESK now runs the manifest-verified one-EXE local release from the shallow
+  stable path. One exact process, HTTP health, populated native controls, the
+  migrated Release config, managed task ownership, and a new `sqdata` CSV
+  passed. Attended finalization also passed: the normal-user command restored
+  the existing window, both Start Menu links target it, the exact legacy root
+  task is absent, and both recovery packets validated before cleanup. Those
+  pre-stable packets are now historical evidence only. The 3,361 old CSV files
+  were moved intact into the accepted historical archive before all repo-local
+  build outputs were removed.
 
 ## Deployed patch notes
 
@@ -61,26 +81,30 @@
 
 ## Roadmap
 
-1. Continue hands-on dashboard and native scrollbar/UI Automation inspection
+1. Repair the separate `hardware-optimization` health-feed task's stale
+   log-root default. It already points at a nonexistent legacy
+   `sq-librehw\bin\Release` tree and is not part of the working `librehw`
+   launcher chain.
+2. Continue hands-on dashboard and native scrollbar/UI Automation inspection
    through the verified runtime owner; deterministic coverage and the live
    served-asset/telemetry smoke are already complete.
-2. Execute `docs/feature-native-ui-modernization.md` in bounded slices: define
+3. Execute `docs/feature-native-ui-modernization.md` in bounded slices: define
    the presentation model first, then ship tree search/Favorites/order, native
    visual and graph polish, Gadget 2.0, and portable multi-gadget layouts.
    Canonical node order and downstream contracts must not change.
-3. Iterate Sensor Workspace around flexibility: resizable/reflowing panels,
+4. Iterate Sensor Workspace around flexibility: resizable/reflowing panels,
    density and visual options, sensor search/grouping, bulk membership, and
    richer graphs that never combine incompatible units dishonestly.
-4. After the native slices and web Workspace contract stabilize, execute Phase
+5. After the native slices and web Workspace contract stabilize, execute Phase
    5 of `docs/feature-native-ui-modernization.md`: extract the host-neutral,
    read-only presentation contract and prototype Avalonia in parallel. WinForms
    keeps hardware and task ownership until every migration gate passes.
-5. Inspect the first completed SND-HOST daily CSV rollover ZIP and its task
+6. Inspect the first completed SND-HOST daily CSV rollover ZIP and its task
    history; current-day retention and the installed task already passed live.
-6. Implement the host-neutral operator-utility plan: a portable read-only
+7. Implement the host-neutral operator-utility plan: a portable read-only
    thermal snapshot first, then a report-only log evidence analyzer. Keep any
    lossy converter and profile alias behind their separate gates.
-7. Close the remaining bounded reliability follow-ups in
+8. Close the remaining bounded reliability follow-ups in
    `docs/feature-memory-ui-reliability.md`; keep optional long-soak work separate
    from normal patch promotion.
 
@@ -128,6 +152,12 @@
   deployment proof, and remaining follow-ups.
 - `docs/feature-upstream-sync-2026-07-25.md` - audited upstream integration
   boundary, conflict decisions, compatibility requirements, and verification.
+- `docs/feature-local-release-system.md` - implemented shallow one-EXE local
+  runtime, `sqdata` separation, managed launch ownership, promotion, rollback,
+  and attended-finalization contract.
+- `docs/repository-build-output-cleanup.md` - completed repo-local `bin`/`obj`
+  cleanup, preserved historical archive, repeatable cleanup command, retired
+  pre-stable recovery boundary, and verified public launcher chain.
 - `LibreHardwareMonitorLib/Hardware/Sensor.cs` - history bounds/persistence.
 - `LibreHardwareMonitorLib/Hardware/TemperatureRateSensor.cs` - bounded direct
   sample regression for temperature rate.
@@ -153,6 +183,7 @@ node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\workspace.js
 node webtests\selftest.node.js
 node --test webtests\console.tests.js webtests\workspace.tests.js
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-LhmLogManagement.ps1
+.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64

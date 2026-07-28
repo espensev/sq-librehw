@@ -20,6 +20,7 @@ public class Logger
     private const string FileNameFormat = "LibreHardwareMonitorLog-{0:yyyy-MM-dd}{1}.csv";
 
     private readonly IComputer _computer;
+    private readonly string _logDirectory;
     private readonly object _lock = new object();
 
     // Monotonic clock for the interval gate and gap detection; DateTime.Now is kept
@@ -38,8 +39,21 @@ public class Logger
     public LoggerFileRotation FileRotationMethod = LoggerFileRotation.PerSession;
 
     public Logger(IComputer computer)
+        : this(computer, RuntimePaths.Current.LogDirectory)
+    { }
+
+    internal Logger(IComputer computer, string logDirectory)
     {
-        _computer = computer;
+        _computer = computer ?? throw new ArgumentNullException(nameof(computer));
+        if (string.IsNullOrWhiteSpace(logDirectory) || !Path.IsPathRooted(logDirectory))
+            throw new ArgumentException("The log directory must be an absolute path.", nameof(logDirectory));
+
+        _logDirectory = Path.GetFullPath(logDirectory);
+        RuntimePaths.EnsureSafeMutableDirectoryCreationPath(
+            _logDirectory,
+            "The log directory");
+        Directory.CreateDirectory(_logDirectory);
+        RuntimePaths.EnsureSafeMutableDirectory(_logDirectory, "The log directory");
         _computer.HardwareAdded += HardwareAdded;
         _computer.HardwareRemoved += HardwareRemoved;
     }
@@ -101,10 +115,14 @@ public class Logger
         }
     }
 
-    private static string GetFileName(DateTime date, uint sessionNumber = 0)
+    private string GetFileName(DateTime date, uint sessionNumber = 0)
     {
-        return AppDomain.CurrentDomain.BaseDirectory + Path.DirectorySeparatorChar
-            + string.Format(FileNameFormat, date, sessionNumber == 0 ? "" : "-" + sessionNumber);
+        string fileName = Path.Combine(
+            _logDirectory,
+            string.Format(FileNameFormat, date, sessionNumber == 0 ? "" : "-" + sessionNumber));
+        RuntimePaths.EnsureSafeMutableDirectory(_logDirectory, "The log directory");
+        RuntimePaths.EnsureSafeMutableFile(fileName, "The log file");
+        return fileName;
     }
 
     // Row timestamp format: the historical US-locale layout ("MM/dd/yyyy HH:mm:ss") with milliseconds
@@ -136,6 +154,8 @@ public class Logger
 
     private OpenLogResult TryOpenExistingLogFile()
     {
+        RuntimePaths.EnsureSafeMutableDirectory(_logDirectory, "The log directory");
+        RuntimePaths.EnsureSafeMutableFile(_fileName, "The log file");
         if (!File.Exists(_fileName))
             return OpenLogResult.BadHeader;
 
@@ -185,6 +205,8 @@ public class Logger
 
     private void CreateNewLogFile()
     {
+        RuntimePaths.EnsureSafeMutableDirectory(_logDirectory, "The log directory");
+        RuntimePaths.EnsureSafeMutableFile(_fileName, "The log file");
         // Visitor runs outside _lock for the same lock-ordering reason as TryOpenExistingLogFile.
         IList<ISensor> list = new List<ISensor>();
         SensorVisitor visitor = new SensorVisitor(sensor =>
@@ -354,6 +376,8 @@ public class Logger
 
             row.Append(Environment.NewLine);
 
+            RuntimePaths.EnsureSafeMutableDirectory(_logDirectory, "The log directory");
+            RuntimePaths.EnsureSafeMutableFile(_fileName, "The log file");
             using (StreamWriter writer = new StreamWriter(new FileStream(_fileName, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)))
             {
                 // Single write so a mid-row failure can never leave a torn line
