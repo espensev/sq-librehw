@@ -93,6 +93,8 @@ internal static class DataJsonProjection
         SensorValueSnapshot current;
         SensorValueSnapshot maximum;
 
+        SensorValueProjection.ValidateRawValues(element);
+
         if (kind == SensorNodeKind.Sensor)
         {
             minimum = SensorValueProjection.Project(element, "RawMin", "Min");

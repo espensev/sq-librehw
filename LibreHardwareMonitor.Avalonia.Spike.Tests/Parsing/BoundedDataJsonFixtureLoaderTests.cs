@@ -186,6 +186,10 @@ public sealed class BoundedDataJsonFixtureLoaderTests
     [InlineData("""{"Children":[{"SensorId":"/sensor/0","Type":42,"Children":[]}]}""")]
     [InlineData("""{"Children":[{"SensorId":"/sensor/0","RawValue":"1","Children":[]}]}""")]
     [InlineData("""{"Children":[{"SensorId":"/sensor/0","RawValue":1e400,"Children":[]}]}""")]
+    [InlineData("""{"Children":[{"RawValue":"1","Children":[]}]}""")]
+    [InlineData("""{"Children":[{"RawMin":true,"Children":[]}]}""")]
+    [InlineData("""{"Children":[{"HardwareId":"/hardware/0","RawMax":{},"Children":[]}]}""")]
+    [InlineData("""{"Children":[{"HardwareId":"/hardware/0","RawValue":1e400,"Children":[]}]}""")]
     public async Task WrongShapes_AreRejected(string json)
     {
         BoundedDataJsonFixtureLoader loader = new();

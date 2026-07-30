@@ -6,6 +6,13 @@ namespace LibreHardwareMonitor.Avalonia.Spike.Core.Parsing;
 
 internal static class SensorValueProjection
 {
+    public static void ValidateRawValues(JsonElement node)
+    {
+        ValidateRawValue(node, "RawMin");
+        ValidateRawValue(node, "RawValue");
+        ValidateRawValue(node, "RawMax");
+    }
+
     public static SensorValueSnapshot Project(
         JsonElement node,
         string rawPropertyName,
@@ -57,6 +64,24 @@ internal static class SensorValueProjection
         }
 
         return displayElement.GetString();
+    }
+
+    private static void ValidateRawValue(
+        JsonElement node,
+        string propertyName)
+    {
+        if (!node.TryGetProperty(propertyName, out JsonElement rawElement) ||
+            rawElement.ValueKind == JsonValueKind.Null)
+        {
+            return;
+        }
+
+        if (rawElement.ValueKind != JsonValueKind.Number ||
+            !rawElement.TryGetDouble(out double raw) ||
+            !double.IsFinite(raw))
+        {
+            throw InvalidShape();
+        }
     }
 
     private static SensorProjectionException InvalidShape()
