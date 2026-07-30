@@ -161,13 +161,13 @@ public sealed class MainWindowViewModel : ViewModelBase
                     SensorLoadErrorCode.SupersededOrCancelled,
                     "The fixture load was cancelled before it completed."));
         }
-        catch (Exception exception)
+        catch (Exception)
         {
             PublishFailure(
                 request,
                 new SensorLoadError(
                     SensorLoadErrorCode.IoFailure,
-                    $"The fixture could not be loaded: {exception.Message}"));
+                    "The fixture could not be loaded."));
         }
         finally
         {

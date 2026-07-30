@@ -65,17 +65,6 @@ public sealed class SensorNodeViewModel
 
     private static string FormatValue(SensorValueSnapshot value)
     {
-        if (!value.IsAvailable)
-        {
-            return Unavailable;
-        }
-
-        string normalizedDisplay = value.Display.Trim();
-        return normalizedDisplay.Length == 0 ||
-            normalizedDisplay.Equals("NaN", StringComparison.OrdinalIgnoreCase) ||
-            normalizedDisplay.Contains("Infinity", StringComparison.OrdinalIgnoreCase) ||
-            normalizedDisplay == "-"
-                ? Unavailable
-                : value.Display;
+        return value.IsAvailable ? value.Display : Unavailable;
     }
 }

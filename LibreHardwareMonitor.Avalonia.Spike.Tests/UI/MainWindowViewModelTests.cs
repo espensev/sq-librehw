@@ -78,6 +78,28 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public void Available_values_preserve_non_empty_producer_display_text()
+    {
+        SensorNodeSnapshot snapshot = new(
+            SensorNodeKind.Sensor,
+            "Memory Clock",
+            "/sensor/memory/clock/0",
+            null,
+            "Clock",
+            null,
+            new SensorValueSnapshot(1.0, "-"),
+            new SensorValueSnapshot(1_800.0, "Infinity Fabric 1800 MHz"),
+            new SensorValueSnapshot(2_000.0, "2,000 MHz"),
+            ImmutableArray<SensorNodeSnapshot>.Empty);
+
+        SensorNodeViewModel viewModel = new(snapshot);
+
+        Assert.Equal("-", viewModel.Minimum);
+        Assert.Equal("Infinity Fabric 1800 MHz", viewModel.Current);
+        Assert.Equal("2,000 MHz", viewModel.Maximum);
+    }
+
+    [Fact]
     public async Task Loading_transition_is_explicit()
     {
         QueueFixtureLoader loader = new();
@@ -151,6 +173,24 @@ public sealed class MainWindowViewModelTests
         Assert.Contains("InputTooLarge", viewModel.RejectionMessage);
         Assert.Equal(0, viewModel.TotalNodeCount);
         Assert.Equal(0, viewModel.SensorCount);
+    }
+
+    [Fact]
+    public async Task Unexpected_loader_exception_uses_operator_safe_message()
+    {
+        QueueFixtureLoader loader = new();
+        loader.Enqueue(
+            (_, _) => throw new InvalidOperationException(
+                @"Internal failure at C:\private\operator-name\fixture.json"));
+        MainWindowViewModel viewModel = CreateViewModel(loader);
+
+        await viewModel.LoadLocalPathAsync("rejected.json");
+
+        Assert.True(viewModel.HasError);
+        Assert.Contains("IoFailure", viewModel.RejectionMessage);
+        Assert.Contains("The fixture could not be loaded.", viewModel.RejectionMessage);
+        Assert.DoesNotContain("operator-name", viewModel.RejectionMessage);
+        Assert.DoesNotContain(@"C:\private", viewModel.RejectionMessage);
     }
 
     [Fact]

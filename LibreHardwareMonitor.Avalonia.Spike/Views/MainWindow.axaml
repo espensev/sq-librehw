@@ -91,7 +91,6 @@
         <TextBlock
             x:Name="LoadingStatus"
             Text="{Binding LoadStateStatus}"
-            IsVisible="{Binding IsLoading}"
             FontWeight="SemiBold"
             AutomationProperties.Name="{Binding LoadStateStatus}" />
         <Border

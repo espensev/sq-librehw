@@ -69,6 +69,12 @@ public sealed class MainWindowHeadlessTests
                 "Fixture load status",
                 AutomationProperties.GetName(
                     RequireControl<Border>(window, "StatusPanel")));
+            TextBlock loadStatus = RequireControl<TextBlock>(window, "LoadingStatus");
+            Assert.True(loadStatus.IsVisible);
+            Assert.Equal("Fixture loaded.", loadStatus.Text);
+            Assert.Equal(
+                "Fixture loaded.",
+                AutomationProperties.GetName(loadStatus));
 
             TreeView tree = RequireControl<TreeView>(window, "SensorTree");
             Assert.Equal(
