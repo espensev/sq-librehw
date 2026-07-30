@@ -224,6 +224,9 @@ an unqualified SND-HOST command.
   product implementation has not started.
 - `docs/discovery-pre-avalonia-readiness.md` - bounded gap/seam analysis and
   ownership rules for starting a fixture-only Avalonia spike in parallel.
+- `docs/feature-avalonia-fixture-sensor-explorer.md` - accepted bounded,
+  fixture-only Avalonia explorer contract; non-elevated, non-shipping, and
+  approved for execution through `plan-001`.
 - `docs/feature-standard-context-layouts.md` - source-shipped,
   browser-fixture-verified per-context Standard trims (Main/Gaming/Storage) over
   a materialize-swap contexts key; live runtime promotion is not recorded.
