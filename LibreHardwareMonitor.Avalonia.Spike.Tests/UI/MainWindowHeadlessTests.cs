@@ -4,7 +4,9 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using LibreHardwareMonitor.Avalonia.Spike.Core.Contracts;
 using LibreHardwareMonitor.Avalonia.Spike.Services;
 using LibreHardwareMonitor.Avalonia.Spike.ViewModels;
@@ -96,6 +98,166 @@ public sealed class MainWindowHeadlessTests
     }
 
     [AvaloniaFact]
+    public async Task Empty_loading_loaded_and_retained_rejection_states_are_visible()
+    {
+        QueueFixtureLoader loader = new();
+        TaskCompletionSource<SensorLoadResult> pending = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        loader.Enqueue((_, _) => pending.Task);
+        loader.EnqueueResult(
+            SensorLoadResult.Failure(
+                new SensorLoadError(
+                    SensorLoadErrorCode.InvalidJson,
+                    "The document is truncated.")));
+        MainWindow window = CreateWindow(out MainWindowViewModel viewModel, loader);
+
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            TextBlock emptyState =
+                RequireControl<TextBlock>(window, "InitialEmptyState");
+            TextBlock errorState =
+                RequireControl<TextBlock>(window, "InitialErrorState");
+            Border rejectionBanner =
+                RequireControl<Border>(window, "RejectionBanner");
+            TextBlock loadingStatus =
+                RequireControl<TextBlock>(window, "LoadingStatus");
+            TreeView tree = RequireControl<TreeView>(window, "SensorTree");
+
+            Assert.True(emptyState.IsVisible);
+            Assert.False(errorState.IsVisible);
+            Assert.False(rejectionBanner.IsVisible);
+            Assert.False(tree.IsVisible);
+            Assert.Equal("No fixture loaded.", loadingStatus.Text);
+
+            Task load = viewModel.LoadLocalPathAsync("pending.json");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(emptyState.IsVisible);
+            Assert.False(errorState.IsVisible);
+            Assert.False(rejectionBanner.IsVisible);
+            Assert.False(tree.IsVisible);
+            Assert.Equal("Loading fixture.", loadingStatus.Text);
+
+            pending.SetResult(SensorLoadResult.Success(CreateSnapshot()));
+            await load;
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(emptyState.IsVisible);
+            Assert.False(errorState.IsVisible);
+            Assert.False(rejectionBanner.IsVisible);
+            Assert.True(tree.IsVisible);
+            Assert.Equal("Fixture loaded.", loadingStatus.Text);
+            AssertRenderedSensorValues(tree);
+
+            await viewModel.LoadLocalPathAsync("rejected.json");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(emptyState.IsVisible);
+            Assert.False(errorState.IsVisible);
+            Assert.True(rejectionBanner.IsVisible);
+            Assert.True(tree.IsVisible);
+            Assert.Contains(
+                "last accepted hierarchy",
+                loadingStatus.Text,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Closing_window_cancels_and_invalidates_active_load()
+    {
+        QueueFixtureLoader loader = new();
+        TaskCompletionSource<SensorLoadResult> pending = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        loader.Enqueue((_, _) => pending.Task);
+        MainWindow window = CreateWindow(out MainWindowViewModel viewModel, loader);
+
+        window.Show();
+        Task load = viewModel.LoadLocalPathAsync("closing.json");
+        CancellationToken cancellationToken =
+            Assert.Single(loader.CancellationTokens);
+
+        window.Close();
+
+        Assert.True(cancellationToken.IsCancellationRequested);
+        Assert.False(viewModel.IsLoading);
+
+        pending.SetResult(SensorLoadResult.Success(CreateSnapshot()));
+        await load;
+
+        Assert.False(viewModel.HasSnapshot);
+        Assert.Empty(viewModel.Roots);
+    }
+
+    [AvaloniaFact]
+    public void Picker_failure_is_sanitized_into_visible_initial_error_state()
+    {
+        DelegatingFilePickerFixtureSource picker = new(
+            _ => Task.FromException<string?>(
+                new InvalidOperationException(
+                    @"Picker failed at C:\private\operator-name\data.json")));
+        MainWindow window = CreateWindow(out MainWindowViewModel viewModel, filePicker: picker);
+
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Click(RequireControl<Button>(window, "OpenDataJsonButton"));
+
+            Assert.True(viewModel.HasError);
+            Assert.Equal(
+                "IoFailure: The fixture source could not be opened.",
+                viewModel.RejectionMessage);
+            Assert.DoesNotContain("operator-name", viewModel.RejectionMessage);
+            Assert.DoesNotContain(@"C:\private", viewModel.RejectionMessage);
+            Assert.True(
+                RequireControl<Border>(window, "RejectionBanner").IsVisible);
+            Assert.True(
+                RequireControl<TextBlock>(window, "InitialErrorState").IsVisible);
+            Assert.False(RequireControl<TreeView>(window, "SensorTree").IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Picker_cancellation_remains_a_normal_empty_state()
+    {
+        DelegatingFilePickerFixtureSource picker = new(
+            _ => Task.FromCanceled<string?>(new CancellationToken(canceled: true)));
+        MainWindow window = CreateWindow(out MainWindowViewModel viewModel, filePicker: picker);
+
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Click(RequireControl<Button>(window, "OpenDataJsonButton"));
+
+            Assert.False(viewModel.HasError);
+            Assert.True(viewModel.ShowInitialEmptyState);
+            Assert.True(
+                RequireControl<TextBlock>(window, "InitialEmptyState").IsVisible);
+            Assert.False(
+                RequireControl<Border>(window, "RejectionBanner").IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public async Task Keyboard_focus_order_and_tree_expand_collapse_are_operable()
     {
         MainWindow window = CreateWindow(out MainWindowViewModel viewModel);
@@ -108,27 +270,24 @@ public sealed class MainWindowHeadlessTests
 
             ComboBox selector = RequireControl<ComboBox>(window, "FixtureSelector");
             Button loadButton = RequireControl<Button>(window, "LoadFixtureButton");
+            Button openButton = RequireControl<Button>(window, "OpenDataJsonButton");
+            TreeView tree = RequireControl<TreeView>(window, "SensorTree");
             Assert.True(selector.Focus());
             Assert.Same(selector, window.FocusManager?.GetFocusedElement());
 
-            window.KeyPress(
-                Key.Tab,
-                RawInputModifiers.None,
-                PhysicalKey.Tab,
-                string.Empty);
-            window.KeyRelease(
-                Key.Tab,
-                RawInputModifiers.None,
-                PhysicalKey.Tab,
-                string.Empty);
-            Dispatcher.UIThread.RunJobs();
+            PressTab(window);
             Assert.Same(loadButton, window.FocusManager?.GetFocusedElement());
 
-            TreeView tree = RequireControl<TreeView>(window, "SensorTree");
-            tree.SelectedItem = viewModel.Roots[0];
-            Dispatcher.UIThread.RunJobs();
+            PressTab(window);
+            Assert.Same(openButton, window.FocusManager?.GetFocusedElement());
+
+            PressTab(window);
             TreeViewItem rootItem = Assert.IsType<TreeViewItem>(
                 tree.ContainerFromIndex(0));
+            Assert.Same(rootItem, window.FocusManager?.GetFocusedElement());
+
+            tree.SelectedItem = viewModel.Roots[0];
+            Dispatcher.UIThread.RunJobs();
             Assert.True(rootItem.Focus());
             Assert.False(rootItem.IsExpanded);
 
@@ -166,10 +325,69 @@ public sealed class MainWindowHeadlessTests
 
     private static MainWindow CreateWindow(out MainWindowViewModel viewModel)
     {
+        return CreateWindow(out viewModel, loader: null, filePicker: null);
+    }
+
+    private static MainWindow CreateWindow(
+        out MainWindowViewModel viewModel,
+        ISensorFixtureLoader? loader = null,
+        IFilePickerFixtureSource? filePicker = null)
+    {
         viewModel = new MainWindowViewModel(
-            new ImmediateFixtureLoader(CreateSnapshot()),
+            loader ?? new ImmediateFixtureLoader(CreateSnapshot()),
             SensorLoadLimits.Default);
-        return new MainWindow(viewModel, new NullFilePickerFixtureSource());
+        return new MainWindow(
+            viewModel,
+            filePicker ?? new NullFilePickerFixtureSource());
+    }
+
+    private static void AssertRenderedSensorValues(TreeView tree)
+    {
+        TreeViewItem rootItem = Assert.IsType<TreeViewItem>(
+            tree.ContainerFromIndex(0));
+        rootItem.IsExpanded = true;
+        Dispatcher.UIThread.RunJobs();
+
+        TreeViewItem hardwareItem = Assert.Single(
+            rootItem
+                .GetVisualDescendants()
+                .OfType<TreeViewItem>());
+        hardwareItem.IsExpanded = true;
+        Dispatcher.UIThread.RunJobs();
+
+        string?[] renderedText = tree
+            .GetVisualDescendants()
+            .OfType<TextBlock>()
+            .Select(textBlock => textBlock.Text)
+            .ToArray();
+
+        Assert.Contains("CPU Package", renderedText);
+        Assert.Contains("Temperature", renderedText);
+        Assert.Contains("40.0 °C", renderedText);
+        Assert.Contains("42.5 °C", renderedText);
+        Assert.Contains("45.0 °C", renderedText);
+        Assert.Contains("/sensor/cpu/temperature/0", renderedText);
+    }
+
+    private static void Click(Button button)
+    {
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    private static void PressTab(MainWindow window)
+    {
+        window.KeyPress(
+            Key.Tab,
+            RawInputModifiers.None,
+            PhysicalKey.Tab,
+            string.Empty);
+        window.KeyRelease(
+            Key.Tab,
+            RawInputModifiers.None,
+            PhysicalKey.Tab,
+            string.Empty);
+        Dispatcher.UIThread.RunJobs();
     }
 
     private static void AssertHeader(
@@ -265,6 +483,61 @@ public sealed class MainWindowHeadlessTests
         public Task<string?> PickFixtureAsync(Window owner)
         {
             return Task.FromResult<string?>(null);
+        }
+    }
+
+    private sealed class DelegatingFilePickerFixtureSource :
+        IFilePickerFixtureSource
+    {
+        private readonly Func<Window, Task<string?>> _pickFixture;
+
+        public DelegatingFilePickerFixtureSource(
+            Func<Window, Task<string?>> pickFixture)
+        {
+            _pickFixture = pickFixture;
+        }
+
+        public Task<string?> PickFixtureAsync(Window owner)
+        {
+            return _pickFixture(owner);
+        }
+    }
+
+    private sealed class QueueFixtureLoader : ISensorFixtureLoader
+    {
+        private readonly Queue<
+            Func<string, CancellationToken, Task<SensorLoadResult>>> _responses = new();
+
+        public List<CancellationToken> CancellationTokens { get; } = [];
+
+        public void Enqueue(
+            Func<string, CancellationToken, Task<SensorLoadResult>> response)
+        {
+            _responses.Enqueue(response);
+        }
+
+        public void EnqueueResult(SensorLoadResult result)
+        {
+            Enqueue((_, _) => Task.FromResult(result));
+        }
+
+        public Task<SensorLoadResult> LoadAsync(
+            Stream stream,
+            string sourceName,
+            SensorLoadLimits limits,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException(
+                "Headless tests exercise the frozen file-loader contract only.");
+        }
+
+        public Task<SensorLoadResult> LoadFileAsync(
+            string filePath,
+            SensorLoadLimits limits,
+            CancellationToken cancellationToken = default)
+        {
+            CancellationTokens.Add(cancellationToken);
+            return _responses.Dequeue()(filePath, cancellationToken);
         }
     }
 }

@@ -10,6 +10,7 @@ public sealed partial class MainWindow : Window
 {
     private readonly MainWindowViewModel _viewModel;
     private readonly IFilePickerFixtureSource _filePicker;
+    private bool _isClosed;
 
     public MainWindow(
         MainWindowViewModel viewModel,
@@ -24,16 +25,52 @@ public sealed partial class MainWindow : Window
 
     private async void LoadFixture_OnClick(object? sender, RoutedEventArgs e)
     {
-        await _viewModel.LoadBundledFixtureAsync();
+        await RunOperatorActionAsync(_viewModel.LoadBundledFixtureAsync);
     }
 
     private async void OpenDataJson_OnClick(object? sender, RoutedEventArgs e)
     {
-        string? selectedPath = await _filePicker.PickFixtureAsync(this);
+        await RunOperatorActionAsync(
+            async () =>
+            {
+                string? selectedPath = await _filePicker.PickFixtureAsync(this);
 
-        if (selectedPath is not null)
+                if (!_isClosed && selectedPath is not null)
+                {
+                    await _viewModel.LoadLocalPathAsync(selectedPath);
+                }
+            });
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _isClosed = true;
+        _viewModel.CancelActiveLoad();
+        base.OnClosed(e);
+    }
+
+    private async Task RunOperatorActionAsync(Func<Task> operation)
+    {
+        if (_isClosed)
         {
-            await _viewModel.LoadLocalPathAsync(selectedPath);
+            return;
+        }
+
+        try
+        {
+            await operation();
+        }
+        catch (OperationCanceledException)
+        {
+            // Closing a picker or cancelling a provider operation is not a
+            // fixture rejection.
+        }
+        catch (Exception)
+        {
+            if (!_isClosed)
+            {
+                _viewModel.ReportFixtureSourceFailure();
+            }
         }
     }
 }

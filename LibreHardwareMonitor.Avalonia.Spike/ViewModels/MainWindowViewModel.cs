@@ -128,6 +128,47 @@ public sealed class MainWindowViewModel : ViewModelBase
         return LoadPathAsync(filePath);
     }
 
+    public void CancelActiveLoad()
+    {
+        CancellationTokenSource? cancellation;
+
+        lock (_requestGate)
+        {
+            cancellation = _activeRequest;
+
+            if (cancellation is null)
+            {
+                return;
+            }
+
+            _activeRequest = null;
+            _activeRequestId++;
+            _isLoading = false;
+        }
+
+        CancelWithoutThrowing(cancellation);
+        RaiseStatePropertiesChanged();
+    }
+
+    public void ReportFixtureSourceFailure()
+    {
+        CancellationTokenSource? cancellation;
+
+        lock (_requestGate)
+        {
+            cancellation = _activeRequest;
+            _activeRequest = null;
+            _activeRequestId++;
+            _isLoading = false;
+            _hasError = true;
+            _rejectionMessage =
+                $"{SensorLoadErrorCode.IoFailure}: The fixture source could not be opened.";
+        }
+
+        CancelWithoutThrowing(cancellation);
+        RaiseStatePropertiesChanged();
+    }
+
     private async Task LoadPathAsync(string filePath)
     {
         LoadRequest request = BeginRequest();
@@ -191,15 +232,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             _rejectionMessage = string.Empty;
         }
 
-        try
-        {
-            superseded?.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // The superseded request completed between the ownership swap and
-            // cancellation. Its request ID can no longer publish stale state.
-        }
+        CancelWithoutThrowing(superseded);
 
         RaiseStatePropertiesChanged();
         return new LoadRequest(requestId, cancellation);
@@ -267,6 +300,24 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         return request.Id == _activeRequestId &&
             ReferenceEquals(request.Cancellation, _activeRequest);
+    }
+
+    private static void CancelWithoutThrowing(
+        CancellationTokenSource? cancellation)
+    {
+        try
+        {
+            cancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Completion can dispose a request after ownership is invalidated.
+        }
+        catch (AggregateException)
+        {
+            // Cancellation callbacks cannot be allowed to escape a UI action
+            // or window-close boundary.
+        }
     }
 
     private void RaiseStatePropertiesChanged()

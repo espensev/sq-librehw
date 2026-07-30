@@ -194,6 +194,59 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Cancelling_active_load_invalidates_late_publication()
+    {
+        QueueFixtureLoader loader = new();
+        TaskCompletionSource<SensorLoadResult> pending = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        loader.Enqueue((_, _) => pending.Task);
+        MainWindowViewModel viewModel = CreateViewModel(loader);
+
+        Task load = viewModel.LoadLocalPathAsync("closing.json");
+
+        Assert.True(viewModel.IsLoading);
+        CancellationToken cancellationToken =
+            Assert.Single(loader.CancellationTokens);
+
+        viewModel.CancelActiveLoad();
+
+        Assert.True(cancellationToken.IsCancellationRequested);
+        Assert.False(viewModel.IsLoading);
+        Assert.True(viewModel.ShowInitialEmptyState);
+
+        pending.SetResult(
+            SensorLoadResult.Success(
+                CreateSnapshot("too-late.json", "1.0", "/sensor/too-late")));
+        await load;
+
+        Assert.False(viewModel.HasSnapshot);
+        Assert.Empty(viewModel.Roots);
+        Assert.Equal("None", viewModel.SourceName);
+    }
+
+    [Fact]
+    public async Task Fixture_source_failure_retains_snapshot_and_uses_safe_message()
+    {
+        QueueFixtureLoader loader = new();
+        loader.EnqueueResult(
+            SensorLoadResult.Success(
+                CreateSnapshot("last-good.json", "1.0", "/sensor/last-good")));
+        MainWindowViewModel viewModel = CreateViewModel(loader);
+        await viewModel.LoadLocalPathAsync("last-good.json");
+        IReadOnlyList<SensorNodeViewModel> acceptedRoots = viewModel.Roots;
+
+        viewModel.ReportFixtureSourceFailure();
+
+        Assert.Same(acceptedRoots, viewModel.Roots);
+        Assert.True(viewModel.HasSnapshot);
+        Assert.True(viewModel.HasError);
+        Assert.True(viewModel.HasRetainedSnapshotAfterError);
+        Assert.Equal(
+            "IoFailure: The fixture source could not be opened.",
+            viewModel.RejectionMessage);
+    }
+
+    [Fact]
     public async Task Slow_old_request_cannot_overwrite_newer_result()
     {
         QueueFixtureLoader loader = new();
