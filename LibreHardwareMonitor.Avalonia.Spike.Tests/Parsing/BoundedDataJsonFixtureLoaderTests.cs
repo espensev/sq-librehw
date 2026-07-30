@@ -49,6 +49,9 @@ public sealed class BoundedDataJsonFixtureLoaderTests
         Assert.Equal(
             "Fan \"Æøå\" #1",
             hardware.Children[3].Children[0].Name);
+        Assert.Equal(
+            "Fan",
+            hardware.Children[3].Children[0].SensorType);
     }
 
     [Fact]
@@ -138,6 +141,29 @@ public sealed class BoundedDataJsonFixtureLoaderTests
                 Assert.Null(value.Raw);
                 Assert.Equal("Unavailable", value.Display);
             });
+    }
+
+    [Fact]
+    public async Task EmptySensorType_UsesUnknownFallback()
+    {
+        BoundedDataJsonFixtureLoader loader = new();
+
+        SensorSnapshot snapshot = AssertSuccess(
+            await LoadJsonAsync(
+                loader,
+                """
+                {
+                  "Children": [
+                    {
+                      "SensorId": "/sensor/empty-type",
+                      "Type": "",
+                      "Children": []
+                    }
+                  ]
+                }
+                """));
+
+        Assert.Equal("Unknown", Assert.Single(snapshot.RootNodes).SensorType);
     }
 
     [Fact]
@@ -255,6 +281,36 @@ public sealed class BoundedDataJsonFixtureLoaderTests
         AssertFailure(
             await LoadJsonAsync(loader, excessive, limits),
             SensorLoadErrorCode.InputTooLarge);
+    }
+
+    [Fact]
+    public async Task ByteLimit_RejectsBeforeInvalidJsonParsing()
+    {
+        const int maximumBytes = 128;
+        BoundedDataJsonFixtureLoader loader = new();
+        SensorLoadLimits limits = Limits(maxInputBytes: maximumBytes);
+        string invalidOversizedJson = new('x', maximumBytes + 1);
+
+        SensorLoadResult result = await LoadJsonAsync(
+            loader,
+            invalidOversizedJson,
+            limits);
+
+        AssertFailure(result, SensorLoadErrorCode.InputTooLarge);
+    }
+
+    [Fact]
+    public async Task LongMaximumByteLimit_DoesNotOverflowProbe()
+    {
+        BoundedDataJsonFixtureLoader loader = new();
+        SensorLoadLimits limits = Limits(maxInputBytes: long.MaxValue);
+
+        SensorLoadResult result = await LoadJsonAsync(
+            loader,
+            """{"Children":[]}""",
+            limits);
+
+        AssertSuccess(result);
     }
 
     [Fact]
@@ -481,6 +537,19 @@ public sealed class BoundedDataJsonFixtureLoaderTests
 
         SensorLoadError error = AssertFailure(result, SensorLoadErrorCode.IoFailure);
         Assert.DoesNotContain(sensitiveSentinel, error.Message);
+    }
+
+    [Fact]
+    public async Task DirectoryPath_ReturnsIoFailure()
+    {
+        BoundedDataJsonFixtureLoader loader = new();
+
+        SensorLoadResult result = await loader.LoadFileAsync(
+            AppContext.BaseDirectory,
+            SensorLoadLimits.Default,
+            TestContext.Current.CancellationToken);
+
+        AssertFailure(result, SensorLoadErrorCode.IoFailure);
     }
 
     [Fact]

@@ -118,6 +118,13 @@ public sealed class BoundedDataJsonFixtureLoader : ISensorFixtureLoader
             }
 
             FileInfo fileInfo = new(filePath);
+            if ((fileInfo.Attributes & FileAttributes.Directory) != 0)
+            {
+                return Failure(
+                    SensorLoadErrorCode.IoFailure,
+                    "The selected fixture file could not be read.");
+            }
+
             long fileLength = fileInfo.Length;
             if (fileLength > limits.MaxInputBytes)
             {
