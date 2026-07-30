@@ -28,6 +28,9 @@ namespace LibreHardwareMonitor.Windows.Forms.Utilities;
 public class HttpServer
 {
     internal const int DefaultMaxConcurrentHandlers = 16;
+    internal const string CrossOriginResetMessage = "Reset rejected: cross-origin browser requests are not allowed";
+    internal const string ResetMinMaxRequiresPostMessage = "ResetMinMax requires a POST request";
+    internal const string ResetAllMinMaxRequiresPostMessage = "ResetAllMinMax requires a POST request";
 
     private readonly HttpListener _listener;
     private readonly Node _root;
@@ -351,14 +354,19 @@ public class HttpServer
         try
         {
             // Hardware control writes must not be reachable via GET (CSRF).
-            if (queryString["action"] == "Set")
+            if (string.Equals(queryString["action"], "Set", StringComparison.OrdinalIgnoreCase))
             {
                 result["result"] = "fail";
                 result["message"] = "Set requires a POST request";
             }
+            else if (string.Equals(queryString["action"], "ResetMinMax", StringComparison.OrdinalIgnoreCase))
+            {
+                result["result"] = "fail";
+                result["message"] = ResetMinMaxRequiresPostMessage;
+            }
             else
             {
-                HandleSensorRequest(queryString, null, result);
+                HandleSensorRequest(queryString, false, result);
             }
         }
         catch (Exception e)
@@ -368,6 +376,37 @@ public class HttpServer
         }
 
         return result;
+    }
+
+    internal Dictionary<string, object> HandlePostSensorRequest(NameValueCollection queryString, Uri requestUrl, string origin, string referer)
+    {
+        var result = new Dictionary<string, object> { ["result"] = "ok" };
+
+        try
+        {
+            HandleSensorRequest(queryString, IsCrossOriginBrowserRequest(requestUrl, origin, referer), result);
+        }
+        catch (Exception e)
+        {
+            result["result"] = "fail";
+            result["message"] = e.Message; // never e.ToString(): no stack traces to clients
+        }
+
+        return result;
+    }
+
+    internal bool TryResetAllMinMax(Uri requestUrl, string origin, string referer)
+    {
+        if (IsCrossOriginBrowserRequest(requestUrl, origin, referer))
+            return false;
+
+        _rootElement.Accept(new SensorVisitor(delegate (ISensor sensor)
+        {
+            sensor.ResetMin();
+            sensor.ResetMax();
+        }));
+
+        return true;
     }
 
     //Handles "/Sensor" requests.
@@ -405,11 +444,6 @@ public class HttpServer
         return false;
     }
 
-    private static bool IsCrossOriginBrowserRequest(HttpListenerRequest request)
-    {
-        return IsCrossOriginBrowserRequest(request.Url, request.Headers["Origin"], request.Headers["Referer"]);
-    }
-
     private static bool IsSameOrigin(Uri browserUri, Uri requestUri)
     {
         return browserUri != null &&
@@ -419,12 +453,20 @@ public class HttpServer
                browserUri.Port == requestUri.Port;
     }
 
-    private void HandleSensorRequest(HttpListenerRequest request, Dictionary<string, object> result)
+    // Prometheus label values must escape backslash, double-quote, and newline.
+    // Backslash is escaped first so the later escapes are not double-escaped.
+    internal static string EscapePrometheusLabelValue(string value)
     {
-        HandleSensorRequest(request.QueryString, request, result);
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        return value
+            .Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("\n", "\\n");
     }
 
-    private void HandleSensorRequest(NameValueCollection queryString, HttpListenerRequest request, Dictionary<string, object> result)
+    private void HandleSensorRequest(NameValueCollection queryString, bool isCrossOriginBrowserRequest, Dictionary<string, object> result)
     {
         IDictionary<string, string> dict = ToDictionary(queryString);
 
@@ -441,6 +483,9 @@ public class HttpServer
 
                 if (dict["action"] == "ResetMinMax")
                 {
+                    if (isCrossOriginBrowserRequest)
+                        throw new ArgumentException(CrossOriginResetMessage);
+
                     // Reset Min/Max, then return Sensor values...
                     sNode.Sensor.ResetMin();
                     sNode.Sensor.ResetMax();
@@ -455,7 +500,7 @@ public class HttpServer
                         // against hardware control writes. Browsers always attach Origin
                         // (or at least Referer) to cross-site form posts; script clients
                         // like LiquidCool.py send neither and are unaffected.
-                        if (request != null && IsCrossOriginBrowserRequest(request))
+                        if (isCrossOriginBrowserRequest)
                             throw new ArgumentException("Set rejected: cross-origin browser requests are not allowed");
 
                         SetSensorControlValue(sNode, dict["value"]);
@@ -497,7 +542,8 @@ public class HttpServer
             {
                 if (request.Url.Segments[1] == "Sensor")
                 {
-                    HandleSensorRequest(request, result);
+                    return System.Text.Json.JsonSerializer.Serialize(
+                        HandlePostSensorRequest(request.QueryString, request.Url, request.Headers["Origin"], request.Headers["Referer"]));
                 }
                 else
                 {
@@ -587,6 +633,24 @@ public class HttpServer
             {
                 case "POST":
                     {
+                        string path = request.Url.AbsolutePath;
+                        if (string.Equals(path, "/ResetAllMinMax", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!TryResetAllMinMax(request.Url, request.Headers["Origin"], request.Headers["Referer"]))
+                            {
+                                context.Response.StatusCode = 403;
+                                await SendJsonSensorAsync(context.Response, new Dictionary<string, object>
+                                {
+                                    ["result"] = "fail",
+                                    ["message"] = CrossOriginResetMessage
+                                }, cancellationToken).ConfigureAwait(false);
+                                return;
+                            }
+
+                            await SendJsonAsync(context.Response, request, cancellationToken).ConfigureAwait(false);
+                            return;
+                        }
+
                         string postResult = HandlePostRequest(request);
                         await SendResponseAsync(context.Response, postResult, "application/json", cancellationToken).ConfigureAwait(false);
                         break;
@@ -616,18 +680,21 @@ public class HttpServer
 
                         if (string.Equals(path, "/Sensor", StringComparison.OrdinalIgnoreCase))
                         {
-                            await SendJsonSensorAsync(context.Response, HandleGetSensorRequest(request.QueryString), cancellationToken).ConfigureAwait(false);
+                            await SendJsonSensorAsync(context.Response,
+                                HandleGetSensorRequest(request.QueryString),
+                                cancellationToken).ConfigureAwait(false);
                             return;
                         }
 
                         if (string.Equals(path, "/ResetAllMinMax", StringComparison.OrdinalIgnoreCase))
                         {
-                            _rootElement.Accept(new SensorVisitor(delegate (ISensor sensor)
+                            context.Response.StatusCode = 405;
+                            context.Response.AddHeader("Allow", "POST");
+                            await SendJsonSensorAsync(context.Response, new Dictionary<string, object>
                             {
-                                sensor.ResetMin();
-                                sensor.ResetMax();
-                            }));
-                            await SendJsonAsync(context.Response, request, cancellationToken).ConfigureAwait(false);
+                                ["result"] = "fail",
+                                ["message"] = ResetAllMinMaxRequiresPostMessage
+                            }, cancellationToken).ConfigureAwait(false);
                             return;
                         }
 
@@ -956,7 +1023,7 @@ public class HttpServer
                     string valueHost = _root.Text;
 
                     // Creates the tag with labels
-                    string tagLine = $$"""{{tagName}} {"sensorName"="{{valueSensorName}}", "sensorAlias"="{{valueSensorAlias}}", "hardwareName"="{{valueHardwareName}}", "hardwareAlias"="{{valueHardwareAlias}}", "sensorId"="{{valueSensorId}}", "hardwareId"="{{valueHardwareId}}", "host"="{{valueHost}}"}""";
+                    string tagLine = $$"""{{tagName}} {"sensorName"="{{EscapePrometheusLabelValue(valueSensorName)}}", "sensorAlias"="{{EscapePrometheusLabelValue(valueSensorAlias)}}", "hardwareName"="{{EscapePrometheusLabelValue(valueHardwareName)}}", "hardwareAlias"="{{EscapePrometheusLabelValue(valueHardwareAlias)}}", "sensorId"="{{EscapePrometheusLabelValue(valueSensorId)}}", "hardwareId"="{{EscapePrometheusLabelValue(valueHardwareId)}}", "host"="{{EscapePrometheusLabelValue(valueHost)}}"}""";
 
                     if (lastTagName != tagName)
                     {

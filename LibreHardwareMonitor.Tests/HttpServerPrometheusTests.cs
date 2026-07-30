@@ -190,6 +190,36 @@ public sealed class HttpServerPrometheusTests
         Assert.EndsWith(" 1.25\n", content);
     }
 
+    [Theory]
+    [InlineData("plain", "plain")]
+    [InlineData("with \"quote\"", "with \\\"quote\\\"")]
+    [InlineData("with \\backslash", "with \\\\backslash")]
+    [InlineData("line\nbreak", "line\\nbreak")]
+    [InlineData("mix \\ and \" and \n", "mix \\\\ and \\\" and \\n")]
+    public void EscapePrometheusLabelValueEscapesSpecialCharacters(string input, string expected)
+    {
+        Assert.Equal(expected, HttpServer.EscapePrometheusLabelValue(input));
+    }
+
+    [Fact]
+    public void PrometheusLabelValuesEscapeSpecialCharacters()
+    {
+        FakeHardware hardware = new(new Identifier("metrics", "0"), "Metric CPU", HardwareType.Cpu);
+        HistoryReaderSensor sensor = new(
+            hardware,
+            SensorType.Temperature,
+            0,
+            "Package \"Main\"",
+            new SensorValue(45, _historyStart));
+        hardware.AddSensor(sensor);
+        HttpServer server = CreateServer(hardware);
+
+        (string content, _, _) = server.BuildPrometheusResponse(null);
+
+        Assert.Contains("\"sensorName\"=\"Package \\\"Main\\\"\"", content);
+        Assert.Contains("\"sensorAlias\"=\"Package \\\"Main\\\" (/temperature/0)\"", content);
+    }
+
     private static (HttpServer Server, HistoryReaderSensor Sensor) CreateReaderServer(int historyCount)
     {
         FakeHardware hardware = new(new Identifier("metrics", "0"), "Metric CPU", HardwareType.Cpu);

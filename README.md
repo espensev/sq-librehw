@@ -1,3 +1,11 @@
+> **Local fork — Sev IQ**
+> This is a maintained fork of LibreHardwareMonitor with additional dashboard
+> views, sensor extensions, and operational tooling. Fork-specific contracts,
+> feature specs, and verification records live in [`docs/README.md`](docs/README.md).
+> The upstream README follows below.
+
+---
+
 # LibreHardwareMonitor
 [![GitHub license](https://img.shields.io/github/license/LibreHardwareMonitor/LibreHardwareMonitor)](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LICENSE) [![Nuget](https://img.shields.io/nuget/v/LibreHardwareMonitorLib)](https://www.nuget.org/packages/LibreHardwareMonitorLib/) [![Nuget (with prereleases)](https://img.shields.io/nuget/vpre/LibreHardwareMonitorLib?label=nuget-pre)](https://www.nuget.org/packages/LibreHardwareMonitorLib/) [![Nuget](https://img.shields.io/nuget/dt/LibreHardwareMonitorLib?label=nuget-downloads)](https://www.nuget.org/packages/LibreHardwareMonitorLib/)
 
@@ -21,7 +29,7 @@ You can read information from devices such as:
 You can download the latest release [here](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases).
 
 ### Nightly builds
-If you have a **GitHub** account, you can download nightly builds [here](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/actions). Otherwise, you can download the *latest* nightly build [here](https://nightly.link/LibreHardwareMonitor/LibreHardwareMonitor/workflows/master/master/LibreHardwareMonitor.zip).
+If you have a **GitHub** account, you can download nightly builds [here](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/actions). Otherwise, you can download the *latest* nightly build [here](https://nightly.link/LibreHardwareMonitor/LibreHardwareMonitor/workflows/master/master/LibreHardwareMonitor.Windows.Forms.zip).
 
 ## How can I help improve it?
 The LibreHardwareMonitor team welcomes feedback and contributions!<br/>
@@ -43,7 +51,8 @@ Computer computer = new Computer
     IsMotherboardEnabled = true,
     IsControllerEnabled = true,
     IsNetworkEnabled = true,
-    IsStorageEnabled = true
+    IsStorageEnabled = true,
+    IsPowerMonitorEnabled = true,
 };
 
 computer.Open();

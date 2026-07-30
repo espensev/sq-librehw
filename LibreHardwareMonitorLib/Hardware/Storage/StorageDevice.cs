@@ -36,7 +36,7 @@ public sealed class StorageDevice : Hardware, ISmart
     private long _lastTime;
     private long _lastWriteCount;
 
-    private DateTime _lastUpdate = DateTime.MinValue;
+    private uint _smartUpdateCycle;
 
     private readonly List<StorageDeviceSensor> _sensors = new();
     private readonly List<SmartAttribute> _attributes = new();
@@ -71,14 +71,14 @@ public sealed class StorageDevice : Hardware, ISmart
     /// <remarks>See <see cref="StorageDIT.TryWakeUp"/> for more information.</remarks>
     public bool ForceWakeup { get; set; }
 
-    public static TimeSpan ThrottleInterval { get; set; }
+    /// <summary>
+    /// Gets or sets the number of regular update cycles between S.M.A.R.T. data refreshes.
+    /// </summary>
+    public static uint SmartUpdateCycleCount { get; set; } = 1;
 
     public override void Update()
     {
-        if (DateTime.UtcNow - _lastUpdate < ThrottleInterval)
-        {
-            return;
-        }
+        bool refreshSmartData = AdvanceSmartUpdateCycle(ref _smartUpdateCycle, SmartUpdateCycleCount);
 
         bool isDevicePoweredOn = _storage.IsDevicePowerOn.GetValueOrDefault(true);
 
@@ -94,7 +94,7 @@ public sealed class StorageDevice : Hardware, ISmart
         //No updates for sleeping devices if we should not wake it up
         if (isDevicePoweredOn)
         {
-            hasChanges = StorageDIT.Refresh(_storage);
+            hasChanges = StorageDIT.Refresh(_storage, refreshSmartData);
         }
 
         if (!hasChanges)
@@ -107,12 +107,9 @@ public sealed class StorageDevice : Hardware, ISmart
             {
                 // If storage device has no changes, still update performance sensors to avoid stale throughput data
                 UpdatePerformanceSensors();
-                _lastUpdate = DateTime.UtcNow;
                 return;
             }
         }
-
-        _lastUpdate = DateTime.UtcNow;
 
         ToggleSpaceSensors();
         UpdatePerformanceSensors();
@@ -133,6 +130,19 @@ public sealed class StorageDevice : Hardware, ISmart
 
         // Update general sensors
         _sensors.ForEach(s => s.Update(_storage));
+    }
+
+    internal static bool AdvanceSmartUpdateCycle(ref uint currentCycle, uint configuredCycleCount)
+    {
+        uint effectiveCycleCount = Math.Max(configuredCycleCount, 1);
+        if (currentCycle >= effectiveCycleCount - 1)
+        {
+            currentCycle = 0;
+            return true;
+        }
+
+        currentCycle++;
+        return false;
     }
 
     public override string GetReport()

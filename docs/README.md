@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor Docs
 
 **Status:** live map only
-**Updated:** 2026-07-25
+**Updated:** 2026-07-30
 
 ## Repository
 
@@ -18,6 +18,11 @@
   against this section. `main` is the branch for new work.
 - Upstream `LibreHardwareMonitor/LibreHardwareMonitor` links in the root
   `README.md` point at the real upstream project and are not stale.
+- The imported `ops/local-release` and `scripts/local-release` surfaces are
+  SND-DESK-only in production: deployment and launcher paths fail closed to
+  `snd-desk`, while peer-safe non-live fixtures use isolated temporary roots.
+  Their `LibreHW`, `sqdata`, launcher, task, user, and cleanup records do not
+  replace the SND-HOST paths below.
 
 ## Current SND-HOST paths
 
@@ -52,9 +57,9 @@ rollback, and log/archive state are separate; no release payload belongs under
 - Host-neutral log archival/retention tooling is source-controlled under
   `ops/log-management` and installed on SND-HOST in a separate stable runtime
   with a verified SYSTEM task. Its active configuration now targets the current
-  runtime and archive roots above. Seven July 18-24 archives passed structural
-  inspection; the current-day CSV and 365-day retention previews selected
-  nothing for removal.
+  runtime and archive roots above. Seven July 18-24 archives and the first
+  repaired-path July 25 rollover archive passed structural inspection; the
+  current-day CSV and 365-day retention previews selected nothing for removal.
 - Release-candidate tooling is source-controlled under `ops/release`. It builds
   framework-dependent `win-x64` payloads for both application frameworks
   through a clean external staging root and publishes independently verified
@@ -65,19 +70,53 @@ rollback, and log/archive state are separate; no release payload belongs under
 - `/dash/cardtruth[/]` is retired; `data.json` and CSV IDs are contracts.
 - Standard context layouts are merged and browser-fixture-verified; this packet
   did not replace a live LibreHardwareMonitor runtime.
+- Fetch-only upstream includes a shallow local release/runtime system whose
+  first identity-verified SND-DESK install runs from
+  `E:\SQ_HQ\Monitoring\LibreHW\LibreHardwareMonitor.Windows.Forms.exe`.
+  Mutable config/logs now use machine-local `sqdata`; the public
+  `librehw.cmd` is unchanged. Normal-user foreground restoration passed, both
+  shortcuts converge through that command, and the duplicate root task is
+  retired. The delegated launcher is now regression-tested through the same
+  Windows PowerShell 5.1 host used by the CMD shim, including its zero-process
+  StrictMode branch. This is SND-DESK evidence, not SND-HOST live state.
+- On SND-DESK every ignored repo-local `bin`/`obj` tree was cleaned. All 32
+  non-authoritative output EXEs are gone; the 3,361 historical CSVs and three
+  old config files are preserved under the collision-isolated
+  `sqdata\LibreHardwareMonitor\historical` archive. Those paths and counts are
+  peer-specific history.
+- The merged runtime-path code deliberately ignores ambient `sqdata`.
+  SND-DESK's manifest still selects its peer-local data root explicitly, while
+  SND-HOST retains executable-adjacent state unless a future promotion carries
+  a separately approved absolute runtime configuration.
 - Keep `AssemblyVersion` at `0.9.6`; build with `-p:Platform=x64`.
 
-## Handoff — 2026-07-21
+## Source integration — 2026-07-30
 
-- Product work and branch cleanup are complete; `master` is the only local and
-  origin branch.
+- Local development remains on `main`, tracking `origin/main`; upstream remains
+  fetch-only. This integration imports `upstream/master` through `9b1eb52`,
+  including its audited official history through `81e8f83`, HTTP/dashboard
+  hardening, hardware support, runtime-path model, and SND-DESK release tooling.
+- Conflict resolution preserves the local ordered hardware-operation
+  coordinator, UI teardown fix, external dual-framework candidate system,
+  SND-HOST path map, and fetch-only upstream policy. The fork-specific GitHub
+  Dependabot file remains intentionally absent.
 - PR #29 source-shipped Standard contexts. PRs #26 and #28 landed five central
   package patch updates without redundant app-level references.
-- Final source gates passed: selftest 306/306, Node suites 18/18, .NET 150 passed
-  / 1 skipped, isolated x64 Release builds for both target frameworks, and
-  GitHub multi-architecture/packaging run `29852462788`.
-- No live LibreHardwareMonitor runtime was replaced. Runtime promotion and
-  manual interaction remain separate, identity-verified work.
+- Combined-tree source gates passed: dashboard self-test 315/315, focused Node
+  tests 18/18, .NET tests 258 passed with one intentional skip, both x64 Release
+  targets with zero warnings/errors, log-management checks 26/26,
+  release-system checks 114/114 under both PowerShell engines, and the
+  peer-safe non-live local-release fixture. No source merge command changed the live
+  SND-HOST runtime, task, configuration, or logs.
+- SND-DESK now runs the manifest-verified one-EXE local release from the shallow
+  stable path. One exact process, HTTP health, populated native controls, the
+  migrated Release config, managed task ownership, and a new `sqdata` CSV
+  passed. Attended finalization also passed: the normal-user command restored
+  the existing window, both Start Menu links target it, the exact legacy root
+  task is absent, and both recovery packets validated before cleanup. Those
+  pre-stable packets are now historical evidence only. The 3,361 old CSV files
+  were moved intact into the accepted historical archive before all repo-local
+  build outputs were removed.
 
 ## Deployed patch notes
 
@@ -106,6 +145,10 @@ rollback, and log/archive state are separate; no release payload belongs under
 
 ## Roadmap
 
+The imported upstream roadmap also records a stale SND-DESK
+`hardware-optimization` health-feed task. That is a peer-only owner action, not
+an unqualified SND-HOST command.
+
 1. Continue hands-on dashboard and native scrollbar/UI Automation inspection
    through the verified runtime owner; deterministic coverage and the live
    served-asset/telemetry smoke are already complete.
@@ -121,12 +164,10 @@ rollback, and log/archive state are separate; no release payload belongs under
    read-only presentation seam for WinForms reuse, fixtures, and portable
    layouts. Any Avalonia prototype is a separately approved spike; WinForms
    keeps hardware and task ownership.
-5. Inspect the first completed SND-HOST daily CSV rollover ZIP and its task
-   history; current-day retention and the installed task already passed live.
-6. Implement the host-neutral operator-utility plan: a portable read-only
+5. Implement the host-neutral operator-utility plan: a portable read-only
    thermal snapshot first, then a report-only log evidence analyzer. Keep any
    lossy converter and profile alias behind their separate gates.
-7. Close the remaining bounded reliability follow-ups in
+6. Close the remaining bounded reliability follow-ups in
    `docs/feature-memory-ui-reliability.md`; keep optional long-soak work separate
    from normal patch promotion.
 
@@ -141,11 +182,17 @@ rollback, and log/archive state are separate; no release payload belongs under
   `data.json` IDs/order remain unchanged.
 - Check dark/light, desktop/narrow, failure, and empty states for UI work.
 
-## Runtime contracts
+## Source and live runtime contracts
 
-- GET `/Sensor` failures return JSON; GET Set is rejected.
-- Legacy POST Set validates/clamps values and requires same-origin browser calls.
-- Public reset routes are blocked by the proxy guard.
+- The live SND-HOST runtime remains product `0.9.6+d693da7.2026-07-25`.
+  Its external proxy guard blocks public reset routes; this source integration
+  has not replaced that process.
+- In merged source, GET `/Sensor` failures return JSON; GET Set and ResetMinMax
+  are rejected. POST Set validates/clamps values. `ResetMinMax` and
+  `/ResetAllMinMax` mutate only on POST. Cross-origin browser POSTs are rejected
+  before mutation; header-less script clients remain allowed when they POST.
+  These stricter request contracts are not live until a separately approved
+  candidate is promoted.
 - Sensor history, decompression, HTTP ownership, and dashboard state are bounded.
 - Settings writes are ordered, atomic, backup-aware, and compact stale history.
 - RTX 5090 hot spot and its rate remain unavailable until live telemetry proves
@@ -173,6 +220,14 @@ rollback, and log/archive state are separate; no release payload belongs under
   a materialize-swap contexts key; live runtime promotion is not recorded.
 - `docs/feature-memory-ui-reliability.md` - shipped reliability contract,
   deployment proof, and remaining follow-ups.
+- `docs/feature-upstream-sync-2026-07-25.md` - audited upstream integration
+  boundary, conflict decisions, compatibility requirements, and verification.
+- `docs/feature-local-release-system.md` - implemented shallow one-EXE local
+  runtime, `sqdata` separation, managed launch ownership, promotion, rollback,
+  and attended-finalization contract for SND-DESK only.
+- `docs/repository-build-output-cleanup.md` - completed repo-local `bin`/`obj`
+  cleanup, preserved historical archive, repeatable cleanup command, retired
+  pre-stable recovery boundary, and verified SND-DESK public launcher chain.
 - `LibreHardwareMonitorLib/Hardware/Sensor.cs` - history bounds/persistence.
 - `LibreHardwareMonitorLib/Hardware/TemperatureRateSensor.cs` - bounded direct
   sample regression for temperature rate.
@@ -204,6 +259,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseSystem.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\New-LhmRelease.ps1 -ReleaseRoot <external-release-root>
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -ReleaseRoot <external-release-root>
+# Peer-safe non-live fixture for the SND-DESK workflow; production remains target-gated.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\local-release\Test-LhmLocalRelease.ps1
+.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64

@@ -124,6 +124,100 @@ public class HttpServerSensorApiTests
         Assert.Equal(expected, isCrossOrigin);
     }
 
+    [Fact]
+    public void GetSensorResetMinMaxRequiresPostWithoutResetting()
+    {
+        SensorFixture fixture = CreateServerWithControlledSensor();
+
+        Dictionary<string, object> result = fixture.Server.HandleGetSensorRequest(
+            Query(("action", "ResetMinMax"), ("id", fixture.SensorId)));
+
+        Assert.Equal("fail", Assert.IsType<string>(result["result"]));
+        Assert.Equal(HttpServer.ResetMinMaxRequiresPostMessage, Assert.IsType<string>(result["message"]));
+        Assert.Equal(0, fixture.Sensor.ResetMinCallCount);
+        Assert.Equal(0, fixture.Sensor.ResetMaxCallCount);
+    }
+
+    [Fact]
+    public void PostSensorResetMinMaxRejectsCrossOriginBrowserRequest()
+    {
+        SensorFixture fixture = CreateServerWithControlledSensor();
+
+        Dictionary<string, object> result = fixture.Server.HandlePostSensorRequest(
+            Query(("action", "ResetMinMax"), ("id", fixture.SensorId)),
+            new Uri("http://localhost:8085/Sensor"), "http://evil.test", null);
+
+        Assert.Equal("fail", Assert.IsType<string>(result["result"]));
+        Assert.Equal(HttpServer.CrossOriginResetMessage, Assert.IsType<string>(result["message"]));
+        Assert.Equal(0, fixture.Sensor.ResetMinCallCount);
+        Assert.Equal(0, fixture.Sensor.ResetMaxCallCount);
+    }
+
+    [Fact]
+    public void PostSensorResetMinMaxAllowsSameOriginBrowserRequest()
+    {
+        SensorFixture fixture = CreateServerWithControlledSensor();
+
+        Dictionary<string, object> result = fixture.Server.HandlePostSensorRequest(
+            Query(("action", "ResetMinMax"), ("id", fixture.SensorId)),
+            new Uri("http://localhost:8085/Sensor"), "http://localhost:8085", null);
+
+        Assert.Equal("ok", Assert.IsType<string>(result["result"]));
+        Assert.True(result.ContainsKey("value"));
+        Assert.Equal(1, fixture.Sensor.ResetMinCallCount);
+        Assert.Equal(1, fixture.Sensor.ResetMaxCallCount);
+    }
+
+    [Fact]
+    public void PostSensorResetMinMaxAllowsHeaderlessScriptClient()
+    {
+        SensorFixture fixture = CreateServerWithControlledSensor();
+
+        Dictionary<string, object> result = fixture.Server.HandlePostSensorRequest(
+            Query(("action", "ResetMinMax"), ("id", fixture.SensorId)),
+            new Uri("http://localhost:8085/Sensor"), null, null);
+
+        Assert.Equal("ok", Assert.IsType<string>(result["result"]));
+        Assert.Equal(1, fixture.Sensor.ResetMinCallCount);
+        Assert.Equal(1, fixture.Sensor.ResetMaxCallCount);
+    }
+
+    [Fact]
+    public void ResetAllMinMaxRejectsCrossOriginBrowserRequestWithoutResetting()
+    {
+        SensorFixture fixture = CreateServerWithControlledSensor();
+
+        bool reset = fixture.Server.TryResetAllMinMax(new Uri("http://localhost:8085/ResetAllMinMax"), "http://evil.test", null);
+
+        Assert.False(reset);
+        Assert.Equal(0, fixture.Sensor.ResetMinCallCount);
+        Assert.Equal(0, fixture.Sensor.ResetMaxCallCount);
+    }
+
+    [Fact]
+    public void ResetAllMinMaxAllowsSameOriginAndResets()
+    {
+        SensorFixture fixture = CreateServerWithControlledSensor();
+
+        bool reset = fixture.Server.TryResetAllMinMax(new Uri("http://localhost:8085/ResetAllMinMax"), "http://localhost:8085", null);
+
+        Assert.True(reset);
+        Assert.Equal(1, fixture.Sensor.ResetMinCallCount);
+        Assert.Equal(1, fixture.Sensor.ResetMaxCallCount);
+    }
+
+    [Fact]
+    public void ResetAllMinMaxAllowsHeaderlessScriptClient()
+    {
+        SensorFixture fixture = CreateServerWithControlledSensor();
+
+        bool reset = fixture.Server.TryResetAllMinMax(new Uri("http://localhost:8085/ResetAllMinMax"), null, null);
+
+        Assert.True(reset);
+        Assert.Equal(1, fixture.Sensor.ResetMinCallCount);
+        Assert.Equal(1, fixture.Sensor.ResetMaxCallCount);
+    }
+
     private static NameValueCollection Query(params (string Key, string Value)[] values)
     {
         NameValueCollection query = new();
@@ -149,6 +243,7 @@ public class HttpServerSensorApiTests
         return new SensorFixture
         {
             Control = control,
+            Sensor = sensor,
             Root = root,
             SensorId = sensor.Identifier.ToString(),
             Server = new HttpServer(root, hardware, "?", 8085)
@@ -158,6 +253,7 @@ public class HttpServerSensorApiTests
     private sealed class SensorFixture
     {
         public FakeControl Control { get; init; }
+        public FakeSensor Sensor { get; init; }
         public Node Root { get; init; }
         public HttpServer Server { get; init; }
         public string SensorId { get; init; }
@@ -237,9 +333,12 @@ public class HttpServerSensorApiTests
         public IEnumerable<SensorValue> Values => Array.Empty<SensorValue>();
         public TimeSpan ValuesTimeWindow { get; set; }
 
-        public void ResetMin() { }
+        public int ResetMinCallCount { get; private set; }
+        public int ResetMaxCallCount { get; private set; }
 
-        public void ResetMax() { }
+        public void ResetMin() => ResetMinCallCount++;
+
+        public void ResetMax() => ResetMaxCallCount++;
 
         public void ClearValues() { }
 

@@ -1,7 +1,7 @@
 # External Release Candidate Packaging
 
-**Status:** implemented; clean promotable candidate verified; separate SND-HOST promotion verified; packaging remains non-deploying
-**Updated:** 2026-07-25
+**Status:** implemented; clean promotable candidate and separate SND-HOST promotion verified; post-upstream-sync source gates verified; any new candidate or promotion remains a separate non-deploying or identity-verified gate
+**Updated:** 2026-07-30
 
 ## Problem
 
@@ -50,6 +50,29 @@ safe to substitute for the running LibreHardwareMonitor instance.
 
 These scripts package source output only. A separate, explicitly approved
 identity-verified workflow must own any later runtime promotion.
+
+## Runtime-data compatibility gate
+
+Source imported from fetch-only `upstream/master` now supports
+`librehw.runtime.json` and resolves mutable data in this order: runtime
+configuration, `LIBREHARDWAREMONITOR_DATA_ROOT`, then the executable directory.
+The integration deliberately ignores ambient `sqdata`: on this host it can
+point at unrelated machine or shell state. The SND-DESK local-release system
+always materializes its own absolute runtime configuration and is separately
+fail-closed to `snd-desk`.
+
+The current SND-HOST runtime predates that behavior. It deliberately keeps its
+configuration, backup, and active CSV beside
+`E:\SQ_HQ\Monitoring\LibreHardwareMonitor\LibreHardwareMonitor.Windows.Forms.exe`;
+it has no `librehw.runtime.json`. The executable-directory fallback preserves
+that layout. Before any later migration, the SND-HOST owner must explicitly
+select a data root, materialize and validate an absolute runtime configuration,
+capture the selected data and task state in rollback, and prove config/log
+continuity after launch. Ambient `sqdata` is never deployment authority.
+
+Candidate creation remains machine-neutral and must not embed this host-specific
+file. Candidate integrity and promotability do not prove that a deployment's
+runtime-data configuration is safe.
 
 ## Release-root contract
 
@@ -262,6 +285,9 @@ rollback reference to a previously accepted package.
 - [x] Candidate creation and validation never describe a candidate as accepted,
   deployed, signed, or live-verified; separate promotion evidence is recorded
   explicitly as a different workflow.
+- [x] Verify the integrated runtime-path regression: absent explicit runtime
+  configuration or `LIBREHARDWAREMONITOR_DATA_ROOT`, ambient `sqdata` is ignored
+  and mutable state remains executable-adjacent.
 
 ## Verification
 
@@ -283,6 +309,22 @@ verifying the cleanup contract.
 
 ## Verification log
 
+- 2026-07-30 SND-HOST source integration: runtime-path tests prove that runtime
+  configuration and `LIBREHARDWAREMONITOR_DATA_ROOT` remain explicit authorities
+  while ambient `sqdata` is ignored and the portable executable-directory
+  fallback is preserved. A present directory, reparse point, unreadable, locked,
+  or invalid runtime descriptor fails closed rather than falling through to
+  another root. The dashboard self-test passed 315/315, focused Node tests
+  18/18, the .NET suite 258 passed with one intentional skip, both x64
+  Release targets built with zero warnings/errors, log-management checks passed
+  26/26, release-system checks passed 114/114 under Windows PowerShell 5.1 and
+  PowerShell 7, and the peer-scoped local-release fixture passed all failure,
+  recovery-manifest, hostile-reparse, launcher-compatibility, and cleanup
+  groups. This was source verification only: temporary fixture candidates and
+  payloads were removed, no external/promotable candidate was published, and no
+  live SND-HOST runtime, task, configuration, or logs were changed. Guarded
+  post-build cleanup removed 556 generated files (111,664,958 bytes), and all
+  declared repository `bin`/`obj` roots were absent at handoff.
 - 2026-07-25 SND-HOST clean candidate and separate promotion: candidate
   `0.9.6-20260725-165558646-d693da7` came from clean `main` commit
   `d693da7b1cd23159732123ba1a672ed8d9cf244b`, recorded no source changes, and

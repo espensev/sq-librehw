@@ -1,5 +1,7 @@
 *.user
 *.suo
+# Disposable build output only. Never launch from here; see
+# docs/repository-build-output-cleanup.md.
 [Bb]in/
 [Oo]bj/
 .idea/

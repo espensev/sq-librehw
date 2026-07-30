@@ -1,7 +1,7 @@
 # Feature Spec: Host-Neutral Log Management
 
-**Status:** deployed on SND-HOST; current paths, archives, and dry-run retention verified
-**Updated:** 2026-07-25
+**Status:** deployed on SND-HOST; repaired-path rollover, current paths, archives, and dry-run retention verified
+**Updated:** 2026-07-30
 
 ## Problem
 
@@ -71,8 +71,9 @@ source and write the archive/runtime roots.
 - [x] No live runtime or scheduled task is changed during repository verification.
 - [x] Identity-verified SND-HOST deployment retains the current-day live CSV,
   and the installed SYSTEM task completes with result `0`.
-- [x] Inspect real completed prior-day SND-HOST ZIPs after rollover; seven
-  July 18-24 archives have the recognized one-entry layout and are readable.
+- [x] Inspect real completed prior-day SND-HOST ZIPs after rollover. The seven
+  July 18-24 archives and the first post-repair July 25 archive have the
+  recognized one-entry layout and are readable.
 
 ## Verification and deployment gate
 
@@ -88,6 +89,16 @@ then register the new task. Legacy task retirement is a separate approved step.
 
 ## Verification log
 
+- 2026-07-30 SND-HOST first repaired-path rollover: read-only inspection found
+  `E:\SQ_HQ\Monitoring\LogArchive\SND-HOST\2026\07-Jul\LibreHardwareMonitorLog-2026-07-25.zip`,
+  created by the July 26 03:45 cycle. It opens fully and contains exactly one
+  expected CSV entry of 166,129,155 uncompressed bytes; the ZIP SHA-256 is
+  `177DEA9CA7FA46AAB228FC53F00869EF374122BF4E3E08727062ABF54FF6FA14`.
+  The installed task's latest run was 2026-07-30 03:45 with result `0`, and the
+  latest July 29 ZIP is also readable with one CSV. Task Scheduler's Operational
+  event channel is disabled, so per-run event history was unavailable without a
+  host change; it was not enabled. No archive command, retention command, task
+  mutation, or deployment was run for this verification.
 - 2026-07-25 SND-HOST path repair: the installed configuration was backed up
   with the LibreHardwareMonitor deployment rollback packet, then its only stale
   values were corrected from the retired `Thermal_Control` tree to
