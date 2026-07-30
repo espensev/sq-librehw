@@ -118,7 +118,8 @@ public sealed class BoundedDataJsonFixtureLoader : ISensorFixtureLoader
             }
 
             FileInfo fileInfo = new(filePath);
-            if ((fileInfo.Attributes & FileAttributes.Directory) != 0)
+            FileAttributes attributes = File.GetAttributes(filePath);
+            if ((attributes & FileAttributes.Directory) != 0)
             {
                 return Failure(
                     SensorLoadErrorCode.IoFailure,
