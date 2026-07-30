@@ -1,7 +1,7 @@
 # Feature Spec: Fixture-only Avalonia Sensor Explorer
 
-**Status:** automated source gate passed; post-merge candidate inspection and
-attended smoke pending
+**Status:** automated source and exact-source candidate gates passed; attended
+smoke pending
 **Updated:** 2026-07-30
 **Scope:** non-shipping feasibility spike
 **Discovery input:** `docs/discovery-pre-avalonia-readiness.md`
@@ -241,10 +241,10 @@ persisted in milestone one.
       POST/control, settings write, task, packaging, or live integration exists.
 - [x] Existing `DataJsonGoldenTests` remain byte-identical.
 - [x] Existing .NET tests and both x64 Release WinForms targets remain green.
-- [ ] The release-system fixture remains green and a source-output inventory
+- [x] The release-system fixture remains green and a source-output inventory
       proves the spike is absent from WinForms candidate packages. The
-      114-assertion fixture passes; exact-source package inspection is the
-      manager's pending post-merge candidate gate.
+      114-assertion fixture and direct inspection of both exact-source ZIPs
+      passed with zero Avalonia or spike entries.
 - [x] Verification evidence and the decision on a separately specified polling
       milestone are recorded here before the spike is called complete.
 
@@ -279,9 +279,10 @@ prove the final source checkpoint but cannot rewrite launch history.
 
 The integrated source gate ran from Agent D's isolated worktree on the reviewed
 A-C base `33cc19b50263184db4bd8ea6734d1f4d0bf8d522`, including Agent D's five
-owned working-tree files. The manager must repeat candidate creation and
-current-source/promotable inspection after Agent D's committed result is merged;
-there is deliberately no post-implementation candidate ID or hash yet.
+owned working-tree files. Independent review accepted commit
+`b466837b20051862f1268b284fa06ec4bedd1f48`, and merged `main` repeated the
+complete gate before the manager created the immutable candidate recorded
+below.
 
 | Evidence | Result |
 |---|---|
@@ -296,6 +297,8 @@ there is deliberately no post-implementation candidate ID or hash yet.
 | Existing regression | 259 total: 258 passed, one established live-config memory-budget test skipped, zero failed; `DataJsonGoldenTests` passed unchanged |
 | Shipping builds | x64 Release `net10.0-windows` and `net472`: both passed with zero warnings and zero errors |
 | Release fixture | `114/114` assertions; this is release-system behavior proof, not candidate-package inspection |
+| Exact-source candidate | `0.9.6-20260730-210528120-b466837` from clean `main` commit `b466837b20051862f1268b284fa06ec4bedd1f48`; promotable/current-source verification passed in Windows PowerShell 5.1 and PowerShell 7 |
+| Candidate package isolation | Two WinForms ZIPs inspected directly: 35 `net10.0-windows` entries and 46 `net472` entries; zero Avalonia or spike entries |
 | Live boundary | No candidate creation, promotion, deployment, process launch, task, setting, log, release-store, rollback, or live-runtime mutation by Agent D |
 
 The observed clean spike solution build emitted Avalonia warning `AVLN3001` for
@@ -304,7 +307,7 @@ requires injected constructor arguments. Direct construction, XAML loading,
 focus, keyboard, and headless behavior pass; the warning remains a known
 source-spike issue and does not substitute for the pending attended smoke.
 
-Post-merge candidate gate — **pending, manager only**:
+Post-merge candidate gate — **passed, manager only**:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\New-LhmRelease.ps1
@@ -312,13 +315,24 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmRele
 pwsh -NoProfile -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource
 ```
 
-- Post-merge candidate ID: pending.
-- Exact source commit/hash: pending.
-- WinForms package inventory proving no spike output: pending.
+- Candidate ID: `0.9.6-20260730-210528120-b466837`.
+- Candidate source commit:
+  `b466837b20051862f1268b284fa06ec4bedd1f48`; source fingerprint:
+  `048b83cff78ea77bd303f2bbe72d96b2a3e60f608620f9863ab9a446d573fac8`.
+- Manifest SHA-256:
+  `5b8054115fbcf6565f043aae78e86e52504948c45a1a8ac74cc07b99efb712e5`.
+- `net10.0-windows` ZIP: 35 entries, zero Avalonia/spike entries, SHA-256
+  `bbd0358f82193d7f34723a555bf53308abd16222b00ea0ccdcaa6c1418b94810`.
+- `net472` ZIP: 46 entries, zero Avalonia/spike entries, SHA-256
+  `a07fef571870593789759495a5cfd6f33ee34f627588e53c97c650f35b3c141b`.
+- Candidate creation and inspection were non-deploying; no promotion or live
+  runtime change occurred.
 
 Attended smoke:
 
 **Status: pending.** No attended item below is recorded as passed.
+The Windows Computer Use helper was initialized and retried, but its native
+pipe was unavailable, so no UI interaction was claimed.
 
 1. Start the spike as a normal, non-elevated user.
 2. Load each bundled valid fixture and confirm hierarchy/order/counts.

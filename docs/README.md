@@ -71,11 +71,12 @@ rollback, and log/archive state are separate; no release payload belongs under
   `-RequireCurrentSource` against the external release store.
 - The fixture-only Avalonia explorer is implemented in a separate, non-shipping
   `net10.0` source solution. Its complete runner passes 75/75 tests and the
-  ten-stage isolation/regression gate passes, but post-merge exact-source
-  candidate inspection and an attended normal-user smoke remain pending. It is
-  not in `LibreHardwareMonitor.sln` and is not wired into WinForms packaging, a
-  task, or the live runtime; actual package absence remains pending candidate
-  inventory. The live SND-HOST product remains the version recorded below.
+  ten-stage isolation/regression gate passes. Exact-source candidate
+  `0.9.6-20260730-210528120-b466837` passed dual-shell promotable/current-source
+  verification, and both WinForms ZIP inventories contained zero Avalonia or
+  spike entries. An attended normal-user smoke remains pending. The spike is
+  not in `LibreHardwareMonitor.sln`, a task, or the live runtime. The live
+  SND-HOST product remains the version recorded below.
 - `/dash/cardtruth[/]` is retired; `data.json` and CSV IDs are contracts.
 - Standard context layouts are merged and browser-fixture-verified; this packet
   did not replace a live LibreHardwareMonitor runtime.
@@ -170,9 +171,9 @@ an unqualified SND-HOST command.
    richer graphs that never combine incompatible units dishonestly.
 4. Finish the fixture-only Avalonia feasibility gate: the accepted plan,
    isolated bootstrap, bounded parser, shell, 75-test runner, and ten-stage
-   source/regression gate are complete. The manager still owns the clean
-   post-merge current-source/promotable candidate and package-isolation proof;
-   a normal-user attended smoke remains separate. If those pass, draft a new
+   source/regression gate are complete. The clean post-merge
+   current-source/promotable candidate and direct package-isolation proof pass;
+   a normal-user attended smoke remains separate. If that passes, draft a new
    read-only polling spec; the evidence says that follow-on is worth
    specifying, but this source spike adds no polling authority. Shared profile
    extraction, packaging, task ownership, and cutover still wait for a later
@@ -232,8 +233,8 @@ an unqualified SND-HOST command.
   ownership rules for starting a fixture-only Avalonia spike in parallel.
 - `docs/feature-avalonia-fixture-sensor-explorer.md` - accepted bounded,
   fixture-only Avalonia explorer contract and automated evidence; implemented
-  as a non-elevated, non-shipping source spike, with post-merge candidate
-  inspection and attended smoke still pending.
+  as a non-elevated, non-shipping source spike, with exact-source candidate and
+  package-isolation proof complete and attended smoke still pending.
 - `docs/feature-standard-context-layouts.md` - source-shipped,
   browser-fixture-verified per-context Standard trims (Main/Gaming/Storage) over
   a materialize-swap contexts key; live runtime promotion is not recorded.
