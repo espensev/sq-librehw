@@ -16,4 +16,12 @@
   <ItemGroup>
     <ProjectReference Include="..\LibreHardwareMonitor.Avalonia.Spike.Core\LibreHardwareMonitor.Avalonia.Spike.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Content
+        Include="..\LibreHardwareMonitor.Avalonia.Spike.Tests\Fixtures\*.json"
+        Link="Fixtures\%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

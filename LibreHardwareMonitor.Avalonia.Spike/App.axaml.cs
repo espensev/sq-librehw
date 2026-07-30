@@ -27,6 +27,12 @@ public sealed partial class App : Application
             desktop.MainWindow = new MainWindow(
                 viewModel,
                 new FilePickerFixtureSource());
+
+            if (desktop.Args is { Length: 1 } args &&
+                !string.IsNullOrWhiteSpace(args[0]))
+            {
+                _ = viewModel.LoadLocalPathAsync(args[0]);
+            }
         }
 
         base.OnFrameworkInitializationCompleted();
