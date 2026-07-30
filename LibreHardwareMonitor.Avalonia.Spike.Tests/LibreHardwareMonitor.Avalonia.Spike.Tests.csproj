@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Headless.XUnit" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LibreHardwareMonitor.Avalonia.Spike.Core\LibreHardwareMonitor.Avalonia.Spike.Core.csproj" />
+    <ProjectReference Include="..\LibreHardwareMonitor.Avalonia.Spike\LibreHardwareMonitor.Avalonia.Spike.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Fixtures\**\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

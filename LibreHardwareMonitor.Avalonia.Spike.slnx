@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj" />
+  <Project Path="LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj" />
+  <Project Path="LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj" />
+</Solution>
