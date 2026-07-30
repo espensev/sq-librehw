@@ -1,0 +1,51 @@
+{
+  "Version": "0.9.6",
+  "FixtureKind": "hot-plug source before sensor removal",
+  "Children": [
+    {
+      "Text": "HOTPLUG-PC",
+      "Children": [
+        {
+          "Text": "Fixture CPU",
+          "HardwareId": "/fixture/hotplug/0",
+          "Children": [
+            {
+              "Text": "Temperatures",
+              "Children": [
+                {
+                  "Text": "CPU Package",
+                  "SensorId": "/fixture/hotplug/0/temperature/0",
+                  "Type": "Temperature",
+                  "Min": "31.0 °C",
+                  "Value": "47.0 °C",
+                  "Max": "72.0 °C",
+                  "RawMin": 31,
+                  "RawValue": 47,
+                  "RawMax": 72,
+                  "Children": []
+                }
+              ]
+            },
+            {
+              "Text": "Fans",
+              "Children": [
+                {
+                  "Text": "CPU Fan",
+                  "SensorId": "/fixture/hotplug/0/fan/0",
+                  "Type": "Fan",
+                  "Min": "800 RPM",
+                  "Value": "1100 RPM",
+                  "Max": "1600 RPM",
+                  "RawMin": 800,
+                  "RawValue": 1100,
+                  "RawMax": 1600,
+                  "Children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
