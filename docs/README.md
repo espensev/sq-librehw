@@ -64,9 +64,11 @@ rollback, and log/archive state are separate; no release payload belongs under
   framework-dependent `win-x64` payloads for both application frameworks
   through a clean external staging root and publishes independently verified
   ZIP packages plus `release-manifest.json` outside the repository. Candidate
-  `0.9.6-20260725-165558646-d693da7` is clean and promotable; its net10 package
-  was promoted through a separate identity-verified workflow. Candidate
-  creation and validation themselves remain non-deploying.
+  `0.9.6-20260725-165558646-d693da7` remains the immutable provenance of the
+  live net10 promotion; it is historical rather than current-source evidence.
+  Candidate creation and validation themselves remain non-deploying. Before
+  using a newer candidate, require both `-RequirePromotable` and
+  `-RequireCurrentSource` against the external release store.
 - `/dash/cardtruth[/]` is retired; `data.json` and CSV IDs are contracts.
 - Standard context layouts are merged and browser-fixture-verified; this packet
   did not replace a live LibreHardwareMonitor runtime.
@@ -159,11 +161,16 @@ an unqualified SND-HOST command.
 3. Iterate Sensor Workspace around flexibility: resizable/reflowing panels,
    density and visual options, sensor search/grouping, bulk membership, and
    richer graphs that never combine incompatible units dishonestly.
-4. After the native slices and web Workspace contract stabilize, execute Phase
-   5 of `docs/feature-native-ui-modernization.md`: stabilize the host-neutral,
-   read-only presentation seam for WinForms reuse, fixtures, and portable
-   layouts. Any Avalonia prototype is a separately approved spike; WinForms
-   keeps hardware and task ownership.
+4. After a compact separate spike spec and campaign plan are accepted,
+   commit/freeze both and require a clean/promotable candidate from that exact
+   checkpoint before starting code. A fixture-only Avalonia feasibility lane
+   may then run beside Phase 0 and reliability work. Its integration owner
+   performs the one serialized central package/project bootstrap before
+   releasing parallel contributors. The spike remains read-only, non-elevated,
+   non-shipping, outside WinForms packaging, and unable to open hardware or
+   write the current settings. Live polling, shared profile extraction,
+   packaging, task ownership, and cutover wait for the stabilized Phase 5
+   host-neutral seam. WinForms keeps hardware and task ownership.
 5. Implement the host-neutral operator-utility plan: a portable read-only
    thermal snapshot first, then a report-only log evidence analyzer. Keep any
    lossy converter and profile alias behind their separate gates.
@@ -215,6 +222,8 @@ an unqualified SND-HOST command.
 - `docs/feature-native-ui-modernization.md` - phased native tree organization,
   graphics, graph, and Gadget 2.0 roadmap; the Phase 0 packet is drafted and
   product implementation has not started.
+- `docs/discovery-pre-avalonia-readiness.md` - bounded gap/seam analysis and
+  ownership rules for starting a fixture-only Avalonia spike in parallel.
 - `docs/feature-standard-context-layouts.md` - source-shipped,
   browser-fixture-verified per-context Standard trims (Main/Gaming/Storage) over
   a materialize-swap contexts key; live runtime promotion is not recorded.
@@ -259,6 +268,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseSystem.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\New-LhmRelease.ps1 -ReleaseRoot <external-release-root>
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -ReleaseRoot <external-release-root>
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource -ReleaseRoot <external-release-root>
 # Peer-safe non-live fixture for the SND-DESK workflow; production remains target-gated.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\local-release\Test-LhmLocalRelease.ps1
 .\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf

@@ -1,7 +1,7 @@
 # Feature Roadmap: WinForms UI Modernization
 
 **Status:** WinForms-first roadmap defined; Phase 0 implementation packet drafted
-**Updated:** 2026-07-25
+**Updated:** 2026-07-30
 
 ## Problem and motivation
 
@@ -355,8 +355,11 @@ Acceptance:
   formatter reuse, layout validation, import/export, and UI tests must justify
   it without another frontend.
 - Do not add Avalonia packages, projects, packaging, or runtime ownership in
-  this roadmap. A later feasibility prototype, if wanted, receives a separate
-  spike spec and consumes recorded fixtures without opening hardware.
+  this roadmap. A separately accepted feasibility spike may proceed beside
+  Phase 0 or reliability work only when it consumes bounded recorded fixtures,
+  stays outside shipping solutions/packages, and never opens hardware or writes
+  current runtime settings. Live polling or shared-contract extraction waits
+  for this phase's stabilized seam.
 - WinForms and the existing sanctioned task remain the hardware/process owner.
   A cutover would require a separate migration spec and explicit approval.
 
@@ -366,8 +369,9 @@ Exit gate:
   against native and web fixture data without coupling their storage keys.
 - [ ] Existing WinForms tree, graph, gadget, and import/export tests consume the
   seam where it removes duplicate presentation logic.
-- [ ] No alternate UI package, process, hardware owner, or promotion dependency
-  has been introduced.
+- [ ] This roadmap introduces no alternate UI into the shipping product,
+  hardware/task ownership, or promotion dependency. Any separately accepted
+  feasibility spike remains outside the shipping solution and candidates.
 - [ ] Any future prototype or cutover remains blocked behind a separate accepted
   spike or migration spec.
 

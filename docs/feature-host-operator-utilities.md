@@ -1,7 +1,7 @@
 # Feature Plan: Host-Neutral Operator Utilities
 
 **Status:** ready for implementation; lossy conversion remains gated
-**Updated:** 2026-07-25
+**Updated:** 2026-07-30
 
 ## Problem
 
@@ -147,7 +147,7 @@ and stop after the report-only analyzer.
 | 1 | Implement and fixture-test the portable thermal snapshot client. | `ops/thermal-snapshot/*` | 0 | Intel/AMD, multi-GPU, missing, zero, malformed, timeout, text, and JSON cases pass in PS 5.1/7. |
 | 2 | Implement and fixture-test the streaming log evidence analyzer. | `ops/log-analysis/*` | 0 | Mixed cadence, gaps, nulls, malformed rows, current-day marking, ZIP validation, and bounded-memory cases pass in PS 5.1/7. |
 | 3 | Reconcile docs and run contract regression checks. | This spec, `docs/README.md` | 1, 2 | Docs and external contracts remain current and unchanged. |
-| Gate A | Review analyzer evidence and decide whether a converter has a justified consumer. | Follow-up spec only | 2, first rollover proof | Explicit go/no-go; no implicit converter work. |
+| Gate A | Review analyzer evidence and decide whether a converter has a justified consumer. The first repaired-path rollover proof is already complete. | Follow-up spec only | 2 | Explicit go/no-go; no implicit converter work. |
 | Gate B | Optionally expose `thermals` through the tracked DevHome shell authority. | Outside this repo | 1 | Separate review, install, and machine verification. |
 
 Phases 1 and 2 are independent, but a single implementation lane may perform

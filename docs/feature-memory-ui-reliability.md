@@ -4,7 +4,7 @@
 queue, scrollbar teardown, transactional open, and dynamic-group snapshot fixes
 deployed and live-verified on SND-HOST
 
-**Updated:** 2026-07-25
+**Updated:** 2026-07-30
 
 ## Problem and motivation
 
