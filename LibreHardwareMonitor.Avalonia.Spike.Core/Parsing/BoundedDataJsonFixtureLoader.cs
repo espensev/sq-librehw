@@ -104,14 +104,8 @@ public sealed class BoundedDataJsonFixtureLoader : ISensorFixtureLoader
             }
 
             FileInfo fileInfo = new(filePath);
-            if (!fileInfo.Exists)
-            {
-                return Failure(
-                    SensorLoadErrorCode.FileNotFound,
-                    "The selected fixture file was not found.");
-            }
-
-            if (fileInfo.Length > limits.MaxInputBytes)
+            long fileLength = fileInfo.Length;
+            if (fileLength > limits.MaxInputBytes)
             {
                 return Failure(
                     SensorLoadErrorCode.InputTooLarge,

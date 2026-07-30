@@ -65,6 +65,30 @@ internal static class GeneratedLimitCases
         return json.ToString();
     }
 
+    public static string CreateNestedChildDocument(int childCount)
+    {
+        if (childCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(childCount));
+        }
+
+        StringBuilder json = new("{\"Children\":[{\"Text\":\"Parent\",\"Children\":[");
+        for (int index = 0; index < childCount; index++)
+        {
+            if (index > 0)
+            {
+                json.Append(',');
+            }
+
+            json.Append("{\"Text\":\"Child ");
+            json.Append(index);
+            json.Append("\",\"Children\":[]}");
+        }
+
+        json.Append("]}]}");
+        return json.ToString();
+    }
+
     public static string CreateStringValueDocument(int characterCount)
     {
         if (characterCount < 0)

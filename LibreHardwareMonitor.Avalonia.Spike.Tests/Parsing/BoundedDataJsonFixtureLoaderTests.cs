@@ -46,6 +46,9 @@ public sealed class BoundedDataJsonFixtureLoaderTests
                 .SelectMany(group => group.Children)
                 .Select(sensor => sensor.SensorId!)
                 .ToArray());
+        Assert.Equal(
+            "Fan \"Æøå\" #1",
+            hardware.Children[3].Children[0].Name);
     }
 
     [Fact]
@@ -271,6 +274,26 @@ public sealed class BoundedDataJsonFixtureLoaderTests
     }
 
     [Fact]
+    public async Task NonSeekableStream_AllowsExactByteBound()
+    {
+        const int maximumBytes = 128;
+        BoundedDataJsonFixtureLoader loader = new();
+        SensorLoadLimits limits = Limits(maxInputBytes: maximumBytes);
+        byte[] payload = GeneratedLimitCases.Utf8(
+            GeneratedLimitCases.CreateExactByteDocument(maximumBytes));
+        using GeneratedLimitCases.NonSeekableReadStream stream = new(payload);
+
+        SensorLoadResult result = await loader.LoadAsync(
+            stream,
+            "non-seekable-exact",
+            limits,
+            TestContext.Current.CancellationToken);
+
+        AssertSuccess(result);
+        Assert.Equal(maximumBytes, stream.BytesRead);
+    }
+
+    [Fact]
     public async Task DepthLimit_AllowsExactBoundAndRejectsBoundPlusOne()
     {
         const int maximumDepth = 6;
@@ -335,6 +358,28 @@ public sealed class BoundedDataJsonFixtureLoaderTests
     }
 
     [Fact]
+    public async Task ChildLimit_IsEnforcedOnNestedProjectedNodes()
+    {
+        const int maximumChildren = 3;
+        BoundedDataJsonFixtureLoader loader = new();
+        SensorLoadLimits limits = Limits(
+            maxNodes: maximumChildren + 2,
+            maxChildrenPerNode: maximumChildren);
+
+        AssertSuccess(
+            await LoadJsonAsync(
+                loader,
+                GeneratedLimitCases.CreateNestedChildDocument(maximumChildren),
+                limits));
+        AssertFailure(
+            await LoadJsonAsync(
+                loader,
+                GeneratedLimitCases.CreateNestedChildDocument(maximumChildren + 1),
+                limits),
+            SensorLoadErrorCode.ExcessiveChildren);
+    }
+
+    [Fact]
     public async Task StringLimit_AppliesToValuesAndUnknownPropertyNames()
     {
         const int maximumCharacters = 16;
@@ -382,6 +427,22 @@ public sealed class BoundedDataJsonFixtureLoaderTests
     }
 
     [Fact]
+    public async Task FileLengthAtExactBound_IsAccepted()
+    {
+        string fixturePath = FixturePath("normal.json");
+        long fixtureLength = new FileInfo(fixturePath).Length;
+        BoundedDataJsonFixtureLoader loader = new();
+        SensorLoadLimits limits = Limits(maxInputBytes: fixtureLength);
+
+        SensorLoadResult result = await loader.LoadFileAsync(
+            fixturePath,
+            limits,
+            TestContext.Current.CancellationToken);
+
+        AssertSuccess(result);
+    }
+
+    [Fact]
     public async Task MissingFile_ReturnsOperatorSafeFileNotFoundError()
     {
         const string sensitiveLeaf = "operator-private-missing-fixture.json";
@@ -400,6 +461,22 @@ public sealed class BoundedDataJsonFixtureLoaderTests
         Assert.False(
             error.Message.Contains(sensitiveLeaf, StringComparison.Ordinal),
             "The operator message must not echo the selected path.");
+    }
+
+    [Fact]
+    public async Task InvalidFilePath_ReturnsOperatorSafeIoFailure()
+    {
+        const string sensitiveSentinel = "operator-private-invalid-fixture";
+        string invalidPath = sensitiveSentinel + "\0.json";
+        BoundedDataJsonFixtureLoader loader = new();
+
+        SensorLoadResult result = await loader.LoadFileAsync(
+            invalidPath,
+            SensorLoadLimits.Default,
+            TestContext.Current.CancellationToken);
+
+        SensorLoadError error = AssertFailure(result, SensorLoadErrorCode.IoFailure);
+        Assert.DoesNotContain(sensitiveSentinel, error.Message);
     }
 
     [Fact]
