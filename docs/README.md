@@ -69,6 +69,13 @@ rollback, and log/archive state are separate; no release payload belongs under
   Candidate creation and validation themselves remain non-deploying. Before
   using a newer candidate, require both `-RequirePromotable` and
   `-RequireCurrentSource` against the external release store.
+- The fixture-only Avalonia explorer is implemented in a separate, non-shipping
+  `net10.0` source solution. Its complete runner passes 75/75 tests and the
+  ten-stage isolation/regression gate passes, but post-merge exact-source
+  candidate inspection and an attended normal-user smoke remain pending. It is
+  not in `LibreHardwareMonitor.sln` and is not wired into WinForms packaging, a
+  task, or the live runtime; actual package absence remains pending candidate
+  inventory. The live SND-HOST product remains the version recorded below.
 - `/dash/cardtruth[/]` is retired; `data.json` and CSV IDs are contracts.
 - Standard context layouts are merged and browser-fixture-verified; this packet
   did not replace a live LibreHardwareMonitor runtime.
@@ -161,16 +168,15 @@ an unqualified SND-HOST command.
 3. Iterate Sensor Workspace around flexibility: resizable/reflowing panels,
    density and visual options, sensor search/grouping, bulk membership, and
    richer graphs that never combine incompatible units dishonestly.
-4. After a compact separate spike spec and campaign plan are accepted,
-   commit/freeze both and require a clean/promotable candidate from that exact
-   checkpoint before starting code. A fixture-only Avalonia feasibility lane
-   may then run beside Phase 0 and reliability work. Its integration owner
-   performs the one serialized central package/project bootstrap before
-   releasing parallel contributors. The spike remains read-only, non-elevated,
-   non-shipping, outside WinForms packaging, and unable to open hardware or
-   write the current settings. Live polling, shared profile extraction,
-   packaging, task ownership, and cutover wait for the stabilized Phase 5
-   host-neutral seam. WinForms keeps hardware and task ownership.
+4. Finish the fixture-only Avalonia feasibility gate: the accepted plan,
+   isolated bootstrap, bounded parser, shell, 75-test runner, and ten-stage
+   source/regression gate are complete. The manager still owns the clean
+   post-merge current-source/promotable candidate and package-isolation proof;
+   a normal-user attended smoke remains separate. If those pass, draft a new
+   read-only polling spec; the evidence says that follow-on is worth
+   specifying, but this source spike adds no polling authority. Shared profile
+   extraction, packaging, task ownership, and cutover still wait for a later
+   accepted host-neutral seam. WinForms keeps hardware and task ownership.
 5. Implement the host-neutral operator-utility plan: a portable read-only
    thermal snapshot first, then a report-only log evidence analyzer. Keep any
    lossy converter and profile alias behind their separate gates.
@@ -225,8 +231,9 @@ an unqualified SND-HOST command.
 - `docs/discovery-pre-avalonia-readiness.md` - bounded gap/seam analysis and
   ownership rules for starting a fixture-only Avalonia spike in parallel.
 - `docs/feature-avalonia-fixture-sensor-explorer.md` - accepted bounded,
-  fixture-only Avalonia explorer contract; non-elevated, non-shipping, and
-  approved for execution through `plan-001`.
+  fixture-only Avalonia explorer contract and automated evidence; implemented
+  as a non-elevated, non-shipping source spike, with post-merge candidate
+  inspection and attended smoke still pending.
 - `docs/feature-standard-context-layouts.md` - source-shipped,
   browser-fixture-verified per-context Standard trims (Main/Gaming/Storage) over
   a materialize-swap contexts key; live runtime promotion is not recorded.
@@ -268,6 +275,7 @@ node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\workspace.js
 node webtests\selftest.node.js
 node --test webtests\console.tests.js webtests\workspace.tests.js
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-LhmLogManagement.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\Test-AvaloniaSpike.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseSystem.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\New-LhmRelease.ps1 -ReleaseRoot <external-release-root>
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -ReleaseRoot <external-release-root>

@@ -1,6 +1,7 @@
 # Feature Spec: Fixture-only Avalonia Sensor Explorer
 
-**Status:** accepted for the bounded fixture-only implementation campaign
+**Status:** automated source gate passed; post-merge candidate inspection and
+attended smoke pending
 **Updated:** 2026-07-30
 **Scope:** non-shipping feasibility spike
 **Discovery input:** `docs/discovery-pre-avalonia-readiness.md`
@@ -220,25 +221,31 @@ persisted in milestone one.
 
 - [ ] The compact spec and campaign plan are reviewed, accepted, committed, and
       followed by an independently verified clean/promotable candidate from
-      that exact commit before implementation starts.
-- [ ] The separate spike solution restores and builds with the pinned stable
+      that exact commit before implementation starts. Candidate creation
+      internally verified the clean/promotable checkpoint, but the independent
+      dual-shell current-source verification was not recorded before Agent A
+      started and cannot be repaired retrospectively.
+- [x] The separate spike solution restores and builds with the pinned stable
       package versions and .NET SDK `10.0.302`.
-- [ ] Existing `LibreHardwareMonitor.sln`, WinForms project files, existing test
+- [x] Existing `LibreHardwareMonitor.sln`, WinForms project files, existing test
       project, and `global.json` remain unchanged.
-- [ ] The parser enforces every hard limit and never exposes a partial document.
-- [ ] Fixture tests cover normal, unavailable, hot-plug removal, malformed,
+- [x] The parser enforces every hard limit and never exposes a partial document.
+- [x] Fixture tests cover normal, unavailable, hot-plug removal, malformed,
       overlong, byte, depth, node, child, and duplicate-ID cases.
-- [ ] The UI renders producer order, labels, types, current/min/max values,
+- [x] The UI renders producer order, labels, types, current/min/max values,
       stable IDs, and honest unavailable states from immutable data.
 - [ ] Keyboard expansion/navigation and initial/error/empty/loaded states pass
-      headless tests and one attended local smoke.
-- [ ] No project references WinForms or opens hardware; no admin manifest,
+      headless tests and one attended local smoke. The automated headless half
+      passes; the attended normal-user smoke remains pending.
+- [x] No project references WinForms or opens hardware; no admin manifest,
       POST/control, settings write, task, packaging, or live integration exists.
-- [ ] Existing `DataJsonGoldenTests` remain byte-identical.
-- [ ] Existing .NET tests and both x64 Release WinForms targets remain green.
+- [x] Existing `DataJsonGoldenTests` remain byte-identical.
+- [x] Existing .NET tests and both x64 Release WinForms targets remain green.
 - [ ] The release-system fixture remains green and a source-output inventory
-      proves the spike is absent from WinForms candidate packages.
-- [ ] Verification evidence and the decision on a separately specified polling
+      proves the spike is absent from WinForms candidate packages. The
+      114-assertion fixture passes; exact-source package inspection is the
+      manager's pending post-merge candidate gate.
+- [x] Verification evidence and the decision on a separately specified polling
       milestone are recorded here before the spike is called complete.
 
 ## Verification plan
@@ -247,6 +254,7 @@ Implementation must leave copy-pasteable commands in this section. The minimum
 automated gate is:
 
 ```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\Test-AvaloniaSpike.ps1
 dotnet restore LibreHardwareMonitor.Avalonia.Spike.slnx
 dotnet build LibreHardwareMonitor.Avalonia.Spike.slnx -c Release --no-restore
 dotnet run --project LibreHardwareMonitor.Avalonia.Spike.Tests\LibreHardwareMonitor.Avalonia.Spike.Tests.csproj -c Release
@@ -256,7 +264,61 @@ dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.For
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseSystem.ps1
 ```
 
+## Automated evidence — 2026-07-30
+
+The implementation launch baseline was clean commit
+`e4a722082ae21955d6b535aafd9b7c296685906d`, represented by immutable
+candidate `0.9.6-20260730-181737576-e4a7220`. Candidate creation completed its
+internal verification and recorded `Promotable=True`. The required independent
+Windows PowerShell and PowerShell 7
+`-RequirePromotable -RequireCurrentSource` calls were not recorded after
+creation and before Agent A launched. A pre-create check correctly rejected the
+older candidate, but that is not proof for this candidate. The historical
+timing criterion therefore remains unmet; a post-merge endpoint candidate can
+prove the final source checkpoint but cannot rewrite launch history.
+
+The integrated source gate ran from Agent D's isolated worktree on the reviewed
+A-C base `33cc19b50263184db4bd8ea6734d1f4d0bf8d522`, including Agent D's five
+owned working-tree files. The manager must repeat candidate creation and
+current-source/promotable inspection after Agent D's committed result is merged;
+there is deliberately no post-implementation candidate ID or hash yet.
+
+| Evidence | Result |
+|---|---|
+| Toolchain | SDK `10.0.302`; runtime `.NET 10.0.10`; Avalonia, Desktop, Themes Fluent, and Headless XUnit `12.1.0`; xUnit v3 `3.2.2` |
+| Clean spike solution build | Passed with one `AVLN3001` warning and zero errors |
+| Agent A bootstrap | Three isolated projects restored; Core Release build passed; frozen contracts and composition root reviewed; release-system fixture `114/114` |
+| Agent B parser/fixtures | `49/49` parser and replacement cases |
+| Agent C shell | `19/19` view-model and headless cases |
+| Agent D integration | Seven real-loader-to-real-view-model cases: normal, unavailable, hot-plug replacement and old-snapshot immutability, two typed retained-rejection cases, deterministic supersession, and numeric-ID exclusion |
+| Complete spike runner | `75/75` passed, zero errors, failures, skips, or not-run cases; the pre-D total was 68 |
+| Isolation | 37 spike source/project inputs checked against 11 precise forbidden-reference rules; three project references remained inside the spike; zero manifests or forbidden matches; shipping solution listed zero spike projects |
+| Existing regression | 259 total: 258 passed, one established live-config memory-budget test skipped, zero failed; `DataJsonGoldenTests` passed unchanged |
+| Shipping builds | x64 Release `net10.0-windows` and `net472`: both passed with zero warnings and zero errors |
+| Release fixture | `114/114` assertions; this is release-system behavior proof, not candidate-package inspection |
+| Live boundary | No candidate creation, promotion, deployment, process launch, task, setting, log, release-store, rollback, or live-runtime mutation by Agent D |
+
+The observed clean spike solution build emitted Avalonia warning `AVLN3001` for
+`Views/MainWindow.axaml` and zero errors because the window intentionally
+requires injected constructor arguments. Direct construction, XAML loading,
+focus, keyboard, and headless behavior pass; the warning remains a known
+source-spike issue and does not substitute for the pending attended smoke.
+
+Post-merge candidate gate — **pending, manager only**:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\New-LhmRelease.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource
+pwsh -NoProfile -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource
+```
+
+- Post-merge candidate ID: pending.
+- Exact source commit/hash: pending.
+- WinForms package inventory proving no spike output: pending.
+
 Attended smoke:
+
+**Status: pending.** No attended item below is recorded as passed.
 
 1. Start the spike as a normal, non-elevated user.
 2. Load each bundled valid fixture and confirm hierarchy/order/counts.
@@ -295,8 +357,10 @@ no deployment, task, settings, or live mutation.
 
 ## Future gate
 
-A successful fixture spike may justify a new spec for read-only HTTP polling.
-That later gate must independently define endpoint selection, authentication,
-TLS/trust, cancellation, retry/backoff, stale age, update cadence, payload
-history, process ownership, and failure behavior. It still cannot authorize
-hardware ownership, packaging, task replacement, or cutover.
+The automated fixture evidence makes a separate read-only HTTP polling spec
+**worth specifying** after the pending candidate and attended gates. This
+decision adds no polling code or authority to the current spike. That later
+spec must independently define endpoint selection, authentication, TLS/trust,
+cancellation, retry/backoff, stale age, update cadence, payload history,
+process ownership, and failure behavior. It still cannot authorize hardware
+ownership, packaging, task replacement, or cutover.
