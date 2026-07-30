@@ -66,7 +66,21 @@ public sealed class BoundedDataJsonFixtureLoader : ISensorFixtureLoader
         try
         {
             SensorLoadResult result = await operation(linkedSource.Token).ConfigureAwait(false);
-            linkedSource.Token.ThrowIfCancellationRequested();
+
+            lock (_loadSync)
+            {
+                linkedSource.Token.ThrowIfCancellationRequested();
+
+                if (!ReferenceEquals(_activeLoad, supersessionSource))
+                {
+                    return Failure(
+                        SensorLoadErrorCode.SupersededOrCancelled,
+                        "The fixture load was cancelled or superseded.");
+                }
+
+                _activeLoad = null;
+            }
+
             return result;
         }
         catch (OperationCanceledException)
