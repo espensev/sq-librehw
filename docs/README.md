@@ -39,21 +39,24 @@
 ## Current SND-HOST paths
 
 - Source checkout:
-  `E:\SQ_HQ\Monitoring\libre-dev\librehw-host`
+  `D:\DevHome\workspaces\librehw-host\checkouts\main`
+- Agent worktrees and fetch-only official comparison:
+  `D:\DevHome\workspaces\librehw-host\worktrees` and
+  `D:\DevHome\workspaces\librehw-host\references\official`
 - Immutable release candidates:
-  `E:\SQ_HQ\Monitoring\LibreHardwareMonitor-Releases\candidates`
+  `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\releases\candidates`
 - Live application:
-  `E:\SQ_HQ\Monitoring\LibreHardwareMonitor`
+  `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\deployments\current`
 - Deployment rollback packets:
-  `E:\SQ_HQ\Monitoring\LibreHardwareMonitor-Rollback`
+  `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\deployments\rollback`
 - Installed log manager and archive:
-  `E:\SQ_HQ\Monitoring\LhmLogManagement` and
-  `E:\SQ_HQ\Monitoring\LogArchive`
+  `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\operations\log-management`
+  and `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\data\logs\archive`
 
 The user-level `LHM_RELEASE_ROOT` is
-`E:\SQ_HQ\Monitoring\LibreHardwareMonitor-Releases`. Source, release, live,
-rollback, and log/archive state are separate; no release payload belongs under
-`libre-dev`.
+`E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\releases`. Source, worktrees,
+release, live, rollback, and log/archive state are separate physical domains;
+no release payload belongs under the development workspace.
 
 ## Current
 
@@ -372,7 +375,7 @@ Source work must never change the live runtime. To prove it did not, check all
 five and expect them unchanged except for CSV growth:
 
 1. exactly one LHM process, and its executable path is
-   `E:\SQ_HQ\Monitoring\LibreHardwareMonitor\LibreHardwareMonitor.Windows.Forms.exe`;
+   `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\deployments\current\LibreHardwareMonitor.Windows.Forms.exe`;
 2. root task `\LibreHardwareMonitor` is `Running` — result `267009` / `0x41301`
    means still running, not failed;
 3. the task action and working directory match the live root exactly;

@@ -89,6 +89,13 @@ then register the new task. Legacy task retirement is a separate approved step.
 
 ## Verification log
 
+- 2026-07-31 SND-HOST workspace migration: the installed scripts moved to
+  `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\operations\log-management`,
+  the configured log source moved to `deployments\current`, and the archive moved to
+  `data\logs\archive`. The SYSTEM task retained its principal, highest run
+  level, daily 03:45 trigger, and 365-day policy while receiving the new
+  physical action/config/working paths. A manual post-move run returned `0`,
+  retained the growing current-day CSV, and left all 13 archives intact.
 - 2026-07-30 SND-HOST first repaired-path rollover: read-only inspection found
   `E:\SQ_HQ\Monitoring\LogArchive\SND-HOST\2026\07-Jul\LibreHardwareMonitorLog-2026-07-25.zip`,
   created by the July 26 03:45 cycle. It opens fully and contains exactly one

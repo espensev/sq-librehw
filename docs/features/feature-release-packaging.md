@@ -61,14 +61,14 @@ point at unrelated machine or shell state. The SND-DESK local-release system
 always materializes its own absolute runtime configuration and is separately
 fail-closed to `snd-desk`.
 
-The current SND-HOST runtime predates that behavior. It deliberately keeps its
-configuration, backup, and active CSV beside
-`E:\SQ_HQ\Monitoring\LibreHardwareMonitor\LibreHardwareMonitor.Windows.Forms.exe`;
-it has no `librehw.runtime.json`. The executable-directory fallback preserves
-that layout. Before any later migration, the SND-HOST owner must explicitly
-select a data root, materialize and validate an absolute runtime configuration,
-capture the selected data and task state in rollback, and prove config/log
-continuity after launch. Ambient `sqdata` is never deployment authority.
+The current SND-HOST runtime still uses the executable-directory fallback: its
+configuration, backup, and active CSV are beside
+`E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\deployments\current\LibreHardwareMonitor.Windows.Forms.exe`.
+The 2026-07-31 host-layout migration moved that directory byte-identically and
+proved every pre-cutover setting plus fresh CSV growth; it did not invent a
+`librehw.runtime.json` or separate data root. Any later data-root extraction
+still requires an explicit authority, rollback, and config/log continuity
+proof. Ambient `sqdata` is never deployment authority.
 
 Candidate creation remains machine-neutral and must not embed this host-specific
 file. Candidate integrity and promotability do not prove that a deployment's
@@ -89,12 +89,13 @@ through a reparse-point alias to any of those relationships. The script also
 rejects a candidate or staging path that escapes the resolved release root.
 
 The generic sibling fallback is portable, but it is not the SND-HOST promotion
-location because this checkout itself is nested under `libre-dev`. On SND-HOST,
+location. On SND-HOST,
 release and verification commands use an explicit root, or a machine-local
 `LHM_RELEASE_ROOT`, of
-`E:\SQ_HQ\Monitoring\LibreHardwareMonitor-Releases`. The live runtime remains
-separate at `E:\SQ_HQ\Monitoring\LibreHardwareMonitor`; neither path is inside
-`E:\SQ_HQ\Monitoring\libre-dev`.
+`E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\releases`. The live runtime
+remains separate at
+`E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\deployments\current`; neither
+path is inside `D:\DevHome\workspaces\librehw-host`.
 
 The external layout is:
 

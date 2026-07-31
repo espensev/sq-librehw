@@ -166,16 +166,18 @@ tests. WinForms remains the sole hardware owner throughout.
 **Phase:** 6 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â **gated, do not start without separate approval**
 **Entry:** everything above, plus explicit maintainer authorization
 
-The only campaign that touches live paths. It requires a complete consumer
-manifest covering 16 scheduled-task bindings, four Start Menu shortcuts, SQ
-shims, environment bindings, Scribe and log-management ownership, firewall
-ownership, and rollback; a staged candidate without cutover; and attended
-acceptance.
+The maintainer explicitly reprioritized the physical workspace/path migration
+on 2026-07-31. It completed out-of-band with a Libre-specific consumer
+manifest, rollback packet, Git/artifact preservation, exact-path task/process
+proof, HTTP checks, settings persistence, and CSV/archive growth. It did not
+promote a candidate or change product bytes.
 
-There is still no `librehw.runtime.json` and no explicit
-`LIBREHARDWAREMONITOR_DATA_ROOT`. Configuration and the active CSV remain
-co-located with the live executable, which is exactly why the live directory
-must never be raw-moved.
+Plan-014 is now limited to an optional **data-root authority** change. There is
+still no `librehw.runtime.json` and no explicit
+`LIBREHARDWAREMONITOR_DATA_ROOT`; configuration and active CSV remain
+co-located with the executable under `deployments\current`. Starting that
+separate change still requires explicit maintainer authorization, a staged
+candidate, rollback, and attended acceptance.
 
 ---
 

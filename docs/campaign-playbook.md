@@ -236,8 +236,10 @@ this, and no automated `verified` implies it.
 
 - Never push unless explicitly asked. `main` is deliberately ahead of
   `origin/main`.
-- Never move or replace the live LHM runtime, its scheduled tasks, its config,
-  or its active CSV.
+- A source campaign must never move or replace the live LHM runtime, scheduled
+  tasks, config, or active CSV. Host-path migration is a separate,
+  identity-verified and manifest-backed operation with immediate rollback; the
+  approved 2026-07-31 migration is recorded in `docs/README.md`.
 - Never run `ops/deploy/snd-desk` as an SND-HOST deployment path.
 - Never create a release candidate to verify a docs or tooling change.
 - Never delete the preserved Plan-001 branches, or raw-delete a Git worktree.

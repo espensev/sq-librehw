@@ -230,20 +230,25 @@ settings, or downstream sensor identity.
 
 ## Phase 6 — Runtime/data packaging and optional path migration
 
-**Status:** gated
+**Status:** physical workspace/path migration completed 2026-07-31; separate
+data-root authority remains gated
 
-- Choose one SND-HOST data-root authority: runtime manifest, explicit
-  environment setting, or managed host manifest.
-- Produce a complete consumer manifest covering the scheduled tasks, four
-  Start Menu shortcuts, SQ shims, environment bindings, Scribe/log management,
-  firewall ownership, and rollback.
-- Stage a candidate without cutover, verify exact source and package isolation,
-  then conduct attended acceptance.
-- Migrate one authority boundary at a time with an immediate rollback packet.
+- [x] Produce a complete Libre-specific consumer manifest covering scheduled
+  tasks, shortcut, SQ shims, environment, Git reference, log management,
+  firewall/service absence, shell cache, and rollback.
+- [x] Move development to `D:\DevHome` and consolidate candidates, deployment,
+  rollback, installed operations, and archive under the physical
+  `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack` authority.
+- [x] Preserve source refs/stash/ignored state, artifact hashes, live executable
+  bytes, all baseline settings, HTTP behavior, and CSV/archive growth.
+- [ ] Choose and implement a separate SND-HOST data-root authority if active
+  CSV/config should later leave `deployments\current`; no
+  `LIBREHARDWAREMONITOR_DATA_ROOT` or `librehw.runtime.json` was introduced.
 
 **Exit gate:** exact-path process/task proof, `/`, `/data.json`, and `/metrics`
 HTTP `200`, settings persistence, CSV/archive growth, and full consumer
-rebinding all pass after cutover.
+rebinding all passed for the physical path migration. A later data-root change
+must pass the same gate again.
 
 ## Next campaign
 

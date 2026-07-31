@@ -5,6 +5,13 @@
 **Updated:** 2026-07-31
 **Purpose:** keep feature work spec-first without blocking normal review, build, launch, and bugfix work.
 
+**Current SND-HOST workspace:** primary checkout at
+`D:\DevHome\workspaces\librehw-host\checkouts\main`; future linked agent lanes
+belong under `D:\DevHome\workspaces\librehw-host\worktrees`. The physical
+release/runtime/rollback/log authority is
+`E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack`; see `docs/README.md` and its
+`manifests` directory before host-path work.
+
 This repository is not specs-only: product code exists and normal maintenance can proceed. The rule is narrower: **new features and meaningful behavior changes need a clear feature spec before implementation starts**, unless the maintainer explicitly asks for a small direct fix or exploratory spike.
 
 ## 1. First classify the task
