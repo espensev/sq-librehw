@@ -119,10 +119,10 @@ owning hardware collection or the deployed `\LibreHardwareMonitor` task.
    density and appearance controls, sensor search/grouping, bulk membership
    edits, and graph presentation that remains honest about units and missing
    values. Native tree, graph, and gadget modernization is owned by
-   `docs/feature-native-ui-modernization.md`.
+   `docs/features/feature-native-ui-modernization.md`.
 3. Stabilize and document the bounded profile document plus normalized
    read-only sensor model as inputs to Phase 5 of
-   `docs/feature-native-ui-modernization.md`.
+   `docs/features/feature-native-ui-modernization.md`.
 4. Defer the parallel Avalonia prototype to that owning roadmap. Do not cut over
    hardware collection or `\LibreHardwareMonitor` ownership until packaging, DPI,
    accessibility, lifecycle, performance, and feature-parity gates are defined

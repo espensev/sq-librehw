@@ -3,10 +3,10 @@
 **Status:** active
 **Updated:** 2026-07-31
 **Read first:** `docs/campaign-playbook.md` for how to run any of these,
-`docs/refactor-roadmap.md` for why each phase exists
+`docs/architecture/refactor-roadmap.md` for why each phase exists
 
-This is the sequenced queue. `docs/refactor-roadmap.md` holds the *phase
-contract* Ã¢â‚¬â€ invariants, prohibitions, exit gates. This holds the *executable
+This is the sequenced queue. `docs/architecture/refactor-roadmap.md` holds the *phase
+contract* ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â invariants, prohibitions, exit gates. This holds the *executable
 order*: what to run next, what must be true before starting it, and what each
 campaign owns.
 
@@ -28,10 +28,10 @@ campaign owns.
 | | |
 |---|---|
 | Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane) |
-| Last campaign | `plan-004`, operations taxonomy, ledger state `implemented` |
-| Next campaign | `plan-005` |
-| Next agent letter | `v` |
-| Blocking nothing | A1 and A2 are person-only; the Get-FileHash defect keeps the configured `snd-desk-local-release-fixture` gate red (shared with Plan-003 criterion 4) |
+| Last campaign | `plan-005`, documentation taxonomy, ledger state `implemented` |
+| Next campaign | `plan-006` |
+| Next agent letter | `y` |
+| Blocking nothing | A1 and A2 are person-only; the Get-FileHash defect keeps the configured `snd-desk-local-release-fixture` gate red (shared with Plan-003/004) |
 
 ---
 
@@ -40,7 +40,7 @@ campaign owns.
 These are not campaigns. They are person-only actions that no automation may
 perform, and both are recorded in `docs/campaign-history.md`.
 
-### A1 Ã¢â‚¬â€ Plan-001 attended normal-user smoke
+### A1 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Plan-001 attended normal-user smoke
 
 The only open criterion in the repository. A person launches the Avalonia
 fixture explorer as a normal user, exercises the loaded, empty, loading, and
@@ -48,9 +48,9 @@ rejection states plus keyboard navigation, and records the result.
 
 Three possible outcomes, all legitimate:
 
-1. it passes Ã¢â€ â€™ criterion 9 moves to `met` with the evidence;
-2. it fails Ã¢â€ â€™ the finding becomes a bugfix, and plan-001 stays `implemented`;
-3. it is waived Ã¢â€ â€™ a waiver record with all five required fields.
+1. it passes ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ criterion 9 moves to `met` with the evidence;
+2. it fails ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ the finding becomes a bugfix, and plan-001 stays `implemented`;
+3. it is waived ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ a waiver record with all five required fields.
 
 **Do this before `plan-003`.** The move touches the same three projects, and if
 the smoke fails afterwards you will not know whether the move or the original
@@ -62,7 +62,7 @@ verification *before* the implementation agents launched, and the record shows
 it happened afterwards. It is currently `met` with the deviation stated. Confirm
 or correct that while you are there.
 
-### A2 Ã¢â‚¬â€ Plan-002 acceptance
+### A2 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Plan-002 acceptance
 
 Every criterion is met and the ledger state is `implemented`. Moving it to
 `accepted` is a person's decision. Plan-002 wrote the rule that forbids
@@ -70,43 +70,10 @@ automation from doing it, so it cannot do it to itself.
 
 ---
 
-## plan-005 Ã¢â‚¬â€ Documentation and engineering taxonomy
-
-**Phase:** 2, fork-only taxonomy
-**Risk:** medium Ã¢â‚¬â€ wide reference surface, no behavior
-**Entry:** `plan-004` landed
-
-### Goal
-
-Group the ~20 flat files in `docs/` under `architecture/`, `features/`,
-`operations/`, and `campaigns/`, and consolidate the remaining engineering entry
-points under `eng/build` and `eng/test` beside the existing `eng/ci`.
-
-### Known hazards
-
-- `[docs-sync.tier1]` and `[docs-sync.tier2]` glob these paths directly.
-- `AGENTS.md`'s source-of-truth map and `docs/README.md`'s source map both
-  enumerate most of the tree by hand.
-- Rendered campaign documents move but must not be hand-edited Ã¢â‚¬â€ the render
-  target is `plan["plan_doc"]` inside each plan JSON, so **the JSON must be
-  updated and re-rendered**, not the file moved underneath the tooling. This is
-  the subtle one; get it wrong and the next plan mutation recreates the file at
-  the old path.
-- `plan_doc_path()` in `scripts/task_manager.py` computes the default location.
-  If the target layout disagrees with it, either the config or the expectation
-  has to change Ã¢â‚¬â€ decide which before starting.
-- Completed agent specs and rendered plan documents are historical. Moving them
-  is fine; rewriting their contents is not.
-
-Agent `l`'s stale-reference gate from `plan-003` carries most of the
-verification load here. If that gate is good, this campaign is mostly mechanical.
-
----
-
-## plan-006 Ã¢â‚¬â€ Verification suite boundaries
+## plan-006 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Verification suite boundaries
 
 **Phase:** 3
-**Risk:** high Ã¢â‚¬â€ first campaign to touch a product project file
+**Risk:** high ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â first campaign to touch a product project file
 **Entry:** `plan-005` landed; Phase 2 exit gate met
 
 ### Goal
@@ -120,14 +87,14 @@ hardware-dependent and attended tests are explicitly outside deterministic CI.
 
 1. library-only behavior (`LibreHardwareMonitorLib`);
 2. application behavior (`LibreHardwareMonitor.Windows.Forms`);
-3. external contracts Ã¢â‚¬â€ `data.json`, HTTP routes, Prometheus, CSV, web assets;
+3. external contracts ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â `data.json`, HTTP routes, Prometheus, CSV, web assets;
 4. hardware-dependent and attended, excluded from CI by construction rather
    than by convention.
 
 ### Known hazards
 
 - `DataJsonGoldenTests` embeds the assembly version in `data.golden.json`.
-  Regenerating it is a documented procedure in `AGENTS.md` Ã¢â‚¬â€ follow it, review
+  Regenerating it is a documented procedure in `AGENTS.md` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â follow it, review
   the diff, and do not regenerate casually to make a red test green.
 - The `data.json` shape, order, and IDs are an external downstream contract.
   This campaign restructures *tests*, never the payload.
@@ -139,7 +106,7 @@ hardware-dependent and attended tests are explicitly outside deterministic CI.
 
 ---
 
-## plan-007 Ã¢â‚¬â€ Characterization tests before extraction
+## plan-007 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Characterization tests before extraction
 
 **Phase:** 3
 **Risk:** medium
@@ -147,7 +114,7 @@ hardware-dependent and attended tests are explicitly outside deterministic CI.
 
 The safety net Phase 4 depends on. Before any seam is extracted, pin the current
 behavior of hardware lifetime, ordered option/reset, settings projection, and
-shutdown coordination with characterization tests Ã¢â‚¬â€ tests that assert what the
+shutdown coordination with characterization tests ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â tests that assert what the
 code *does*, not what it should do.
 
 Extraction without this is a rewrite with extra steps. Treat this campaign as
@@ -155,7 +122,7 @@ non-optional even though the roadmap lists it inside Phase 3.
 
 ---
 
-## plan-008 Ã¢â‚¬Â¦ plan-012 Ã¢â‚¬â€ Application and adapter seams
+## plan-008 ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ plan-012 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Application and adapter seams
 
 **Phase:** 4
 **Risk:** high
@@ -171,7 +138,7 @@ rewrite.
 | `plan-009` | HTTP listener and dispatch service | every route, the GET/POST mutation contract, cross-origin rejection |
 | `plan-010` | application lifecycle, polling, option/reset, shutdown | ordered hardware-operation coordinator, transactional open/cleanup |
 | `plan-011` | settings projection and persistence | ordered, atomic, backup-aware writes; stale-history compaction |
-| `plan-012` | WinForms presentation adapters Ã¢â‚¬â€ tree, plot, tray, gadget | canonical node order, scrollbar hit targets, UI Automation bridge |
+| `plan-012` | WinForms presentation adapters ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â tree, plot, tray, gadget | canonical node order, scrollbar hit targets, UI Automation bridge |
 
 Each must keep both framework targets green and must not duplicate ownership.
 `plan-008` is the natural first: the snapshot contract already exists in
@@ -180,7 +147,7 @@ against this exact payload.
 
 ---
 
-## plan-013 Ã¢â‚¬â€ Hardware lifecycle seams
+## plan-013 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Hardware lifecycle seams
 
 **Phase:** 5
 **Risk:** high
@@ -194,9 +161,9 @@ tests. WinForms remains the sole hardware owner throughout.
 
 ---
 
-## plan-014 Ã¢â‚¬â€ Runtime and data authority
+## plan-014 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Runtime and data authority
 
-**Phase:** 6 Ã¢â‚¬â€ **gated, do not start without separate approval**
+**Phase:** 6 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â **gated, do not start without separate approval**
 **Entry:** everything above, plus explicit maintainer authorization
 
 The only campaign that touches live paths. It requires a complete consumer
@@ -223,6 +190,6 @@ change:
 - `ops/deploy` remaining SND-DESK-only and failing closed here;
 - the `data.json` external contract.
 
-Each of those is a non-negotiable in `docs/refactor-roadmap.md`. A campaign that
-needs one of them relaxed is not a campaign Ã¢â‚¬â€ it is a new architectural
+Each of those is a non-negotiable in `docs/architecture/refactor-roadmap.md`. A campaign that
+needs one of them relaxed is not a campaign ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â it is a new architectural
 decision, and it needs a spec and a maintainer decision first.

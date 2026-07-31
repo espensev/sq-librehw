@@ -4,7 +4,7 @@
 smoke pending
 **Updated:** 2026-07-30
 **Scope:** non-shipping feasibility spike
-**Discovery input:** `docs/discovery-pre-avalonia-readiness.md`
+**Discovery input:** retired pre-Avalonia readiness discovery (folded into the roadmap in Plan-005; full text in Git history)
 
 ## Problem and motivation
 

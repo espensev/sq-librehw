@@ -54,3 +54,14 @@ row text in their result payloads.
 | AVOPS-004 | Done | agent-s | verify fail-closed | Operations taxonomy | Verified the relocated peer-safe fixture passes under `pwsh` (proving fail-closed guards hold on snd-host), the content-based deny-list still refuses deploying commands, and the extended stale-reference gate passes. |
 | AVOPS-005 | Done | agent-t | ops-move docs | Operations taxonomy | Updated 45 path claims across 9 doc/eng files so no current document references a dissolved ops path; the stale-reference gate passes. |
 | AVOPS-006 | Done | agent-u | ops-move close | Operations taxonomy | Added the Plan-004 ledger row and criterion evidence to `docs/campaign-history.md` without automatic acceptance, closed the Phase 2 operations-taxonomy roadmap item, advanced the backlog current position, and removed the completed Plan-004 section. |
+
+## Plan-005 — documentation taxonomy
+
+Agent X is the only writer of this file for Plan-005; agents V-W returned their
+row text in their result payloads.
+
+| ID | Status | Owner | Scope | Issue | Update |
+|---|---|---|---|---|---|
+| AVDOCS-001 | Done | agent-v | reorganize docs | Documentation taxonomy | Moved 13 feature specs to `docs/features/`, refactor-roadmap and repository-build-output-cleanup to `docs/architecture/`, and retired the 2 completed discovery reviews (findings folded into the roadmap). Tooling-coupled docs stay at `docs/` root. |
+| AVDOCS-002 | Done | agent-w | rewire doc references | Documentation taxonomy | Updated 45 path references across AGENTS.md, docs/README, campaign-playbook, campaign-backlog, inter-doc links, the 2 deploy scripts, and extended the stale-reference gate with the doc move-map and a retired/bare-doc-path check. `scripts/task_manager.py` unchanged. |
+| AVDOCS-003 | Done | agent-x | docs-move close | Documentation taxonomy | Added the Plan-005 ledger row and criterion evidence to `docs/campaign-history.md` without automatic acceptance, closed the Phase 2 documentation-grouping roadmap item (at its new `docs/architecture/` path), and removed the completed Plan-005 section from the backlog. |

@@ -32,6 +32,8 @@ $moveMap = @(
     @{ Old = 'ops/release';                                      New = 'ops/candidate' }
     @{ Old = 'ops/local-release';                                New = 'ops/deploy/snd-desk' }
     @{ Old = 'scripts/local-release/Clear-LhmRepositoryBuildOutputs.ps1'; New = 'eng/Clear-LhmRepositoryBuildOutputs.ps1' }
+    @{ Old = 'docs/refactor-roadmap.md';                         New = 'docs/architecture/refactor-roadmap.md' }
+    @{ Old = 'docs/repository-build-output-cleanup.md';          New = 'docs/architecture/repository-build-output-cleanup.md' }
 )
 
 # Data: allow-list of exempt paths (immutable historical evidence).
@@ -81,6 +83,18 @@ foreach ($f in $scannable) {
     if ([regex]::IsMatch((Get-Content -Raw -LiteralPath $full), $dissolvedRe)) { $dissolvedHits += $f }
 }
 Assert-Ok "no non-exempt tracked file references a dissolved ops path" { $dissolvedHits.Count -eq 0 }
+
+# 2d. No non-exempt tracked text file references a retired discovery doc or a bare (non-features-prefixed) doc path.
+$retiredRe = 'docs[/\\]+discovery-[a-z]'
+$bareDocRe = '(?<!features[/\\]+)docs[/\\]+feature-|(?<!architecture[/\\]+)docs[/\\]+refactor-roadmap|(?<!architecture[/\\]+)docs[/\\]+repository-build-output-cleanup'
+$docHits = @()
+foreach ($f in $scannable) {
+    $full = Join-Path $repositoryRoot ($f -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $full)) { continue }
+    $t = Get-Content -Raw -LiteralPath $full
+    if ([regex]::IsMatch($t, $retiredRe) -or [regex]::IsMatch($t, $bareDocRe)) { $docHits += $f }
+}
+Assert-Ok "no non-exempt tracked file references a retired or bare doc path" { $docHits.Count -eq 0 }
 
 # 3. Unambiguous doc staleness: no non-exempt file references the old script location.
 $oldScriptRe = 'scripts[/\\]+Test-AvaloniaSpike\.ps1'

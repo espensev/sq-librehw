@@ -38,5 +38,5 @@ After approval, remove `-WhatIf`, inspect `log-management.json`, run the copied
 trusting the task. This installer deliberately does not disable or delete any
 legacy task.
 
-See `docs/feature-host-log-management.md` for the complete safety and cutover
+See `docs/features/feature-host-log-management.md` for the complete safety and cutover
 contract.

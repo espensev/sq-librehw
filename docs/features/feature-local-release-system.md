@@ -247,7 +247,7 @@ rollback payload slots.
 - A later successful promotion replaces the one old rollback pair; no older
   package is retained.
 - Old build-directory config/log cleanup was a separate approved operation and
-  is recorded in `docs/repository-build-output-cleanup.md`.
+  is recorded in `docs/architecture/repository-build-output-cleanup.md`.
 
 ## First-install proof — 2026-07-25
 
@@ -445,4 +445,4 @@ Resolved for the first install: use the then-current
 (30,554 bytes at cutover). Its verified settings enable the dashboard and
 logging required by release health. The exact Release config/backup and the
 7,051-byte Debug config are now preserved under the historical archive recorded
-in `docs/repository-build-output-cleanup.md`.
+in `docs/architecture/repository-build-output-cleanup.md`.

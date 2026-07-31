@@ -168,8 +168,7 @@ These apply to every campaign, not just Plan-002:
 
 - [x] Move the Avalonia fixture projects into `experiments/avalonia-fixture-explorer/` (Plan-003, 2026-07-31): moved with history preserved, configuration-only rewiring proven by the non-deploying gate runner, and a permanent stale-reference gate added.
 - [x] Separate candidate creation from peer-specific deployment semantics (Plan-004, 2026-07-31): `ops/candidate` (host-neutral), `ops/deploy/snd-desk` (SND-DESK-only), `ops/log-management` (unchanged), and the repository cleanup tool moved to `eng/`. Fail-closed guards proven under `pwsh`; configuration-only rewiring proven by the runner staying byte-identical.
-- Group current documents under architecture, features, operations, and
-  campaigns without retaining completed point-in-time reviews.
+- [x] Group current documents under architecture, features, operations, and campaigns (Plan-005, 2026-07-31): 13 feature specs under `docs/features/`, refactor-roadmap and repository-build-output-cleanup under `docs/architecture/`, and the completed point-in-time discovery reviews retired. Tooling-coupled docs stay at `docs/` root; `scripts/task_manager.py` unmodified.
 - Move general engineering entry points toward `eng/build`, `eng/test`, and
   `eng/ci`.
 - Update solutions, scripts, package isolation checks, docs, and test mappings
@@ -259,14 +258,14 @@ At this checkpoint the queue is:
 1. **A1** — Plan-001's attended normal-user smoke. Person-only, still open.
 2. **A2** — Plan-002 acceptance. Person-only; every criterion is met and the
    ledger state is `implemented`.
-3. **plan-005** — documentation and engineering taxonomy. Re-read
+3. **plan-006** — verification suite boundaries. Re-read
    `docs/campaign-backlog.md` before starting; it is scoped but not spec-complete.
 
-Plan-003 and Plan-004 have landed: the Avalonia fixture explorer lives under
-`experiments/avalonia-fixture-explorer/`, and operations are split into
-`ops/candidate`, `ops/deploy/snd-desk`, and `eng/` (cleanup tool). Both moves
-preserved history and proved configuration-only rewiring with the runner
-byte-identical.
+Plan-003, Plan-004, and Plan-005 have landed: the Avalonia fixture explorer lives
+under `experiments/avalonia-fixture-explorer/`, operations are split into
+`ops/candidate`, `ops/deploy/snd-desk`, and `eng/`, and current docs are grouped
+under `docs/features/` and `docs/architecture/`. All moves preserved history and
+proved configuration-only rewiring with the runner byte-identical.
 
 Do not register a plan from a dirty tree; check `plan preflight` first, and see
 `docs/campaign-playbook.md` for the full lifecycle.

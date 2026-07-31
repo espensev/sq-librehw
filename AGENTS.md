@@ -22,7 +22,7 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
 ## 2. Source-of-truth map
 
 - `docs/README.md`: **start here** — compact current-state, contract, implementation, and verification map.
-- `docs/refactor-roadmap.md`: **current continuation checkpoint** — active
+- `docs/architecture/refactor-roadmap.md`: **current continuation checkpoint** — active
   structural phases, non-negotiable boundaries, standing prohibitions,
   preserved branch evidence, open quarantine decisions, and exit gates. Read
   before resuming the structural baseline or starting another campaign.
@@ -38,21 +38,21 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
   campaign-history acceptance transition contract.
 - `eng/ci/README.md`: the non-deploying gate runner, its gate classification,
   the excluded deploying keys, and the deny-list.
-- `docs/feature-memory-ui-reliability.md`: shipped memory, ownership, efficiency, and UI-reliability contract, verification, and open follow-ups.
-- `docs/feature-web-dashboard-studio-view.md`: shipped Studio dashboard behavior and verification record.
-- `docs/feature-sensor-workspace.md`: deployed Workspace view with named profiles, ordered panels, and bounded import/export.
-- `docs/feature-standard-context-layouts.md`: merged Standard context trims (Main/Gaming/Storage) over a materialize-swap contexts key.
-- `docs/feature-thermal-trends.md`: deployed NVIDIA GPU hotspot rate sensor across native, web, CSV, and Prometheus.
-- `docs/feature-independent-text-scaling.md`: shipped independent sensor-pane and graph-axis text scaling.
-- `docs/feature-host-log-management.md`: deployed host-neutral CSV archive, retention, and task-install package.
-- `docs/feature-host-operator-utilities.md`: planned portable thermal snapshot and report-only log evidence analyzer.
-- `docs/feature-native-ui-modernization.md`: phased native tree, graphics, graph, and Gadget 2.0 roadmap; implementation not started.
-- `docs/feature-local-release-system.md`: SND-DESK-only shallow runtime,
+- `docs/features/feature-memory-ui-reliability.md`: shipped memory, ownership, efficiency, and UI-reliability contract, verification, and open follow-ups.
+- `docs/features/feature-web-dashboard-studio-view.md`: shipped Studio dashboard behavior and verification record.
+- `docs/features/feature-sensor-workspace.md`: deployed Workspace view with named profiles, ordered panels, and bounded import/export.
+- `docs/features/feature-standard-context-layouts.md`: merged Standard context trims (Main/Gaming/Storage) over a materialize-swap contexts key.
+- `docs/features/feature-thermal-trends.md`: deployed NVIDIA GPU hotspot rate sensor across native, web, CSV, and Prometheus.
+- `docs/features/feature-independent-text-scaling.md`: shipped independent sensor-pane and graph-axis text scaling.
+- `docs/features/feature-host-log-management.md`: deployed host-neutral CSV archive, retention, and task-install package.
+- `docs/features/feature-host-operator-utilities.md`: planned portable thermal snapshot and report-only log evidence analyzer.
+- `docs/features/feature-native-ui-modernization.md`: phased native tree, graphics, graph, and Gadget 2.0 roadmap; implementation not started.
+- `docs/features/feature-local-release-system.md`: SND-DESK-only shallow runtime,
   publish/promotion/rollback, and launcher contract imported from the fetch-only
   upstream. Its production deployment and launcher paths fail closed to
   `snd-desk`; peer-safe non-live fixtures use isolated temporary roots. It is
   not the SND-HOST release path.
-- `docs/repository-build-output-cleanup.md`: SND-DESK cleanup record and
+- `docs/architecture/repository-build-output-cleanup.md`: SND-DESK cleanup record and
   repeatable source-output inventory command. Its runtime and archive paths are
   peer-specific history, not SND-HOST authority.
 

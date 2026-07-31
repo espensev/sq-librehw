@@ -15,5 +15,5 @@ Restoring those definitions would create broken startup entries.
 
 Use Restore-LibreHardwareMonitorRelease.ps1 for an installed stable rollback.
 The pre-stable recovery packet remains historical audit evidence only. See
-docs\repository-build-output-cleanup.md.
+docs\architecture\repository-build-output-cleanup.md.
 '@

@@ -163,7 +163,7 @@ them sequentially. No parallel-agent campaign is required.
 | `ops/log-analysis/Measure-LhmLogAnalysis.ps1` | create | Medium: wide CSV streaming/parser correctness |
 | `ops/log-analysis/Test-LhmLogAnalysis.ps1` | create | Low |
 | `ops/log-analysis/README.md` | create | Low |
-| `docs/feature-host-operator-utilities.md` | maintain | Low |
+| `docs/features/feature-host-operator-utilities.md` | maintain | Low |
 | `docs/README.md` | maintain | Low |
 
 No product-code, dashboard-state, serialization, logger, project, package, or

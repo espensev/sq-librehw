@@ -168,7 +168,7 @@ rollback, and log/archive state are separate; no release payload belongs under
 ## Roadmap
 
 The structural baseline and phased reorganization are defined in
-`docs/refactor-roadmap.md`. Phase 0 cleanup and Phase 1 campaign and
+`docs/architecture/refactor-roadmap.md`. Phase 0 cleanup and Phase 1 campaign and
 verification control plane are complete on `main`, which is deliberately
 unpushed. Phase 1 closed with Plan-002: a non-deploying gate runner at
 `eng/ci/`, a read-only GitHub Actions workflow that only delegates to it, and a
@@ -183,7 +183,7 @@ an unqualified SND-HOST command.
 1. Continue hands-on dashboard and native scrollbar/UI Automation inspection
    through the verified runtime owner; deterministic coverage and the live
    served-asset/telemetry smoke are already complete.
-2. Execute `docs/feature-native-ui-modernization.md` in bounded slices: define
+2. Execute `docs/features/feature-native-ui-modernization.md` in bounded slices: define
    the presentation model first, then ship tree search/Favorites/order, native
    visual and graph polish, Gadget 2.0, and portable multi-gadget layouts.
    Canonical node order and downstream contracts must not change.
@@ -203,7 +203,7 @@ an unqualified SND-HOST command.
    thermal snapshot first, then a report-only log evidence analyzer. Keep any
    lossy converter and profile alias behind their separate gates.
 6. Close the remaining bounded reliability follow-ups in
-   `docs/feature-memory-ui-reliability.md`; keep optional long-soak work separate
+   `docs/features/feature-memory-ui-reliability.md`; keep optional long-soak work separate
    from normal patch promotion.
 
 ## Rules
@@ -236,7 +236,7 @@ an unqualified SND-HOST command.
 
 ## Source map
 
-- `docs/refactor-roadmap.md` - active repository/campaign reorganization
+- `docs/architecture/refactor-roadmap.md` - active repository/campaign reorganization
   phases, invariants, gates, standing prohibitions, preserved Plan-001 branch
   evidence, open quarantine decisions, and the next-campaign boundary. **Start
   here for continuation.** The former `docs/HANDOFF.md` was folded into this
@@ -261,40 +261,38 @@ an unqualified SND-HOST command.
 - `.github/workflows/non-deploying-gates.yml` - read-only workflow that only
   delegates to that runner. Never executed on a hosted runner, because `origin`
   is deliberately unpushed.
-- `docs/discovery-librehw-structural-audit.md` - active audit baseline feeding
-  the structural roadmap; retire it after the findings are closed or folded
-  into durable contracts.
-- `docs/feature-web-dashboard-studio-view.md` - shipped Studio contract.
-- `docs/feature-sensor-workspace.md` - active Workspace contract.
-- `docs/feature-thermal-trends.md` - additive hotspot-rate contract.
-- `docs/feature-host-log-management.md` - archive, retention, and deployment
+- The structural discovery audits (`docs/discovery-*.md`) were retired in Plan-005
+  after their findings were folded into `docs/architecture/refactor-roadmap.md` and
+  the campaign backlog; the full text remains recoverable in Git history.
+- `docs/features/feature-web-dashboard-studio-view.md` - shipped Studio contract.
+- `docs/features/feature-sensor-workspace.md` - active Workspace contract.
+- `docs/features/feature-thermal-trends.md` - additive hotspot-rate contract.
+- `docs/features/feature-host-log-management.md` - archive, retention, and deployment
   safety contract.
-- `docs/feature-release-packaging.md` - fail-closed, external dual-framework
+- `docs/features/feature-release-packaging.md` - fail-closed, external dual-framework
   release-candidate packaging and validation contract.
-- `docs/feature-host-operator-utilities.md` - planned portable thermal snapshot
+- `docs/features/feature-host-operator-utilities.md` - planned portable thermal snapshot
   and evidence-gated log analysis.
-- `docs/feature-independent-text-scaling.md` - shipped independent sensor-pane,
+- `docs/features/feature-independent-text-scaling.md` - shipped independent sensor-pane,
   tracker, and graph-axis text scaling contract.
-- `docs/feature-native-ui-modernization.md` - phased native tree organization,
+- `docs/features/feature-native-ui-modernization.md` - phased native tree organization,
   graphics, graph, and Gadget 2.0 roadmap; the Phase 0 packet is drafted and
   product implementation has not started.
-- `docs/discovery-pre-avalonia-readiness.md` - bounded gap/seam analysis and
-  ownership rules for starting a fixture-only Avalonia spike in parallel.
-- `docs/feature-avalonia-fixture-sensor-explorer.md` - accepted bounded,
+- `docs/features/feature-avalonia-fixture-sensor-explorer.md` - accepted bounded,
   fixture-only Avalonia explorer contract and automated evidence; implemented
   as a non-elevated, non-shipping source spike, with exact-source candidate and
   package-isolation proof complete and attended smoke still pending.
-- `docs/feature-standard-context-layouts.md` - source-shipped,
+- `docs/features/feature-standard-context-layouts.md` - source-shipped,
   browser-fixture-verified per-context Standard trims (Main/Gaming/Storage) over
   a materialize-swap contexts key; live runtime promotion is not recorded.
-- `docs/feature-memory-ui-reliability.md` - shipped reliability contract,
+- `docs/features/feature-memory-ui-reliability.md` - shipped reliability contract,
   deployment proof, and remaining follow-ups.
-- `docs/feature-upstream-sync-2026-07-25.md` - audited upstream integration
+- `docs/features/feature-upstream-sync-2026-07-25.md` - audited upstream integration
   boundary, conflict decisions, compatibility requirements, and verification.
-- `docs/feature-local-release-system.md` - implemented shallow one-EXE local
+- `docs/features/feature-local-release-system.md` - implemented shallow one-EXE local
   runtime, `sqdata` separation, managed launch ownership, promotion, rollback,
   and attended-finalization contract for SND-DESK only.
-- `docs/repository-build-output-cleanup.md` - completed repo-local `bin`/`obj`
+- `docs/architecture/repository-build-output-cleanup.md` - completed repo-local `bin`/`obj`
   cleanup, preserved historical archive, repeatable cleanup command, retired
   pre-stable recovery boundary, and verified SND-DESK public launcher chain.
 - `LibreHardwareMonitorLib/Hardware/Sensor.cs` - history bounds/persistence.
@@ -412,7 +410,7 @@ Stop unless it returns `VERIFIED` with machine ID `snd-host`.
 
 - Keep this README, current feature specs, and the active architecture and
   roadmap contracts only. Continuation state lives in
-  `docs/refactor-roadmap.md`, not in a separate handoff file.
+  `docs/architecture/refactor-roadmap.md`, not in a separate handoff file.
 - Do not hand-edit `docs/campaign-plan-*.md`. Those documents are rendered from
   `data/plans/*.json` on every plan mutation, so a manual edit is silently
   overwritten. Change the plan JSON and let the tooling re-render.

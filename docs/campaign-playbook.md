@@ -15,7 +15,7 @@ already cost real rework. Read this before your first campaign here.
 ## 1. Orientation, in order
 
 1. `docs/README.md` — current state, SND-HOST paths, verification commands.
-2. `docs/refactor-roadmap.md` — **the continuation checkpoint.** Phases,
+2. `docs/architecture/refactor-roadmap.md` — **the continuation checkpoint.** Phases,
    invariants, standing prohibitions, preserved branch evidence.
 3. `docs/campaign-backlog.md` — the sequenced campaign queue and entry
    conditions.
@@ -55,9 +55,8 @@ python scripts\task_manager.py plan preflight --json
 #    fields; plan-001 left four of them empty and it cost traceability.
 python scripts\task_manager.py plan create "<title>" `
   --planner-kind planner-refactor `
-  --roadmap docs/refactor-roadmap.md `
+  --roadmap docs/architecture/refactor-roadmap.md `
   --phase "<phase name>" `
-  --discovery-doc docs/discovery-librehw-structural-audit.md `
   --behavioral-invariant "<one per invariant>" `
   --rollback-strategy "<how to undo this campaign>"
 

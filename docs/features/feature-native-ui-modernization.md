@@ -394,11 +394,11 @@ Exit gate:
 
 ## Related roadmap boundaries
 
-- `docs/feature-sensor-workspace.md` owns browser Workspace reflow, panel
+- `docs/features/feature-sensor-workspace.md` owns browser Workspace reflow, panel
   density, membership editing, and richer honest small multiples.
-- `docs/feature-independent-text-scaling.md` owns the shipped independent UI,
+- `docs/features/feature-independent-text-scaling.md` owns the shipped independent UI,
   tracker, and graph-axis text scale contract.
-- `docs/feature-memory-ui-reliability.md` owns lifecycle, handle, scrollbar,
+- `docs/features/feature-memory-ui-reliability.md` owns lifecycle, handle, scrollbar,
   settings durability, and current accessibility baselines.
 
 ## Verification plan
