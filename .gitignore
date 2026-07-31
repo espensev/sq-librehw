@@ -14,3 +14,7 @@ packages/
 # Local tooling scratch: Python bytecode cache (e.g. scripts/*/__pycache__)
 __pycache__/
 *.pyc
+
+# Local campaign runtime/cache. Durable plans and evidence remain tracked.
+/data/tasks.json
+/data/analysis-cache.json

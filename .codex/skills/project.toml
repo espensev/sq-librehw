@@ -2,11 +2,106 @@
 name = "librehw-host"
 conventions = "AGENTS.md"
 
+[paths]
+state = "data/tasks.json"
+plans = "data/plans"
+specs = "agents/"
+tracker = "live-tracker.md"
+
 [commands]
-build = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\release\\New-LhmRelease.ps1"
-test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\release\\Test-LhmReleaseSystem.ps1"
+compile = "dotnet build LibreHardwareMonitor.Windows.Forms\\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64"
+build = "dotnet build LibreHardwareMonitor.Windows.Forms\\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64"
+test = "dotnet test LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.csproj -p:Platform=x64"
+test_fast = "dotnet test LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.csproj -p:Platform=x64"
+test_full = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\Test-AvaloniaSpike.ps1"
+
+[models]
+low = "mini"
+medium = "standard"
+high = "max"
+
+[modules]
+controls = ["Aga.Controls/"]
+hardware = ["LibreHardwareMonitorLib/"]
+winforms = ["LibreHardwareMonitor.Windows.Forms/"]
+winforms-tests = ["LibreHardwareMonitor.Tests/"]
+avalonia-core = ["LibreHardwareMonitor.Avalonia.Spike.Core/"]
+avalonia-app = ["LibreHardwareMonitor.Avalonia.Spike/"]
+avalonia-tests = ["LibreHardwareMonitor.Avalonia.Spike.Tests/"]
+web-contracts = ["LibreHardwareMonitor.Windows.Forms/Resources/Web/", "webtests/"]
+candidate-ops = ["ops/release/"]
+snd-desk-deploy-ops = ["ops/local-release/", "scripts/local-release/"]
+log-ops = ["ops/log-management/"]
+campaign-control = [".codex/", "agents/", "data/plans/", "live-tracker.md", "scripts/task_manager.py", "scripts/analysis/", "scripts/task_runtime/"]
+docs = ["AGENTS.md", "README.md", "docs/"]
+
+[conflict-zones]
+zones = [
+  "LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs, LibreHardwareMonitorLib/Hardware/Computer.cs | hardware lifetime and ordered option/reset ownership",
+  "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs, LibreHardwareMonitor.Tests/DataJsonGoldenTests.cs, LibreHardwareMonitor.Tests/data.golden.json | external data.json and HTTP mutation contract",
+  "LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs, LibreHardwareMonitor.Windows.Forms/Utilities/RuntimePaths.cs, LibreHardwareMonitor.Windows.Forms/UI/StartupManager.cs | settings, runtime paths, and startup ownership",
+  "Directory.Packages.props, LibreHardwareMonitor.sln, LibreHardwareMonitor.Avalonia.Spike.slnx | central package and project graph",
+  "docs/README.md, live-tracker.md, data/plans/ | current status and campaign truth"
+]
+
+[analysis]
+mode = "auto"
+providers = ["dotnet-cli"]
+include-globs = ["*.cs", "*.csproj", "*.sln", "*.slnx", "*.axaml", "*.js", "*.ps1", "*.py", "*.toml", "*.json", "*.md"]
+exclude-globs = ["**/bin/**", "**/obj/**", "data/tasks.json", "data/analysis-cache.json"]
+
+[docs-sync.tier1]
+files = ["AGENTS.md", "README.md", "docs/README.md", "live-tracker.md"]
+
+[docs-sync.tier2]
+files = ["docs/**/*.md", "agents/*.md", "data/plans/*.json"]
+
+[smart-test.mappings]
+"LibreHardwareMonitorLib/**/*.cs" = ["LibreHardwareMonitor.Tests/**/*.cs"]
+"LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs" = ["LibreHardwareMonitor.Tests/DataJsonGoldenTests.cs", "webtests/*.js"]
+"LibreHardwareMonitor.Windows.Forms/Resources/Web/*.js" = ["webtests/*.js"]
+"LibreHardwareMonitor.Avalonia.Spike.Core/**/*.cs" = ["LibreHardwareMonitor.Avalonia.Spike.Tests/**/*.cs"]
+"LibreHardwareMonitor.Avalonia.Spike/**/*.cs" = ["LibreHardwareMonitor.Avalonia.Spike.Tests/**/*.cs"]
+"ops/release/*.ps1" = ["ops/release/Test-LhmReleaseSystem.ps1"]
+"ops/log-management/*.ps1" = ["ops/log-management/Test-LhmLogManagement.ps1"]
+"ops/local-release/*.ps1" = ["scripts/local-release/Test-LhmLocalRelease.ps1"]
+"scripts/local-release/*.ps1" = ["scripts/local-release/Test-LhmLocalRelease.ps1"]
+"scripts/task_runtime/execution.py" = ["scripts/task_runtime/test_execution.py"]
+"scripts/task_runtime/verify.py" = ["scripts/task_runtime/test_verify.py"]
+
+[smart-test.cross-cutting]
+paths = ["Directory.Build.props", "Directory.Packages.props", "global.json", "LibreHardwareMonitor.sln", "LibreHardwareMonitor.Avalonia.Spike.slnx"]
+
+[build-gate.winforms-net10]
+build = "dotnet build LibreHardwareMonitor.Windows.Forms\\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64"
+test = "dotnet test LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.csproj -p:Platform=x64"
+
+[build-gate.winforms-net472]
+build = "dotnet build LibreHardwareMonitor.Windows.Forms\\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64"
+
+[build-gate.avalonia-spike]
+build = "dotnet build LibreHardwareMonitor.Avalonia.Spike.slnx -c Release"
+test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\Test-AvaloniaSpike.ps1"
+
+[build-gate.web-dashboard]
+build = ""
+verify = "node webtests\\selftest.node.js"
+test = "node --test webtests\\console.tests.js webtests\\workspace.tests.js"
+
+[build-gate.log-management]
+build = ""
+test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\log-management\\Test-LhmLogManagement.ps1"
+
+[build-gate.campaign-control]
+build = ""
+verify = "python scripts\\task_manager.py plan preflight --json"
+test = "python -m unittest discover -s scripts -p test_*.py -v"
 
 [build-gate.release-candidate]
 build = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\release\\New-LhmRelease.ps1"
 verify = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\release\\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource"
 test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\release\\Test-LhmReleaseSystem.ps1"
+
+[build-gate.snd-desk-local-release-fixture]
+build = ""
+test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\local-release\\Test-LhmLocalRelease.ps1"

@@ -2,7 +2,7 @@
 
 **Project:** LibreHardwareMonitor Sev IQ local fork  
 **Status:** Active implementation fork  
-**Updated:** 2026-07-30
+**Updated:** 2026-07-31
 **Purpose:** keep feature work spec-first without blocking normal review, build, launch, and bugfix work.
 
 This repository is not specs-only: product code exists and normal maintenance can proceed. The rule is narrower: **new features and meaningful behavior changes need a clear feature spec before implementation starts**, unless the maintainer explicitly asks for a small direct fix or exploratory spike.
@@ -22,6 +22,12 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
 ## 2. Source-of-truth map
 
 - `docs/README.md`: **start here** — compact current-state, contract, implementation, and verification map.
+- `docs/HANDOFF.md`: current continuation checkpoint; read before resuming the
+  structural baseline or starting another campaign.
+- `docs/refactor-roadmap.md`: active structural phases, non-negotiable
+  boundaries, and exit gates.
+- `docs/architecture/campaign-control-plane.md`: campaign truth layers,
+  runtime provenance, configuration ownership, and safety rules.
 - `docs/feature-memory-ui-reliability.md`: shipped memory, ownership, efficiency, and UI-reliability contract, verification, and open follow-ups.
 - `docs/feature-web-dashboard-studio-view.md`: shipped Studio dashboard behavior and verification record.
 - `docs/feature-sensor-workspace.md`: deployed Workspace view with named profiles, ordered panels, and bounded import/export.

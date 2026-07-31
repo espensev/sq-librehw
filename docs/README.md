@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor Docs
 
 **Status:** live map only
-**Updated:** 2026-07-30
+**Updated:** 2026-07-31
 
 ## Repository
 
@@ -155,6 +155,12 @@ rollback, and log/archive state are separate; no release payload belongs under
 
 ## Roadmap
 
+The structural baseline and phased reorganization are defined in
+`docs/refactor-roadmap.md`. Phase 0 cleanup and the local portion of Phase 1
+campaign-control recovery are complete and committed as the structural baseline
+on `main`, which is unpushed. CI, source moves, and any live relocation remain
+gated.
+
 The imported upstream roadmap also records a stale SND-DESK
 `hardware-optimization` health-feed task. That is a peer-only owner action, not
 an unqualified SND-HOST command.
@@ -215,6 +221,15 @@ an unqualified SND-HOST command.
 
 ## Source map
 
+- `docs/HANDOFF.md` - current continuation checkpoint, exact dirty/live state,
+  safety boundaries, verification evidence, and next safe sequence.
+- `docs/refactor-roadmap.md` - active repository/campaign reorganization
+  phases, invariants, gates, and next-campaign boundary.
+- `docs/architecture/campaign-control-plane.md` - authority, provenance,
+  configuration, refresh, and safety contract for local campaign tooling.
+- `docs/discovery-librehw-structural-audit.md` - active audit baseline feeding
+  the structural roadmap; retire it after the findings are closed or folded
+  into durable contracts.
 - `docs/feature-web-dashboard-studio-view.md` - shipped Studio contract.
 - `docs/feature-sensor-workspace.md` - active Workspace contract.
 - `docs/feature-thermal-trends.md` - additive hotspot-rate contract.
@@ -291,7 +306,9 @@ dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.For
 
 ## Docs policy
 
-- Keep this README and current feature specs only.
+- Keep this README, the current handoff, current feature specs, and active
+  architecture/roadmap contracts only.
 - Fold live findings and proof into the owning spec.
-- Delete completed discovery/review notes; Git history preserves the detail.
+- Delete completed point-in-time discovery/review notes after their unresolved
+  findings are folded into an active contract; Git history preserves detail.
 - Verify live repo/runtime state before trusting old evidence.

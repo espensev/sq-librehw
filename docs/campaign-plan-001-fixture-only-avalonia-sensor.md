@@ -2,11 +2,15 @@
 
 **Plan ID:** plan-001
 **Date:** 2026-07-30
-**Status:** approved
+**Status:** partial
 **Plan file:** data/plans/plan-001.json
 **Plan doc:** docs/campaign-plan-001-fixture-only-avalonia-sensor.md
 **Planner kind:** planner
 **Source discovery docs:** docs/discovery-pre-avalonia-readiness.md
+
+**Closure note:** all source agents, integration, regression, and exact-source
+candidate-isolation gates completed on `main`. The attended normal-user smoke
+in exit criterion 9 remains open, so this campaign is not marked executed.
 
 ---
 
