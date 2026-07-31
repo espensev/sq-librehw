@@ -27,12 +27,13 @@ winforms = ["LibreHardwareMonitor.Windows.Forms/"]
 winforms-tests = ["LibreHardwareMonitor.Tests/"]
 avalonia-core = ["LibreHardwareMonitor.Avalonia.Spike.Core/"]
 avalonia-app = ["LibreHardwareMonitor.Avalonia.Spike/"]
-avalonia-tests = ["LibreHardwareMonitor.Avalonia.Spike.Tests/"]
+avalonia-tests = ["LibreHardwareMonitor.Avalonia.Spike.Tests/", "scripts/Test-AvaloniaSpike.ps1"]
 web-contracts = ["LibreHardwareMonitor.Windows.Forms/Resources/Web/", "webtests/"]
 candidate-ops = ["ops/release/"]
 snd-desk-deploy-ops = ["ops/local-release/", "scripts/local-release/"]
 log-ops = ["ops/log-management/"]
 campaign-control = [".codex/", "agents/", "data/plans/", "live-tracker.md", "scripts/task_manager.py", "scripts/analysis/", "scripts/task_runtime/"]
+ci = ["eng/ci/", ".github/"]
 docs = ["AGENTS.md", "README.md", "docs/"]
 
 [conflict-zones]
@@ -41,14 +42,26 @@ zones = [
   "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs, LibreHardwareMonitor.Tests/DataJsonGoldenTests.cs, LibreHardwareMonitor.Tests/data.golden.json | external data.json and HTTP mutation contract",
   "LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs, LibreHardwareMonitor.Windows.Forms/Utilities/RuntimePaths.cs, LibreHardwareMonitor.Windows.Forms/UI/StartupManager.cs | settings, runtime paths, and startup ownership",
   "Directory.Packages.props, LibreHardwareMonitor.sln, LibreHardwareMonitor.Avalonia.Spike.slnx | central package and project graph",
-  "docs/README.md, live-tracker.md, data/plans/ | current status and campaign truth"
+  "docs/README.md, live-tracker.md, data/plans/ | current status and campaign truth",
+  "eng/ci/Invoke-LhmGates.ps1, .codex/skills/project.toml | gate definition drift between the runner and the configuration",
+  "docs/architecture/campaign-control-plane.md, scripts/task_runtime/test_campaign_history.py | campaign-runtime provenance record and its overlay files"
 ]
 
 [analysis]
 mode = "auto"
 providers = ["dotnet-cli"]
 include-globs = ["*.cs", "*.csproj", "*.sln", "*.slnx", "*.axaml", "*.js", "*.ps1", "*.py", "*.toml", "*.json", "*.md"]
-exclude-globs = ["**/bin/**", "**/obj/**", "data/tasks.json", "data/analysis-cache.json"]
+# This list REPLACES the analyzer defaults rather than extending them, so the
+# generic patterns have to be restated here. fnmatch gives `**/bin/**` no special
+# meaning: it requires a separator before `bin`, so it misses a repository-root
+# `bin/`, which a full gate sweep creates. Both forms are needed.
+exclude-globs = [
+  "**/bin/**", "bin/**",
+  "**/obj/**", "obj/**",
+  "**/__pycache__/**", "__pycache__/**",
+  ".git/**",
+  "data/tasks.json", "data/analysis-cache.json"
+]
 
 [docs-sync.tier1]
 files = ["AGENTS.md", "README.md", "docs/README.md", "live-tracker.md"]
@@ -68,6 +81,10 @@ files = ["docs/**/*.md", "agents/*.md", "data/plans/*.json"]
 "scripts/local-release/*.ps1" = ["scripts/local-release/Test-LhmLocalRelease.ps1"]
 "scripts/task_runtime/execution.py" = ["scripts/task_runtime/test_execution.py"]
 "scripts/task_runtime/verify.py" = ["scripts/task_runtime/test_verify.py"]
+"eng/ci/*.ps1" = ["eng/ci/Test-LhmCiGates.ps1"]
+"eng/ci/tests/*.ps1" = ["eng/ci/Test-LhmCiGates.ps1"]
+".github/workflows/*.yml" = ["eng/ci/Test-LhmCiGates.ps1"]
+"docs/campaign-history.md" = ["scripts/task_runtime/test_campaign_history.py"]
 
 [smart-test.cross-cutting]
 paths = ["Directory.Build.props", "Directory.Packages.props", "global.json", "LibreHardwareMonitor.sln", "LibreHardwareMonitor.Avalonia.Spike.slnx"]
@@ -105,3 +122,9 @@ test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\release\\Te
 [build-gate.snd-desk-local-release-fixture]
 build = ""
 test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\local-release\\Test-LhmLocalRelease.ps1"
+
+# Excluded from eng/ci/Invoke-LhmGates.ps1 -All because it is self-referential:
+# this suite invokes that runner. Run it directly.
+[build-gate.ci-gates]
+build = ""
+test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\\ci\\Test-LhmCiGates.ps1"

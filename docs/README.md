@@ -6,7 +6,19 @@
 ## Repository
 
 - `origin` is `celine-anime/librehw-host`; the default and working branch is
-  `main`. Push and pull there unless a task says otherwise.
+  `main`. **Do not push unless a task explicitly asks for it.** `main` is
+  deliberately kept ahead of `origin/main`; being ahead is the normal state,
+  not a backlog to clear.
+- Full local remote configuration. Two of the three pushes fail closed by
+  design:
+
+  | Remote | Fetch | Push |
+  |---|---|---|
+  | `origin` | `https://github.com/celine-anime/librehw-host.git` | same |
+  | `upstream` | `https://github.com/espensev/sq-librehw.git` | `DISABLED` |
+  | `vanilla` | `E:/SQ_HQ/Monitoring/libre-dev/LibreHardwareMonitor` | `DISABLED` |
+
+  Push default is `origin` / `simple`.
 - `upstream` is the fetch-only source `espensev/sq-librehw`, whose source branch
   is named `master`. Never develop on or push to that branch. Development stays
   on local `main`, which tracks and pushes to `origin/main`. Full history is
@@ -156,10 +168,13 @@ rollback, and log/archive state are separate; no release payload belongs under
 ## Roadmap
 
 The structural baseline and phased reorganization are defined in
-`docs/refactor-roadmap.md`. Phase 0 cleanup and the local portion of Phase 1
-campaign-control recovery are complete and committed as the structural baseline
-on `main`, which is unpushed. CI, source moves, and any live relocation remain
-gated.
+`docs/refactor-roadmap.md`. Phase 0 cleanup and Phase 1 campaign and
+verification control plane are complete on `main`, which is deliberately
+unpushed. Phase 1 closed with Plan-002: a non-deploying gate runner at
+`eng/ci/`, a read-only GitHub Actions workflow that only delegates to it, and a
+tracked acceptance ledger at `docs/campaign-history.md`. Source moves and any
+live relocation remain gated; the next candidate is the isolated Avalonia
+experiment move in Phase 2.
 
 The imported upstream roadmap also records a stale SND-DESK
 `hardware-optimization` health-feed task. That is a peer-only owner action, not
@@ -221,12 +236,31 @@ an unqualified SND-HOST command.
 
 ## Source map
 
-- `docs/HANDOFF.md` - current continuation checkpoint, exact dirty/live state,
-  safety boundaries, verification evidence, and next safe sequence.
 - `docs/refactor-roadmap.md` - active repository/campaign reorganization
-  phases, invariants, gates, and next-campaign boundary.
+  phases, invariants, gates, standing prohibitions, preserved Plan-001 branch
+  evidence, open quarantine decisions, and the next-campaign boundary. **Start
+  here for continuation.** The former `docs/HANDOFF.md` was folded into this
+  file and `docs/README.md` when Plan-002 landed, and then deleted; there is no
+  separate handoff file any more.
 - `docs/architecture/campaign-control-plane.md` - authority, provenance,
-  configuration, refresh, and safety contract for local campaign tooling.
+  configuration, refresh, safety contract, and the campaign-history acceptance
+  transition contract for local campaign tooling.
+- `docs/campaign-backlog.md` - the sequenced campaign queue: next campaign,
+  entry conditions, agent ownership, exit criteria, and the outline arc through
+  Phase 6.
+- `docs/campaign-playbook.md` - operational runbook for running a campaign:
+  lifecycle commands, non-obvious tooling behavior, environment traps, the
+  four-tier verification ladder, and ownership rules.
+- `docs/campaign-history.md` - durable tracked ledger of per-criterion campaign
+  acceptance, with four ledger states and mandatory waiver fields. A row here
+  is human acceptance evidence; it is not authority to deploy.
+- `eng/ci/` - the non-deploying gate runner and its test suite. Gate commands
+  are defined only in `.codex/skills/project.toml`; the runner reads them at run
+  time, requires every gate to be classified, and refuses deny-listed commands.
+  `eng/ci/README.md` documents the classification and exclusions.
+- `.github/workflows/non-deploying-gates.yml` - read-only workflow that only
+  delegates to that runner. Never executed on a hosted runner, because `origin`
+  is deliberately unpushed.
 - `docs/discovery-librehw-structural-audit.md` - active audit baseline feeding
   the structural roadmap; retire it after the findings are closed or folded
   into durable contracts.
@@ -285,6 +319,36 @@ an unqualified SND-HOST command.
 
 ## Verify
 
+Run everything through the gate runner. It is the single non-deploying entry
+point and refuses any deploying command:
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE = '1'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Invoke-LhmGates.ps1 -List
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Invoke-LhmGates.ps1 -All
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Test-LhmCiGates.ps1
+```
+
+Set `PYTHONDONTWRITEBYTECODE` before any Python command in this repository.
+Without it, importing `scripts/task_runtime` leaves `__pycache__` directories,
+and the structural baseline records zero generated directories.
+
+`-All` runs three `dotnet build` gates, so `git clean -ndX` afterwards lists the
+recreated `bin/` and `obj/` trees. That is expected. Return to a clean state
+with the guarded cleanup tool, never with `git clean -fdX`:
+
+```powershell
+.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
+.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1
+```
+
+That script's path list is deliberately explicit: a project does not inherit
+destructive cleanup merely by having a `bin` or `obj` directory. Add any new
+project to `$relativeOutputRoots` by hand.
+
+The individual commands remain valid and are still the right tool when you want
+one thing rather than the whole sweep:
+
 ```powershell
 node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js
 node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\workspace.js
@@ -304,10 +368,54 @@ dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.For
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
 ```
 
+### Live SND-HOST proof
+
+Source work must never change the live runtime. To prove it did not, check all
+five and expect them unchanged except for CSV growth:
+
+1. exactly one LHM process, and its executable path is
+   `E:\SQ_HQ\Monitoring\LibreHardwareMonitor\LibreHardwareMonitor.Windows.Forms.exe`;
+2. root task `\LibreHardwareMonitor` is `Running` — result `267009` / `0x41301`
+   means still running, not failed;
+3. the task action and working directory match the live root exactly;
+4. proxy-bypassed `/`, `/data.json`, and `/metrics` all return HTTP `200`;
+5. the current-day CSV under the live root is still growing.
+
+Two things about step 4 will otherwise waste time:
+
+- The port comes from `listenerPort` in the live
+  `LibreHardwareMonitor.Windows.Forms.config`, currently `8080`.
+- The listener binds the host's LAN address, not loopback, so `localhost:8080`
+  is actively refused even while the server is healthy. Probe the bound address.
+
+```powershell
+$bound = (Get-NetTCPConnection -State Listen -LocalPort 8080).LocalAddress
+foreach ($u in '/', '/data.json', '/metrics') {
+    (Invoke-WebRequest "http://${bound}:8080$u" -UseBasicParsing -Proxy $null).StatusCode
+}
+```
+
+The server is `HttpListener`, so it is http.sys-backed and the listening socket
+is owned by `System` (PID 4), not by the LibreHardwareMonitor process.
+`Get-NetTCPConnection -OwningProcess <lhm-pid>` therefore returns nothing. That
+is normal and is **not** evidence that the dashboard is down.
+
+Verify machine identity before any machine-sensitive mutation:
+
+```powershell
+& 'C:\Users\Dev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+```
+
+Stop unless it returns `VERIFIED` with machine ID `snd-host`.
+
 ## Docs policy
 
-- Keep this README, the current handoff, current feature specs, and active
-  architecture/roadmap contracts only.
+- Keep this README, current feature specs, and the active architecture and
+  roadmap contracts only. Continuation state lives in
+  `docs/refactor-roadmap.md`, not in a separate handoff file.
+- Do not hand-edit `docs/campaign-plan-*.md`. Those documents are rendered from
+  `data/plans/*.json` on every plan mutation, so a manual edit is silently
+  overwritten. Change the plan JSON and let the tooling re-render.
 - Fold live findings and proof into the owning spec.
 - Delete completed point-in-time discovery/review notes after their unresolved
   findings are folded into an active contract; Git history preserves detail.

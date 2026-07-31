@@ -55,10 +55,61 @@ integration. Therefore:
 
 **Exit gate:** audit evidence is reviewable and no live consumer changed.
 
+### Preserved Plan-001 branch evidence
+
+Four completed Plan-001 worktrees were removed after ancestry or
+patch-equivalence proof. **No branch was deleted**, and none may be:
+
+| Branch | Commit |
+|---|---|
+| `main` | `96746807a41e186e1404e3f4220985db5dd6c276` |
+| `agent/plan-001-b-parser` | `1d40e04f3b61aa35a4cc72f2ae6fa92295728621` |
+| `integration/plan-001-bc-review` | `33cc19b50263184db4bd8ea6734d1f4d0bf8d522` |
+| `agent/plan-001-c-shell` | `59cb5489ff65f64e2c4f3b3d5fc674421994c082` |
+| `agent/plan-001-d-integration` | `b466837b20051862f1268b284fa06ec4bedd1f48` |
+
+Only three verified-empty false Git markers were removed: `Monitoring\.git`,
+`HWiNFO64\.git`, and `libre-dev\.git`.
+
+### Standing prohibitions from Phase 0
+
+- Do not delete the preserved Plan-001 branches.
+- Do not raw-delete a Git worktree or any Git administration path. Worktree
+  cleanup requires exact path validation plus clean-state and
+  ancestry/patch-equivalence evidence; branch deletion is a separate decision.
+- Do not create a release candidate merely to verify a documentation or
+  control-plane change.
+- Do not register a plan from a dirty tree.
+- Do not run `git clean -fdX`. It removes `data/tasks.json` and
+  `data/analysis-cache.json`, the local execution ledger and analysis cache.
+  After a gate sweep, use `scripts/local-release/Clear-LhmRepositoryBuildOutputs.ps1`
+  instead, reviewing its `-WhatIf` output first. Its path list is deliberately
+  explicit, so **a new project must be added to it by hand** — a project does
+  not inherit destructive cleanup merely by having a `bin` or `obj` directory.
+- Do not infer that an automated `verified` execution manifest means attended
+  acceptance completed.
+- **Do not run `python scripts/task_manager.py merge` for a campaign whose
+  agents ran in the primary checkout rather than in worktrees.** `merge` restores
+  tracked files from the agent branches it expects to find; with no worktrees it
+  reports conflict sets and reverts every tracked modification in the working
+  tree. Untracked files survive, tracked edits do not. Inline execution needs no
+  merge step.
+
+### Open quarantine and ownership decisions
+
+Deliberately untouched. These are ownership questions for a later phase, not
+cleanup permission:
+
+- empty `.agents` placeholders in several Monitoring and source directories;
+- empty `Monitoring\Active`;
+- foreign `HWiNFO64\logex.txt` scratch transcript;
+- `TerminateWarThunder`, pending registry-alert ownership inspection;
+- root operational `docs` and `tests` under `Monitoring`, which still lack
+  declared ownership.
+
 ## Phase 1 — Campaign and verification control plane
 
-**Status:** local recovery complete and committed; CI and the campaign-history
-transition remain open
+**Status:** complete
 
 - [x] Pin `scripts/task_manager.py`, `scripts/task_runtime`, and
       `scripts/analysis` from the canonical Codex package.
@@ -74,13 +125,42 @@ transition remain open
 - [x] Re-run all existing non-live regression/build fixtures and remove their
       generated repository output.
 - [x] Review and commit the structural baseline.
-- [ ] Add non-deploying CI for campaign-control tests, .NET tests, both WinForms
+- [x] Add non-deploying CI for campaign-control tests, .NET tests, both WinForms
       targets, web tests, Avalonia fixture tests, and operations contract tests.
-- [ ] Define an explicit campaign-history transition for Plan-001 after its
+- [x] Define an explicit campaign-history transition for Plan-001 after its
       attended gate is closed or waived.
 
-**Exit gate:** a clean baseline commit passes all configured non-live gates and
-CI cannot deploy or mutate the host.
+**Exit gate:** satisfied by Plan-002. `eng/ci/Invoke-LhmGates.ps1 -All` passed
+8 of 8 included gates from the clean baseline, and CI cannot deploy or mutate
+the host: gate commands are read from `.codex/skills/project.toml` at run time
+rather than hard-coded, every configured gate must be explicitly classified or
+the run fails closed, and a deny-list is applied to each resolved command
+immediately before execution so a later configuration edit cannot smuggle a
+deploying command into an included gate. The GitHub Actions workflow only
+delegates to that runner and duplicates no gate command.
+
+### Decision — `eng/ci` adopted early, additively
+
+`eng/ci` is a Phase 2 target path, taken here ahead of Phase 2 deliberately.
+The adoption is purely additive: nothing moved, nothing was renamed, and no
+existing entry point changed. The reason is that a CI entry point is exactly
+the kind of path whose later relocation breaks things silently, so it was worth
+creating in its final home once rather than moving it later. Phase 2 therefore
+moves the existing engineering entry points into an established boundary
+instead of relocating a freshly created one.
+
+### Campaign ownership rules
+
+These apply to every campaign, not just Plan-002:
+
+- Do not edit an agent's owned files from outside that agent. Ownership is
+  declared per file in the plan JSON and validated on approval.
+- `live-tracker.md` has exactly one writer per campaign. Other agents return
+  their tracker row text in their result payload.
+- Do not hand-edit `docs/campaign-plan-*.md`. It is rendered from
+  `data/plans/*.json` on every plan mutation and manual edits are overwritten.
+- A `Done` tracker row is agent-level completion. Campaign acceptance lives in
+  `docs/campaign-history.md` and is a person-only action.
 
 ## Phase 2 — Fork-only taxonomy
 
@@ -170,10 +250,23 @@ rebinding all pass after cutover.
 
 ## Next campaign
 
-Do not register Plan-002 from a dirty baseline. After Phase 0/1 changes are
-reviewed and committed, make the first campaign one of:
+**The sequenced queue lives in `docs/campaign-backlog.md`.** That file holds the
+executable order — next campaign, entry conditions, ownership, exit criteria.
+This file holds the phase contract those campaigns must satisfy. Keep the two in
+step: when a campaign lands, close its roadmap item here and delete its section
+there.
 
-1. non-deploying CI and campaign-history contracts; or
-2. the isolated Avalonia experiment move with exact reference/test gates.
+At this checkpoint the queue is:
 
-The CI/control-plane campaign is lower risk and should normally go first.
+1. **A1** — Plan-001's attended normal-user smoke. Person-only, still open, and
+   the only open criterion in the repository.
+2. **A2** — Plan-002 acceptance. Person-only; every criterion is met and the
+   ledger state is `implemented`.
+3. **plan-003** — move the Avalonia fixture explorer into
+   `experiments/avalonia-fixture-explorer`. Spec-complete and ready to register.
+
+A1 should precede plan-003. The move touches the same three projects, so running
+the attended smoke afterwards would leave a failure unattributable.
+
+Do not register a plan from a dirty tree; check `plan preflight` first, and see
+`docs/campaign-playbook.md` for the full lifecycle.

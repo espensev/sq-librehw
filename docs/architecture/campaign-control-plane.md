@@ -5,12 +5,13 @@
 
 ## Authority
 
-The campaign system has three distinct truth layers:
+The campaign system has four distinct truth layers:
 
 | Layer | Authority | Persistence |
 |---|---|---|
 | Plan contract | `data/plans/plan-NNN.json` and its campaign document | tracked |
 | Execution ledger | `data/tasks.json` | local and ignored |
+| Acceptance ledger | `docs/campaign-history.md` | tracked |
 | Runtime/configuration | `scripts/task_manager.py`, `scripts/task_runtime`, `scripts/analysis`, `.codex/skills/project.toml` | tracked |
 
 The tracker is a human-readable progress surface, not permission to infer
@@ -19,6 +20,74 @@ acceptance or deployment.
 Plan status and execution-manifest status answer different questions. A plan
 may correctly be `partial` because an attended acceptance gate is open while
 its historical automated execution manifest is `verified`.
+
+## Campaign history and acceptance
+
+Per-criterion acceptance evidence is durable only if it is tracked.
+`data/tasks.json` is ignored local execution state, so it can record that
+automation ran but can never record that a person accepted the result.
+`docs/campaign-history.md` is that record.
+
+### The two axes
+
+Plan lifecycle status answers **"has the tooling registered and run this
+campaign"**. Ledger state answers **"has a person accepted the result"**. They
+move independently and neither implies the other.
+
+The distinction is not academic. `executed` in this tooling means the agents
+were registered and their spec templates generated. A plan is `executed` from
+the moment it is registered, with every one of its exit criteria still open.
+Any acceptance rule keyed on plan status is therefore wrong on the day the plan
+is created.
+
+### Ledger states
+
+| State | Meaning | Who may set it |
+|---|---|---|
+| `registered` | The plan is approved and its agents exist. | whoever registers the campaign |
+| `implemented` | Every automated exit criterion has recorded evidence and all agent work is merged. | the campaign owner, after the gates pass |
+| `accepted` | Every criterion is `met`, or `waived` with a complete waiver record. | a person only |
+| `closed` | Accepted, and the campaign document, tracker rows, and agent specs are reconciled. | a person only |
+
+**Automated verification must never write `accepted`.** This is the same rule
+the `verify.py` overlay already enforces one level down, where aggregate
+automation leaves every exit criterion `not_evaluated`. A campaign tool that
+could write `accepted` would make that overlay pointless.
+
+### The transition rule
+
+A campaign may not be recorded `accepted` or `closed` while any criterion is
+`open`, or is `waived` without a complete waiver record.
+
+Moving to `implemented` with attended criteria still open is correct and
+expected. That is precisely plan-001's position, and it is not a defect.
+
+### Waiver records
+
+A waiver is the only way a criterion may be treated as closed without being met.
+All five fields are required:
+
+| Field | Content |
+|---|---|
+| Waived by | the person accepting the risk |
+| Date | absolute ISO date, never "recently" or "last week" |
+| Reason | why the criterion cannot or need not be met |
+| Accepted risk | what could go wrong because it was not met |
+| Reopens if | the condition that puts the criterion back to `open` |
+
+A waiver missing any field is treated as `open`.
+
+### Applied to plan-001
+
+Three statuses are simultaneously correct:
+
+- its automated execution manifest is `verified`;
+- its tracked plan contract is `partial`;
+- its ledger state is `implemented`.
+
+Criterion 9, the attended normal-user smoke, is `open`. Closing it requires
+either performing the attended smoke or filing a waiver record. Plan-002
+defined this contract; it deliberately did neither.
 
 ## Local runtime provenance
 
@@ -56,7 +125,15 @@ The repository-owned overlay is:
 - `scripts/task_runtime/test_execution.py`,
   `scripts/task_runtime/test_verify.py`, and
   `scripts/task_runtime/test_project_config.py`: regression coverage for those
-  rules and the non-mutating generic-command boundary.
+  rules and the non-mutating generic-command boundary;
+- `scripts/task_runtime/test_campaign_history.py`: regression coverage for the
+  acceptance ledger above — plan-to-ledger agreement in both directions,
+  verbatim criterion text, the transition rule, and complete waiver records.
+
+There are now four repository-only overlay tests and two overlay
+implementations. `test_campaign_history.py` is a repository-only addition: it
+modifies no canonical file and the pinned `scripts/task_manager.py` SHA-256
+above is unchanged by it.
 
 Recheck this overlay on each canonical refresh and drop individual deviations
 when the shared package contains equivalent fixes.
@@ -70,6 +147,10 @@ Normalization-aware Git blob IDs for the reviewed overlay:
 | `test_execution.py` | `e8a84281d7987cd3d3b67a4306399dc5b01887a2` |
 | `test_verify.py` | `6e4cceed443bae055a2d948c8d11a6ebd3cd3d43` |
 | `test_project_config.py` | `24e0c4207b7c18d96460ac39e686937642f1ee95` |
+| `test_campaign_history.py` | `58a37e2c879dd2fce554c5c6ac4efc978572b08e` |
+
+Recompute a blob ID with `git hash-object <path>` after any edit to the file it
+names. A stale blob ID is a provenance defect, not a formatting detail.
 
 ## Safe refresh procedure
 

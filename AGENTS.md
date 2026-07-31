@@ -22,12 +22,22 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
 ## 2. Source-of-truth map
 
 - `docs/README.md`: **start here** — compact current-state, contract, implementation, and verification map.
-- `docs/HANDOFF.md`: current continuation checkpoint; read before resuming the
-  structural baseline or starting another campaign.
-- `docs/refactor-roadmap.md`: active structural phases, non-negotiable
-  boundaries, and exit gates.
+- `docs/refactor-roadmap.md`: **current continuation checkpoint** — active
+  structural phases, non-negotiable boundaries, standing prohibitions,
+  preserved branch evidence, open quarantine decisions, and exit gates. Read
+  before resuming the structural baseline or starting another campaign.
+- `docs/campaign-backlog.md`: the sequenced campaign queue — what to run next,
+  its entry conditions, ownership, and exit criteria.
+- `docs/campaign-playbook.md`: how to actually run a campaign here, including
+  the tooling behavior and environment traps that are not obvious from this
+  file. Read it before your first campaign.
+- `docs/campaign-history.md`: durable per-criterion campaign acceptance ledger.
+  A row here is human acceptance evidence, not authority to deploy.
 - `docs/architecture/campaign-control-plane.md`: campaign truth layers,
-  runtime provenance, configuration ownership, and safety rules.
+  runtime provenance, configuration ownership, safety rules, and the
+  campaign-history acceptance transition contract.
+- `eng/ci/README.md`: the non-deploying gate runner, its gate classification,
+  the excluded deploying keys, and the deny-list.
 - `docs/feature-memory-ui-reliability.md`: shipped memory, ownership, efficiency, and UI-reliability contract, verification, and open follow-ups.
 - `docs/feature-web-dashboard-studio-view.md`: shipped Studio dashboard behavior and verification record.
 - `docs/feature-sensor-workspace.md`: deployed Workspace view with named profiles, ordered panels, and bounded import/export.
