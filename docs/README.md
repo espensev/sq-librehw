@@ -30,7 +30,7 @@
   against this section. `main` is the branch for new work.
 - Upstream `LibreHardwareMonitor/LibreHardwareMonitor` links in the root
   `README.md` point at the real upstream project and are not stale.
-- The imported `ops/local-release` and `scripts/local-release` surfaces are
+- The imported `ops/deploy/snd-desk` and `ops/deploy/snd-desk` surfaces are
   SND-DESK-only in production: deployment and launcher paths fail closed to
   `snd-desk`, while peer-safe non-live fixtures use isolated temporary roots.
   Their `LibreHW`, `sqdata`, launcher, task, user, and cleanup records do not
@@ -72,7 +72,7 @@ rollback, and log/archive state are separate; no release payload belongs under
   runtime and archive roots above. Seven July 18-24 archives and the first
   repaired-path July 25 rollover archive passed structural inspection; the
   current-day CSV and 365-day retention previews selected nothing for removal.
-- Release-candidate tooling is source-controlled under `ops/release`. It builds
+- Release-candidate tooling is source-controlled under `ops/candidate`. It builds
   framework-dependent `win-x64` payloads for both application frameworks
   through a clean external staging root and publishes independently verified
   ZIP packages plus `release-manifest.json` outside the repository. Candidate
@@ -308,7 +308,7 @@ an unqualified SND-HOST command.
 - `LibreHardwareMonitor.Windows.Forms/Resources/Web/workspace.js` - bounded
   Workspace model, presets, profile operations, and import/export.
 - `ops/log-management/` - host-neutral log operations and task-install package.
-- `ops/release/` - external clean staging, candidate manifest/hash validation,
+- `ops/candidate/` - external clean staging, candidate manifest/hash validation,
   guarded repository-output cleanup, and release-system regression tests; no
   deployment or promotion.
 - `LibreHardwareMonitor.Windows.Forms/UI/Themes/ThemedVScrollIndicator.cs` and
@@ -338,8 +338,8 @@ recreated `bin/` and `obj/` trees. That is expected. Return to a clean state
 with the guarded cleanup tool, never with `git clean -fdX`:
 
 ```powershell
-.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
-.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1
+.\eng\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
+.\eng\Clear-LhmRepositoryBuildOutputs.ps1
 ```
 
 That script's path list is deliberately explicit: a project does not inherit
@@ -356,13 +356,13 @@ node webtests\selftest.node.js
 node --test webtests\console.tests.js webtests\workspace.tests.js
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-LhmLogManagement.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File experiments\avalonia-fixture-explorer\Test-AvaloniaSpike.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseSystem.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\New-LhmRelease.ps1 -ReleaseRoot <external-release-root>
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -ReleaseRoot <external-release-root>
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource -ReleaseRoot <external-release-root>
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseSystem.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\New-LhmRelease.ps1 -ReleaseRoot <external-release-root>
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseCandidate.ps1 -Latest -ReleaseRoot <external-release-root>
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource -ReleaseRoot <external-release-root>
 # Peer-safe non-live fixture for the SND-DESK workflow; production remains target-gated.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\local-release\Test-LhmLocalRelease.ps1
-.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\deploy\snd-desk\Test-LhmLocalRelease.ps1
+.\eng\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64

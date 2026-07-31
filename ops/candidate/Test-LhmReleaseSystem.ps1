@@ -184,7 +184,7 @@ try {
 
     $orchestrationRepository = Join-Path $testRoot 'orchestration-repository'
     $orchestrationReleaseRoot = Join-Path $testRoot 'orchestration-releases'
-    $orchestrationScripts = Join-Path $orchestrationRepository 'ops\release'
+    $orchestrationScripts = Join-Path $orchestrationRepository 'ops\candidate'
     [System.IO.Directory]::CreateDirectory($orchestrationScripts) | Out-Null
     foreach ($scriptName in @(
         'LhmRelease.Common.ps1',

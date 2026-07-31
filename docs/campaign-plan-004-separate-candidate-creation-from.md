@@ -2,7 +2,7 @@
 
 **Plan ID:** plan-004
 **Date:** 2026-07-31
-**Status:** draft
+**Status:** approved
 **Plan file:** data/plans/plan-004.json
 **Plan doc:** docs/campaign-plan-004-separate-candidate-creation-from.md
 **Planner kind:** planner-refactor

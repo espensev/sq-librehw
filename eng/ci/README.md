@@ -69,7 +69,7 @@ warning, so a not-yet-registered gate never fails a run.
 Classification is per key, not per gate. `release-candidate` is the only gate
 that is split:
 
-- **`build` is excluded.** `ops/release/New-LhmRelease.ps1` creates an external
+- **`build` is excluded.** `ops/candidate/New-LhmRelease.ps1` creates an external
   release candidate. Candidate creation belongs only to its named release gate,
   never to CI.
 - **`verify` is excluded.** `Test-LhmReleaseCandidate.ps1 -RequirePromotable
@@ -142,8 +142,8 @@ output is ignored and reproducible. What must **not** appear is a `__pycache__`
 directory. To return to the baseline's zero-generated-directories state:
 
 ```powershell
-.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
-.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1
+.\eng\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
+.\eng\Clear-LhmRepositoryBuildOutputs.ps1
 ```
 
 Do not use `git clean -fdX`. It would delete `data/tasks.json` and

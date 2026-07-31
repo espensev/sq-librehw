@@ -261,7 +261,7 @@ dotnet run --project experiments\avalonia-fixture-explorer\LibreHardwareMonitor.
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseSystem.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseSystem.ps1
 ```
 
 ## Automated evidence — 2026-07-30
@@ -310,9 +310,9 @@ source-spike issue and does not substitute for the pending attended smoke.
 Post-merge candidate gate — **passed, manager only**:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\New-LhmRelease.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource
-pwsh -NoProfile -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\New-LhmRelease.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource
+pwsh -NoProfile -File ops\candidate\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource
 ```
 
 - Candidate ID: `0.9.6-20260730-210528120-b466837`.

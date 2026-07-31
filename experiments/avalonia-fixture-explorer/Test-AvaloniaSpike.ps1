@@ -408,7 +408,7 @@ try {
             '-ExecutionPolicy',
             'Bypass',
             '-File',
-            'ops\release\Test-LhmReleaseSystem.ps1') `
+            'ops\candidate\Test-LhmReleaseSystem.ps1') `
         -Description 'run release-system behavior fixture')
     $releaseAssertionCount = Get-RequiredMatchCount `
         -Output $releaseTestOutput `

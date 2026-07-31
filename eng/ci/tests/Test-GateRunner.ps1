@@ -143,7 +143,7 @@ test = 'powershell.exe -NoProfile -Command exit 0'
     $denyConfig = Join-Path $temp 'deny.toml'
     Write-FixtureConfig -Path $denyConfig -Content @"
 [build-gate.log-management]
-test = 'powershell.exe -NoProfile -Command Set-Content -Path $sentinel -Value ran; ops/release/New-LhmRelease.ps1'
+test = 'powershell.exe -NoProfile -Command Set-Content -Path $sentinel -Value ran; ops/candidate/New-LhmRelease.ps1'
 "@
     $deny = Invoke-Runner @('-ConfigPath', $denyConfig, '-All')
     Assert-Case 'a denied command exits 3 and never runs' `

@@ -10,8 +10,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
-$commonScript = Join-Path $repositoryRoot 'ops\local-release\LhmLocalRelease.Common.ps1'
+$repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..\..')
+$commonScript = Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1'
 . $commonScript
 
 function Invoke-CheckedCommand {

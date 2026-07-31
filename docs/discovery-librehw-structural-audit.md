@@ -145,9 +145,9 @@ all bind the current live path.
 - Any later live relocation needs captured task/shortcut/config state, one
   declared startup authority, proxy-bypassed HTTP checks, CSV growth proof, and
   rollback.
-- `ops/local-release` must not be used for SND-HOST: `AGENTS.md:34-38`,
-  `ops/local-release/LhmLocalRelease.Common.ps1:9-42`, and
-  `ops/local-release/Start-LibreHardwareMonitor.ps1:12-55` define a
+- `ops/deploy/snd-desk` must not be used for SND-HOST: `AGENTS.md:34-38`,
+  `ops/deploy/snd-desk/LhmLocalRelease.Common.ps1:9-42`, and
+  `ops/deploy/snd-desk/Start-LibreHardwareMonitor.ps1:12-55` define a
   fail-closed SND-DESK-only contract.
 
 ### Q3: What is source, generated output, live data, tooling, or residue?
@@ -382,7 +382,7 @@ Logical source boundaries:
 - WinForms remains the only current hardware/process/task owner.
 - Current live directories and archives cannot be raw-moved.
 - Source, candidates, live runtime, rollback, and logs must remain distinct.
-- SND-DESK `ops/local-release` defaults are not SND-HOST authority.
+- SND-DESK `ops/deploy/snd-desk` defaults are not SND-HOST authority.
 - Upstream-facing project roots should not be wholesale relocated.
 - `data.json`, CSV IDs/order, Prometheus, settings, and hardware behavior must
   remain unchanged during structural phases.

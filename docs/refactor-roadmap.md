@@ -35,7 +35,7 @@ integration. Therefore:
 - Both `net10.0-windows` and `net472` WinForms builds remain gates.
 - The Avalonia fixture explorer remains non-elevated, fixture-only, and
   non-shipping until a new accepted specification says otherwise.
-- `ops/local-release` is SND-DESK-only. It must fail closed on SND-HOST.
+- `ops/deploy/snd-desk` is SND-DESK-only. It must fail closed on SND-HOST.
 - No phase may treat a source build or candidate as a live promotion.
 
 ## Phase 0 — Baseline and ambiguity removal
@@ -82,7 +82,7 @@ Only three verified-empty false Git markers were removed: `Monitoring\.git`,
 - Do not register a plan from a dirty tree.
 - Do not run `git clean -fdX`. It removes `data/tasks.json` and
   `data/analysis-cache.json`, the local execution ledger and analysis cache.
-  After a gate sweep, use `scripts/local-release/Clear-LhmRepositoryBuildOutputs.ps1`
+  After a gate sweep, use `eng/Clear-LhmRepositoryBuildOutputs.ps1`
   instead, reviewing its `-WhatIf` output first. Its path list is deliberately
   explicit, so **a new project must be added to it by hand** — a project does
   not inherit destructive cleanup merely by having a `bin` or `obj` directory.
@@ -167,8 +167,7 @@ These apply to every campaign, not just Plan-002:
 **Status:** not started
 
 - [x] Move the Avalonia fixture projects into `experiments/avalonia-fixture-explorer/` (Plan-003, 2026-07-31): moved with history preserved, configuration-only rewiring proven by the non-deploying gate runner, and a permanent stale-reference gate added.
-- Separate candidate creation from peer-specific deployment semantics:
-  `ops/candidate`, `ops/deploy/snd-desk`, and `ops/log-management`.
+- [x] Separate candidate creation from peer-specific deployment semantics (Plan-004, 2026-07-31): `ops/candidate` (host-neutral), `ops/deploy/snd-desk` (SND-DESK-only), `ops/log-management` (unchanged), and the repository cleanup tool moved to `eng/`. Fail-closed guards proven under `pwsh`; configuration-only rewiring proven by the runner staying byte-identical.
 - Group current documents under architecture, features, operations, and
   campaigns without retaining completed point-in-time reviews.
 - Move general engineering entry points toward `eng/build`, `eng/test`, and
@@ -257,18 +256,17 @@ there.
 
 At this checkpoint the queue is:
 
-1. **A1** — Plan-001's attended normal-user smoke. Person-only, still open, and
-   the only open criterion in the repository. The maintainer deferred it on
-   2026-07-31 so Plan-003 could proceed; it can be performed against the moved
-   build under `experiments/avalonia-fixture-explorer/`.
+1. **A1** — Plan-001's attended normal-user smoke. Person-only, still open.
 2. **A2** — Plan-002 acceptance. Person-only; every criterion is met and the
    ledger state is `implemented`.
-3. **plan-004** — operations taxonomy. Re-read `docs/campaign-backlog.md` before
-   starting; it is scoped but not spec-complete.
+3. **plan-005** — documentation and engineering taxonomy. Re-read
+   `docs/campaign-backlog.md` before starting; it is scoped but not spec-complete.
 
-Plan-003 has landed: the Avalonia fixture explorer now lives under
-`experiments/avalonia-fixture-explorer/`, moved with history preserved and with
-configuration-only rewiring proven by the non-deploying gate runner.
+Plan-003 and Plan-004 have landed: the Avalonia fixture explorer lives under
+`experiments/avalonia-fixture-explorer/`, and operations are split into
+`ops/candidate`, `ops/deploy/snd-desk`, and `eng/` (cleanup tool). Both moves
+preserved history and proved configuration-only rewiring with the runner
+byte-identical.
 
 Do not register a plan from a dirty tree; check `plan preflight` first, and see
 `docs/campaign-playbook.md` for the full lifecycle.

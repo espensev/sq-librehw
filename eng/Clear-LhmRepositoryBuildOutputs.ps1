@@ -99,7 +99,7 @@ function Get-LhmCleanupNormalTreeFiles {
 }
 
 if (-not $PSBoundParameters.ContainsKey('RepositoryRoot')) {
-    $RepositoryRoot = Join-Path $PSScriptRoot '..\..'
+    $RepositoryRoot = Join-Path $PSScriptRoot '..'
 }
 elseif ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
     throw 'RepositoryRoot must not be empty.'

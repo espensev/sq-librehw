@@ -38,7 +38,7 @@ mutation:
 
 Stop unless it returns `VERIFIED` with machine ID `snd-host`.
 
-`ops/local-release`, `ops/deploy`, and everything they install are **SND-DESK**
+`ops/deploy/snd-desk`, `ops/deploy`, and everything they install are **SND-DESK**
 surfaces. They fail closed here by design. A peer-safe fixture exercising them
 on this host is a fixture, not a deployment. Never treat SND-DESK evidence in
 the docs as an SND-HOST fact.
@@ -204,8 +204,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Invoke-LhmGates.p
 Then clean up, because three `dotnet build` gates recreate `bin`/`obj`:
 
 ```powershell
-.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
-.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1
+.\eng\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
+.\eng\Clear-LhmRepositoryBuildOutputs.ps1
 git clean -ndX          # back to the two data files
 ```
 
@@ -239,7 +239,7 @@ this, and no automated `verified` implies it.
   `origin/main`.
 - Never move or replace the live LHM runtime, its scheduled tasks, its config,
   or its active CSV.
-- Never run `ops/local-release` as an SND-HOST deployment path.
+- Never run `ops/deploy/snd-desk` as an SND-HOST deployment path.
 - Never create a release candidate to verify a docs or tooling change.
 - Never delete the preserved Plan-001 branches, or raw-delete a Git worktree.
 - Never mark a criterion met without criterion-specific evidence, and never let

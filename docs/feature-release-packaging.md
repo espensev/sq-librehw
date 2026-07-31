@@ -42,10 +42,10 @@ safe to substitute for the running LibreHardwareMonitor instance.
 
 ## Entry points
 
-- `ops/release/New-LhmRelease.ps1` creates and verifies a new candidate.
-- `ops/release/Test-LhmReleaseCandidate.ps1` independently validates an existing
+- `ops/candidate/New-LhmRelease.ps1` creates and verifies a new candidate.
+- `ops/candidate/Test-LhmReleaseCandidate.ps1` independently validates an existing
   candidate without changing it.
-- `ops/release/Test-LhmReleaseSystem.ps1` exercises path, cleanup, build,
+- `ops/candidate/Test-LhmReleaseSystem.ps1` exercises path, cleanup, build,
   collision, failure, manifest, and tamper behavior with isolated fixtures.
 
 These scripts package source output only. A separate, explicitly approved
@@ -292,12 +292,12 @@ rollback reference to a previously accepted package.
 ## Verification
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseSystem.ps1
-pwsh -NoProfile -File ops\release\Test-LhmReleaseSystem.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseSystem.ps1
+pwsh -NoProfile -File ops\candidate\Test-LhmReleaseSystem.ps1
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\New-LhmRelease.ps1 -ReleaseRoot <external-release-root>
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -ReleaseRoot <external-release-root>
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\release\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource -ReleaseRoot <external-release-root>
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\New-LhmRelease.ps1 -ReleaseRoot <external-release-root>
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseCandidate.ps1 -Latest -ReleaseRoot <external-release-root>
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource -ReleaseRoot <external-release-root>
 
 if (Get-ChildItem -Recurse -Directory -Force | Where-Object Name -in @('bin', 'obj')) { throw 'Repository output was repopulated.' }
 git diff --check

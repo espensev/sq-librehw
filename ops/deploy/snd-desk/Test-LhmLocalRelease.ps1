@@ -4,13 +4,13 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
-$opsRoot = Join-Path $repositoryRoot 'ops\local-release'
+$repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..\..')
+$opsRoot = $PSScriptRoot
 $commonScript = Join-Path $opsRoot 'LhmLocalRelease.Common.ps1'
 $installScript = Join-Path $opsRoot 'Install-LibreHardwareMonitorRelease.ps1'
 $rollbackScript = Join-Path $opsRoot 'Restore-LibreHardwareMonitorRelease.ps1'
 $canonicalLauncher = Join-Path $opsRoot 'Start-LibreHardwareMonitor.ps1'
-$cleanupScript = Join-Path $PSScriptRoot 'Clear-LhmRepositoryBuildOutputs.ps1'
+$cleanupScript = Join-Path $repositoryRoot 'eng\Clear-LhmRepositoryBuildOutputs.ps1'
 . $commonScript
 
 function Assert-True {
@@ -254,7 +254,7 @@ try {
     $candidate2 = New-TestCandidate `
         -Root $testRoot -Name 'two' -Version '1.0.2' -ShortCommit 'abcde02'
 
-    $allScripts = @(Get-ChildItem -LiteralPath $opsRoot, $PSScriptRoot -Filter '*.ps1' -File)
+    $allScripts = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1' -File)
     foreach ($scriptFile in $allScripts) {
         $tokens = $null
         $errors = $null

@@ -29,6 +29,9 @@ $moveMap = @(
     @{ Old = 'LibreHardwareMonitor.Avalonia.Spike';            New = 'experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike' }
     @{ Old = 'LibreHardwareMonitor.Avalonia.Spike.Tests';      New = 'experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests' }
     @{ Old = 'scripts/Test-AvaloniaSpike.ps1';                 New = 'experiments/avalonia-fixture-explorer/Test-AvaloniaSpike.ps1' }
+    @{ Old = 'ops/release';                                      New = 'ops/candidate' }
+    @{ Old = 'ops/local-release';                                New = 'ops/deploy/snd-desk' }
+    @{ Old = 'scripts/local-release/Clear-LhmRepositoryBuildOutputs.ps1'; New = 'eng/Clear-LhmRepositoryBuildOutputs.ps1' }
 )
 
 # Data: allow-list of exempt paths (immutable historical evidence).
@@ -64,6 +67,20 @@ $configText = Get-Content -Raw -LiteralPath $configFull
 $bare = [regex]::Matches($configText,
     '(?<!experiments[/\\]+avalonia-fixture-explorer[/\\]+)LibreHardwareMonitor\.Avalonia\.Spike')
 Assert-Ok ".codex/skills/project.toml has no bare spike path references" { $bare.Count -eq 0 }
+
+# 2b. Config staleness: project.toml has no dissolved ops path references.
+$dissolvedConfig = [regex]::Matches($configText, 'ops[/\\]+release|ops[/\\]+local-release|scripts[/\\]+local-release')
+Assert-Ok ".codex/skills/project.toml has no dissolved ops path references" { $dissolvedConfig.Count -eq 0 }
+
+# 2c. No non-exempt tracked text file references a dissolved ops path.
+$dissolvedRe = 'ops[/\\]+release(?![/\\]+notes)|ops[/\\]+local-release|scripts[/\\]+local-release'
+$dissolvedHits = @()
+foreach ($f in $scannable) {
+    $full = Join-Path $repositoryRoot ($f -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $full)) { continue }
+    if ([regex]::IsMatch((Get-Content -Raw -LiteralPath $full), $dissolvedRe)) { $dissolvedHits += $f }
+}
+Assert-Ok "no non-exempt tracked file references a dissolved ops path" { $dissolvedHits.Count -eq 0 }
 
 # 3. Unambiguous doc staleness: no non-exempt file references the old script location.
 $oldScriptRe = 'scripts[/\\]+Test-AvaloniaSpike\.ps1'

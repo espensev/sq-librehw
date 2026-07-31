@@ -399,27 +399,27 @@ Operator workflow:
 
 ```powershell
 # Non-live parser, failure-injection, hostile-input, and rollback checks
-.\scripts\local-release\Test-LhmLocalRelease.ps1
+.\ops\deploy\snd-desk\Test-LhmLocalRelease.ps1
 
 # Publish an isolated candidate; omit -AllowDirty for normal committed releases
-.\scripts\local-release\Publish-LibreHardwareMonitor.ps1 `
+.\ops\deploy\snd-desk\Publish-LibreHardwareMonitor.ps1 `
   -CandidateDirectory E:\path\to\candidate
 
 # Preview, then perform promotion
-.\ops\local-release\Install-LibreHardwareMonitorRelease.ps1 `
+.\ops\deploy\snd-desk\Install-LibreHardwareMonitorRelease.ps1 `
   -CandidateDirectory E:\path\to\candidate `
   -InitialConfigSource E:\path\to\LibreHardwareMonitor.Windows.Forms.config `
   -WhatIf
-.\ops\local-release\Install-LibreHardwareMonitorRelease.ps1 `
+.\ops\deploy\snd-desk\Install-LibreHardwareMonitorRelease.ps1 `
   -CandidateDirectory E:\path\to\candidate `
   -InitialConfigSource E:\path\to\LibreHardwareMonitor.Windows.Forms.config `
   -Confirm:$false
 
 # Swap current and the one rollback payload
-.\ops\local-release\Restore-LibreHardwareMonitorRelease.ps1 -WhatIf
+.\ops\deploy\snd-desk\Restore-LibreHardwareMonitorRelease.ps1 -WhatIf
 
 # After attended UI and normal-user launcher acceptance
-.\ops\local-release\Finalize-LibreHardwareMonitorCutover.ps1 `
+.\ops\deploy\snd-desk\Finalize-LibreHardwareMonitorCutover.ps1 `
   -AttendedUiAccepted -NormalUserLauncherAccepted -WhatIf
 ```
 

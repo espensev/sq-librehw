@@ -83,8 +83,8 @@ Future builds may recreate ignored output directories. Clean the complete
 allowlist with:
 
 ```powershell
-.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
-.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1 -Confirm:$false
+.\eng\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
+.\eng\Clear-LhmRepositoryBuildOutputs.ps1 -Confirm:$false
 ```
 
 The command resolves every target beneath the selected repository root, rejects

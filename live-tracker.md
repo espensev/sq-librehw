@@ -40,3 +40,17 @@ row text in their result payloads.
 | AVMOVE-003 | Done | agent-l | stale-reference gate | Avalonia fixture explorer relocation | Added the permanent `eng/ci/tests/Test-NoStaleReferences.ps1` with a data-driven move map and a centralized allow-list for immutable historical evidence. The CI dispatcher now discovers three test scripts. |
 | AVMOVE-004 | Done | agent-m | spike-move docs | Avalonia fixture explorer relocation | Updated current path claims in `docs/README.md` and the Avalonia feature spec, and the one spike path in the structural discovery audit, so no current document references the old location. |
 | AVMOVE-005 | Done | agent-n | spike-move close | Avalonia fixture explorer relocation | Added the Plan-003 ledger row and criterion evidence to `docs/campaign-history.md` without automatic acceptance, recorded the maintainer's honest deferral of the plan-001 attended smoke, closed the Phase 2 Avalonia roadmap item, and removed the completed Plan-003 section from the backlog. |
+
+## Plan-004 — operations taxonomy
+
+Agent U is the only writer of this file for Plan-004; agents O-T returned their
+row text in their result payloads.
+
+| ID | Status | Owner | Scope | Issue | Update |
+|---|---|---|---|---|---|
+| AVOPS-001 | Done | agent-o | move candidate ops | Operations taxonomy | Moved `ops/release/` to `ops/candidate/` with `git mv` (4 files, history preserved) and updated the synthetic `ops\release` mirror in `Test-LhmReleaseSystem.ps1` to `ops\candidate`. |
+| AVOPS-002 | Done | agent-p | dissolve local-release | Operations taxonomy | Dissolved `scripts/local-release/` and relocated `ops/local-release/` (9 files to `ops/deploy/snd-desk/`), moved `Clear-LhmRepositoryBuildOutputs.ps1` to `eng/`, and fixed every internal `$PSScriptRoot`/repo-root/cleanup reference broken by the split. |
+| AVOPS-003 | Done | agent-r | rewire config and gates | Operations taxonomy | Rewired `.codex/skills/project.toml` (modules, mappings, 4 gate commands), the spike gate's `ops\release` reference to `ops\candidate`, and extended the permanent stale-reference gate with the ops move-map and dissolved-path checks. `Invoke-LhmGates.ps1` stayed byte-identical. |
+| AVOPS-004 | Done | agent-s | verify fail-closed | Operations taxonomy | Verified the relocated peer-safe fixture passes under `pwsh` (proving fail-closed guards hold on snd-host), the content-based deny-list still refuses deploying commands, and the extended stale-reference gate passes. |
+| AVOPS-005 | Done | agent-t | ops-move docs | Operations taxonomy | Updated 45 path claims across 9 doc/eng files so no current document references a dissolved ops path; the stale-reference gate passes. |
+| AVOPS-006 | Done | agent-u | ops-move close | Operations taxonomy | Added the Plan-004 ledger row and criterion evidence to `docs/campaign-history.md` without automatic acceptance, closed the Phase 2 operations-taxonomy roadmap item, advanced the backlog current position, and removed the completed Plan-004 section. |
