@@ -166,8 +166,7 @@ These apply to every campaign, not just Plan-002:
 
 **Status:** not started
 
-- Move the Avalonia fixture projects into a clearly named
-  `experiments/avalonia-fixture-explorer` boundary.
+- [x] Move the Avalonia fixture projects into `experiments/avalonia-fixture-explorer/` (Plan-003, 2026-07-31): moved with history preserved, configuration-only rewiring proven by the non-deploying gate runner, and a permanent stale-reference gate added.
 - Separate candidate creation from peer-specific deployment semantics:
   `ops/candidate`, `ops/deploy/snd-desk`, and `ops/log-management`.
 - Group current documents under architecture, features, operations, and
@@ -259,14 +258,17 @@ there.
 At this checkpoint the queue is:
 
 1. **A1** — Plan-001's attended normal-user smoke. Person-only, still open, and
-   the only open criterion in the repository.
+   the only open criterion in the repository. The maintainer deferred it on
+   2026-07-31 so Plan-003 could proceed; it can be performed against the moved
+   build under `experiments/avalonia-fixture-explorer/`.
 2. **A2** — Plan-002 acceptance. Person-only; every criterion is met and the
    ledger state is `implemented`.
-3. **plan-003** — move the Avalonia fixture explorer into
-   `experiments/avalonia-fixture-explorer`. Spec-complete and ready to register.
+3. **plan-004** — operations taxonomy. Re-read `docs/campaign-backlog.md` before
+   starting; it is scoped but not spec-complete.
 
-A1 should precede plan-003. The move touches the same three projects, so running
-the attended smoke afterwards would leave a failure unattributable.
+Plan-003 has landed: the Avalonia fixture explorer now lives under
+`experiments/avalonia-fixture-explorer/`, moved with history preserved and with
+configuration-only rewiring proven by the non-deploying gate runner.
 
 Do not register a plan from a dirty tree; check `plan preflight` first, and see
 `docs/campaign-playbook.md` for the full lifecycle.

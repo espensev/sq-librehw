@@ -263,7 +263,7 @@ files and should be split only behind contracts and characterization tests.
   executable, which itself references Aga.Controls and the hardware library at
   `LibreHardwareMonitor.Windows.Forms.csproj:87-88`.
 - The Avalonia spike's separate three-project graph
-  (`LibreHardwareMonitor.Avalonia.Spike.slnx:1-5`) is isolated and provides a
+  (`experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.slnx:1-5`) is isolated and provides a
   useful experimental boundary.
 
 **Implications:**

@@ -5,10 +5,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = [System.IO.Path]::GetFullPath(
-    (Join-Path $PSScriptRoot '..'))
-$spikeSolution = 'LibreHardwareMonitor.Avalonia.Spike.slnx'
+    (Join-Path $PSScriptRoot '..\..'))
+$spikeSolution = 'experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.slnx'
 $spikeTestProject =
-    'LibreHardwareMonitor.Avalonia.Spike.Tests\LibreHardwareMonitor.Avalonia.Spike.Tests.csproj'
+    'experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.Tests\LibreHardwareMonitor.Avalonia.Spike.Tests.csproj'
 $shippingSolution = Join-Path $repositoryRoot 'LibreHardwareMonitor.sln'
 $expectedGateCount = 10
 $completedGateCount = 0
@@ -185,9 +185,9 @@ try {
     $completedGateCount++
 
     $spikeRoots = @(
-        (Join-Path $repositoryRoot 'LibreHardwareMonitor.Avalonia.Spike'),
-        (Join-Path $repositoryRoot 'LibreHardwareMonitor.Avalonia.Spike.Core'),
-        (Join-Path $repositoryRoot 'LibreHardwareMonitor.Avalonia.Spike.Tests'))
+        (Join-Path $repositoryRoot 'experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike'),
+        (Join-Path $repositoryRoot 'experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.Core'),
+        (Join-Path $repositoryRoot 'experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.Tests'))
     $spikeSourceExtensions = @(
         '.axaml',
         '.cs',

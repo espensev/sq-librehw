@@ -77,7 +77,7 @@ The package choice was checked against current official metadata on 2026-07-30:
 
 The serialized integration owner creates:
 
-- `LibreHardwareMonitor.Avalonia.Spike.slnx`;
+- `experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.slnx`;
 - `LibreHardwareMonitor.Avalonia.Spike.Core`, a dependency-light `net10.0`
   class library for bounded parsing and immutable snapshots;
 - `LibreHardwareMonitor.Avalonia.Spike`, a `net10.0` desktop executable;
@@ -254,10 +254,10 @@ Implementation must leave copy-pasteable commands in this section. The minimum
 automated gate is:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\Test-AvaloniaSpike.ps1
-dotnet restore LibreHardwareMonitor.Avalonia.Spike.slnx
-dotnet build LibreHardwareMonitor.Avalonia.Spike.slnx -c Release --no-restore
-dotnet run --project LibreHardwareMonitor.Avalonia.Spike.Tests\LibreHardwareMonitor.Avalonia.Spike.Tests.csproj -c Release
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File experiments\avalonia-fixture-explorer\Test-AvaloniaSpike.ps1
+dotnet restore experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.slnx
+dotnet build experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.slnx -c Release --no-restore
+dotnet run --project experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.Tests\LibreHardwareMonitor.Avalonia.Spike.Tests.csproj -c Release
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
