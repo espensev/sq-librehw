@@ -28,6 +28,7 @@ fails if the two ever disagree.
 | plan-001 | Fixture-only Avalonia sensor explorer | partial | implemented | 8 | 1 | 0 | `docs/campaign-plan-001-fixture-only-avalonia-sensor.md` |
 | plan-002 | Non-deploying CI gates and campaign history contract | executed | implemented | 13 | 0 | 0 | `docs/campaign-plan-002-non-deploying-ci-gates.md` |
 | plan-003 | Move the Avalonia Fixture Explorer into experiments/ | executed | implemented | 8 | 1 | 0 | `docs/campaign-plan-003-move-the-avalonia-fixture.md` |
+| plan-004 | Separate candidate creation from peer deployment | executed | registered | 0 | 10 | 0 | `docs/campaign-plan-004-separate-candidate-creation-from.md` |
 
 ## plan-001 — Fixture-only Avalonia sensor explorer
 
@@ -97,6 +98,23 @@ Source-only relocation of the fixture-only, non-shipping Avalonia explorer under
 | 7 | A clean candidate built from the moved source contains zero Avalonia or spike entries in both WinForms package inventories. It is not promoted. | met | Candidate `0.9.6-20260731-123549167-79928cb` built from the committed moved source (commit 79928cb), promotable and current-source (source fingerprint `395e8bfa7ade849fb916f3fdf74532c80c0523b16f1211ae40e62831f7d0ba37`). Both WinForms package ZIPs (net10.0-windows, net472) and the release manifest contain zero Avalonia/spike files and zero Avalonia/spike strings; `Test-LhmReleaseCandidate -Latest -RequirePromotable -RequireCurrentSource` passed (TESTEXIT=0). Not promoted. |
 | 8 | No product source, live runtime, scheduled task, release store, rollback packet, active log, or archive changed. | met | Live SND-HOST proof after the campaign: one process (PID 13104) at the live executable, root task `\LibreHardwareMonitor` `Running` (result 267009) with action and working directory matching the live root, proxy-bypassed `/`, `/data.json`, and `/metrics` all HTTP 200, current-day CSV at 110 MB and still growing. No live runtime, task, config, release store, rollback packet, or log archive changed. |
 | 9 | plan preflight --json is ready with zero errors and, after guarded cleanup, git clean -ndX lists only data/tasks.json and data/analysis-cache.json. | met | `plan preflight --json` reports ready with zero errors, and after guarded cleanup via `Clear-LhmRepositoryBuildOutputs.ps1`, `git clean -ndX` lists only `data/tasks.json` and `data/analysis-cache.json`. |
+
+## plan-004 - Separate candidate creation from peer deployment
+
+Source-only relocation splitting host-neutral candidate creation (`ops/candidate`), SND-DESK-only peer deployment (`ops/deploy/snd-desk`), and repository maintenance (`eng/`) so the path states the blast radius. Ledger state is `registered` while the campaign gates run. Not `accepted`: that transition is person-only. Note: the `snd-desk-local-release-fixture` gate is blocked by the pre-existing Windows PowerShell 5.1 `Get-FileHash` defect (shared with Plan-003 criterion 4); the fail-closed proof is run under `pwsh`.
+
+| # | Criterion | State | Evidence |
+| --- | --- | --- | --- |
+| 1 | ops/release/ is relocated to ops/candidate/, ops/local-release/ plus the deploy scripts to ops/deploy/snd-desk/, Clear-LhmRepositoryBuildOutputs.ps1 to eng/, ops/log-management/ is unchanged, and scripts/local-release/ is dissolved - all via git mv so git log --follow resolves through the moves. | open | Pending verification. |
+| 2 | Every internal PSScriptRoot and repository-root reference in the moved scripts resolves after the move: dot-sourcing of LhmLocalRelease.Common.ps1 and LhmRelease.Common.ps1 works, and the relocated Test-LhmLocalRelease.ps1 cleanup reference points at eng/Clear-LhmRepositoryBuildOutputs.ps1. | open | Pending verification. |
+| 3 | dotnet build of the shipping solution, both WinForms x64 Release targets, and the .NET suite pass, and git diff --stat shows no change under inherited product roots. | open | Pending verification. |
+| 4 | .codex/skills/project.toml modules, smart-test mappings, the release-candidate and snd-desk-local-release-fixture build gates, and conflict zones point at the new paths; plan preflight --json is ready with zero errors; and eng/ci/Invoke-LhmGates.ps1 is byte-identical. | open | Pending verification. |
+| 5 | The permanent stale-reference gate (Test-NoStaleReferences.ps1) is extended to cover the ops/release, ops/local-release, and scripts/local-release moves, and passes; no tracked current configuration or current document references a dissolved path. | open | Pending verification. |
+| 6 | The content-based deny-list still refuses every deploying command after the move, proven by Invoke-LhmGates.ps1 -DryRun/-List and the gate-runner regression. | open | Pending verification. |
+| 7 | Every SND-DESK fail-closed guard still fails closed on SND-HOST after the move, proven by the relocated peer-safe fixture (run under pwsh if the Windows PowerShell 5.1 Get-FileHash defect persists). | open | Pending verification. |
+| 8 | The Avalonia 75-test gate still passes after its ops\release\Test-LhmReleaseSystem.ps1 reference is rewired to ops\candidate. | open | Pending verification. |
+| 9 | No product source, live runtime, scheduled task (including the installed ops/log-management SYSTEM task), release store, rollback packet, active log, or archive changed, and LHM_RELEASE_ROOT is untouched. | open | Pending verification. |
+| 10 | The Plan-004 ledger row is added with criterion-specific evidence and is not marked accepted; after guarded cleanup, git clean -ndX lists only data/tasks.json and data/analysis-cache.json. | open | Pending verification. |
 
 ## Waiver records
 
