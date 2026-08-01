@@ -69,8 +69,8 @@ internal sealed class UiShutdownCoordinator
         }
 
         // Claim the handoff before invoking the UI thread so concurrent SessionEnded notifications
-        // cannot queue duplicate callbacks. MainForm supplies synchronous Control.Invoke here, so
-        // the winning system-event handler does not return until the final save has completed.
+        // cannot queue duplicate callbacks. MainForm supplies queued Control.BeginInvoke here;
+        // RequestAsync completion lets the winning system-event handler wait for the final save.
         if (Interlocked.CompareExchange(ref _state, Requested, NotRequested) != NotRequested)
             return;
 

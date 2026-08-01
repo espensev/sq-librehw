@@ -99,18 +99,15 @@ public sealed partial class MainForm : Form
     // Persist settings on this cadence so a crash, forced kill or power loss cannot revert
     // everything changed since launch; the app otherwise saves only on clean exit/log-off.
     private const int AutoSaveIntervalMilliseconds = 5 * 60 * 1000;
+    private readonly ApplicationLifecycleCoordinator _applicationLifecycle;
     private readonly System.Windows.Forms.Timer _autoSaveTimer;
     private readonly UiShutdownCoordinator _shutdownCoordinator;
     private readonly int _uiThreadId;
-    private readonly SemaphoreSlim _hardwareLifecycleGate = new(1, 1);
-    private readonly CancellationTokenSource _hardwareLifecycleCancellation = new();
-    private readonly TaskCompletionSource<object> _hardwareInitializationCompletion =
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly HardwareOperationCoordinator _hardwareOperations;
-    private bool _hardwareInitializationInProgress;
-    private Task _hardwareInitializationTask;
 
-    private bool IsShutdownPending => _closing || (_shutdownCoordinator?.IsShutdownRequested ?? false);
+    private bool IsShutdownPending =>
+        _closing ||
+        (_shutdownCoordinator?.IsShutdownRequested ?? false) ||
+        (_applicationLifecycle?.IsStopping ?? false);
 
     public MainForm()
     {
@@ -178,13 +175,14 @@ public sealed partial class MainForm : Form
         treeView.Model = treeModel;
 
         _computer = new Computer(_settings);
-        _hardwareOperations = new HardwareOperationCoordinator(
-            ExecuteHardwareOptionAsync,
-            ExecuteHardwareResetAsync,
-            _hardwareLifecycleCancellation.Token);
-        _hardwareOperations.StateChanged += HardwareOperations_StateChanged;
-        _hardwareOperations.OptionFailed += HardwareOperations_OptionFailed;
-        _hardwareOperations.ResetFailed += HardwareOperations_ResetFailed;
+        _applicationLifecycle = new ApplicationLifecycleCoordinator(
+            OpenHardwareAsync,
+            SetHardwareOption,
+            _computer.Reset,
+            CloseHardwareAsync);
+        _applicationLifecycle.StateChanged += HardwareOperations_StateChanged;
+        _applicationLifecycle.OptionFailed += HardwareOperations_OptionFailed;
+        _applicationLifecycle.ResetFailed += HardwareOperations_ResetFailed;
 
         _systemTray = new SystemTray(_computer, _settings, _unitManager, this);
         _systemTray.HideShowCommand += HideShowClick;
@@ -587,9 +585,8 @@ public sealed partial class MainForm : Form
             Show();
         }
 
-        _hardwareInitializationInProgress = true;
         menuItemFileHardware.Enabled = false;
-        _hardwareInitializationTask = InitializeHardwareAsync();
+        _ = InitializeHardwareAsync();
     }
 
     private void StopFileHardwareMenuFromClosing(object sender, ToolStripDropDownClosingEventArgs e)
@@ -602,53 +599,14 @@ public sealed partial class MainForm : Form
 
     private async Task InitializeHardwareAsync()
     {
-        CancellationToken cancellationToken = _hardwareLifecycleCancellation.Token;
         try
         {
-            bool installPawnIo = false;
-            if (PawnIo.PawnIo.IsInstalled)
-            {
-                if (PawnIo.PawnIo.Version < new Version(2, 0, 0, 0))
-                {
-                    installPawnIo = MessageBox.Show(
-                        this,
-                        "PawnIO is outdated, do you want to update it?",
-                        nameof(LibreHardwareMonitor),
-                        MessageBoxButtons.OKCancel) == DialogResult.OK;
-                }
-            }
-            else
-            {
-                installPawnIo = MessageBox.Show(
-                    this,
-                    "PawnIO is not installed, do you want to install it?",
-                    nameof(LibreHardwareMonitor),
-                    MessageBoxButtons.OKCancel) == DialogResult.OK;
-            }
-
-            if (installPawnIo)
-                await Task.Run(InstallPawnIO).ConfigureAwait(true);
-
-            if (cancellationToken.IsCancellationRequested || IsShutdownPending || IsDisposed)
-                return;
-
-            // Hardware discovery can probe firmware, buses, storage and drivers for several
-            // seconds. Computer events are marshalled through the live form dispatcher.
-            await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(true);
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await Task.Run(() => _computer.Open()).ConfigureAwait(true);
-            }
-            finally
-            {
-                _hardwareLifecycleGate.Release();
-            }
+            await _applicationLifecycle.InitializeAsync().ConfigureAwait(true);
 
             if (!IsShutdownPending && !IsDisposed)
                 timer.Enabled = true;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (_applicationLifecycle.IsStopping)
         {
             // Normal close while installation/discovery is queued.
         }
@@ -667,11 +625,44 @@ public sealed partial class MainForm : Form
         }
         finally
         {
-            _hardwareInitializationInProgress = false;
-            _hardwareInitializationCompletion.TrySetResult(null);
             if (!IsShutdownPending && !IsDisposed)
                 UpdateHardwareOperationUi();
         }
+    }
+
+    private async Task OpenHardwareAsync(CancellationToken cancellationToken)
+    {
+        bool installPawnIo = false;
+        if (PawnIo.PawnIo.IsInstalled)
+        {
+            if (PawnIo.PawnIo.Version < new Version(2, 0, 0, 0))
+            {
+                installPawnIo = MessageBox.Show(
+                    this,
+                    "PawnIO is outdated, do you want to update it?",
+                    nameof(LibreHardwareMonitor),
+                    MessageBoxButtons.OKCancel) == DialogResult.OK;
+            }
+        }
+        else
+        {
+            installPawnIo = MessageBox.Show(
+                this,
+                "PawnIO is not installed, do you want to install it?",
+                nameof(LibreHardwareMonitor),
+                MessageBoxButtons.OKCancel) == DialogResult.OK;
+        }
+
+        if (installPawnIo)
+            await Task.Run(InstallPawnIO).ConfigureAwait(true);
+
+        if (cancellationToken.IsCancellationRequested || IsShutdownPending || IsDisposed)
+            return;
+
+        // Hardware discovery can probe firmware, buses, storage and drivers for several
+        // seconds. Computer events are marshalled through the live form dispatcher.
+        cancellationToken.ThrowIfCancellationRequested();
+        await Task.Run(() => _computer.Open()).ConfigureAwait(true);
     }
 
     private void BeginHardwareReset()
@@ -679,59 +670,17 @@ public sealed partial class MainForm : Form
         if (IsShutdownPending)
             return;
 
-        _hardwareOperations.RequestReset();
+        _applicationLifecycle.RequestReset();
     }
 
     private void ApplyHardwareOption(HardwareOptionKind option, bool value)
     {
-        // UserOption invokes each handler once during construction. Before Open starts, applying
-        // the flags synchronously is cheap and lets Computer.Open discover the selected groups in
-        // one pass. Later toggles can construct/close drivers and therefore use the lifecycle gate.
-        if (_hardwareInitializationTask == null)
-        {
-            SetHardwareOption(option, value);
-            return;
-        }
-
         if (IsShutdownPending)
             return;
 
-        _hardwareOperations.RequestOption(option, value);
-    }
-
-    private async Task ExecuteHardwareOptionAsync(
-        HardwareOptionKind option,
-        bool value,
-        CancellationToken cancellationToken)
-    {
-        await _hardwareInitializationCompletion.Task.ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            SetHardwareOption(option, value);
-        }
-        finally
-        {
-            _hardwareLifecycleGate.Release();
-        }
-    }
-
-    private async Task ExecuteHardwareResetAsync(CancellationToken cancellationToken)
-    {
-        await _hardwareInitializationCompletion.Task.ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            _computer.Reset();
-        }
-        finally
-        {
-            _hardwareLifecycleGate.Release();
-        }
+        // UserOption invokes each handler once during construction. The lifecycle coordinator
+        // applies those pre-initialization values synchronously and orders later runtime work.
+        _applicationLifecycle.RequestOption(option, value);
     }
 
     private void HardwareOperations_OptionFailed(
@@ -793,9 +742,9 @@ public sealed partial class MainForm : Form
 
     private void UpdateHardwareOperationUi()
     {
-        bool hasResetWork = _hardwareOperations.HasResetWork;
-        bool isBusy = _hardwareOperations.IsBusy;
-        menuItemFileHardware.Enabled = !_hardwareInitializationInProgress && !isBusy;
+        bool hasResetWork = _applicationLifecycle.HasResetWork;
+        bool isBusy = _applicationLifecycle.IsBusy;
+        menuItemFileHardware.Enabled = !_applicationLifecycle.IsInitializationInProgress && !isBusy;
         _systemTray.IsMainIconEnabled =
             !hasResetWork &&
             _minimizeToTray.Value;
@@ -867,6 +816,8 @@ public sealed partial class MainForm : Form
 
     private void BackgroundUpdater_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
     {
+        _applicationLifecycle.CompletePoll();
+
         // Runs on the UI thread. All post-update redraws live here so they (a) never mutate
         // UI/OxyPlot state from the worker thread and (b) only run when a tick actually
         // produced fresh data, instead of unconditionally from Timer_Tick.
@@ -1666,8 +1617,18 @@ public sealed partial class MainForm : Form
 
     private void Timer_Tick(object sender, EventArgs e)
     {
-        if (!IsShutdownPending && !backgroundUpdater.IsBusy)
+        if (IsShutdownPending || backgroundUpdater.IsBusy || !_applicationLifecycle.TryBeginPoll())
+            return;
+
+        try
+        {
             backgroundUpdater.RunWorkerAsync();
+        }
+        catch
+        {
+            _applicationLifecycle.CompletePoll();
+            throw;
+        }
     }
 
     private void AutoSaveTimer_Tick(object sender, EventArgs e)
@@ -1825,31 +1786,9 @@ public sealed partial class MainForm : Form
             timer.Enabled = false;
             _autoSaveTimer.Stop();
 
-            _hardwareLifecycleCancellation.Cancel();
+            _applicationLifecycle.BeginStop();
             await Server.QuitAsync().ConfigureAwait(true);
-
-            if (_hardwareInitializationTask != null)
-                await _hardwareInitializationTask.ConfigureAwait(true);
-
-            await _hardwareOperations.WhenIdleAsync().ConfigureAwait(true);
-            await _hardwareLifecycleGate.WaitAsync().ConfigureAwait(true);
-            try
-            {
-                foreach (HardwareNode hardwareNode in _root.Nodes.OfType<HardwareNode>().ToList())
-                {
-                    hardwareNode.PlotSelectionChanged -= PlotSelectionChanged;
-                    hardwareNode.Dispose();
-                }
-
-                _root.Nodes.Clear();
-                _gadget?.Dispose();
-                _systemTray.Dispose();
-                await Task.Run(() => _computer.Close()).ConfigureAwait(true);
-            }
-            finally
-            {
-                _hardwareLifecycleGate.Release();
-            }
+            await _applicationLifecycle.StopAsync().ConfigureAwait(true);
 
             SaveConfiguration();
 
@@ -1858,11 +1797,10 @@ public sealed partial class MainForm : Form
             _textSizeSlider?.Dispose();
             _plotTextSlider?.Dispose();
             backgroundUpdater.Dispose();
-            _hardwareOperations.StateChanged -= HardwareOperations_StateChanged;
-            _hardwareOperations.OptionFailed -= HardwareOperations_OptionFailed;
-            _hardwareOperations.ResetFailed -= HardwareOperations_ResetFailed;
-            _hardwareLifecycleCancellation.Dispose();
-            _hardwareLifecycleGate.Dispose();
+            _applicationLifecycle.StateChanged -= HardwareOperations_StateChanged;
+            _applicationLifecycle.OptionFailed -= HardwareOperations_OptionFailed;
+            _applicationLifecycle.ResetFailed -= HardwareOperations_ResetFailed;
+            _applicationLifecycle.Dispose();
 
             _scaledTreeFont?.Dispose();
             _scaledTreeFont = null;
@@ -1880,6 +1818,20 @@ public sealed partial class MainForm : Form
         {
             Application.Exit();
         }
+    }
+
+    private async Task CloseHardwareAsync()
+    {
+        foreach (HardwareNode hardwareNode in _root.Nodes.OfType<HardwareNode>().ToList())
+        {
+            hardwareNode.PlotSelectionChanged -= PlotSelectionChanged;
+            hardwareNode.Dispose();
+        }
+
+        _root.Nodes.Clear();
+        _gadget?.Dispose();
+        _systemTray.Dispose();
+        await Task.Run(() => _computer.Close()).ConfigureAwait(true);
     }
 
     private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
