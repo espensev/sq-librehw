@@ -40,6 +40,13 @@ Create one new class, `HardwareGroupLifetimeCharacterizationTests`, containing e
 
 Use test-local fakes only. Follow the existing `OpenProbe`, NVAPI handle, storage publisher, and tracked-device patterns. Keep assertions about observed order and exception identity explicit.
 
+## Exit Criteria
+
+- All four required facts exist in the exclusive output file and pass the focused filter.
+- The complete Library suite passes exactly 68 tests with no skip or failure.
+- The diff contains no production, project, documentation, tracker, or unrelated file.
+- The owned change is committed with the required message and the handoff includes exact evidence.
+
 ## Boundaries
 
 - Edit only the exclusive output file.

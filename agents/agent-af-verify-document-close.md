@@ -45,6 +45,13 @@ The aggregate result must be exactly 279 discovered, 278 passed, and the one exi
 
 Perform only read-only SND-HOST separation proof: verified identity, live executable/process ownership, scheduled-task action and working directory, proxy-bypassed `/`, `/data.json`, and `/metrics` HTTP status, and current-day CSV growth. Do not restart, reconfigure, publish, or write the operational tree.
 
+## Exit Criteria
+
+- All focused filters, the 279/278/1 aggregate population, both framework builds, full CI sweep, planner preflight, and Git diff checks pass.
+- The implementation diff is limited to the seven Plan-007 test files and the live deployment separation proof is read-only and healthy.
+- All six exclusive campaign-truth files agree on exact commits, counts, criterion evidence, Phase-3 closure, Plan-008 queue position, retained A1, and ledger state `implemented`.
+- The documentation-only change is committed with the required message and the handoff lists every command result and any remaining person-only action.
+
 ## Documentation work
 
 1. `docs/campaign-plan-007-characterization-tests-before-extraction.md`

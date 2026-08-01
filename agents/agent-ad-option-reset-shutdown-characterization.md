@@ -34,9 +34,16 @@ Add these tests to `UiShutdownCoordinatorTests`:
 5. `UiCloseTakeover_CompletesQueuedBackgroundRequestTaskExactlyOnce` — a UI-thread close takes ownership before a queued background callback, both callers share/observe one completion, and delayed dispatch cannot execute shutdown again.
 6. `BeginInvokeStyleSessionEndedWait_DoesNotReturnBeforeAsyncShutdownCompletes` — model queued `BeginInvoke`; the session-end waiter blocks until the asynchronous shutdown task completes.
 7. `ShutdownFailure_FaultsSharedCompletionAndDoesNotRetry` — the exact shutdown exception faults every shared completion and later requests do not rerun shutdown.
-8. `RequestAsyncDispatchFailure_ReleasesClaimForUiRetry` — exact dispatch failure reaches the first task/caller, clears the claim, and a later UI request succeeds once.
+8. `RequestAsyncDispatchFailure_ReleasesClaimForUiRetry` — exact dispatch failure reaches the initially returned completion and caller, clears the claim, and a later UI request succeeds once.
 
 Reuse local queues, cancellation sources, and run-continuations-asynchronously completion sources. Keep timeouts bounded and assertions ordered.
+
+## Exit Criteria
+
+- All eight required facts exist in the two exclusive output files and pass the focused filter.
+- The complete Application suite passes with 139 discovered, 138 passed, and the one existing live-config skip.
+- The diff contains no `MainForm`, production, project, documentation, tracker, or unrelated file.
+- The owned changes are committed with the required message and the handoff includes exact evidence.
 
 ## Boundaries
 

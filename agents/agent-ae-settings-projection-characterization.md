@@ -44,6 +44,13 @@ Extend `StartupManagerTests` with:
 
 Use in-memory injected settings/writer and `ToolStripMenuItem` for projection tests. Existing persistence helpers must use their unique temp root.
 
+## Exit Criteria
+
+- All eight required facts exist in the three exclusive output files and pass the focused filters.
+- The settings regression filter passes and preserves the single live-config opt-in skip.
+- The diff contains no production, project, runtime-path baseline, documentation, tracker, or unrelated file.
+- The owned changes are committed with the required message and the handoff includes exact evidence.
+
 ## Boundaries
 
 - Edit only the three exclusive files.
