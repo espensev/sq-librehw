@@ -39,7 +39,7 @@ docs = ["AGENTS.md", "README.md", "docs/"]
 [conflict-zones]
 zones = [
   "LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs, LibreHardwareMonitorLib/Hardware/Computer.cs | hardware lifetime and ordered option/reset ownership",
-  "LibreHardwareMonitor.Windows.Forms/Application/Snapshots/SensorSnapshot.cs, LibreHardwareMonitor.Windows.Forms/Adapters/WinFormsNodeSensorSnapshotSource.cs, LibreHardwareMonitor.Windows.Forms/Utilities/DataJsonProjection.cs, LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs, LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonGoldenTests.cs, LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/data.golden.json | external data.json snapshot, projection, and HTTP mutation contract",
+  "LibreHardwareMonitor.Windows.Forms/Application/Snapshots/SensorSnapshot.cs, LibreHardwareMonitor.Windows.Forms/Adapters/WinFormsNodeSensorSnapshotSource.cs, LibreHardwareMonitor.Windows.Forms/Utilities/DataJsonProjection.cs, LibreHardwareMonitor.Windows.Forms/Utilities/HttpListenerDispatchService.cs, LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs, LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonGoldenTests.cs, LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/data.golden.json, LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/HttpServerWireContractTests.cs | external data.json snapshot, projection, listener, and HTTP mutation contract",
   "LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs, LibreHardwareMonitor.Windows.Forms/Utilities/RuntimePaths.cs, LibreHardwareMonitor.Windows.Forms/UI/StartupManager.cs | settings, runtime paths, and startup ownership",
   "Directory.Packages.props, LibreHardwareMonitor.sln, experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx | central package and project graph",
   "docs/README.md, live-tracker.md, data/plans/ | current status and campaign truth",
@@ -71,6 +71,7 @@ files = ["docs/**/*.md", "agents/*.md", "data/plans/*.json"]
 
 [smart-test.mappings]
 "LibreHardwareMonitorLib/**/*.cs" = ["LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/**/*.cs", "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/**/*.cs"]
+"LibreHardwareMonitor.Windows.Forms/Utilities/HttpListenerDispatchService.cs" = ["LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/**/*.cs", "webtests/*.js"]
 "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs" = ["LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/**/*.cs", "webtests/*.js"]
 "LibreHardwareMonitor.Windows.Forms/**/*.cs" = ["LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/**/*.cs", "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/**/*.cs"]
 "LibreHardwareMonitor.Windows.Forms/Resources/Web/*.js" = ["webtests/*.js"]

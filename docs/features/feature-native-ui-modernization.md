@@ -443,6 +443,7 @@ dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.For
 The repository multi-architecture/packaging workflow must also pass for x64,
 x86, and ARM64 before a phase is merged for promotion.
 
-Any change near `HttpServer.BuildDataJsonObject`, `GenerateJsonForNode`, or the
-canonical node model must also review the golden payload byte-for-byte. Web
+Any change near `WinFormsNodeSensorSnapshotSource.Capture`,
+`DataJsonProjection.Project`, or the `HttpListenerDispatchService`/`HttpServer`
+listener-to-route boundary must also review the golden payload byte-for-byte. Web
 Workspace phases continue to run the Node checks listed in `docs/README.md`.
