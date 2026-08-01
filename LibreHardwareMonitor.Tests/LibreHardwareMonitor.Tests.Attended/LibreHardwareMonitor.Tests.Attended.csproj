@@ -15,10 +15,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
+    <ProjectReference Include="..\..\LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj" />
   </ItemGroup>
 </Project>

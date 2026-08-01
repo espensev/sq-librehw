@@ -209,7 +209,7 @@ pwsh -NoProfile -File ops\thermal-snapshot\Test-LhmThermalSnapshot.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-analysis\Test-LhmLogAnalysis.ps1
 pwsh -NoProfile -File ops\log-analysis\Test-LhmLogAnalysis.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-LhmLogManagement.ps1
-dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64 --filter FullyQualifiedName~DataJsonGoldenTests
+dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Contracts\LibreHardwareMonitor.Tests.Contracts.csproj -p:Platform=x64 --filter FullyQualifiedName~DataJsonGoldenTests
 git diff --check
 ```
 

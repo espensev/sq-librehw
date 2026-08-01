@@ -70,21 +70,30 @@ try {
     [System.IO.Directory]::CreateDirectory($temporaryRoot) | Out-Null
     [System.IO.Directory]::CreateDirectory($candidateParent) | Out-Null
 
-    $testProject = Join-Path $repositoryRoot 'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj'
+    # The three deterministic suites run individually rather than through the
+    # slnf because a shared -p:OutputPath across a multi-project invocation
+    # would collide their outputs in one directory.
+    $testSuiteProjects = @(
+        'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Library\LibreHardwareMonitor.Tests.Library.csproj',
+        'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Application\LibreHardwareMonitor.Tests.Application.csproj',
+        'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Contracts\LibreHardwareMonitor.Tests.Contracts.csproj')
     $applicationProject =
         Join-Path $repositoryRoot 'LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj'
 
-    Invoke-CheckedCommand `
-        -FilePath $dotnet.Source `
-        -Description 'Release test gate' `
-        -ArgumentList @(
-            'test',
-            $testProject,
-            '-c', 'Release',
-            '-p:Platform=x64',
-            "-p:OutputPath=$(Join-Path $verificationRoot 'tests')",
-            '--artifacts-path', (Join-Path $artifactsRoot 'tests')
-        )
+    foreach ($testSuiteProject in $testSuiteProjects) {
+        $suiteName = [System.IO.Path]::GetFileNameWithoutExtension($testSuiteProject)
+        Invoke-CheckedCommand `
+            -FilePath $dotnet.Source `
+            -Description "Release test gate ($suiteName)" `
+            -ArgumentList @(
+                'test',
+                (Join-Path $repositoryRoot $testSuiteProject),
+                '-c', 'Release',
+                '-p:Platform=x64',
+                "-p:OutputPath=$(Join-Path $verificationRoot "tests\$suiteName")",
+                '--artifacts-path', (Join-Path $artifactsRoot "tests\$suiteName")
+            )
+    }
 
     foreach ($framework in @('net10.0-windows', 'net472')) {
         Invoke-CheckedCommand `

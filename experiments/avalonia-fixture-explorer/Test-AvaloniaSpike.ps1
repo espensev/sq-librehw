@@ -61,7 +61,11 @@ function Get-RequiredMatchCount {
         [string]$Pattern,
 
         [Parameter(Mandatory = $true)]
-        [string]$Description
+        [string]$Description,
+
+        # A multi-project invocation (the test .slnf) prints one summary line
+        # per assembly; -Sum totals every match instead of taking the last.
+        [switch]$Sum
     )
 
     $matches = @(
@@ -78,6 +82,14 @@ function Get-RequiredMatchCount {
 
     if ($matches.Count -eq 0) {
         throw "Unable to read $Description from command output."
+    }
+
+    if ($Sum) {
+        $total = 0
+        foreach ($match in $matches) {
+            $total += [int]$match.Groups['count'].Value
+        }
+        return $total
     }
 
     return [int]$matches[$matches.Count - 1].Groups['count'].Value
@@ -334,17 +346,19 @@ try {
         -FilePath $dotnetCommand.Source `
         -ArgumentList @(
             'test',
-            'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj',
+            'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf',
             '-p:Platform=x64') `
         -Description 'run existing .NET regression tests')
     $existingTestCount = Get-RequiredMatchCount `
         -Output $existingTestOutput `
         -Pattern 'Total:\s*(?<count>\d+)' `
-        -Description 'existing .NET test total'
+        -Description 'existing .NET test total' `
+        -Sum
     $existingSkippedCount = Get-RequiredMatchCount `
         -Output $existingTestOutput `
         -Pattern 'Skipped:\s*(?<count>\d+)' `
-        -Description 'existing .NET skipped-test total'
+        -Description 'existing .NET skipped-test total' `
+        -Sum
     $completedGateCount++
 
     $net10BuildOutput = @(Invoke-CheckedCommand `

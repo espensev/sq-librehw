@@ -198,7 +198,7 @@ function Get-LhmReleaseVerificationCommands {
         'node --check workspace.js',
         'node webtests/selftest.node.js',
         'node --test console.tests.js workspace.tests.js',
-        'dotnet test LibreHardwareMonitor.Tests (x64)')
+        'dotnet test LibreHardwareMonitor.Tests.slnf (x64)')
 }
 
 function ConvertFrom-LhmReleaseJson {

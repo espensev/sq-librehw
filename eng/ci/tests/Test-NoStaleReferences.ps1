@@ -36,6 +36,38 @@ $moveMap = @(
     @{ Old = 'docs/repository-build-output-cleanup.md';          New = 'docs/architecture/repository-build-output-cleanup.md' }
 )
 
+# Plan-006: the flat test project became four boundary suites. Entries are
+# per-file because the parent LibreHardwareMonitor.Tests/ directory survives,
+# so a directory-level entry could not prove any individual move completed.
+$plan006SuiteFiles = @{
+    'LibreHardwareMonitor.Tests.Library' = @(
+        'ComputerOpenLifetimeTests.cs', 'MotherboardModelCompatibilityTests.cs',
+        'Nct677XFanConfigTests.cs', 'NvidiaGroupSnapshotTests.cs',
+        'SensorHistoryTests.cs', 'StorageGroupLifetimeTests.cs',
+        'StorageSmartUpdateCycleTests.cs')
+    'LibreHardwareMonitor.Tests.Application' = @(
+        'HardwareOperationCoordinatorTests.cs', 'PlotPanelHistoryTests.cs',
+        'PlotPanelTextScaleTests.cs', 'RuntimePathsTests.cs',
+        'SettingsPersistenceTests.cs', 'SmartUpdateCyclePolicyTests.cs',
+        'StartupManagerTests.cs', 'TemperatureRateSensorTests.cs',
+        'TextScaleSliderMenuTests.cs', 'UiScaleTests.cs',
+        'UiShutdownCoordinatorTests.cs', 'UiTextScaleCommitGateTests.cs',
+        'WinFormsUiLifetimeTests.cs')
+    'LibreHardwareMonitor.Tests.Contracts' = @(
+        'DataJsonGoldenTests.cs', 'data.golden.json',
+        'HttpServerAuthenticationTests.cs', 'HttpServerLifetimeTests.cs',
+        'HttpServerPrometheusTests.cs', 'HttpServerSensorApiTests.cs',
+        'CsvTimestampContractTests.cs', 'WebDashboardRetirementTests.cs')
+}
+foreach ($suite in ($plan006SuiteFiles.Keys | Sort-Object)) {
+    foreach ($file in $plan006SuiteFiles[$suite]) {
+        $moveMap += @{
+            Old = "LibreHardwareMonitor.Tests/$file"
+            New = "LibreHardwareMonitor.Tests/$suite/$file"
+        }
+    }
+}
+
 # Data: allow-list of exempt paths (immutable historical evidence).
 $exemptPatterns = @(
     '^agents/agent-[^/]+\.md$'
@@ -116,8 +148,43 @@ foreach ($f in ($scannable | Where-Object { $_ -match '\.md$' })) {
 }
 Assert-Ok "no non-exempt current document references the old root .slnx" { $slnxHits -eq 0 -or $slnxHits.Count -eq 0 }
 
+# 5. Plan-006 dissolved project: the retired flat test csproj is gone and the
+#    four suite projects plus the deterministic solution filter exist.
+$retiredCsproj = Join-Path $repositoryRoot 'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj'
+Assert-Ok "retired flat test csproj is dissolved" { -not (Test-Path -LiteralPath $retiredCsproj) }
+$plan006NewProjects = @(
+    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf'
+    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Library\LibreHardwareMonitor.Tests.Library.csproj'
+    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Application\LibreHardwareMonitor.Tests.Application.csproj'
+    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Contracts\LibreHardwareMonitor.Tests.Contracts.csproj'
+    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Attended\LibreHardwareMonitor.Tests.Attended.csproj'
+)
+foreach ($p in $plan006NewProjects) {
+    Assert-Ok "suite artifact exists: $p" { Test-Path -LiteralPath (Join-Path $repositoryRoot $p) }
+}
+
+# 6. Plan-006 textual staleness over a widened file set. The default scan set
+#    (.toml|.md|.ps1|.yml) cannot see .csproj/.sln/.slnf/.json, which is exactly
+#    where stale test-project paths would hide after this campaign, so this
+#    block scans those too. Bare directory references (module globs like
+#    "LibreHardwareMonitor.Tests/") remain legal: both patterns require a file
+#    segment that does not begin with the suite prefix.
+$wideTracked = @(git ls-files) | Where-Object { $_ -match '\.(toml|md|ps1|yml|csproj|sln|slnf|json)$' }
+$wideScannable = @($wideTracked | Where-Object { -not (Test-Exempt $_) })
+$oldTestCsprojRe = 'LibreHardwareMonitor\.Tests[/\\]+LibreHardwareMonitor\.Tests\.csproj'
+$flatTestFileRe = 'LibreHardwareMonitor\.Tests[/\\]+(?!LibreHardwareMonitor\.Tests\.)[A-Za-z0-9_.-]+\.(?:cs|json|csproj)'
+$oldTestHits = @()
+foreach ($f in $wideScannable) {
+    $full = Join-Path $repositoryRoot ($f -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $full)) { continue }
+    $t = Get-Content -Raw -LiteralPath $full
+    if ([regex]::IsMatch($t, $oldTestCsprojRe) -or [regex]::IsMatch($t, $flatTestFileRe)) { $oldTestHits += $f }
+}
+Assert-Ok "no non-exempt tracked file references the retired flat test project layout" { $oldTestHits.Count -eq 0 }
+
 Write-Output "-> " + $(if ($failures.Count -eq 0) { 'ok' } else { "FAILED ($($failures.Count) failures)" })
 if ($scriptHits.Count -gt 0)  { Write-Output ("  old-script refs: " + ($scriptHits -join '; ')) }
 if ($slnxHits.Count -gt 0)    { Write-Output ("  old-slnx refs: " + ($slnxHits -join '; ')) }
+if ($oldTestHits.Count -gt 0) { Write-Output ("  retired-test-layout refs: " + ($oldTestHits -join '; ')) }
 if ($failures.Count -gt 0) { exit 1 }
 exit 0

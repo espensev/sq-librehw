@@ -183,15 +183,26 @@ contract tests pass.
 
 ## Phase 3 — Verification suite boundaries
 
-**Status:** not started
+**Status:** partially complete — the suite split landed with Plan-006; the
+characterization-tests item remains open and is plan-007
 
-- Split library-only behavior tests from WinForms/application tests.
-- Isolate external contracts: `data.json`, HTTP routes, Prometheus, CSV, and
-  web assets.
-- Add characterization tests around lifecycle, settings projection, and
-  reset/option ordering before extraction.
-- Keep hardware-dependent and attended tests explicitly separate from
-  deterministic CI.
+- [x] Split library-only behavior tests from WinForms/application tests
+  (Plan-006, 2026-08-01): `LibreHardwareMonitor.Tests.Library` (references
+  `LibreHardwareMonitorLib` only, no WinForms assembly in its built dependency
+  set) and `LibreHardwareMonitor.Tests.Application` created via pure `git mv`
+  renames with the 259/258/1 population preserved.
+- [x] Isolate external contracts: `data.json`, HTTP routes, Prometheus, CSV, and
+  web assets (Plan-006, 2026-08-01): `LibreHardwareMonitor.Tests.Contracts`
+  holds the byte-identical golden master and the HTTP, Prometheus, CSV
+  timestamp, and web-dashboard-retirement tests.
+- [ ] Add characterization tests around lifecycle, settings projection, and
+  reset/option ordering before extraction. **Open — this is plan-007 and it is
+  non-optional.**
+- [x] Keep hardware-dependent and attended tests explicitly separate from
+  deterministic CI (Plan-006, 2026-08-01): the Attended suite exists in the sln
+  but is excluded from `LibreHardwareMonitor.Tests.slnf` and from every gate
+  command by construction, pinned by the permanent
+  `eng/ci/tests/Test-SuiteBoundaries.ps1`.
 
 **Exit gate:** each future seam maps to a focused deterministic suite, and
 cross-cutting changes still trigger the full gate.
@@ -263,14 +274,16 @@ At this checkpoint the queue is:
 1. **A1** — Plan-001's attended normal-user smoke. Person-only, still open.
 2. **A2** — Plan-002 acceptance. Person-only; every criterion is met and the
    ledger state is `implemented`.
-3. **plan-006** — verification suite boundaries. Re-read
-   `docs/campaign-backlog.md` before starting; it is scoped but not spec-complete.
+3. **plan-007** — characterization tests before extraction. Re-read
+   `docs/campaign-backlog.md` before starting; it is an outline, not a spec.
 
-Plan-003, Plan-004, and Plan-005 have landed: the Avalonia fixture explorer lives
-under `experiments/avalonia-fixture-explorer/`, operations are split into
-`ops/candidate`, `ops/deploy/snd-desk`, and `eng/`, and current docs are grouped
-under `docs/features/` and `docs/architecture/`. All moves preserved history and
-proved configuration-only rewiring with the runner byte-identical.
+Plan-003, Plan-004, Plan-005, and Plan-006 have landed: the Avalonia fixture
+explorer lives under `experiments/avalonia-fixture-explorer/`, operations are
+split into `ops/candidate`, `ops/deploy/snd-desk`, and `eng/`, current docs are
+grouped under `docs/features/` and `docs/architecture/`, and the flat test
+project is split into the four `LibreHardwareMonitor.Tests` boundary suites
+behind the deterministic `LibreHardwareMonitor.Tests.slnf`. All moves preserved
+history and proved configuration-only rewiring with the runner byte-identical.
 
 Do not register a plan from a dirty tree; check `plan preflight` first, and see
 `docs/campaign-playbook.md` for the full lifecycle.

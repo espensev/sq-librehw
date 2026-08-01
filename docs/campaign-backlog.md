@@ -1,7 +1,7 @@
 # Campaign Backlog
 
 **Status:** active
-**Updated:** 2026-07-31
+**Updated:** 2026-08-01
 **Read first:** `docs/campaign-playbook.md` for how to run any of these,
 `docs/architecture/refactor-roadmap.md` for why each phase exists
 
@@ -17,9 +17,8 @@ campaign owns.
   full specs. Do not pre-register them.
 - Every campaign starts from a **clean, committed tree** with `plan preflight`
   reporting ready. Registering from a dirty tree is a standing prohibition.
-- Detail level is deliberate. `plan-003` is spec-complete and ready to register.
-  `plan-004` through `plan-006` are scoped with known impact. `plan-007` onward
-  are outlines whose shape depends on results you cannot see yet.
+- Detail level is deliberate. `plan-007` onward are outlines whose shape
+  depends on results you cannot see yet.
 - When a campaign lands, delete its section here and leave the record in
   `docs/campaign-history.md` and Git history.
 
@@ -28,10 +27,10 @@ campaign owns.
 | | |
 |---|---|
 | Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane) |
-| Last campaign | `plan-005`, documentation taxonomy, ledger state `implemented` |
-| Next campaign | `plan-006` |
-| Next agent letter | `y` |
-| Blocking nothing | A1 and A2 are person-only; the Get-FileHash defect keeps the configured `snd-desk-local-release-fixture` gate red (shared with Plan-003/004) |
+| Last campaign | `plan-006`, verification suite boundaries, ledger state `implemented` |
+| Next campaign | `plan-007` |
+| Next agent letter | `ac` |
+| Blocking nothing | A1 and A2 are person-only; the plan-006 close sweep passed 8/8 on 2026-08-01, so every plan-006 criterion is met |
 
 ---
 
@@ -67,42 +66,6 @@ or correct that while you are there.
 Every criterion is met and the ledger state is `implemented`. Moving it to
 `accepted` is a person's decision. Plan-002 wrote the rule that forbids
 automation from doing it, so it cannot do it to itself.
-
----
-
-## plan-006 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Verification suite boundaries
-
-**Phase:** 3
-**Risk:** high ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â first campaign to touch a product project file
-**Entry:** `plan-005` landed; Phase 2 exit gate met
-
-### Goal
-
-`LibreHardwareMonitor.Tests` currently mixes library behavior, application
-behavior, external-contract golden masters, and anything hardware-dependent.
-Split it so each future seam maps to a focused deterministic suite, and so
-hardware-dependent and attended tests are explicitly outside deterministic CI.
-
-### Boundaries to establish
-
-1. library-only behavior (`LibreHardwareMonitorLib`);
-2. application behavior (`LibreHardwareMonitor.Windows.Forms`);
-3. external contracts ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â `data.json`, HTTP routes, Prometheus, CSV, web assets;
-4. hardware-dependent and attended, excluded from CI by construction rather
-   than by convention.
-
-### Known hazards
-
-- `DataJsonGoldenTests` embeds the assembly version in `data.golden.json`.
-  Regenerating it is a documented procedure in `AGENTS.md` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â follow it, review
-  the diff, and do not regenerate casually to make a red test green.
-- The `data.json` shape, order, and IDs are an external downstream contract.
-  This campaign restructures *tests*, never the payload.
-- Splitting a test project changes the `[build-gate.winforms-net10]` test
-  command and every `[smart-test.mappings]` entry pointing into
-  `LibreHardwareMonitor.Tests/`.
-- One documented opt-in skip exists in the current 258-test run. Preserve it as
-  a skip; do not let a restructure silently drop it.
 
 ---
 

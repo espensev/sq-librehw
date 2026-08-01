@@ -135,7 +135,7 @@ node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\workspace.js
 node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js
 node webtests\selftest.node.js
 node --test webtests\console.tests.js webtests\workspace.tests.js
-dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64
+dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
 ```

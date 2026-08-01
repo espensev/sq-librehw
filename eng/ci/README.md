@@ -54,7 +54,7 @@ warning, so a not-yet-registered gate never fails a run.
 
 | Gate | Runs | Reason |
 |---|---|---|
-| `winforms-net10` | `build`, `test` | Non-deploying source build and the .NET test suite. |
+| `winforms-net10` | `build`, `test` | Non-deploying source build and the deterministic .NET suites via `LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf`. |
 | `winforms-net472` | `build` | Non-deploying second-framework source build. |
 | `avalonia-spike` | `build`, `test` | Fixture-only, non-shipping spike solution and its runner. |
 | `web-dashboard` | `verify`, `test` | Static dashboard self-test and Node contract tests. |
@@ -148,6 +148,20 @@ directory. To return to the baseline's zero-generated-directories state:
 
 Do not use `git clean -fdX`. It would delete `data/tasks.json` and
 `data/analysis-cache.json`, the local execution ledger and analysis cache.
+
+## Verification-suite boundaries
+
+`LibreHardwareMonitor.Tests/` holds four suite projects. Deterministic CI
+membership is defined by `LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf`,
+which lists exactly `LibreHardwareMonitor.Tests.Library` (library-only behavior),
+`LibreHardwareMonitor.Tests.Application` (WinForms application behavior), and
+`LibreHardwareMonitor.Tests.Contracts` (external contracts: `data.json` golden,
+HTTP routes, Prometheus, CSV, web-asset retirement).
+`LibreHardwareMonitor.Tests.Attended` is a project in the shipping solution but
+is **outside deterministic CI by construction**: it appears in no gate command
+and not in the slnf. `eng/ci/tests/Test-SuiteBoundaries.ps1` enforces that
+shape, and adding the Attended suite to CI requires a new accepted
+specification, not a configuration edit.
 
 ## Test-script convention
 

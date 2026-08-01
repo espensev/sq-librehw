@@ -258,7 +258,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File experiments\avalonia-fix
 dotnet restore experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.slnx
 dotnet build experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.slnx -c Release --no-restore
 dotnet run --project experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.Tests\LibreHardwareMonitor.Avalonia.Spike.Tests.csproj -c Release
-dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64
+dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseSystem.ps1
@@ -357,7 +357,7 @@ All contributors must avoid:
 
 - `LibreHardwareMonitor.sln`;
 - `LibreHardwareMonitor.Windows.Forms.csproj`;
-- `LibreHardwareMonitor.Tests.csproj`;
+- the `LibreHardwareMonitor.Tests` suite projects and `LibreHardwareMonitor.Tests.slnf`;
 - `MainForm.cs`, `Computer.cs`, `HttpServer.cs`, `PersistentSettings.cs`, and
   `RuntimePaths.cs`;
 - WinForms release, promotion, task, and live-runtime code.

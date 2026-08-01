@@ -211,7 +211,7 @@ try {
         Invoke-LhmReleaseCommand -FilePath $DotnetPath `
             -ArgumentList @(
                 'test',
-                'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj',
+                'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf',
                 '-p:Platform=x64',
                 '--artifacts-path',
                 $testArtifacts) `
