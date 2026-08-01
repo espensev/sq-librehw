@@ -102,7 +102,7 @@ blob as both Git object
 `05113704acc6fefeb4128004b3f523d876fbcec4` and SHA-256
 `BEBDE807A7F0037827E16CFBC1F41707701F2BEE7232385C3D2EAEBD2261D2F3`.
 
-## Exit criteria
+## Exit Criteria
 
 - Exactly the three exclusive files change.
 - Exactly three new projection facts pass; the complete Contracts project is

@@ -133,7 +133,7 @@ reconfigure, publish, promote, or write anywhere under the operational tree.
 9. `live-tracker.md`
    - Add one accurate row each for AG, AH, and AI using actual commits/counts.
 
-## Exit criteria
+## Exit Criteria
 
 - Every Plan-008 criterion has command- or artifact-backed evidence and no gate
   is softened to fit a result.

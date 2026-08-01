@@ -110,7 +110,7 @@ prove mutation through any supported non-generic/generic list cast is rejected
 and inspect the snapshot property graph so no forbidden source type escapes.
 Keep all hardware and type mapping assertions inside the fifth single fact.
 
-## Exit criteria
+## Exit Criteria
 
 - Exactly the three exclusive files change.
 - Exactly five new Application facts pass; the complete Application project is
