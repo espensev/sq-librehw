@@ -19,18 +19,67 @@ public sealed class ApplicationLifecycleCoordinatorTests
     [Fact]
     public async Task RequestOption_BeforeInitialization_AppliesSynchronously()
     {
+        var optionStarted = NewCompletionSource();
+        var releaseOption = NewCompletionSource();
+        var openStarted = NewCompletionSource();
+        var initializationContext = new RecordingSynchronizationContext();
+        SynchronizationContext openContext = null;
         var calls = new ConcurrentQueue<string>();
         var coordinator = CreateCoordinator(
-            applyOption: (option, value) => calls.Enqueue($"{option}={value}"));
+            openAsync: _ =>
+            {
+                openContext = SynchronizationContext.Current;
+                calls.Enqueue("Open");
+                openStarted.TrySetResult(null);
+                return Task.CompletedTask;
+            },
+            applyOption: (option, value) =>
+            {
+                calls.Enqueue($"{option}={value}:Start");
+                optionStarted.TrySetResult(null);
+                releaseOption.Task.GetAwaiter().GetResult();
+                calls.Enqueue($"{option}={value}:End");
+            });
 
+        Task<bool> request = null;
         try
         {
-            Assert.True(coordinator.RequestOption(HardwareOptionKind.Cpu, false));
-            Assert.Equal(new[] { "Cpu=False" }, calls);
+            request = Task.Run(() => coordinator.RequestOption(HardwareOptionKind.Cpu, false));
+            await optionStarted.Task.WaitAsync(Timeout);
+            Assert.False(request.IsCompleted);
+
+            Task initialization;
+            SynchronizationContext originalContext = SynchronizationContext.Current;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(initializationContext);
+                initialization = coordinator.InitializeAsync();
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(originalContext);
+            }
+
+            Assert.True(coordinator.IsInitializationInProgress);
+            Assert.False(initialization.IsCompleted);
+            Assert.False(openStarted.Task.IsCompleted);
+
+            releaseOption.TrySetResult(null);
+            Assert.True(await request.WaitAsync(Timeout));
+            await initialization.WaitAsync(Timeout);
+            await openStarted.Task.WaitAsync(Timeout);
+
+            Assert.Equal(new[] { "Cpu=False:Start", "Cpu=False:End", "Open" }, calls);
+            Assert.Same(initializationContext, openContext);
+            Assert.True(Volatile.Read(ref initializationContext.PostCount) > 0);
             Assert.False(coordinator.IsInitializationInProgress);
         }
         finally
         {
+            releaseOption.TrySetResult(null);
+            if (request != null)
+                await request.WaitAsync(Timeout);
+
             await StopAndDisposeAsync(coordinator);
         }
     }
@@ -170,27 +219,233 @@ public sealed class ApplicationLifecycleCoordinatorTests
     [Fact]
     public async Task BeginStop_RejectsNewOptionResetAndPollAdmission()
     {
+        var optionStarted = NewCompletionSource();
+        var releaseOption = NewCompletionSource();
         int resetCount = 0;
-        var coordinator = CreateCoordinator(reset: () => Interlocked.Increment(ref resetCount));
+        int closeCount = 0;
+        var coordinator = CreateCoordinator(
+            applyOption: (_, _) =>
+            {
+                optionStarted.TrySetResult(null);
+                releaseOption.Task.GetAwaiter().GetResult();
+            },
+            reset: () => Interlocked.Increment(ref resetCount),
+            closeAsync: () =>
+            {
+                Interlocked.Increment(ref closeCount);
+                return Task.CompletedTask;
+            });
         coordinator.StateChanged += () => throw new InvalidOperationException("observer failed");
 
-        // Exercise the no-initialization edge directly: the pending reset is waiting on the
-        // initialization barrier when stop must cancel and release it without running reset.
-        Assert.True(coordinator.RequestReset());
-        coordinator.BeginStop();
+        Task<bool> admittedOption = null;
+        Task stop = null;
+        try
+        {
+            admittedOption = Task.Run(
+                () => coordinator.RequestOption(HardwareOptionKind.Cpu, false));
+            await optionStarted.Task.WaitAsync(Timeout);
+            Assert.False(admittedOption.IsCompleted);
 
-        Assert.True(coordinator.IsStopping);
-        Assert.False(coordinator.RequestOption(HardwareOptionKind.Battery, true));
-        Assert.False(coordinator.RequestReset());
-        Assert.False(coordinator.TryBeginPoll());
-        Assert.True(coordinator.InitializeAsync().IsCanceled);
+            // The option callback is outside the coordinator lock, so reset admission stays
+            // responsive. With no initialization, that reset waits on the lifecycle barrier.
+            Assert.True(coordinator.RequestReset());
+            coordinator.BeginStop();
+            stop = coordinator.StopAsync();
 
-        await StopAndDisposeAsync(coordinator);
-        Assert.Equal(0, Volatile.Read(ref resetCount));
+            Assert.True(coordinator.IsStopping);
+            Assert.False(stop.IsCompleted);
+            Assert.Equal(0, Volatile.Read(ref closeCount));
+            Assert.False(coordinator.RequestOption(HardwareOptionKind.Battery, true));
+            Assert.False(coordinator.RequestReset());
+            Assert.False(coordinator.TryBeginPoll());
+            Assert.True(coordinator.InitializeAsync().IsCanceled);
+
+            releaseOption.TrySetResult(null);
+            Assert.True(await admittedOption.WaitAsync(Timeout));
+            await stop.WaitAsync(Timeout);
+
+            Assert.Equal(0, Volatile.Read(ref resetCount));
+            Assert.Equal(1, Volatile.Read(ref closeCount));
+        }
+        finally
+        {
+            releaseOption.TrySetResult(null);
+            if (admittedOption != null)
+                await admittedOption.WaitAsync(Timeout);
+
+            await (stop ?? coordinator.StopAsync()).WaitAsync(Timeout);
+            coordinator.Dispose();
+        }
     }
 
     [Fact]
     public async Task StopAsync_WaitsForInitializationOperationsAndActivePollBeforeClose()
+    {
+        await AssertConcurrentStopWaitsForAdmissionClosureAsync();
+        await AssertStopWaitsForActiveInitializationAsync();
+        await AssertStopWaitsForActiveOperationAndPollAsync();
+    }
+
+    [Fact]
+    public async Task ConcurrentStopAsync_ClosesExactlyOnceAndSharesCompletion()
+    {
+        var closeStarted = NewCompletionSource();
+        var releaseClose = NewCompletionSource();
+        var stopContext = new RecordingSynchronizationContext();
+        SynchronizationContext closeContext = null;
+        int closeCount = 0;
+        var coordinator = CreateCoordinator(
+            closeAsync: async () =>
+            {
+                closeContext = SynchronizationContext.Current;
+                Interlocked.Increment(ref closeCount);
+                closeStarted.TrySetResult(null);
+                await releaseClose.Task.ConfigureAwait(false);
+            });
+
+        Task first = null;
+        try
+        {
+            SynchronizationContext originalContext = SynchronizationContext.Current;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(stopContext);
+                first = coordinator.StopAsync();
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(originalContext);
+            }
+
+            Task second = coordinator.StopAsync();
+            Assert.Same(first, second);
+
+            await closeStarted.Task.WaitAsync(Timeout);
+            Assert.Equal(1, Volatile.Read(ref closeCount));
+            Assert.Same(stopContext, closeContext);
+            Assert.True(Volatile.Read(ref stopContext.PostCount) > 0);
+            Assert.False(first.IsCompleted);
+            Assert.Same(first, coordinator.StopAsync());
+
+            releaseClose.TrySetResult(null);
+            await Task.WhenAll(first, second).WaitAsync(Timeout);
+            Assert.Equal(1, Volatile.Read(ref closeCount));
+        }
+        finally
+        {
+            releaseClose.TrySetResult(null);
+            await (first ?? coordinator.StopAsync()).WaitAsync(Timeout);
+            coordinator.Dispose();
+        }
+    }
+
+    private static async Task AssertConcurrentStopWaitsForAdmissionClosureAsync()
+    {
+        var openStarted = NewCompletionSource();
+        var cancellationStarted = NewCompletionSource();
+        var releaseCancellation = NewCompletionSource();
+        var releaseOpen = NewCompletionSource();
+        CancellationTokenRegistration cancellationRegistration = default;
+        int closeCount = 0;
+        var coordinator = CreateCoordinator(
+            openAsync: async cancellationToken =>
+            {
+                cancellationRegistration = cancellationToken.Register(() =>
+                {
+                    cancellationStarted.TrySetResult(null);
+                    releaseCancellation.Task.GetAwaiter().GetResult();
+                });
+                openStarted.TrySetResult(null);
+                await releaseOpen.Task.ConfigureAwait(false);
+            },
+            closeAsync: () =>
+            {
+                Interlocked.Increment(ref closeCount);
+                return Task.CompletedTask;
+            });
+
+        Task beginStop = null;
+        Task stop = null;
+        try
+        {
+            Task initialization = coordinator.InitializeAsync();
+            await openStarted.Task.WaitAsync(Timeout);
+
+            beginStop = Task.Run(coordinator.BeginStop);
+            await cancellationStarted.Task.WaitAsync(Timeout);
+
+            // This second stop caller sees _stopping while the first caller is still inside
+            // CancellationTokenSource.Cancel. Admission closure keeps stop from running ahead.
+            stop = coordinator.StopAsync();
+            Assert.False(stop.IsCompleted);
+            Assert.Equal(0, Volatile.Read(ref closeCount));
+
+            // Let initialization finish while cancellation is still held. With no admission-
+            // closed barrier, this second stop caller could now observe every drain idle and close.
+            releaseOpen.TrySetResult(null);
+            await initialization.WaitAsync(Timeout);
+            Assert.False(stop.IsCompleted);
+            Assert.Equal(0, Volatile.Read(ref closeCount));
+
+            releaseCancellation.TrySetResult(null);
+            await beginStop.WaitAsync(Timeout);
+            await stop.WaitAsync(Timeout);
+            Assert.Equal(1, Volatile.Read(ref closeCount));
+        }
+        finally
+        {
+            releaseCancellation.TrySetResult(null);
+            releaseOpen.TrySetResult(null);
+            if (beginStop != null)
+                await beginStop.WaitAsync(Timeout);
+
+            await (stop ?? coordinator.StopAsync()).WaitAsync(Timeout);
+            cancellationRegistration.Dispose();
+            coordinator.Dispose();
+        }
+    }
+
+    private static async Task AssertStopWaitsForActiveInitializationAsync()
+    {
+        var openStarted = NewCompletionSource();
+        var releaseOpen = NewCompletionSource();
+        int closeCount = 0;
+        var coordinator = CreateCoordinator(
+            openAsync: async _ =>
+            {
+                openStarted.TrySetResult(null);
+                await releaseOpen.Task.ConfigureAwait(false);
+            },
+            closeAsync: () =>
+            {
+                Interlocked.Increment(ref closeCount);
+                return Task.CompletedTask;
+            });
+
+        Task stop = null;
+        try
+        {
+            Task initialization = coordinator.InitializeAsync();
+            await openStarted.Task.WaitAsync(Timeout);
+
+            stop = coordinator.StopAsync();
+            Assert.False(stop.IsCompleted);
+            Assert.Equal(0, Volatile.Read(ref closeCount));
+
+            releaseOpen.TrySetResult(null);
+            await initialization.WaitAsync(Timeout);
+            await stop.WaitAsync(Timeout);
+            Assert.Equal(1, Volatile.Read(ref closeCount));
+        }
+        finally
+        {
+            releaseOpen.TrySetResult(null);
+            await (stop ?? coordinator.StopAsync()).WaitAsync(Timeout);
+            coordinator.Dispose();
+        }
+    }
+
+    private static async Task AssertStopWaitsForActiveOperationAndPollAsync()
     {
         var optionStarted = NewCompletionSource();
         var releaseOption = NewCompletionSource();
@@ -246,59 +501,6 @@ public sealed class ApplicationLifecycleCoordinatorTests
             releaseOption.TrySetResult(null);
             coordinator.CompletePoll();
             await (stop ?? coordinator.StopAsync()).WaitAsync(Timeout);
-            coordinator.Dispose();
-        }
-    }
-
-    [Fact]
-    public async Task ConcurrentStopAsync_ClosesExactlyOnceAndSharesCompletion()
-    {
-        var closeStarted = NewCompletionSource();
-        var releaseClose = NewCompletionSource();
-        var stopContext = new RecordingSynchronizationContext();
-        SynchronizationContext closeContext = null;
-        int closeCount = 0;
-        var coordinator = CreateCoordinator(
-            closeAsync: async () =>
-            {
-                closeContext = SynchronizationContext.Current;
-                Interlocked.Increment(ref closeCount);
-                closeStarted.TrySetResult(null);
-                await releaseClose.Task.ConfigureAwait(false);
-            });
-
-        Task first = null;
-        try
-        {
-            SynchronizationContext originalContext = SynchronizationContext.Current;
-            try
-            {
-                SynchronizationContext.SetSynchronizationContext(stopContext);
-                first = coordinator.StopAsync();
-            }
-            finally
-            {
-                SynchronizationContext.SetSynchronizationContext(originalContext);
-            }
-
-            Task second = coordinator.StopAsync();
-            Assert.Same(first, second);
-
-            await closeStarted.Task.WaitAsync(Timeout);
-            Assert.Equal(1, Volatile.Read(ref closeCount));
-            Assert.Same(stopContext, closeContext);
-            Assert.True(Volatile.Read(ref stopContext.PostCount) > 0);
-            Assert.False(first.IsCompleted);
-            Assert.Same(first, coordinator.StopAsync());
-
-            releaseClose.TrySetResult(null);
-            await Task.WhenAll(first, second).WaitAsync(Timeout);
-            Assert.Equal(1, Volatile.Read(ref closeCount));
-        }
-        finally
-        {
-            releaseClose.TrySetResult(null);
-            await (first ?? coordinator.StopAsync()).WaitAsync(Timeout);
             coordinator.Dispose();
         }
     }
