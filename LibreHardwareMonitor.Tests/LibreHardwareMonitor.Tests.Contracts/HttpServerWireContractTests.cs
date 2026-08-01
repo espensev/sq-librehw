@@ -35,7 +35,7 @@ public sealed class HttpServerWireContractTests
     public async Task Routes_PreserveMethodStatusContentTypeAndHeaders()
     {
         using SensorFixture fixture = CreateServerFixture();
-        await using RunningServer running = StartServer(fixture.Server);
+        await using RunningServer running = await StartServerAsync(fixture.Server);
         if (running == null)
             return;
 
@@ -89,7 +89,7 @@ public sealed class HttpServerWireContractTests
     public async Task DataJson_PreservesIdentityAndGzipPayloads()
     {
         using SensorFixture fixture = CreateServerFixture();
-        await using RunningServer running = StartServer(fixture.Server);
+        await using RunningServer running = await StartServerAsync(fixture.Server);
         if (running == null)
             return;
 
@@ -130,7 +130,7 @@ public sealed class HttpServerWireContractTests
     public async Task Mutations_PreservePostOnlyAndOriginPolicy()
     {
         using SensorFixture fixture = CreateServerFixture();
-        await using RunningServer running = StartServer(fixture.Server);
+        await using RunningServer running = await StartServerAsync(fixture.Server);
         if (running == null)
             return;
 
@@ -181,48 +181,74 @@ public sealed class HttpServerWireContractTests
             Assert.Equal(0, fixture.Sensor.ResetMaxCallCount);
         }
 
+        using HttpResponseMessage expectedDataResponse = await running.SendAsync(HttpMethod.Get, "/data.json", acceptEncoding: "identity");
+        byte[] expectedData = await expectedDataResponse.Content.ReadAsByteArrayAsync();
+
         using (HttpResponseMessage allowedResetAll = await running.SendAsync(HttpMethod.Post, "/ResetAllMinMax", origin: running.Origin))
         {
             Assert.Equal(HttpStatusCode.OK, allowedResetAll.StatusCode);
             Assert.Equal("application/json", allowedResetAll.Content.Headers.ContentType?.MediaType);
-            Assert.Contains("WIRE-PC", await allowedResetAll.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+            Assert.Equal("no-cache", HeaderValue(allowedResetAll, "Cache-Control"));
+            Assert.Equal("*", HeaderValue(allowedResetAll, "Access-Control-Allow-Origin"));
+            Assert.Empty(allowedResetAll.Content.Headers.ContentEncoding);
+            Assert.Equal(expectedData, await allowedResetAll.Content.ReadAsByteArrayAsync());
             Assert.Equal(1, fixture.Sensor.ResetMinCallCount);
             Assert.Equal(1, fixture.Sensor.ResetMaxCallCount);
+        }
+
+        using (HttpResponseMessage sensorReset = await running.SendAsync(HttpMethod.Post, $"/Sensor?action=ResetMinMax&id={id}"))
+        {
+            Assert.Equal(HttpStatusCode.OK, sensorReset.StatusCode);
+            Assert.Contains("\"result\":\"ok\"", await sensorReset.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+            Assert.Equal(2, fixture.Sensor.ResetMinCallCount);
+            Assert.Equal(2, fixture.Sensor.ResetMaxCallCount);
+        }
+
+        using (HttpResponseMessage headerlessResetAll = await running.SendAsync(HttpMethod.Post, "/ResetAllMinMax"))
+        {
+            Assert.Equal(HttpStatusCode.OK, headerlessResetAll.StatusCode);
+            Assert.Equal(expectedData, await headerlessResetAll.Content.ReadAsByteArrayAsync());
+            Assert.Equal(3, fixture.Sensor.ResetMinCallCount);
+            Assert.Equal(3, fixture.Sensor.ResetMaxCallCount);
         }
 
         using HttpResponseMessage getResetAll = await running.SendAsync(HttpMethod.Get, "/ResetAllMinMax");
         Assert.Equal(HttpStatusCode.MethodNotAllowed, getResetAll.StatusCode);
         Assert.Equal("POST", HeaderValue(getResetAll, "Allow"));
+        Assert.Equal(3, fixture.Sensor.ResetMinCallCount);
+        Assert.Equal(3, fixture.Sensor.ResetMaxCallCount);
     }
 
     [Fact]
     public async Task BasicAuthentication_PreservesFailureAndSuccessResponses()
     {
-        const string unauthorizedHtml = "<HTML><HEAD><TITLE>401 Unauthorized</TITLE></HEAD>\r\n  <BODY><H4>401 Unauthorized</H4>\r\n  Authorization required.</BODY></HTML> ";
+        const string unauthorizedHtml = "<HTML><HEAD><TITLE>401 Unauthorized</TITLE></HEAD>\n  <BODY><H4>401 Unauthorized</H4>\n  Authorization required.</BODY></HTML> ";
         using SensorFixture fixture = CreateServerFixture(authEnabled: true, userName: "wire-user");
         fixture.Server.SetPassword("wire-password");
-        await using RunningServer running = StartServer(fixture.Server);
+        await using RunningServer running = await StartServerAsync(fixture.Server);
         if (running == null)
             return;
 
         using (HttpResponseMessage absent = await running.SendAsync(HttpMethod.Get, "/data.json"))
         {
             Assert.Equal(HttpStatusCode.Unauthorized, absent.StatusCode);
-            Assert.Contains(absent.Headers.WwwAuthenticate, value => string.Equals(value.Scheme, "Basic", StringComparison.OrdinalIgnoreCase));
+            AssertBasicChallenge(absent);
         }
 
         using (HttpResponseMessage wrongUser = await running.SendAsync(HttpMethod.Get, "/data.json", basicCredentials: ("other-user", "wire-password")))
         {
             Assert.Equal(HttpStatusCode.Unauthorized, wrongUser.StatusCode);
             Assert.Equal("text/html", wrongUser.Content.Headers.ContentType?.MediaType);
-            Assert.Equal(unauthorizedHtml, await wrongUser.Content.ReadAsStringAsync());
+            AssertBasicChallenge(wrongUser);
+            Assert.Equal(unauthorizedHtml, NormalizeLineEndings(await wrongUser.Content.ReadAsStringAsync()));
         }
 
         using (HttpResponseMessage wrongPassword = await running.SendAsync(HttpMethod.Get, "/data.json", basicCredentials: ("wire-user", "wrong-password")))
         {
             Assert.Equal(HttpStatusCode.Unauthorized, wrongPassword.StatusCode);
             Assert.Equal("text/html", wrongPassword.Content.Headers.ContentType?.MediaType);
-            Assert.Equal(unauthorizedHtml, await wrongPassword.Content.ReadAsStringAsync());
+            AssertBasicChallenge(wrongPassword);
+            Assert.Equal(unauthorizedHtml, NormalizeLineEndings(await wrongPassword.Content.ReadAsStringAsync()));
         }
 
         using HttpResponseMessage accepted = await running.SendAsync(HttpMethod.Get, "/data.json", basicCredentials: ("wire-user", "wire-password"));
@@ -235,7 +261,7 @@ public sealed class HttpServerWireContractTests
     {
         int port = ReserveLoopbackPort();
         var server = new HttpServer(null, null, "127.0.0.1", port);
-        await using RunningServer running = StartServer(server);
+        await using RunningServer running = await StartServerAsync(server);
         if (running == null)
             return;
 
@@ -277,7 +303,18 @@ public sealed class HttpServerWireContractTests
             Assert.True(await fixture.Server.StopHttpListenerAsync());
 
             Assert.True(fixture.Server.StartHttpListener());
-            using (HttpResponseMessage restarted = await client.GetAsync("data.json"))
+            Assert.Equal("127.0.0.1", fixture.Server.ListenerIp);
+            using var restartHandler = new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.None,
+                UseProxy = false
+            };
+            using var restartClient = new HttpClient(restartHandler)
+            {
+                BaseAddress = new Uri($"http://127.0.0.1:{port}/"),
+                Timeout = TimeSpan.FromSeconds(10)
+            };
+            using (HttpResponseMessage restarted = await restartClient.GetAsync("data.json"))
                 Assert.Equal(HttpStatusCode.OK, restarted.StatusCode);
             Assert.True(fixture.Server.StopHttpListener());
         }
@@ -296,13 +333,33 @@ public sealed class HttpServerWireContractTests
         return null;
     }
 
-    private static RunningServer StartServer(HttpServer server)
+    private static void AssertBasicChallenge(HttpResponseMessage response)
+    {
+        AuthenticationHeaderValue challenge = Assert.Single(
+            response.Headers.WwwAuthenticate,
+            value => string.Equals(value.Scheme, "Basic", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("realm=\"Libre Hardware Monitor\"", challenge.Parameter);
+    }
+
+    private static string NormalizeLineEndings(string value) => value.Replace("\r\n", "\n").Replace("\r", "\n");
+
+    private static async Task<RunningServer> StartServerAsync(HttpServer server)
     {
         if (server.PlatformNotSupported)
             return null;
 
-        Assert.True(server.StartHttpListener());
-        return new RunningServer(server);
+        var running = new RunningServer(server);
+        try
+        {
+            Assert.True(server.StartHttpListener());
+            Assert.Equal("127.0.0.1", server.ListenerIp);
+            return running;
+        }
+        catch
+        {
+            await running.DisposeAsync();
+            throw;
+        }
     }
 
     private static int ReserveLoopbackPort()
