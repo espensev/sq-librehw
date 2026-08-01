@@ -30,7 +30,7 @@ campaign owns.
 | Last campaign | `plan-009`, HTTP listener/dispatch service, ledger state `implemented` |
 | Next campaign | `plan-010` |
 | Next agent letter | `am` |
-| Closing now | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; Plan-009 source verification is green while its post-ledger gate rerun and coordinator hygiene proof finish |
+| Closing now | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; Plan-009 is implemented with all 12 criteria met, and Plan-010 is next |
 
 ---
 
