@@ -36,10 +36,12 @@ or unavailable-value normalization.
 
 ## Contract to implement
 
-Create namespace
-`LibreHardwareMonitor.Windows.Forms.Application.Snapshots` in
-`SensorSnapshot.cs`. Use ordinary internal sealed classes compatible with
-`net472`:
+Create the collision-free namespace
+`LibreHardwareMonitor.Windows.Forms.ApplicationModel.Snapshots` in
+`SensorSnapshot.cs`. The physical `Application/Snapshots` path is the logical
+boundary; do not create a `LibreHardwareMonitor.Windows.Forms.Application`
+namespace because it shadows `System.Windows.Forms.Application` throughout the
+WinForms project. Use ordinary internal sealed classes compatible with `net472`:
 
 - `SensorSnapshotNodeKind` with `Group`, `Hardware`, and `Sensor`.
 - `SensorValueSnapshot` with get-only `float? Raw` and `string Display`.
