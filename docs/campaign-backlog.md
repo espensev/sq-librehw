@@ -6,7 +6,7 @@
 `docs/architecture/refactor-roadmap.md` for why each phase exists
 
 This is the sequenced queue. `docs/architecture/refactor-roadmap.md` holds the *phase
-contract* ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â invariants, prohibitions, exit gates. This holds the *executable
+contract* — invariants, prohibitions, exit gates. This holds the *executable
 order*: what to run next, what must be true before starting it, and what each
 campaign owns.
 
@@ -39,7 +39,7 @@ campaign owns.
 These are not campaigns. They are person-only actions that no automation may
 perform, and both are recorded in `docs/campaign-history.md`.
 
-### A1 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Plan-001 attended normal-user smoke
+### A1 — Plan-001 attended normal-user smoke
 
 The only open criterion in the repository. A person launches the Avalonia
 fixture explorer as a normal user, exercises the loaded, empty, loading, and
@@ -47,14 +47,14 @@ rejection states plus keyboard navigation, and records the result.
 
 Three possible outcomes, all legitimate:
 
-1. it passes ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ criterion 9 moves to `met` with the evidence;
-2. it fails ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ the finding becomes a bugfix, and plan-001 stays `implemented`;
-3. it is waived ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ a waiver record with all five required fields.
+1. it passes → criterion 9 moves to `met` with the evidence;
+2. it fails → the finding becomes a bugfix, and plan-001 stays `implemented`;
+3. it is waived → a waiver record with all five required fields.
 
-**Do this before `plan-003`.** The move touches the same three projects, and if
-the smoke fails afterwards you will not know whether the move or the original
-code caused it. Not absolutely blocking, but the sequencing is cheap and the
-ambiguity is not.
+Plan-003 landed before this attended smoke. Exercise the fixture at its current
+`experiments/avalonia-fixture-explorer` path. If it fails, compare the failure
+with Plan-001 and Plan-003 evidence before assigning it to the original work or
+the path-only move.
 
 A second, smaller question sits in the same place: plan-001 criterion 1 requires
 verification *before* the implementation agents launched, and the record shows
@@ -66,7 +66,7 @@ campaign and the ledger records it. A1 remains the only standing action.
 
 ---
 
-## plan-007 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Characterization tests before extraction
+## plan-007 — Characterization tests before extraction
 
 **Phase:** 3
 **Risk:** medium
@@ -74,7 +74,7 @@ campaign and the ledger records it. A1 remains the only standing action.
 
 The safety net Phase 4 depends on. Before any seam is extracted, pin the current
 behavior of hardware lifetime, ordered option/reset, settings projection, and
-shutdown coordination with characterization tests ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â tests that assert what the
+shutdown coordination with characterization tests — tests that assert what the
 code *does*, not what it should do.
 
 Extraction without this is a rewrite with extra steps. Treat this campaign as
@@ -82,7 +82,7 @@ non-optional even though the roadmap lists it inside Phase 3.
 
 ---
 
-## plan-008 ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ plan-012 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Application and adapter seams
+## plan-008 … plan-012 — Application and adapter seams
 
 **Phase:** 4
 **Risk:** high
@@ -98,7 +98,7 @@ rewrite.
 | `plan-009` | HTTP listener and dispatch service | every route, the GET/POST mutation contract, cross-origin rejection |
 | `plan-010` | application lifecycle, polling, option/reset, shutdown | ordered hardware-operation coordinator, transactional open/cleanup |
 | `plan-011` | settings projection and persistence | ordered, atomic, backup-aware writes; stale-history compaction |
-| `plan-012` | WinForms presentation adapters ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â tree, plot, tray, gadget | canonical node order, scrollbar hit targets, UI Automation bridge |
+| `plan-012` | WinForms presentation adapters — tree, plot, tray, gadget | canonical node order, scrollbar hit targets, UI Automation bridge |
 
 Each must keep both framework targets green and must not duplicate ownership.
 `plan-008` is the natural first: the snapshot contract already exists in
@@ -107,7 +107,7 @@ against this exact payload.
 
 ---
 
-## plan-013 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Hardware lifecycle seams
+## plan-013 — Hardware lifecycle seams
 
 **Phase:** 5
 **Risk:** high
@@ -121,9 +121,9 @@ tests. WinForms remains the sole hardware owner throughout.
 
 ---
 
-## plan-014 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Runtime and data authority
+## plan-014 — Runtime and data authority
 
-**Phase:** 6 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â **gated, do not start without separate approval**
+**Phase:** 6 — **gated, do not start without separate approval**
 **Entry:** everything above, plus explicit maintainer authorization
 
 The maintainer explicitly reprioritized the physical workspace/path migration
@@ -153,5 +153,5 @@ change:
 - the `data.json` external contract.
 
 Each of those is a non-negotiable in `docs/architecture/refactor-roadmap.md`. A campaign that
-needs one of them relaxed is not a campaign ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â it is a new architectural
+needs one of them relaxed is not a campaign — it is a new architectural
 decision, and it needs a spec and a maintainer decision first.

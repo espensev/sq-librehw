@@ -164,7 +164,8 @@ These apply to every campaign, not just Plan-002:
 
 ## Phase 2 — Fork-only taxonomy
 
-**Status:** not started
+**Status:** partially complete — Plans 003–005 landed; general engineering
+entry-point grouping remains open
 
 - [x] Move the Avalonia fixture projects into `experiments/avalonia-fixture-explorer/` (Plan-003, 2026-07-31): moved with history preserved, configuration-only rewiring proven by the non-deploying gate runner, and a permanent stale-reference gate added.
 - [x] Separate candidate creation from peer-specific deployment semantics (Plan-004, 2026-07-31): `ops/candidate` (host-neutral), `ops/deploy/snd-desk` (SND-DESK-only), `ops/log-management` (unchanged), and the repository cleanup tool moved to `eng/`. Fail-closed guards proven under `pwsh`; configuration-only rewiring proven by the runner staying byte-identical.

@@ -16,7 +16,7 @@
   |---|---|---|
   | `origin` | `https://github.com/celine-anime/librehw-host.git` | same |
   | `upstream` | `https://github.com/espensev/sq-librehw.git` | `DISABLED` |
-  | `vanilla` | `E:/SQ_HQ/Monitoring/libre-dev/LibreHardwareMonitor` | `DISABLED` |
+  | `vanilla` | `D:/DevHome/workspaces/librehw-host/references/official` | `DISABLED` |
 
   Push default is `origin` / `simple`.
 - `upstream` is the fetch-only source `espensev/sq-librehw`, whose source branch
@@ -30,8 +30,8 @@
   against this section. `main` is the branch for new work.
 - Upstream `LibreHardwareMonitor/LibreHardwareMonitor` links in the root
   `README.md` point at the real upstream project and are not stale.
-- The imported `ops/deploy/snd-desk` and `ops/deploy/snd-desk` surfaces are
-  SND-DESK-only in production: deployment and launcher paths fail closed to
+- The imported `ops/deploy/snd-desk` surface is SND-DESK-only in production:
+  deployment and launcher paths fail closed to
   `snd-desk`, while peer-safe non-live fixtures use isolated temporary roots.
   Their `LibreHW`, `sqdata`, launcher, task, user, and cleanup records do not
   replace the SND-HOST paths below.
@@ -57,6 +57,11 @@ The user-level `LHM_RELEASE_ROOT` is
 `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\releases`. Source, worktrees,
 release, live, rollback, and log/archive state are separate physical domains;
 no release payload belongs under the development workspace.
+
+Before any operational write, follow the stack-local
+`E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\AGENTS.md` and
+`E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\docs\OPERATIONS.md`. Source
+candidate tooling does not authorize promotion.
 
 ## Current
 

@@ -28,7 +28,7 @@ fails if the two ever disagree.
 | plan-001 | Fixture-only Avalonia sensor explorer | partial | implemented | 8 | 1 | 0 | `docs/campaign-plan-001-fixture-only-avalonia-sensor.md` |
 | plan-002 | Non-deploying CI gates and campaign history contract | executed | accepted | 13 | 0 | 0 | `docs/campaign-plan-002-non-deploying-ci-gates.md` |
 | plan-003 | Move the Avalonia Fixture Explorer into experiments/ | executed | implemented | 9 | 0 | 0 | `docs/campaign-plan-003-move-the-avalonia-fixture.md` |
-| plan-004 | Separate candidate creation from peer deployment | executed | implemented | 10 | 0 | 0 | `docs/campaign-plan-004-separate-candidate-creation-from.md` |
+| plan-004 | Separate candidate creation from peer deployment | approved | implemented | 10 | 0 | 0 | `docs/campaign-plan-004-separate-candidate-creation-from.md` |
 | plan-005 | Documentation and engineering taxonomy | executed | implemented | 10 | 0 | 0 | `docs/campaign-plan-005-documentation-and-engineering-taxonomy.md` |
 | plan-006 | Verification suite boundaries | executed | implemented | 10 | 0 | 0 | `docs/campaign-plan-006-verification-suite-boundaries.md` |
 
@@ -105,7 +105,7 @@ Source-only relocation of the fixture-only, non-shipping Avalonia explorer under
 
 ## plan-004 - Separate candidate creation from peer deployment
 
-Source-only relocation splitting host-neutral candidate creation (`ops/candidate`), SND-DESK-only peer deployment (`ops/deploy/snd-desk`), and repository maintenance (`eng/`) so the path states the blast radius. Ledger state is `registered` while the campaign gates run. Not `accepted`: that transition is person-only. Note: the `snd-desk-local-release-fixture` gate is blocked by the pre-existing Windows PowerShell 5.1 `Get-FileHash` defect (shared with Plan-003 criterion 4); the fail-closed proof is run under `pwsh`.
+Source-only relocation splitting host-neutral candidate creation (`ops/candidate`), SND-DESK-only peer deployment (`ops/deploy/snd-desk`), and repository maintenance (`eng/`) so the path states the blast radius. The tracked plan lifecycle remains `approved` with an empty `executed_at`, while the independently recorded ledger state is `implemented` with all ten criteria met. Not `accepted`: that transition is person-only. Note: the `snd-desk-local-release-fixture` gate was blocked during this campaign by the then-pre-existing Windows PowerShell 5.1 `Get-FileHash` defect (shared with Plan-003 criterion 4); the fail-closed proof ran under `pwsh`.
 
 | # | Criterion | State | Evidence |
 | --- | --- | --- | --- |
@@ -139,7 +139,7 @@ Group hand-authored content docs under docs/features/ and docs/architecture/, re
 
 ## plan-006 - Verification suite boundaries
 
-Split of the flat `LibreHardwareMonitor.Tests` project into four boundary-aligned suites - Library, Application, Contracts, and the attended-outside-CI Attended suite - behind the deterministic `LibreHardwareMonitor.Tests.slnf`, preserving every test case, the golden-master bytes, the single opt-in skip, and both WinForms x64 Release builds. Ledger state is `implemented` with criterion 8 open pending the maintainer's post-close full gate sweep; not `accepted`: that transition is person-only.
+Split of the flat `LibreHardwareMonitor.Tests` project into four boundary-aligned suites - Library, Application, Contracts, and the attended-outside-CI Attended suite - behind the deterministic `LibreHardwareMonitor.Tests.slnf`, preserving every test case, the golden-master bytes, the single opt-in skip, and both WinForms x64 Release builds. Ledger state is `implemented` with all ten criteria met, including the maintainer's post-close full gate sweep; not `accepted`: that transition is person-only.
 
 | # | Criterion | State | Evidence |
 | --- | --- | --- | --- |

@@ -29,6 +29,7 @@ WAIVER_FIELDS = ("waived by", "date", "reason", "accepted risk", "reopens if")
 
 _PLAN_HEADING = re.compile(r"^##\s+(plan-\d+)\b")
 _CELL_SPLIT = re.compile(r"(?<!\\)\|")
+_EVIDENCE_PATH = re.compile(r"`([^`]+\.md)`")
 
 
 def _cells(line: str) -> list[str]:
@@ -46,6 +47,29 @@ def _is_separator(cells: list[str]) -> bool:
 
 def _normalize(text: str) -> str:
     return " ".join(text.replace("\\|", "|").split())
+
+
+def malformed_table_rows(text: str) -> list[str]:
+    """Report Markdown rows whose cell count differs from their table header."""
+    violations = []
+    header: list[str] | None = None
+
+    for line_number, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line.startswith("|"):
+            header = None
+            continue
+
+        cells = _cells(line)
+        if header is None:
+            header = cells
+            continue
+        if len(cells) != len(header):
+            violations.append(
+                f"line {line_number}: table row has {len(cells)} cells; header has {len(header)}"
+            )
+
+    return violations
 
 
 def parse_ledger(text: str) -> dict:
@@ -200,6 +224,32 @@ class CampaignHistoryLedgerTests(unittest.TestCase):
         """Ledger state is one of registered, implemented, accepted, closed."""
         self.assertEqual(unknown_ledger_states(self.ledger), [])
 
+    def test_markdown_table_rows_match_their_headers(self):
+        """Extra cells must not be silently discarded by the ledger parser."""
+        self.assertEqual(malformed_table_rows(self.text), [])
+
+    def test_summary_evidence_paths_exist(self):
+        """Every summary row links to at least one existing tracked plan document."""
+        for row in self.ledger["summary"]:
+            plan_id = row.get("plan", "?")
+            paths = _EVIDENCE_PATH.findall(row.get("evidence", ""))
+            self.assertTrue(paths, f"{plan_id}: summary evidence has no Markdown document path")
+            for relative_path in paths:
+                normalized = relative_path.replace("\\", "/")
+                self.assertFalse(
+                    Path(normalized).is_absolute(),
+                    f"{plan_id}: evidence path must be repository-relative",
+                )
+                self.assertNotIn(
+                    "..",
+                    Path(normalized).parts,
+                    f"{plan_id}: evidence path escapes the repository",
+                )
+                self.assertTrue(
+                    (REPO_ROOT / normalized).is_file(),
+                    f"{plan_id}: missing evidence document {relative_path}",
+                )
+
     def test_criterion_states_are_known(self):
         """Criterion state is one of met, open, waived."""
         self.assertEqual(unknown_criterion_states(self.ledger), [])
@@ -219,6 +269,16 @@ class CampaignHistoryLedgerTests(unittest.TestCase):
                     _normalize(criterion),
                     f"{plan_id} criterion {index + 1} text differs from the plan contract",
                 )
+
+    def test_summary_plan_status_matches_the_tracked_plan(self):
+        """The plan-lifecycle column must reflect the tracked plan contract."""
+        for row in self.ledger["summary"]:
+            plan_id = row.get("plan", "")
+            self.assertEqual(
+                row.get("plan status", ""),
+                load_plan(plan_id)["status"],
+                f"{plan_id}: summary plan status differs from data/plans/{plan_id}.json",
+            )
 
     def test_accepted_campaigns_have_no_open_criteria(self):
         """The central transition rule."""
@@ -324,6 +384,13 @@ class CampaignHistoryRuleTests(unittest.TestCase):
         # criterion to met makes the declared open count wrong.
         violations = count_mismatches(self._ledger(second="met"))
         self.assertTrue(any("open" in item for item in violations))
+
+    def test_extra_table_cell_is_rejected(self):
+        broken = self.LEDGER.replace(
+            "| plan-900 | Fixture | executed | {state} | 1 | 1 | 0 | none |",
+            "| plan-900 | Fixture | executed | {state} | 1 | 1 | 0 | none | extra |",
+        ).format(state="implemented", second="open", waiver="")
+        self.assertTrue(malformed_table_rows(broken))
 
 
 if __name__ == "__main__":
