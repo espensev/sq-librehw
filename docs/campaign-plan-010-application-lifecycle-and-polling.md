@@ -148,6 +148,7 @@ Roadmap reference: docs/architecture/refactor-roadmap.md
 ## R2. Behavioral Invariants
 
 - MainForm remains the WinForms composition root and the sole current process and hardware owner.
+- PawnIO prompt/install policy remains MainForm-owned and still precedes Computer.Open, but the delegate now runs after the asynchronously released lifecycle start barrier rather than synchronously during MainForm construction; this observable timing deviation is policy- and outcome-neutral and safer because shutdown tracks and drains the complete sequence.
 - Computer Open, option, Reset, Close, event, and transactional rollback semantics remain unchanged.
 - Polling cadence, single-flight admission, logging threshold, redraw ordering, and late-completion suppression remain behaviorally compatible.
 - Plan-008 snapshot and data.json golden bytes, HTTP routes, CSV, Prometheus, settings, and hardware identities remain unchanged.

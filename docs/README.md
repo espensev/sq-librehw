@@ -179,12 +179,16 @@ The structural baseline and phased reorganization are defined in
 `docs/architecture/refactor-roadmap.md`. Phases 0, 1, and 3 are complete.
 Phase 2 is partially complete: Plans 003-005 landed the fork-only experiment,
 operations, and document taxonomy, while general `eng/build` and `eng/test`
-grouping remains open. Phase 4 is in progress after Plan-009 completed item 2,
-the internal HTTP listener/dispatch service around the preserved public facade;
-Plan-010, the application lifecycle/polling/option/reset/shutdown seam, is next.
+grouping remains open. Phase 4 remains in progress after Plan-010 implemented
+item 3: one internal coordinator now owns application initialization, ordered
+option/reset work, single-flight polling admission and drain, and idempotent
+stop/close sequencing while `MainForm` remains the composition root. Plan-011,
+settings projection and persistence coordination, is next with agent `ap`.
 A1, Plan-001's attended normal-user smoke, remains open and person-only. These
-are source-campaign facts only: Plan-009 created no candidate and authorized no
-deployment, promotion, or live cutover.
+are source-campaign facts only: Plan-010 remains `executed` with ledger state
+`implemented`, not person-accepted; it created no candidate and authorized no
+deployment, promotion, or live cutover. Plan-011/agent `ap` is next but remains
+unregistered.
 
 The imported upstream roadmap also records a stale SND-DESK
 `hardware-optimization` health-feed task. That is a peer-only owner action, not

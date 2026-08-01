@@ -4,7 +4,7 @@
 queue, scrollbar teardown, transactional open, and dynamic-group snapshot fixes
 deployed and live-verified on SND-HOST
 
-**Updated:** 2026-07-30
+**Updated:** 2026-08-01
 
 ## Problem and motivation
 
@@ -109,6 +109,15 @@ dashboard policy, or supported frameworks.
   presentation as permission to discard a click. Manual and resume resets are
   coalesced and run after pending option values; shutdown cancels and drains the
   coordinator before disposing its lifecycle gate.
+- One internal `ApplicationLifecycleCoordinator` now owns initialization,
+  lifecycle cancellation and admission, the existing ordered option/reset
+  coordinator, independent single-flight poll admission/completion, and
+  idempotent drain/close sequencing. `MainForm` retains composition and policy.
+  PawnIO prompt/install still occurs before `Computer.Open`, but now runs after
+  the asynchronously released lifecycle start barrier rather than synchronously
+  during `MainForm` construction. This observable timing deviation is policy-
+  and outcome-neutral and safer: shutdown can observe and drain the complete
+  prompt/install/open sequence before closing hardware.
 - Option setters invoked reentrantly during open, close, or reset retain the
   requested backing flag but do not mutate the group collection being built or
   drained. Open/reset version reconciliation either rebuilds from those latest
@@ -188,6 +197,10 @@ dashboard policy, or supported frameworks.
 - [x] A second hardware-option click made while the first is still applying is
   retained, same-option bursts remain bounded and last-value-wins, and a
   concurrent manual/resume reset runs after the pending option values.
+- [x] Initialization, ordered option/reset work, timer-driven single-flight
+  polling, and shutdown drain/close have one tested owner; polling remains
+  independent of option/reset serialization, busy ticks drop, and late poll
+  completion cannot redraw after shutdown.
 - [x] Reentrant option requests during close/reset cannot add replacement groups
   or prevent teardown from terminating; the requested flag remains available
   for the next explicit lifecycle reconciliation.
@@ -306,6 +319,20 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-08-01 Plan-010 source-only lifecycle extraction: AM initial source
+  `6871323` plus race fix `7fc7f77` and AN source/integration `479c89b` added the
+  internal lifecycle coordinator and rewired `MainForm`. The new facts passed
+  8/8; all coordinator families passed 27/27; lifetime passed 18/18; Application
+  was exactly 160 discovered/159 passed/one established live-config skip;
+  Contracts passed 73/73; and the deterministic aggregate was exactly
+  301/300/1. Both WinForms x64 Release targets built with 0 warnings/errors,
+  Avalonia remained 75/75 with only established AVLN3001, web remained 315/315
+  plus 18/18, and all eight included non-deploying gates passed after the
+  criterion ledger was added. The data.json golden retained blob `05113704a`
+  and SHA-256 `BEBDE807A7F0037827E16CFBC1F41707701F2BEE7232385C3D2EAEBD2261D2F3`.
+  The PawnIO timing deviation above was independently reviewed as behaviorally
+  compatible and safer, not silently treated as literal wiring-spec timing.
+  This campaign created no candidate and made no deployment or live change.
 - 2026-07-30 SND-HOST upstream integration: dashboard self-test 315/315 and
   focused Node tests 18/18 passed; the .NET suite passed 258 with one
   intentional skip; both x64 Release targets built with zero warnings/errors.
