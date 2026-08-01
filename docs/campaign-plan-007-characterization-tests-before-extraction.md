@@ -109,7 +109,7 @@ None. Test population grows by 20 `[Fact]` cases; settings formats, `data.json`,
 
 - Baseline at `9762f4d`: restore and run `LibreHardwareMonitor.Tests.slnf` with `--tl:off`, proving 259 discovered, 258 passed, one opt-in skip.
 - AC focused filter: exactly 4/4; full Library: 68/68.
-- AD focused population grows by eight; full Application after AD and AE: 139 discovered, 138 passed, one existing skip.
+- Each isolated AD or AE lane grows Application from 131 to 139 cases (138 passed and one existing skip); after both lanes integrate, Application must be 147 discovered, 146 passed, and that same skip.
 - AE focused new facts: exactly 8/8; settings regression includes `SettingsPersistenceTests`, `RuntimePathsTests`, and `StartupManagerTests` with both live-config variables unset.
 - Integrated deterministic filter: exactly 279 discovered, 278 passed, one existing skip.
 - Configured builds:
