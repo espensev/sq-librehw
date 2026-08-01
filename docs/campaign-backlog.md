@@ -30,7 +30,7 @@ campaign owns.
 | Last campaign | `plan-006`, verification suite boundaries, ledger state `implemented` |
 | Next campaign | `plan-007` |
 | Next agent letter | `ac` |
-| Blocking nothing | A1 and A2 are person-only; the plan-006 close sweep passed 8/8 on 2026-08-01, so every plan-006 criterion is met |
+| Blocking nothing | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; every plan-006 criterion is met |
 
 ---
 
@@ -61,11 +61,8 @@ verification *before* the implementation agents launched, and the record shows
 it happened afterwards. It is currently `met` with the deviation stated. Confirm
 or correct that while you are there.
 
-### A2 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Plan-002 acceptance
-
-Every criterion is met and the ledger state is `implemented`. Moving it to
-`accepted` is a person's decision. Plan-002 wrote the rule that forbids
-automation from doing it, so it cannot do it to itself.
+A2 (Plan-002 acceptance) completed 2026-08-01: the maintainer accepted the
+campaign and the ledger records it. A1 remains the only standing action.
 
 ---
 

@@ -272,10 +272,11 @@ there.
 At this checkpoint the queue is:
 
 1. **A1** — Plan-001's attended normal-user smoke. Person-only, still open.
-2. **A2** — Plan-002 acceptance. Person-only; every criterion is met and the
-   ledger state is `implemented`.
-3. **plan-007** — characterization tests before extraction. Re-read
+2. **plan-007** — characterization tests before extraction. Re-read
    `docs/campaign-backlog.md` before starting; it is an outline, not a spec.
+
+A2 (Plan-002 acceptance) was completed by the maintainer on 2026-08-01 and is
+recorded in `docs/campaign-history.md`.
 
 Plan-003, Plan-004, Plan-005, and Plan-006 have landed: the Avalonia fixture
 explorer lives under `experiments/avalonia-fixture-explorer/`, operations are

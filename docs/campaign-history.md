@@ -26,7 +26,7 @@ fails if the two ever disagree.
 | Plan | Campaign | Plan status | Ledger state | Met | Open | Waived | Evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | plan-001 | Fixture-only Avalonia sensor explorer | partial | implemented | 8 | 1 | 0 | `docs/campaign-plan-001-fixture-only-avalonia-sensor.md` |
-| plan-002 | Non-deploying CI gates and campaign history contract | executed | implemented | 13 | 0 | 0 | `docs/campaign-plan-002-non-deploying-ci-gates.md` |
+| plan-002 | Non-deploying CI gates and campaign history contract | executed | accepted | 13 | 0 | 0 | `docs/campaign-plan-002-non-deploying-ci-gates.md` |
 | plan-003 | Move the Avalonia Fixture Explorer into experiments/ | executed | implemented | 9 | 0 | 0 | `docs/campaign-plan-003-move-the-avalonia-fixture.md` |
 | plan-004 | Separate candidate creation from peer deployment | executed | implemented | 10 | 0 | 0 | `docs/campaign-plan-004-separate-candidate-creation-from.md` |
 | plan-005 | Documentation and engineering taxonomy | executed | implemented | 10 | 0 | 0 | `docs/campaign-plan-005-documentation-and-engineering-taxonomy.md` |
@@ -63,11 +63,13 @@ one-line edit here and the regression will enforce whichever is chosen.
 ## plan-002 — Non-deploying CI gates and campaign history contract
 
 Every criterion has recorded evidence and all agent work is in the working
-tree, so the ledger state is `implemented`.
+tree. The campaign that wrote the acceptance contract could not record its own
+acceptance, so it remained `implemented` until a person decided otherwise.
 
-It is deliberately **not** `accepted`. This is the campaign that wrote the
-acceptance contract, so it cannot record its own acceptance; `accepted` is a
-person-only state and automated verification may never write it.
+**Accepted by the maintainer on 2026-08-01** (standing action A2, authorized in
+the maintainer's session). All 13 criteria were `met` with recorded evidence,
+satisfying the transition rule this campaign itself defined; automation
+recorded the transition only after the explicit person decision.
 
 | # | Criterion | State | Evidence |
 | --- | --- | --- | --- |
