@@ -195,6 +195,35 @@ public sealed class SettingsPersistenceTests : IDisposable
     }
 
     [Fact]
+    public void Load_DuplicateKeysUsesLastValueAndArmsNormalizationSave()
+    {
+        string path = ConfigPath("duplicate-keys");
+        WriteConfig(path,
+                    ("listenerPort", "8085"),
+                    ("listenerPort", "9090"));
+
+        PersistentSettings settings = new();
+        settings.Load(path);
+
+        Assert.Equal(9090, settings.GetValue("listenerPort", 0));
+        Assert.True(settings.Modified);
+
+        settings.Save(path);
+
+        Assert.False(settings.Modified);
+        XmlDocument normalized = new();
+        normalized.Load(path);
+        XmlNodeList normalizedEntries = normalized.SelectNodes(
+            "/configuration/appSettings/add[@key='listenerPort']");
+        Assert.Equal(1, normalizedEntries.Count);
+
+        PersistentSettings reloaded = new();
+        reloaded.Load(path);
+        Assert.Equal(9090, reloaded.GetValue("listenerPort", 0));
+        Assert.False(reloaded.Modified);
+    }
+
+    [Fact]
     public void SaveThenLoad_PreservesUserSettingsAcrossRestart()
     {
         PersistentSettings settings = new();

@@ -3,6 +3,7 @@
 // Copyright (C) LibreHardwareMonitor and Contributors.
 // All Rights Reserved.
 
+using System;
 using LibreHardwareMonitor.Windows.Forms.UI;
 using Xunit;
 
@@ -14,6 +15,17 @@ public sealed class StartupManagerTests
     public void ManagedInstall_HidesPortableStartupControl()
     {
         StartupManager manager = new(@"\SevGrp\AdminTask\LibreHW-No-UAC");
+
+        Assert.False(manager.IsAvailable);
+        Assert.False(manager.Startup);
+    }
+
+    [Fact]
+    public void ManagedInstall_EnablingPortableStartupThrowsAndLeavesStateDisabled()
+    {
+        StartupManager manager = new(@"\SevGrp\AdminTask\LibreHW-No-UAC");
+
+        Assert.Throws<InvalidOperationException>(() => manager.Startup = true);
 
         Assert.False(manager.IsAvailable);
         Assert.False(manager.Startup);
