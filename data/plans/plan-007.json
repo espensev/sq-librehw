@@ -96,7 +96,7 @@
     "campaign_title": "Characterization tests before extraction",
     "goal_statement": "Add a deterministic, test-only safety net that pins the current hardware group lifetime, ordered option/reset, settings projection/persistence, and shutdown coordination behavior required by the Phase-4 and Phase-5 extraction sequence, without creating a new production seam or touching live runtime state.",
     "exit_criteria": [
-      "The campaign diff outside campaign documentation is limited to the seven exclusively owned test files: one new Library characterization file, one new Application projection file, and five existing Application test files; no production, project, package, gate, golden-master, or operational file changes.",
+      "The campaign diff outside campaign documentation is limited to the six exclusively owned test files: one new Library characterization file, one new Application projection file, and four existing Application test files; no production, project, package, gate, golden-master, or operational file changes.",
       "AC adds four passing hardware lifetime facts that prove Computer dynamic-group registration/forwarding/detachment/reverse close and rollback/retry, Nvidia partial factory cleanup and lease release, and Storage partial factory cleanup and unsubscribe behavior.",
       "AD adds eight passing facts that prove active same-key option coalescing, reset follow-up ordering, typed failure events with continued drain, cancellation admission, UI-close takeover, BeginInvoke-style shutdown waiting, shared fault completion, and dispatch-failure retry.",
       "AE adds eight passing facts that prove UserOption and UserRadioGroup projection/event ordering and null-name behavior, malformed typed-value fallbacks, duplicate-key last-wins normalization, and managed-path startup fail-closed behavior.",
@@ -557,10 +557,10 @@
       }
     ],
     "integration_points": [
-      "AC, AD, and AE start from the committed Plan-007 baseline in isolated worktrees and commit only their exclusively owned test files.",
-      "The coordinator validates each implementation branch and integrates AC, AD, and AE sequentially before aggregate verification.",
-      "The integrated deterministic solution filter, rather than individual exit codes, is authoritative for the required 279 discovered, 278 passed, and one existing skip population.",
-      "AF starts only from the integrated implementation tree, independently verifies every gate, and writes all campaign-truth files once.",
+      "The implementation baseline is e506fa6. AC source f019266 was integrated as 691c6dc, AD source f3ce3f7 as 74592e4, and AE source 628debb as ca5b471; each isolated lane changed only its exclusively owned tests.",
+      "The coordinator validated and integrated AC, AD, and AE sequentially, smallest-diff-first, before AF began from integrated commit ca5b471.",
+      "AF independently reproduced focused results 4/4, 19/19, and 58 passed plus the one existing opt-in skip; the integrated deterministic solution filter then proved 279 discovered, 278 passed, and that same skip.",
+      "AF independently verified both WinForms x64 Release builds, the complete non-deploying CI sweep, planner preflight, Git diff checks, and read-only live separation before writing the six campaign-truth files.",
       "The analyzer's 131 non-project unassigned files remain outside campaign scope; all twelve intended implementation and closure paths have exactly one owner."
     ],
     "schema_changes": [],
@@ -603,7 +603,7 @@
       }
     ],
     "verification_strategy": [
-      "Baseline: dotnet restore LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.slnf -p:Platform=x64, then dotnet test LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.slnf -p:Platform=x64 --no-restore --logger console;verbosity=minimal --tl:off; prove 259 discovered, 258 passed, and one opt-in skip at 9762f4d.",
+      "Baseline: dotnet restore LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.slnf -p:Platform=x64, then dotnet test LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.slnf -p:Platform=x64 --no-restore --logger console;verbosity=minimal --tl:off; the pre-implementation e506fa6 tree retains the recorded 259 discovered, 258 passed, and one opt-in skip population.",
       "AC: dotnet test LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.Library\\LibreHardwareMonitor.Tests.Library.csproj -p:Platform=x64 --filter FullyQualifiedName~HardwareGroupLifetimeCharacterizationTests, then run the complete Library project.",
       "AD and AE: run the focused Application filters for HardwareOperationCoordinatorTests, UiShutdownCoordinatorTests, SettingsProjectionTests, SettingsPersistenceTests, RuntimePathsTests, and StartupManagerTests with both LHM_LIVE_CONFIG variables unset.",
       "Aggregate: dotnet test LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.slnf -p:Platform=x64 --logger console;verbosity=minimal --tl:off; prove 279 total, 278 passed, and the one pre-existing skip.",
@@ -3130,8 +3130,11 @@
       ]
     }
   },
-  "backfill_reasons": [],
+  "backfill_reasons": [
+    "Coordinator correction 2026-08-01: git diff --name-status e506fa6..ca5b471 is authoritative and proves six implementation test files, not the generated plan's mistaken seven-file/five-existing arithmetic. The criterion and rendered campaign document are corrected without changing implementation.",
+    "AF closure evidence 2026-08-01: AC f019266 integrated as 691c6dc, AD f3ce3f7 as 74592e4, and AE 628debb as ca5b471. Independent focused filters passed 4/4, 19/19, and 58 passed plus the one existing opt-in skip; the aggregate was exactly 279 discovered, 278 passed, and one skipped. Both framework builds and all eight included CI gates passed; pre-commit planner preflight was ready with zero errors and only the expected dirty-tree warning, and Git checks passed. Read-only SND-HOST samples retained the same exact process/task and three HTTP 200s; the current-day CSV grew from 102429441 bytes at 12:50:40+01:00 to 103246180 bytes at 12:59:02+01:00, up 816739 bytes and 2323159 bytes above the supplied before sample. Ledger state is implemented, not accepted."
+  ],
   "approved_at": "2026-08-01T11:27:35+00:00",
   "executed_at": "2026-08-01T11:27:36+00:00",
-  "updated_at": "2026-08-01T11:27:36+00:00"
+  "updated_at": "2026-08-01T11:59:02+00:00"
 }

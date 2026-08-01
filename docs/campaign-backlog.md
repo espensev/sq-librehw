@@ -17,7 +17,7 @@ campaign owns.
   full specs. Do not pre-register them.
 - Every campaign starts from a **clean, committed tree** with `plan preflight`
   reporting ready. Registering from a dirty tree is a standing prohibition.
-- Detail level is deliberate. `plan-007` onward are outlines whose shape
+- Detail level is deliberate. `plan-008` onward are outlines whose shape
   depends on results you cannot see yet.
 - When a campaign lands, delete its section here and leave the record in
   `docs/campaign-history.md` and Git history.
@@ -26,11 +26,11 @@ campaign owns.
 
 | | |
 |---|---|
-| Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane) |
-| Last campaign | `plan-006`, verification suite boundaries, ledger state `implemented` |
-| Next campaign | `plan-007` |
-| Next agent letter | `ac` |
-| Blocking nothing | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; every plan-006 criterion is met |
+| Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane), 3 (verification suite boundaries) |
+| Last campaign | `plan-007`, characterization tests before extraction, ledger state `implemented` |
+| Next campaign | `plan-008` |
+| Next agent letter | `ag` |
+| Blocking nothing | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; every plan-007 criterion is met |
 
 ---
 
@@ -63,22 +63,6 @@ or correct that while you are there.
 
 A2 (Plan-002 acceptance) completed 2026-08-01: the maintainer accepted the
 campaign and the ledger records it. A1 remains the only standing action.
-
----
-
-## plan-007 — Characterization tests before extraction
-
-**Phase:** 3
-**Risk:** medium
-**Entry:** `plan-006` landed
-
-The safety net Phase 4 depends on. Before any seam is extracted, pin the current
-behavior of hardware lifetime, ordered option/reset, settings projection, and
-shutdown coordination with characterization tests — tests that assert what the
-code *does*, not what it should do.
-
-Extraction without this is a rewrite with extra steps. Treat this campaign as
-non-optional even though the roadmap lists it inside Phase 3.
 
 ---
 

@@ -184,8 +184,8 @@ contract tests pass.
 
 ## Phase 3 — Verification suite boundaries
 
-**Status:** partially complete — the suite split landed with Plan-006; the
-characterization-tests item remains open and is plan-007
+**Status:** complete — the suite split landed with Plan-006 and the
+pre-extraction characterization safety net landed with Plan-007
 
 - [x] Split library-only behavior tests from WinForms/application tests
   (Plan-006, 2026-08-01): `LibreHardwareMonitor.Tests.Library` (references
@@ -196,17 +196,20 @@ characterization-tests item remains open and is plan-007
   web assets (Plan-006, 2026-08-01): `LibreHardwareMonitor.Tests.Contracts`
   holds the byte-identical golden master and the HTTP, Prometheus, CSV
   timestamp, and web-dashboard-retirement tests.
-- [ ] Add characterization tests around lifecycle, settings projection, and
-  reset/option ordering before extraction. **Open — this is plan-007 and it is
-  non-optional.**
+- [x] Add characterization tests around lifecycle, settings projection, and
+  reset/option ordering before extraction (Plan-007, 2026-08-01): 20 new
+  deterministic facts cover hardware-group lifetime, ordered option/reset,
+  shutdown coordination, and settings projection/persistence. The integrated
+  population is 279 discovered, 278 passed, and the one existing opt-in skip.
 - [x] Keep hardware-dependent and attended tests explicitly separate from
   deterministic CI (Plan-006, 2026-08-01): the Attended suite exists in the sln
   but is excluded from `LibreHardwareMonitor.Tests.slnf` and from every gate
   command by construction, pinned by the permanent
   `eng/ci/tests/Test-SuiteBoundaries.ps1`.
 
-**Exit gate:** each future seam maps to a focused deterministic suite, and
-cross-cutting changes still trigger the full gate.
+**Exit gate:** satisfied by Plan-007. Each future seam maps to a focused
+deterministic suite, the complete 279/278/1 population and both WinForms x64
+Release targets pass, and cross-cutting changes still trigger the full gate.
 
 ## Phase 4 — Application and adapter seams
 
@@ -273,19 +276,21 @@ there.
 At this checkpoint the queue is:
 
 1. **A1** — Plan-001's attended normal-user smoke. Person-only, still open.
-2. **plan-007** — characterization tests before extraction. Re-read
+2. **plan-008** — immutable sensor snapshot and `data.json` projection. Re-read
    `docs/campaign-backlog.md` before starting; it is an outline, not a spec.
 
 A2 (Plan-002 acceptance) was completed by the maintainer on 2026-08-01 and is
 recorded in `docs/campaign-history.md`.
 
-Plan-003, Plan-004, Plan-005, and Plan-006 have landed: the Avalonia fixture
+Plan-003, Plan-004, Plan-005, Plan-006, and Plan-007 have landed: the Avalonia fixture
 explorer lives under `experiments/avalonia-fixture-explorer/`, operations are
 split into `ops/candidate`, `ops/deploy/snd-desk`, and `eng/`, current docs are
 grouped under `docs/features/` and `docs/architecture/`, and the flat test
 project is split into the four `LibreHardwareMonitor.Tests` boundary suites
-behind the deterministic `LibreHardwareMonitor.Tests.slnf`. All moves preserved
-history and proved configuration-only rewiring with the runner byte-identical.
+behind the deterministic `LibreHardwareMonitor.Tests.slnf`. Plan-007 adds the
+20 passing characterization facts that guard the Phase-4 and Phase-5 seams.
+All moves preserved history and proved configuration-only rewiring with the
+runner byte-identical; Plan-007 changed tests and campaign truth only.
 
 Do not register a plan from a dirty tree; check `plan preflight` first, and see
 `docs/campaign-playbook.md` for the full lifecycle.

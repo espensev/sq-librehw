@@ -2,8 +2,8 @@
 
 **Plan ID:** plan-007
 **Date:** 2026-08-01
-**Status:** executed — implementation pending
-**Baseline:** `9762f4d69882ff9d3fb7c98fef0c6d1c3e981232`
+**Status:** executed — implemented; maintainer acceptance pending
+**Baseline:** `e506fa62ab070ce088fb9a871c516a8020267905`
 **Plan file:** `data/plans/plan-007.json`
 **Planner kind:** `planner-refactor`
 **Source roadmap:** `docs/architecture/refactor-roadmap.md`
@@ -14,7 +14,7 @@ Add a deterministic, test-only safety net that pins the current hardware group l
 
 ## 2. Exit criteria
 
-- The campaign diff outside campaign documentation is limited to seven exclusively owned test files: one new Library characterization file, one new Application projection file, and five existing Application test files. No production, project, package, gate, golden-master, or operational file changes.
+- The campaign diff outside campaign documentation is limited to six exclusively owned test files: one new Library characterization file, one new Application projection file, and four existing Application test files. No production, project, package, gate, golden-master, or operational file changes.
 - AC adds four passing hardware lifetime facts covering `Computer` dynamic-group registration, forwarding, detachment, reverse close, rollback/retry, NVIDIA partial factory cleanup and lease release, and storage partial factory cleanup and unsubscribe.
 - AD adds eight passing facts covering active same-key option coalescing, reset follow-up ordering, typed failure events with continued drain, cancellation admission, UI-close takeover, BeginInvoke-style shutdown waiting, shared fault completion, and dispatch-failure retry.
 - AE adds eight passing facts covering `UserOption` and `UserRadioGroup` projection/event ordering and null-name behavior, malformed typed-value fallbacks, duplicate-key last-wins normalization, and managed-path startup fail-closed behavior.
@@ -83,10 +83,11 @@ The repository analyzer also reports 131 non-project files as “unassigned.” 
 
 ## 8. Integration points
 
-- AC, AD, and AE start from the same committed planning baseline in isolated worktrees and commit only their owned test files.
-- The coordinator validates each branch’s file list and focused result, then integrates AC, AD, and AE sequentially into `main`.
-- Aggregate population is not inferred from individual exits: the integrated solution filter must prove 279/278/1.
-- AF starts only from the integrated tree, independently reruns the full gates, and writes all campaign-truth surfaces once.
+- AC started from `e506fa6`, committed source result `f019266`, and was integrated as `691c6dc`; its isolated change is the one owned Library file.
+- AD started from the same baseline, committed source result `f3ce3f7`, and was integrated as `74592e4`; its isolated change is the two owned Application files.
+- AE started from the same baseline, committed source result `628debb`, and was integrated as `ca5b471`; its isolated change is the three owned Application files.
+- AF started from integrated `ca5b471`, independently reproduced every focused, aggregate, build, CI, planner, diff, ownership, and live-separation gate, and wrote all six campaign-truth surfaces once.
+- Aggregate population was not inferred from individual exits: the integrated solution filter proved exactly 279/278/1.
 - No `MainForm` test seam is introduced. That extraction belongs to the later application-lifecycle/settings campaigns.
 
 ## 9. Schema changes
@@ -107,7 +108,7 @@ None. Test population grows by 20 `[Fact]` cases; settings formats, `data.json`,
 
 ## 11. Verification strategy
 
-- Baseline at `9762f4d`: restore and run `LibreHardwareMonitor.Tests.slnf` with `--tl:off`, proving 259 discovered, 258 passed, one opt-in skip.
+- Pre-implementation baseline at `e506fa6`: the recorded deterministic population is 259 discovered, 258 passed, one opt-in skip.
 - AC focused filter: exactly 4/4; full Library: 68/68.
 - Each isolated AD or AE lane grows Application from 131 to 139 cases (138 passed and one existing skip); after both lanes integrate, Application must be 147 discovered, 146 passed, and that same skip.
 - AE focused new facts: exactly 8/8; settings regression includes `SettingsPersistenceTests`, `RuntimePathsTests`, and `StartupManagerTests` with both live-config variables unset.
@@ -118,7 +119,16 @@ None. Test population grows by 20 `[Fact]` cases; settings formats, `data.json`,
 - Full source gates: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Invoke-LhmGates.ps1 -All`, planner preflight, `git diff --check`, ownership diff, and worktree inventory.
 - Read-only live proof: verified SND-HOST identity, process/executable ownership, scheduled-task action and working directory, proxy-bypassed `/`, `/data.json`, `/metrics` HTTP status, and current-day CSV growth.
 
-## 12. Documentation updates
+## 12. Implementation and closure evidence
+
+- Integrated source sequence: AC `f019266` → `691c6dc`, AD `f3ce3f7` → `74592e4`, AE `628debb` → `ca5b471`; `git diff --name-status e506fa6..ca5b471` contains exactly the six owned test files and no production, project, package, gate, golden-master, or operations path.
+- Independent focused filters: hardware lifetime 4/4; option/reset and shutdown 19/19; settings regression 59 discovered, 58 passed, and the one existing `LiveConfigCopy_LoadsAndCompactsWithinMemoryBudgets` opt-in skip.
+- Independent aggregate: Library 68/68, Contracts 64/64, Application 147 discovered/146 passed/one existing skip — exactly 279/278/1.
+- Both WinForms x64 Release builds passed with zero warnings and zero errors. The final non-deploying CI sweep passed all eight included gates with the self-referential `ci-gates` entry skipped by design. Pre-commit planner preflight was ready with zero errors and only the expected dirty-worktree warning; the required post-commit clean-tree preflight returned zero errors and warnings. Git diff checks passed.
+- Identity was `VERIFIED` for `snd-host`. At 2026-08-01 12:50:40+01:00, exactly one live process (PID 14876) owned the declared executable, root task `\LibreHardwareMonitor` was `Running` with result 267009 and matching action/working directory, and proxy-bypassed `/`, `/data.json`, and `/metrics` returned HTTP 200 at `192.168.2.5:8080`. The current-day CSV was 102,429,441 bytes, 1,506,420 bytes larger than the supplied 12:35:42 sample. The final sample at 2026-08-01 12:59:02+01:00 retained the same process/task/endpoint proof and measured 103,246,180 bytes: +816,739 from the first AF sample and +2,323,159 from the supplied before sample. No live or operations write occurred.
+- Every exit criterion is recorded `met` in `docs/campaign-history.md`. Ledger state is `implemented`, not `accepted`; acceptance remains person-only.
+
+## 13. Documentation updates
 
 - This document and `data/plans/plan-007.json`: execution state, exact counts, per-criterion evidence, rollback boundary.
 - `docs/architecture/refactor-roadmap.md`: Phase-3 characterization complete; Phase 4 still not started.
