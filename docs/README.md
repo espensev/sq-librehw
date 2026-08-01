@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor Docs
 
 **Status:** live map only
-**Updated:** 2026-07-31
+**Updated:** 2026-08-01
 
 ## Repository
 
@@ -176,13 +176,14 @@ candidate tooling does not authorize promotion.
 ## Roadmap
 
 The structural baseline and phased reorganization are defined in
-`docs/architecture/refactor-roadmap.md`. Phase 0 cleanup and Phase 1 campaign and
-verification control plane are complete on `main`, which is deliberately
-unpushed. Phase 1 closed with Plan-002: a non-deploying gate runner at
-`eng/ci/`, a read-only GitHub Actions workflow that only delegates to it, and a
-tracked acceptance ledger at `docs/campaign-history.md`. Source moves and any
-live relocation remain gated; the next candidate is the isolated Avalonia
-experiment move in Phase 2.
+`docs/architecture/refactor-roadmap.md`. Phases 0, 1, and 3 are complete.
+Phase 2 is partially complete: Plans 003-005 landed the fork-only experiment,
+operations, and document taxonomy, while general `eng/build` and `eng/test`
+grouping remains open. Phase 4 is in progress after Plan-008 completed item 1,
+the immutable sensor snapshot and `data.json` projection seam; Plan-009, the
+HTTP listener/dispatch seam, is next. A1, Plan-001's attended normal-user smoke,
+remains open and person-only. These are source-campaign facts only: Plan-008
+created no candidate and authorized no deployment, promotion, or live cutover.
 
 The imported upstream roadmap also records a stale SND-DESK
 `hardware-optimization` health-feed task. That is a peer-only owner action, not

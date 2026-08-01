@@ -98,8 +98,9 @@ dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf -p:Platfo
 ```
 
 The Contracts suite includes the **data.json golden-master tests** (`DataJsonGoldenTests`): the data.json
-payload is an external downstream contract, so any change touching `HttpServer.BuildDataJsonObject`,
-`GenerateJsonForNode`, or the serialization path must keep these green. The golden file embeds the
+payload is an external downstream contract, so any change touching
+`WinFormsNodeSensorSnapshotSource.Capture`, `DataJsonProjection.Project`,
+`HttpServer.BuildDataJsonObject`, or the serialization path must keep these green. The golden file embeds the
 assembly version; after a version bump, delete
 `LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Contracts\data.golden.json`, re-run
 `dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Contracts\LibreHardwareMonitor.Tests.Contracts.csproj -p:Platform=x64`

@@ -17,7 +17,7 @@ campaign owns.
   full specs. Do not pre-register them.
 - Every campaign starts from a **clean, committed tree** with `plan preflight`
   reporting ready. Registering from a dirty tree is a standing prohibition.
-- Detail level is deliberate. `plan-008` onward are outlines whose shape
+- Detail level is deliberate. `plan-009` onward are outlines whose shape
   depends on results you cannot see yet.
 - When a campaign lands, delete its section here and leave the record in
   `docs/campaign-history.md` and Git history.
@@ -26,11 +26,11 @@ campaign owns.
 
 | | |
 |---|---|
-| Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane), 3 (verification suite boundaries) |
-| Last campaign | `plan-007`, characterization tests before extraction, ledger state `implemented` |
-| Next campaign | `plan-008` |
-| Next agent letter | `ag` |
-| Blocking nothing | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; every plan-007 criterion is met |
+| Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane), 3 (verification suite boundaries); Phase 2 remains partially complete with general engineering grouping open |
+| Last campaign | `plan-008`, immutable sensor snapshot and `data.json` projection, ledger state `implemented` |
+| Next campaign | `plan-009` |
+| Next agent letter | `aj` |
+| Blocking nothing | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; every plan-008 criterion is met |
 
 ---
 
@@ -66,11 +66,12 @@ campaign and the ledger records it. A1 remains the only standing action.
 
 ---
 
-## plan-008 … plan-012 — Application and adapter seams
+## plan-009 … plan-012 — Application and adapter seams
 
 **Phase:** 4
 **Risk:** high
-**Entry:** `plan-007` landed, with characterization coverage green
+**Entry:** `plan-008` landed with the immutable snapshot, pure `data.json`
+projection, unchanged golden contract, and characterization coverage green
 
 One seam per campaign, in this order. `MainForm` stays the composition root
 until each extracted contract is characterized and accepted. No wholesale
@@ -78,16 +79,15 @@ rewrite.
 
 | Plan | Seam | Preserves |
 |---|---|---|
-| `plan-008` | immutable sensor snapshot and `data.json` projection | payload shape, order, IDs, byte-compatibility where required |
 | `plan-009` | HTTP listener and dispatch service | every route, the GET/POST mutation contract, cross-origin rejection |
 | `plan-010` | application lifecycle, polling, option/reset, shutdown | ordered hardware-operation coordinator, transactional open/cleanup |
 | `plan-011` | settings projection and persistence | ordered, atomic, backup-aware writes; stale-history compaction |
 | `plan-012` | WinForms presentation adapters — tree, plot, tray, gadget | canonical node order, scrollbar hit targets, UI Automation bridge |
 
-Each must keep both framework targets green and must not duplicate ownership.
-`plan-008` is the natural first: the snapshot contract already exists in
-prototype form in the Avalonia spike's `SensorSnapshot`, which was designed
-against this exact payload.
+Each must keep both framework targets green, preserve the detached Plan-008
+snapshot and external `data.json` contract, and must not duplicate ownership.
+Plan-009 is next and owns only the listener/dispatch seam; the one-seam-at-a-time
+rule remains in force.
 
 ---
 

@@ -213,15 +213,20 @@ Release targets pass, and cross-cutting changes still trigger the full gate.
 
 ## Phase 4 — Application and adapter seams
 
-**Status:** not started
+**Status:** in progress — item 1 landed with Plan-008
 
 Extract one seam per campaign, in this order:
 
-1. immutable sensor snapshot and `data.json` projection;
-2. HTTP listener/dispatch service around the preserved external contract;
-3. application lifecycle, polling, option/reset, and shutdown coordination;
-4. settings projection and persistence coordination;
-5. WinForms presentation adapters for tree, plot, tray, and gadget surfaces.
+1. [x] Immutable sensor snapshot and `data.json` projection (Plan-008,
+   2026-08-01): AG source `dbc7e5d` integrated as `cbd1013`, AH source
+   `215190f` integrated as `3a31eb5`; all eight new facts, the exact
+   287/286/1 deterministic population, both 0-warning/0-error WinForms Release
+   builds, unchanged golden blob `05113704a`, and all eight non-deploying gates
+   passed. Read-only live proof showed separation and health, not deployment.
+2. [ ] HTTP listener/dispatch service around the preserved external contract.
+3. [ ] Application lifecycle, polling, option/reset, and shutdown coordination.
+4. [ ] Settings projection and persistence coordination.
+5. [ ] WinForms presentation adapters for tree, plot, tray, and gadget surfaces.
 
 `MainForm` remains the composition root until each extracted contract is
 characterized and accepted. Avoid a wholesale rewrite.
@@ -276,21 +281,24 @@ there.
 At this checkpoint the queue is:
 
 1. **A1** — Plan-001's attended normal-user smoke. Person-only, still open.
-2. **plan-008** — immutable sensor snapshot and `data.json` projection. Re-read
+2. **plan-009** — HTTP listener and dispatch service around the preserved
+   snapshot and external contract. Re-read
    `docs/campaign-backlog.md` before starting; it is an outline, not a spec.
 
 A2 (Plan-002 acceptance) was completed by the maintainer on 2026-08-01 and is
 recorded in `docs/campaign-history.md`.
 
-Plan-003, Plan-004, Plan-005, Plan-006, and Plan-007 have landed: the Avalonia fixture
+Plan-003 through Plan-008 have landed: the Avalonia fixture
 explorer lives under `experiments/avalonia-fixture-explorer/`, operations are
 split into `ops/candidate`, `ops/deploy/snd-desk`, and `eng/`, current docs are
 grouped under `docs/features/` and `docs/architecture/`, and the flat test
 project is split into the four `LibreHardwareMonitor.Tests` boundary suites
 behind the deterministic `LibreHardwareMonitor.Tests.slnf`. Plan-007 adds the
-20 passing characterization facts that guard the Phase-4 and Phase-5 seams.
-All moves preserved history and proved configuration-only rewiring with the
-runner byte-identical; Plan-007 changed tests and campaign truth only.
+20 passing characterization facts that guard the Phase-4 and Phase-5 seams;
+Plan-008 adds the detached immutable WinForms sensor snapshot and pure
+`data.json` projector while preserving the external golden bytes. All moves
+preserved history and proved configuration-only rewiring with the runner
+byte-identical; neither Plan-007 nor Plan-008 changed live state.
 
 Do not register a plan from a dirty tree; check `plan preflight` first, and see
 `docs/campaign-playbook.md` for the full lifecycle.
