@@ -105,7 +105,7 @@ Construct the service with `DispatchRequestAsync`. Delegate `PlatformNotSupporte
 start, stop, quit, and finalizer mechanics through it without changing public
 signatures. `MainForm`, `AuthForm`, and `InterfacePortForm` must stay byte-identical.
 
-## Exit criteria
+## Exit Criteria
 
 - Exactly the two exclusive outputs change.
 - The adapter retains no `Node`, `IElement`, hardware, sensor, settings, form,

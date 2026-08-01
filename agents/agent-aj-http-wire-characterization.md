@@ -94,7 +94,7 @@ methods and no `[Theory]` methods or data rows:
   and Sensor/data responses retain their existing cache/CORS/content headers.
 - Successful, canceled, and faulted handling must terminate the response.
 
-## Exit criteria
+## Exit Criteria
 
 - Exactly the exclusive new file changes and it contains exactly six facts.
 - All six pass at product baseline `a45790c`; the full Contracts project grows

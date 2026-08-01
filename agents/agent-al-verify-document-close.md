@@ -139,7 +139,7 @@ Leave `AGENTS.md`, Plan-008 artifacts/history/tracker rows, Avalonia ownership
 docs, operational manifests, live docs, release/candidate records, root README,
 playbook, control-plane, commands, and gates unchanged.
 
-## Exit criteria
+## Exit Criteria
 
 - Every Plan-009 criterion has command- or artifact-backed evidence and no gate
   is softened to fit a result.
