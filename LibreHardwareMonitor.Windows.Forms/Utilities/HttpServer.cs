@@ -21,6 +21,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LibreHardwareMonitor.Hardware;
+using LibreHardwareMonitor.Windows.Forms.Adapters;
+using LibreHardwareMonitor.Windows.Forms.ApplicationModel.Snapshots;
 using LibreHardwareMonitor.Windows.Forms.UI;
 
 namespace LibreHardwareMonitor.Windows.Forms.Utilities;
@@ -830,25 +832,8 @@ public class HttpServer
     // either path is locked to byte-identical output.
     internal Dictionary<string, object> BuildDataJsonObject()
     {
-        Dictionary<string, object> json = new();
-
-        int nodeIndex = 0;
-
-        json["id"] = nodeIndex++;
-        json["Version"] = $"{_version.Major}.{_version.Minor}.{_version.Build}";
-        json["Text"] = "Sensor";
-        json["Min"] = "Min";
-        json["Value"] = "Value";
-        json["Max"] = "Max";
-        json["ImageURL"] = string.Empty;
-
-        // Snapshot the node tree under the lock; serialization and I/O happen outside it.
-        lock (Node.SyncRoot)
-        {
-            json["Children"] = new List<object> { GenerateJsonForNode(_root, ref nodeIndex) };
-        }
-
-        return json;
+        SensorSnapshot snapshot = WinFormsNodeSensorSnapshotSource.Capture(_root);
+        return DataJsonProjection.Project(snapshot, _version);
     }
 
     internal void WriteDataJson(Stream output)
@@ -1185,59 +1170,6 @@ public class HttpServer
         await SendResponseAsync(response, responseContent, "application/json", cancellationToken).ConfigureAwait(false);
     }
         
-    private Dictionary<string, object> GenerateJsonForNode(Node n, ref int nodeIndex)
-    {
-        Dictionary<string, object> jsonNode = new()
-        {
-            ["id"] = nodeIndex++,
-            ["Text"] = n.Text,
-            ["Min"] = string.Empty,
-            ["Value"] = string.Empty,
-            ["Max"] = string.Empty
-        };
-
-        switch (n)
-        {
-            case SensorNode sensorNode:
-                jsonNode["SensorId"] = sensorNode.Sensor.Identifier.ToString();
-                jsonNode["Type"] = sensorNode.Sensor.SensorType.ToString();
-
-                // Formatted values, e.g. Throughput will be measured in KB/s or MB/s depending on the value
-                jsonNode["Min"] = sensorNode.Min;
-                jsonNode["Value"] = sensorNode.Value;
-                jsonNode["Max"] = sensorNode.Max;
-
-                // Unformatted values for external systems to have consistent readings, e.g. Throughput will always be measured in B/s
-                // Non-finite readings (NaN/Infinity) are mapped to null: System.Text.Json rejects them and they mean "no reading".
-                jsonNode["RawMin"] = SanitizeFloat(sensorNode.Sensor.Min);
-                jsonNode["RawValue"] = SanitizeFloat(sensorNode.Sensor.Value);
-                jsonNode["RawMax"] = SanitizeFloat(sensorNode.Sensor.Max);
-
-                jsonNode["ImageURL"] = "images/transparent.png";
-                break;
-            case HardwareNode hardwareNode:
-                jsonNode["HardwareId"] = hardwareNode.Hardware.Identifier.ToString();
-                jsonNode["ImageURL"] = "images_icon/" + GetHardwareImageFile(hardwareNode);
-                break;
-            case TypeNode typeNode:
-                jsonNode["ImageURL"] = "images_icon/" + GetTypeImageFile(typeNode);
-                break;
-            default:
-                jsonNode["ImageURL"] = "images_icon/computer.png";
-                break;
-        }
-
-        List<object> children = new();
-        foreach (Node child in n.Nodes)
-        {
-            children.Add(GenerateJsonForNode(child, ref nodeIndex));
-        }
-
-        jsonNode["Children"] = children;
-
-        return jsonNode;
-    }
-
     // System.Text.Json throws on NaN / Infinity by default. Many sensors report a non-finite
     // value when no reading is available (e.g. unwired motherboard voltages, idle GPU clocks),
     // so map those to null ("no reading") to keep data.json and the Sensor API valid and
@@ -1272,79 +1204,6 @@ public class HttpServer
             default: return "application/octet-stream";
         }
     }
-    private static string GetHardwareImageFile(HardwareNode hn)
-    {
-        switch (hn.Hardware.HardwareType)
-        {
-            case HardwareType.Cpu:
-                return "cpu.png";
-            case HardwareType.GpuNvidia:
-                return "nvidia.png";
-            case HardwareType.GpuAmd:
-                return "ati.png";
-            case HardwareType.GpuIntel:
-                return "intel.png";
-            case HardwareType.Storage:
-                return "hdd.png";
-            case HardwareType.Motherboard:
-                return "mainboard.png";
-            case HardwareType.SuperIO:
-                return "chip.png";
-            case HardwareType.Memory:
-                return "ram.png";
-            case HardwareType.Cooler:
-                return "fan.png";
-            case HardwareType.Network:
-                return "nic.png";
-            case HardwareType.Psu:
-                return "power-supply.png";
-            case HardwareType.Battery:
-                return "battery.png";
-            case HardwareType.PowerMonitor:
-                return "powermonitor.png";
-            default:
-                return "cpu.png";
-        }
-    }
-
-    private static string GetTypeImageFile(TypeNode tn)
-    {
-        switch (tn.SensorType)
-        {
-            case SensorType.Voltage:
-            case SensorType.Current:
-                return "voltage.png";
-            case SensorType.Clock:
-            case SensorType.Timing:
-                return "clock.png";
-            case SensorType.Load:
-                return "load.png";
-            case SensorType.Temperature:
-            case SensorType.TemperatureRate:
-                return "temperature.png";
-            case SensorType.Fan:
-                return "fan.png";
-            case SensorType.Flow:
-                return "flow.png";
-            case SensorType.Control:
-                return "control.png";
-            case SensorType.Level:
-                return "level.png";
-            case SensorType.Power:
-                return "power.png";
-            case SensorType.Noise:
-                return "loudspeaker.png";
-            case SensorType.Conductivity:
-                return "voltage.png";
-            case SensorType.Throughput:
-                return "throughput.png";
-            case SensorType.Humidity:
-                return "flow.png";
-            default:
-                return "power.png";
-        }
-    }
-
     private string ComputeSHA256(string text)
     {
         using SHA256 hash = SHA256.Create();
