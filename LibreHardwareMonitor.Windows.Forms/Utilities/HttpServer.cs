@@ -29,20 +29,14 @@ namespace LibreHardwareMonitor.Windows.Forms.Utilities;
 
 public class HttpServer
 {
-    internal const int DefaultMaxConcurrentHandlers = 16;
     internal const string CrossOriginResetMessage = "Reset rejected: cross-origin browser requests are not allowed";
     internal const string ResetMinMaxRequiresPostMessage = "ResetMinMax requires a POST request";
     internal const string ResetAllMinMaxRequiresPostMessage = "ResetAllMinMax requires a POST request";
 
-    private readonly HttpListener _listener;
+    private readonly HttpListenerDispatchService _listenerService;
     private readonly Node _root;
     private readonly IElement _rootElement;
     private readonly Version _version = typeof(HttpServer).Assembly.GetName().Version;
-    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
-    private readonly BoundedRequestHandlerPool _requestHandlers = new(DefaultMaxConcurrentHandlers);
-
-    private Task _listenerTask;
-    private CancellationTokenSource _cts;
 
     public HttpServer(Node node, IElement rootElement, string ip, int port, bool authEnabled = false, string userName = "", string passwordSHA256 = "")
     {
@@ -53,15 +47,7 @@ public class HttpServer
         AuthEnabled = authEnabled;
         UserName = userName;
         PasswordSHA256 = passwordSHA256;
-
-        try
-        {
-            _listener = new HttpListener { IgnoreWriteExceptions = true };
-        }
-        catch (PlatformNotSupportedException)
-        {
-            _listener = null;
-        }
+        _listenerService = new HttpListenerDispatchService(DispatchRequestAsync);
     }
 
     ~HttpServer()
@@ -69,12 +55,7 @@ public class HttpServer
         if (PlatformNotSupported)
             return;
 
-        try
-        {
-            _cts?.Cancel();
-            _listener?.Abort();
-        }
-        catch { }
+        _listenerService?.Abort();
     }
 
     public bool AuthEnabled { get; set; }
@@ -90,7 +71,7 @@ public class HttpServer
 
     public bool PlatformNotSupported
     {
-        get { return _listener == null; }
+        get { return _listenerService.PlatformNotSupported; }
     }
 
     public string UserName { get; set; }
@@ -99,67 +80,9 @@ public class HttpServer
 
     public bool StartHttpListener()
     {
-        if (PlatformNotSupported)
-            return false;
-
-        _lifecycleGate.Wait();
-        try
-        {
-            if (_listener.IsListening)
-                return true;
-
-            // A timed-out stop retains its canceled session so a restart cannot overwrite the
-            // cancellation source while old handlers still own it. A later stop can drain it.
-            if (_cts != null || _listenerTask != null)
-                return false;
-
-            // Validate that the selected IP exists (it could have been previously selected
-            // before switching networks). Enumerate local interfaces instead of a DNS
-            // round-trip: Dns.GetHostEntry can block for seconds on the UI thread while
-            // NICs initialize or DNS is misconfigured.
-            bool ipFound = false;
-            foreach (System.Net.NetworkInformation.NetworkInterface nic in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
-            {
-                foreach (System.Net.NetworkInformation.UnicastIPAddressInformation address in nic.GetIPProperties().UnicastAddresses)
-                {
-                    if (ListenerIp == address.Address.ToString())
-                    {
-                        ipFound = true;
-                        break;
-                    }
-                }
-
-                if (ipFound)
-                    break;
-            }
-
-            if (!ipFound)
-            {
-                // default to behavior of previous version if we don't know what interface to use.
-                ListenerIp = "+";
-            }
-
-            string prefix = "http://" + ListenerIp + ":" + ListenerPort + "/";
-
-            _listener.Prefixes.Clear();
-            _listener.Prefixes.Add(prefix);
-            _listener.Realm = "Libre Hardware Monitor";
-            _listener.AuthenticationSchemes = AuthEnabled ? AuthenticationSchemes.Basic : AuthenticationSchemes.Anonymous;
-            _listener.Start();
-
-            _cts = new CancellationTokenSource();
-            _listenerTask = Task.Run(() => ProcessRequestsAsync(_cts.Token));
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-        finally
-        {
-            _lifecycleGate.Release();
-        }
-
-        return true;
+        bool started = _listenerService.Start(ListenerIp, ListenerPort, AuthEnabled, out string effectiveListenerIp);
+        ListenerIp = effectiveListenerIp;
+        return started;
     }
 
     public bool StopHttpListener()
@@ -169,114 +92,7 @@ public class HttpServer
 
     public async Task<bool> StopHttpListenerAsync()
     {
-        if (PlatformNotSupported)
-            return false;
-
-        await _lifecycleGate.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            CancellationTokenSource cancellation = _cts;
-            Task listenerTask = _listenerTask;
-
-            if (cancellation == null && listenerTask == null && !_listener.IsListening)
-                return true;
-
-            cancellation?.Cancel();
-            // Stop() faults the pending GetContextAsync (which ignores the token) so the accept
-            // loop exits immediately. Active request registrations abort their responses.
-            _listener?.Stop();
-
-            bool listenerStopped = await WaitForCompletionAsync(listenerTask, TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-            bool handlersDrained = listenerStopped &&
-                                   await _requestHandlers.DrainAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-
-            if (listenerStopped && handlersDrained)
-            {
-                _listenerTask = null;
-                _cts = null;
-                cancellation?.Dispose();
-            }
-
-            return listenerStopped && handlersDrained;
-        }
-        catch (HttpListenerException)
-        { }
-        catch (OperationCanceledException)
-        { }
-        catch (NullReferenceException)
-        { }
-        catch (Exception)
-        { }
-        finally
-        {
-            _lifecycleGate.Release();
-        }
-
-        return false;
-    }
-
-    private async Task ProcessRequestsAsync(CancellationToken cancellationToken)
-    {
-        while (_listener.IsListening && !cancellationToken.IsCancellationRequested)
-        {
-            try
-            {
-                HttpListenerContext context = await _listener.GetContextAsync();
-                try
-                {
-                    HttpListenerContext acceptedContext = context;
-                    await _requestHandlers.QueueAsync(token => HandleContextAsync(acceptedContext, token), cancellationToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    AbortContext(context);
-                    break;
-                }
-            }
-            catch (HttpListenerException ex) when (ex.ErrorCode == 50)
-            {
-                // Handle Windows update bug (e.g., 2025-10 Cumulative Update): retry after delay
-                System.Diagnostics.Debug.WriteLine($"HttpListener error (code {ex.ErrorCode}): {ex.Message}. Retrying in 5 seconds.");
-                await Task.Delay(5000, cancellationToken);
-            }
-            catch (HttpListenerException ex) when (ex.ErrorCode == 995)
-            {
-                break; // ERROR_OPERATION_ABORTED: Stop()/Abort() faulted the pending accept
-            }
-            catch (ObjectDisposedException)
-            {
-                break; // Listener stopped
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Unexpected HttpListener error: {ex.Message}");
-            }
-        }
-    }
-
-    private static async Task<bool> WaitForCompletionAsync(Task task, TimeSpan timeout)
-    {
-        if (task == null)
-            return true;
-
-        Task completed = await Task.WhenAny(task, Task.Delay(timeout)).ConfigureAwait(false);
-        if (completed != task)
-            return false;
-
-        try
-        {
-            await task.ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is OperationCanceledException ||
-                                   ex is HttpListenerException ||
-                                   ex is ObjectDisposedException)
-        { }
-
-        return true;
+        return await _listenerService.StopAsync().ConfigureAwait(false);
     }
 
     public static IDictionary<string, string> ToDictionary(NameValueCollection col)
@@ -561,54 +377,6 @@ public class HttpServer
             result["message"] = e.Message; // never e.ToString(): no stack traces to clients
         }
         return System.Text.Json.JsonSerializer.Serialize(result);
-    }
-
-    private async Task HandleContextAsync(HttpListenerContext context, CancellationToken cancellationToken)
-    {
-        // Backstop: any unhandled error while handling a request must still close the response.
-        // Otherwise the client connection hangs until it times out — e.g. a JSON serialization
-        // failure on a non-finite sensor value (NaN/Infinity), which System.Text.Json rejects.
-        using CancellationTokenRegistration cancellationRegistration =
-            cancellationToken.Register(state => AbortContext((HttpListenerContext)state), context);
-
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            await DispatchRequestAsync(context, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        { }
-        catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
-        { }
-        catch (HttpListenerException) when (cancellationToken.IsCancellationRequested)
-        { }
-        catch (InvalidOperationException) when (cancellationToken.IsCancellationRequested)
-        { }
-        catch (IOException) when (cancellationToken.IsCancellationRequested)
-        { }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"HTTP request handler error: {ex.Message}");
-            try { context.Response.StatusCode = 500; }
-            catch { }
-        }
-        finally
-        {
-            try { context.Response.Close(); }
-            catch { /* client closed connection before the content was sent */ }
-        }
-    }
-
-    private static void AbortContext(HttpListenerContext context)
-    {
-        try
-        {
-            context?.Response.Abort();
-        }
-        catch
-        {
-            // The response may already have completed or been aborted by the client.
-        }
     }
 
     private async Task DispatchRequestAsync(HttpListenerContext context, CancellationToken cancellationToken)
@@ -1223,11 +991,7 @@ public class HttpServer
             return;
 
         await StopHttpListenerAsync().ConfigureAwait(false);
-        try
-        {
-            _listener?.Abort();
-        }
-        catch { }
+        _listenerService.Abort();
 
         GC.SuppressFinalize(this);
     }
@@ -1247,125 +1011,4 @@ public class HttpServer
         { }
     }
 
-}
-
-internal sealed class BoundedRequestHandlerPool
-{
-    private readonly HashSet<Task> _activeHandlers = new();
-    private readonly object _activeHandlersLock = new();
-    private readonly SemaphoreSlim _handlerSlots;
-    private int _activeCount;
-    private int _peakActiveCount;
-
-    public BoundedRequestHandlerPool(int maxConcurrency)
-    {
-        if (maxConcurrency <= 0)
-            throw new ArgumentOutOfRangeException(nameof(maxConcurrency));
-
-        MaxConcurrency = maxConcurrency;
-        _handlerSlots = new SemaphoreSlim(maxConcurrency, maxConcurrency);
-    }
-
-    public int MaxConcurrency { get; }
-
-    internal int ActiveCount => Volatile.Read(ref _activeCount);
-
-    internal int PeakActiveCount => Volatile.Read(ref _peakActiveCount);
-
-    public async Task QueueAsync(Func<CancellationToken, Task> handler, CancellationToken cancellationToken)
-    {
-        if (handler == null)
-            throw new ArgumentNullException(nameof(handler));
-
-        await _handlerSlots.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-        Task handlerTask;
-        try
-        {
-            handlerTask = ExecuteAsync(handler, cancellationToken);
-        }
-        catch
-        {
-            _handlerSlots.Release();
-            throw;
-        }
-
-        lock (_activeHandlersLock)
-            _activeHandlers.Add(handlerTask);
-
-        _ = handlerTask.ContinueWith(completedTask =>
-        {
-            // Observe a delegate fault even though production handlers contain their own
-            // exception boundary. This keeps test/injected handlers from becoming unobserved.
-            _ = completedTask.Exception;
-            lock (_activeHandlersLock)
-                _activeHandlers.Remove(completedTask);
-        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-    }
-
-    public async Task<bool> DrainAsync(TimeSpan timeout)
-    {
-        if (timeout < TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(timeout));
-
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-        while (true)
-        {
-            Task[] handlers;
-            lock (_activeHandlersLock)
-                handlers = _activeHandlers.ToArray();
-
-            if (handlers.Length == 0)
-                return true;
-
-            TimeSpan remaining = timeout - stopwatch.Elapsed;
-            if (remaining <= TimeSpan.Zero)
-                return false;
-
-            Task allHandlers = Task.WhenAll(handlers);
-            Task completed = await Task.WhenAny(allHandlers, Task.Delay(remaining)).ConfigureAwait(false);
-            if (completed != allHandlers)
-                return false;
-
-            try
-            {
-                await allHandlers.ConfigureAwait(false);
-            }
-            catch
-            {
-                // Completion, rather than success, is the lifetime condition. Individual
-                // failures are observed by the tracking continuation above.
-            }
-        }
-    }
-
-    private async Task ExecuteAsync(Func<CancellationToken, Task> handler, CancellationToken cancellationToken)
-    {
-        int activeCount = Interlocked.Increment(ref _activeCount);
-        UpdatePeakActiveCount(activeCount);
-
-        try
-        {
-            await handler(cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            Interlocked.Decrement(ref _activeCount);
-            _handlerSlots.Release();
-        }
-    }
-
-    private void UpdatePeakActiveCount(int activeCount)
-    {
-        int observedPeak = Volatile.Read(ref _peakActiveCount);
-        while (activeCount > observedPeak)
-        {
-            int priorPeak = Interlocked.CompareExchange(ref _peakActiveCount, activeCount, observedPeak);
-            if (priorPeak == observedPeak)
-                return;
-
-            observedPeak = priorPeak;
-        }
-    }
 }
