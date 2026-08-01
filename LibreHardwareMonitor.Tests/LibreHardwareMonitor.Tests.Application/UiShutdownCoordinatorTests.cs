@@ -174,4 +174,134 @@ public sealed class UiShutdownCoordinatorTests
         await first.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, Volatile.Read(ref shutdownCount));
     }
+
+    [Fact]
+    public async Task UiCloseTakeover_CompletesQueuedBackgroundRequestTaskExactlyOnce()
+    {
+        bool isOnUiThread = false;
+        var queued = new ConcurrentQueue<Action>();
+        int shutdownCount = 0;
+        var coordinator = new UiShutdownCoordinator(
+            () => isOnUiThread,
+            action => queued.Enqueue(action),
+            () => Interlocked.Increment(ref shutdownCount));
+
+        Task backgroundCompletion = coordinator.RequestAsync();
+        Assert.Single(queued);
+        Assert.False(backgroundCompletion.IsCompleted);
+
+        isOnUiThread = true;
+        Task uiCompletion = coordinator.RequestAsync();
+        Assert.Same(backgroundCompletion, uiCompletion);
+        await uiCompletion.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, Volatile.Read(ref shutdownCount));
+
+        Assert.True(queued.TryDequeue(out Action delayedBackgroundDispatch));
+        delayedBackgroundDispatch();
+
+        await backgroundCompletion.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, Volatile.Read(ref shutdownCount));
+    }
+
+    [Fact]
+    public async Task BeginInvokeStyleSessionEndedWait_DoesNotReturnBeforeAsyncShutdownCompletes()
+    {
+        bool isOnUiThread = false;
+        var queued = new ConcurrentQueue<Action>();
+        var dispatchQueued = NewCompletionSource();
+        var shutdownStarted = NewCompletionSource();
+        var releaseShutdown = NewCompletionSource();
+        int shutdownCount = 0;
+        var coordinator = new UiShutdownCoordinator(
+            () => isOnUiThread,
+            action =>
+            {
+                queued.Enqueue(action);
+                dispatchQueued.TrySetResult(null);
+            },
+            async () =>
+            {
+                Interlocked.Increment(ref shutdownCount);
+                shutdownStarted.TrySetResult(null);
+                await releaseShutdown.Task.ConfigureAwait(true);
+            });
+
+        Task sessionEndedWaiter = Task.Run(() => coordinator.RequestAsync().GetAwaiter().GetResult());
+        await dispatchQueued.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(sessionEndedWaiter.IsCompleted);
+
+        isOnUiThread = true;
+        Assert.True(queued.TryDequeue(out Action dispatchedShutdown));
+        dispatchedShutdown();
+        await shutdownStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(sessionEndedWaiter.IsCompleted);
+
+        releaseShutdown.TrySetResult(null);
+        await sessionEndedWaiter.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, Volatile.Read(ref shutdownCount));
+    }
+
+    [Fact]
+    public async Task ShutdownFailure_FaultsSharedCompletionAndDoesNotRetry()
+    {
+        var shutdownFailure = new InvalidOperationException("shutdown failed");
+        int shutdownCount = 0;
+        var coordinator = new UiShutdownCoordinator(
+            () => true,
+            _ => throw new InvalidOperationException("UI dispatch is not expected"),
+            () =>
+            {
+                Interlocked.Increment(ref shutdownCount);
+                return Task.FromException(shutdownFailure);
+            });
+
+        Task first = coordinator.RequestAsync();
+        Task second = coordinator.RequestAsync();
+        Assert.Same(first, second);
+
+        InvalidOperationException firstObserved = await Assert.ThrowsAsync<InvalidOperationException>(() => first);
+        InvalidOperationException secondObserved = await Assert.ThrowsAsync<InvalidOperationException>(() => second);
+        Assert.Same(shutdownFailure, firstObserved);
+        Assert.Same(shutdownFailure, secondObserved);
+
+        Task later = coordinator.RequestAsync();
+        Assert.Same(first, later);
+        InvalidOperationException laterObserved = await Assert.ThrowsAsync<InvalidOperationException>(() => later);
+        Assert.Same(shutdownFailure, laterObserved);
+        Assert.Equal(1, Volatile.Read(ref shutdownCount));
+        Assert.True(coordinator.IsShutdownRequested);
+    }
+
+    [Fact]
+    public async Task RequestAsyncDispatchFailure_ReleasesClaimForUiRetry()
+    {
+        bool isOnUiThread = false;
+        var dispatchFailure = new InvalidOperationException("UI handle unavailable");
+        int shutdownCount = 0;
+        var coordinator = new UiShutdownCoordinator(
+            () => isOnUiThread,
+            _ => throw dispatchFailure,
+            () => Interlocked.Increment(ref shutdownCount));
+
+        Action failedRequest = () => _ = coordinator.RequestAsync();
+        InvalidOperationException observedDispatchFailure =
+            Assert.Throws<InvalidOperationException>(failedRequest);
+        Assert.Same(dispatchFailure, observedDispatchFailure);
+        Assert.False(coordinator.IsShutdownRequested);
+
+        isOnUiThread = true;
+        Task retry = coordinator.RequestAsync();
+        await retry.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Task repeated = coordinator.RequestAsync();
+        Assert.Same(retry, repeated);
+        await repeated.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, Volatile.Read(ref shutdownCount));
+        Assert.True(coordinator.IsShutdownRequested);
+    }
+
+    private static TaskCompletionSource<object> NewCompletionSource()
+    {
+        return new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
 }
