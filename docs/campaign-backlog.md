@@ -1,7 +1,7 @@
 # Campaign Backlog
 
 **Status:** active
-**Updated:** 2026-08-01
+**Updated:** 2026-08-02
 **Read first:** `docs/campaign-playbook.md` for how to run any of these,
 `docs/architecture/refactor-roadmap.md` for why each phase exists
 
@@ -27,10 +27,10 @@ campaign owns.
 | | |
 |---|---|
 | Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane), 3 (verification suite boundaries); Phase 2 remains partially complete with general engineering grouping open |
-| Last campaign | `plan-010`, application lifecycle and polling coordinator, ledger state `implemented` |
-| Next campaign | `plan-011` |
-| Next agent letter | `ap` |
-| Closing now | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; Plan-010 is implemented with all 12 criteria met, and Plan-011 is next |
+| Last campaign | `plan-011`, settings projection and persistence coordination, ledger state `implemented` |
+| Next campaign | `plan-012` |
+| Next agent letter | `as` |
+| Closing now | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; Plan-011 is implemented with all 11 criteria met, and Plan-012 is next |
 
 ---
 
@@ -66,13 +66,13 @@ campaign and the ledger records it. A1 remains the only standing action.
 
 ---
 
-## plan-011 … plan-012 — Application and adapter seams
+## plan-012 — WinForms presentation adapters
 
 **Phase:** 4
 **Risk:** high
-**Entry:** `plan-010` landed with the immutable snapshot/projector and public
-HTTP contract preserved while lifecycle, option/reset, polling, and shutdown
-drain moved behind one internal coordinator
+**Entry:** `plan-011` landed with the immutable snapshot/projector, public HTTP,
+lifecycle, and underlying PersistentSettings contracts preserved while
+settings projection/save sequencing moved behind one internal coordinator
 
 One seam per campaign, in this order. `MainForm` stays the composition root
 until each extracted contract is characterized and accepted. No wholesale
@@ -80,13 +80,13 @@ rewrite.
 
 | Plan | Seam | Preserves |
 |---|---|---|
-| `plan-011` | settings projection and persistence | ordered, atomic, backup-aware writes; stale-history compaction |
 | `plan-012` | WinForms presentation adapters — tree, plot, tray, gadget | canonical node order, scrollbar hit targets, UI Automation bridge |
 
-Each must keep both framework targets green, preserve the detached Plan-008
-snapshot and external `data.json` contract, and must not duplicate ownership.
-Plan-011 is next with agent `ap` and owns only settings projection and
-persistence coordination; the one-seam-at-a-time rule remains in force.
+Plan-012 must keep both framework targets green, preserve the detached Plan-008
+snapshot, the Plan-009 external `data.json` contract, the Plan-010 lifecycle
+boundary, and the Plan-011 persistence boundary, and must not duplicate
+ownership. Plan-012 is next with agent `as` and owns only presentation adapters;
+the one-seam-at-a-time rule remains in force.
 
 ---
 

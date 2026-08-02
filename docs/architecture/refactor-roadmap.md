@@ -1,7 +1,7 @@
 # LibreHardwareMonitor Structural Refactor Roadmap
 
 **Status:** active
-**Date:** 2026-07-31
+**Date:** 2026-08-02
 **Scope:** repository structure, campaign control, fork-only organization, and
 behavior-preserving seams
 **Out of scope until separately approved:** live deployment relocation,
@@ -213,7 +213,7 @@ Release targets pass, and cross-cutting changes still trigger the full gate.
 
 ## Phase 4 — Application and adapter seams
 
-**Status:** in progress — items 1 through 3 landed with Plans 008 through 010
+**Status:** in progress — items 1 through 4 landed with Plans 008 through 011
 
 Extract one seam per campaign, in this order:
 
@@ -239,7 +239,17 @@ Extract one seam per campaign, in this order:
    gates pass. `MainForm` retains application policy; PawnIO still precedes
    `Computer.Open`, but is now tracked behind the lifecycle start barrier so
    shutdown can drain it.
-4. [ ] Settings projection and persistence coordination.
+4. [x] Settings projection and persistence coordination (Plan-011,
+   2026-08-02): AP source/integration `e58e38d` adds the internal delegate-driven
+   coordinator and seven deterministic facts; AQ source/integration `8f68c09`
+   wires only `MainForm`. The coordinator owns synchronous projection, the
+   autosave dirty skip, safe-path validation, save delegation, and the
+   autosave/final-save error boundary while `MainForm` retains UI/server reads,
+   keys, timers, messages, and shutdown placement and `PersistentSettings`
+   retains ordered atomic backup-aware storage. Settings passed 65+1/66,
+   Application 166+1/167, Contracts 73/73, aggregate 307+1/308, both WinForms
+   Release targets 0W/0E, and all eight non-deploying gates passed. Read-only
+   live proof showed separation and health, not deployment.
 5. [ ] WinForms presentation adapters for tree, plot, tray, and gadget surfaces.
 
 `MainForm` remains the composition root until each extracted contract is
@@ -295,14 +305,15 @@ there.
 At this checkpoint the queue is:
 
 1. **A1** — Plan-001's attended normal-user smoke. Person-only, still open.
-2. **plan-011** — settings projection and persistence coordination around the
-   preserved lifecycle, snapshot, and external contracts. Re-read
+2. **plan-012** — WinForms presentation adapters for tree, plot, tray, and
+   gadget surfaces around the preserved lifecycle, settings, snapshot, and
+   external contracts. Re-read
    `docs/campaign-backlog.md` before starting; it is an outline, not a spec.
 
 A2 (Plan-002 acceptance) was completed by the maintainer on 2026-08-01 and is
 recorded in `docs/campaign-history.md`.
 
-Plan-003 through Plan-010 have landed: the Avalonia fixture
+Plan-003 through Plan-011 have landed: the Avalonia fixture
 explorer lives under `experiments/avalonia-fixture-explorer/`, operations are
 split into `ops/candidate`, `ops/deploy/snd-desk`, and `eng/`, current docs are
 grouped under `docs/features/` and `docs/architecture/`, and the flat test
@@ -313,9 +324,12 @@ Plan-008 adds the detached immutable WinForms sensor snapshot and pure
 `data.json` projector while preserving the external golden bytes; Plan-009
 extracts the internal listener mechanics while `HttpServer` retains route and
 content ownership; Plan-010 extracts lifecycle, polling, option/reset, and
-shutdown-drain coordination while `MainForm` retains composition policy. The
+shutdown-drain coordination while `MainForm` retains composition policy;
+Plan-011 extracts settings projection/persistence sequencing while `MainForm`
+retains concrete projection policy and `PersistentSettings` retains storage
+ownership. The
 earlier path moves preserved history and proved configuration-only rewiring with
-the runner byte-identical; Plans 007-010 changed no live state.
+the runner byte-identical; Plans 007-011 changed no live state.
 
 Do not register a plan from a dirty tree; check `plan preflight` first, and see
 `docs/campaign-playbook.md` for the full lifecycle.

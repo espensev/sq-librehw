@@ -4,7 +4,7 @@
 queue, scrollbar teardown, transactional open, and dynamic-group snapshot fixes
 deployed and live-verified on SND-HOST
 
-**Updated:** 2026-08-01
+**Updated:** 2026-08-02
 
 ## Problem and motivation
 
@@ -88,6 +88,13 @@ dashboard policy, or supported frameworks.
   history and backup recovery mark settings dirty so autosave compacts them.
 - Snapshot creation and disk write have one ordering boundary so an old save
   cannot overwrite a newer one.
+- One internal `SettingsPersistenceCoordinator` owns the synchronous sequence
+  of projecting current state, applying the autosave-only dirty skip, validating
+  the primary/backup/staging paths, and delegating the write. `MainForm` retains
+  all concrete UI/server reads, settings keys and values, the autosave timer,
+  messages, and final-shutdown placement. `PersistentSettings` remains the sole
+  ordered atomic backup-aware store and still owns modified-state transitions,
+  load recovery, duplicate normalization, and stale-history compaction.
 - Persisted history decompression rejects malformed or expanded payloads beyond
   the retained record/byte budget before allocating an unbounded buffer.
 
@@ -186,6 +193,10 @@ dashboard policy, or supported frameworks.
   preserves newest/extrema, and does not change current/min/max values.
 - [x] Large-config loading stays bounded, compacts cleanup, orders overlapping
   saves, and rejects excessive decompression expansion.
+- [x] Settings projection, autosave dirty-skip, safe-path validation, save
+  delegation, retry behavior, and final-save error propagation have one tested
+  owner without moving storage semantics or concrete UI policy out of their
+  established owners.
 - [x] Metrics and plots use bounded tail/delta reads and retain their existing
   public/visual contracts.
 - [x] Session/form shutdown executes once on the UI thread and releases all
@@ -319,6 +330,23 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-08-02 Plan-011 source-only settings extraction: AP source/integration
+  `e58e38d` (stable patch-id `4fd7e493`, blobs `ccccdbd3`/`bb1f0e8b`)
+  added the internal settings persistence coordinator and exactly seven facts;
+  AQ source/integration `8f68c09` (stable patch-id `32b27bfa`, MainForm blob
+  `13d2a728`) wired only `MainForm`. Coordinator passed 7/7; settings passed
+  65 with the one established opt-in skip/66; lifecycle families passed 27/27;
+  Application was exactly 167 discovered/166 passed/one established skip;
+  Contracts passed 73/73; and the deterministic aggregate was exactly
+  308/307/1. Both WinForms x64 Release targets built 0W/0E, Avalonia remained
+  75/75 with only established AVLN3001, web remained 315/315 plus 18/18, and
+  the final non-deploying sweep passed all eight included gates. The data.json
+  golden retained blob `05113704a` and SHA-256
+  `BEBDE807A7F0037827E16CFBC1F41707701F2BEE7232385C3D2EAEBD2261D2F3`.
+  Read-only SND-HOST closure proof retained the separate live PID 11980, exact
+  task/listener and three HTTP 200s while the CSV grew 12,885 bytes in six
+  seconds. This campaign created no candidate and made no deployment or live
+  change; ledger state is `implemented`, not person-accepted.
 - 2026-08-01 Plan-010 source-only lifecycle extraction: AM initial source
   `6871323` plus race fix `7fc7f77` and AN source/integration `479c89b` added the
   internal lifecycle coordinator and rewired `MainForm`. The new facts passed

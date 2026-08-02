@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor Docs
 
 **Status:** live map only
-**Updated:** 2026-08-01
+**Updated:** 2026-08-02
 
 ## Repository
 
@@ -179,15 +179,16 @@ The structural baseline and phased reorganization are defined in
 `docs/architecture/refactor-roadmap.md`. Phases 0, 1, and 3 are complete.
 Phase 2 is partially complete: Plans 003-005 landed the fork-only experiment,
 operations, and document taxonomy, while general `eng/build` and `eng/test`
-grouping remains open. Phase 4 remains in progress after Plan-010 implemented
-item 3: one internal coordinator now owns application initialization, ordered
-option/reset work, single-flight polling admission and drain, and idempotent
-stop/close sequencing while `MainForm` remains the composition root. Plan-011,
-settings projection and persistence coordination, is next with agent `ap`.
+grouping remains open. Phase 4 remains in progress after Plan-011 implemented
+item 4: one internal settings coordinator now owns synchronous current-state
+projection, the autosave dirty skip, safe-path validation, and delegation to
+the unchanged ordered atomic store while `MainForm` retains concrete UI/server
+reads, keys, timers, messages, and final-shutdown placement. Plan-012, WinForms
+presentation adapters, is next with agent `as`.
 A1, Plan-001's attended normal-user smoke, remains open and person-only. These
-are source-campaign facts only: Plan-010 remains `executed` with ledger state
+are source-campaign facts only: Plan-011 remains `executed` with ledger state
 `implemented`, not person-accepted; it created no candidate and authorized no
-deployment, promotion, or live cutover. Plan-011/agent `ap` is next but remains
+deployment, promotion, or live cutover. Plan-012/agent `as` is next but remains
 unregistered.
 
 The imported upstream roadmap also records a stale SND-DESK
@@ -314,7 +315,12 @@ an unqualified SND-HOST command.
   sample regression for temperature rate.
 - `LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs` -
   streaming, cleanup, ordering, and atomic settings writes.
-- `LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs` - lifecycle/autosave.
+- `LibreHardwareMonitor.Windows.Forms/UI/SettingsPersistenceCoordinator.cs` -
+  internal current-state projection, autosave dirty-skip, safe-path validation,
+  save delegation, and autosave/final-save error boundary.
+- `LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs` - lifecycle composition,
+  concrete settings projection, autosave timer, messages, and shutdown-save
+  placement.
 - `LibreHardwareMonitor.Windows.Forms/Utilities/HttpListenerDispatchService.cs` -
   internal listener construction/configuration, lifecycle/session, accept-loop,
   bounded-handler, cancellation/fault-containment, response-close, and drain
