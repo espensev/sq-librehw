@@ -30,7 +30,6 @@ public sealed partial class MainForm : Form
     private bool _closing;
     private readonly UserOption _autoStart;
     private readonly Computer _computer;
-    private readonly SensorGadget _gadget;
     private readonly Logger _logger;
     private readonly UserRadioGroup _loggingInterval;
     private readonly UserRadioGroup _smartUpdateCycle;
@@ -39,7 +38,7 @@ public sealed partial class MainForm : Form
     private readonly UserOption _forceDriveWakeup;
     private readonly UserOption _minimizeOnClose;
     private readonly UserOption _minimizeToTray;
-    private readonly PlotPanel _plotPanel;
+    private readonly PresentationSurfaceCoordinator _presentation;
     private readonly UserOption _readBatterySensors;
     private readonly UserOption _readCpuSensors;
     private readonly UserOption _readFanControllersSensors;
@@ -62,7 +61,6 @@ public sealed partial class MainForm : Form
     private readonly UserOption _showMax;
     private readonly UserOption _compactMode;
     private readonly StartupManager _startupManager = new();
-    private readonly SystemTray _systemTray;
     private readonly UnitManager _unitManager;
     private readonly UpdateVisitor _updateVisitor = new();
 
@@ -159,7 +157,7 @@ public sealed partial class MainForm : Form
             Theme.SetAutoTheme();
         }
 
-        _plotPanel = new PlotPanel(_settings, _unitManager) { Font = SystemFonts.MessageBoxFont, Dock = DockStyle.Fill };
+        PlotPanel plotPanel = new PlotPanel(_settings, _unitManager) { Font = SystemFonts.MessageBoxFont, Dock = DockStyle.Fill };
 
         nodeCheckBox.IsVisibleValueNeeded += NodeCheckBox_IsVisibleValueNeeded;
         nodeTextBoxText.DrawText += NodeTextBoxText_DrawText;
@@ -190,9 +188,8 @@ public sealed partial class MainForm : Form
         _applicationLifecycle.OptionFailed += HardwareOperations_OptionFailed;
         _applicationLifecycle.ResetFailed += HardwareOperations_ResetFailed;
 
-        _systemTray = new SystemTray(_computer, _settings, _unitManager, this);
-        _systemTray.HideShowCommand += HideShowClick;
-        _systemTray.ExitCommand += ExitClick;
+        SystemTray systemTray = new SystemTray(_computer, _settings, _unitManager, this);
+        SensorGadget gadget = null;
 
         if (Software.OperatingSystem.IsUnix)
         {
@@ -201,7 +198,7 @@ public sealed partial class MainForm : Form
             splitContainer.BorderStyle = BorderStyle.None;
             splitContainer.SplitterWidth = 4;
             treeView.BorderStyle = BorderStyle.Fixed3D;
-            _plotPanel.BorderStyle = BorderStyle.Fixed3D;
+            plotPanel.BorderStyle = BorderStyle.Fixed3D;
             gadgetMenuItem.Visible = false;
             minCloseMenuItem.Visible = false;
             minTrayMenuItem.Visible = false;
@@ -211,9 +208,19 @@ public sealed partial class MainForm : Form
         {
             // Windows
             treeView.RowHeight = Math.Max(treeView.Font.Height + 1, 18);
-            _gadget = new SensorGadget(_computer, _settings, _unitManager, this, _runtimePaths.DataRoot);
-            _gadget.HideShowCommand += HideShowClick;
+            gadget = new SensorGadget(_computer, _settings, _unitManager, this, _runtimePaths.DataRoot);
         }
+
+        // MainForm stays the composition root: it constructs the concrete surfaces above, then
+        // binds them to the presentation ports. Hide/show and exit relay through the coordinator,
+        // which preserves each surface's original sender and event arguments.
+        _presentation = new PresentationSurfaceCoordinator(
+            WinFormsPresentationAdapters.ForTree(treeView),
+            WinFormsPresentationAdapters.ForPlot(plotPanel),
+            WinFormsPresentationAdapters.ForTray(systemTray),
+            WinFormsPresentationAdapters.ForGadget(gadget));
+        _presentation.HideShowRequested += HideShowClick;
+        _presentation.ExitRequested += ExitClick;
 
         _standardRowHeight = treeView.RowHeight;
         _standardGridLineStyle = treeView.GridLineStyle;
@@ -350,8 +357,7 @@ public sealed partial class MainForm : Form
 
         _showGadget.Changed += delegate
         {
-            if (_gadget != null)
-                _gadget.Visible = _showGadget.Value;
+            _presentation.TrySetGadgetVisible(_showGadget.Value);
         };
 
         celsiusMenuItem.Checked = _unitManager.TemperatureUnit == TemperatureUnit.Celsius;
@@ -751,7 +757,7 @@ public sealed partial class MainForm : Form
         bool hasResetWork = _applicationLifecycle.HasResetWork;
         bool isBusy = _applicationLifecycle.IsBusy;
         menuItemFileHardware.Enabled = !_applicationLifecycle.IsInitializationInProgress && !isBusy;
-        _systemTray.IsMainIconEnabled =
+        _presentation.IsTrayMainIconEnabled =
             !hasResetWork &&
             _minimizeToTray.Value;
     }
@@ -836,12 +842,7 @@ public sealed partial class MainForm : Form
         if (IsShutdownPending || IsDisposed)
             return;
 
-        treeView.Invalidate();
-        _systemTray.Redraw();
-        _gadget?.Redraw();
-
-        if (_showPlot == null || _showPlot.Value)
-            _plotPanel.InvalidatePlot();
+        _presentation.RefreshSurfaces(_showPlot == null || _showPlot.Value);
     }
 
     private void PowerModeChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs eventArgs)
@@ -938,7 +939,7 @@ public sealed partial class MainForm : Form
         resetPlotMenuItem.Text = "&Reset Graph View";
 
         // The graph-local options menu offers the same reset command as this menu item.
-        _plotPanel.ResetGraphView = () => resetPlotMenuItem_Click(this, EventArgs.Empty);
+        _presentation.PlotResetGraphView = () => resetPlotMenuItem_Click(this, EventArgs.Empty);
         sensorValuesTimeWindowMenuItem.Text = "&Time Window";
         plotLocationMenuItem.Text = "Graph &Location";
         strokeThicknessMenuItem.Text = "&Stroke Thickness";
@@ -1154,7 +1155,7 @@ public sealed partial class MainForm : Form
         ApplySensorTreeLayout();
 
         // Plot tracker text (single PlotPanel instance covers docked + separate-window modes).
-        _plotPanel?.SetTrackerTextScale(_uiTextScalePercent);
+        _presentation?.SetPlotTrackerTextScale(_uiTextScalePercent);
 
         _settings.SetValue("uiTextScale", _uiTextScalePercent);
     }
@@ -1162,7 +1163,7 @@ public sealed partial class MainForm : Form
     private void ApplyPlotTextScale(bool deferMenuRefresh = false)
     {
         _plotTextScalePercent = UiScale.ClampPercent(_plotTextScalePercent);
-        _plotPanel?.SetAxisTextScale(_plotTextScalePercent);
+        _presentation?.SetPlotAxisTextScale(_plotTextScalePercent);
 
         if (!deferMenuRefresh)
             _plotTextSlider?.RefreshMenuText(_plotTextScalePercent, mainMenu.Font);
@@ -1251,7 +1252,7 @@ public sealed partial class MainForm : Form
             // The per-tick refresh is gated on _showPlot, so the model froze while hidden;
             // bring points and the time window current immediately on re-show.
             if (_showPlot.Value)
-                _plotPanel.InvalidatePlot();
+                _presentation.RedrawPlot();
         };
 
         _strokeThickness = new UserRadioGroup("plotStroke", 1, new[] { strokeThickness1ptMenuItem, strokeThickness2ptMenuItem, strokeThickness3ptMenuItem, strokeThickness4ptMenuItem }, _settings);
@@ -1261,7 +1262,7 @@ public sealed partial class MainForm : Form
             _plotStrokeThickness = (_strokeThickness.Value >= 0 && _strokeThickness.Value <= 3)
                                                    ? _strokeThickness.Value + 1
                                                    : 4;
-            _plotPanel.UpdateStrokeThickness(_plotStrokeThickness);
+            _presentation.UpdatePlotStrokeThickness(_plotStrokeThickness);
         };
 
         _plotLocation.Changed += delegate
@@ -1271,7 +1272,7 @@ public sealed partial class MainForm : Form
                 case 0:
                     splitContainer.Panel2.Controls.Clear();
                     splitContainer.Panel2Collapsed = true;
-                    _plotForm.Controls.Add(_plotPanel);
+                    _plotForm.Controls.Add(_presentation.PlotControl);
                     if (_showPlot.Value && Visible)
                         _plotForm.Show();
                     break;
@@ -1279,14 +1280,14 @@ public sealed partial class MainForm : Form
                     _plotForm.Controls.Clear();
                     _plotForm.Hide();
                     splitContainer.Orientation = Orientation.Horizontal;
-                    splitContainer.Panel2.Controls.Add(_plotPanel);
+                    splitContainer.Panel2.Controls.Add(_presentation.PlotControl);
                     splitContainer.Panel2Collapsed = !_showPlot.Value;
                     break;
                 case 2:
                     _plotForm.Controls.Clear();
                     _plotForm.Hide();
                     splitContainer.Orientation = Orientation.Vertical;
-                    splitContainer.Panel2.Controls.Add(_plotPanel);
+                    splitContainer.Panel2.Controls.Add(_presentation.PlotControl);
                     splitContainer.Panel2Collapsed = !_showPlot.Value;
                     break;
             }
@@ -1603,7 +1604,7 @@ public sealed partial class MainForm : Form
         }
 
         _sensorPlotColors = colors;
-        _plotPanel.SetSensors(selected, colors, _plotStrokeThickness);
+        _presentation.SetPlotSensors(selected, colors, _plotStrokeThickness);
     }
 
     private void NodeTextBoxText_EditorShowing(object sender, CancelEventArgs e)
@@ -1647,7 +1648,7 @@ public sealed partial class MainForm : Form
 
     private void SaveConfiguration(bool autoSave = false)
     {
-        if (_plotPanel == null || _settings == null)
+        if (_presentation == null || _settings == null)
             return;
 
         string fileName = _runtimePaths.SettingsFilePath;
@@ -1680,7 +1681,7 @@ public sealed partial class MainForm : Form
 
     private void ProjectCurrentSettings()
     {
-        _plotPanel.SetCurrentSettings();
+        _presentation.ApplyPlotCurrentSettings();
 
         foreach (TreeColumn column in treeView.Columns)
         {
@@ -1777,7 +1778,7 @@ public sealed partial class MainForm : Form
         try
         {
             Visible = false;
-            _systemTray.IsMainIconEnabled = false;
+            _presentation.IsTrayMainIconEnabled = false;
             timer.Enabled = false;
             _autoSaveTimer.Stop();
 
@@ -1824,8 +1825,8 @@ public sealed partial class MainForm : Form
         }
 
         _root.Nodes.Clear();
-        _gadget?.Dispose();
-        _systemTray.Dispose();
+        // Disposes the available gadget before the tray, matching the previous explicit order.
+        _presentation.Dispose();
         await Task.Run(() => _computer.Close()).ConfigureAwait(true);
     }
 
@@ -2063,18 +2064,18 @@ public sealed partial class MainForm : Form
                 AddBulkMembershipMenuItems($"Show Selected in Tray ({count})",
                                            $"Remove Selected from Tray ({count})",
                                            selectedSensorNodes,
-                                           sensor => _systemTray.Contains(sensor),
-                                           sensor => _systemTray.Add(sensor, false),
-                                           sensor => _systemTray.Remove(sensor));
+                                           sensor => _presentation.TrayContains(sensor),
+                                           sensor => _presentation.AddToTray(sensor, false),
+                                           sensor => _presentation.RemoveFromTray(sensor));
 
-                if (_gadget != null)
+                if (_presentation.IsGadgetAvailable)
                 {
                     AddBulkMembershipMenuItems($"Show Selected in Gadget ({count})",
                                                $"Remove Selected from Gadget ({count})",
                                                selectedSensorNodes,
-                                               sensor => _gadget.Contains(sensor),
-                                               sensor => _gadget.Add(sensor),
-                                               sensor => _gadget.Remove(sensor));
+                                               sensor => _presentation.GadgetContains(sensor),
+                                               sensor => _presentation.AddToGadget(sensor),
+                                               sensor => _presentation.RemoveFromGadget(sensor));
                 }
 
                 treeContextMenu.Show(treeView, location);
@@ -2082,30 +2083,30 @@ public sealed partial class MainForm : Form
             }
 
             {
-                ToolStripMenuItem item = new("Show in Tray") { Checked = _systemTray.Contains(node.Sensor) };
+                ToolStripMenuItem item = new("Show in Tray") { Checked = _presentation.TrayContains(node.Sensor) };
                 item.Click += delegate
                 {
                     if (item.Checked)
-                        _systemTray.Remove(node.Sensor);
+                        _presentation.RemoveFromTray(node.Sensor);
                     else
-                        _systemTray.Add(node.Sensor, true);
+                        _presentation.AddToTray(node.Sensor, true);
                 };
 
                 treeContextMenu.Items.Add(item);
             }
 
-            if (_gadget != null)
+            if (_presentation.IsGadgetAvailable)
             {
-                ToolStripMenuItem item = new("Show in Gadget") { Checked = _gadget.Contains(node.Sensor) };
+                ToolStripMenuItem item = new("Show in Gadget") { Checked = _presentation.GadgetContains(node.Sensor) };
                 item.Click += delegate
                 {
                     if (item.Checked)
                     {
-                        _gadget.Remove(node.Sensor);
+                        _presentation.RemoveFromGadget(node.Sensor);
                     }
                     else
                     {
-                        _gadget.Add(node.Sensor);
+                        _presentation.AddToGadget(node.Sensor);
                     }
                 };
 
