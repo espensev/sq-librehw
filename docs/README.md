@@ -188,8 +188,18 @@ presentation adapters, is next with agent `as`.
 A1, Plan-001's attended normal-user smoke, remains open and person-only. These
 are source-campaign facts only: Plan-011 remains `executed` with ledger state
 `implemented`, not person-accepted; it created no candidate and authorized no
-deployment, promotion, or live cutover. Plan-012/agent `as` is next but remains
-unregistered.
+deployment, promotion, or live cutover. Plan-012 is registered with four
+dependency-ordered agents (`as` through `av`), but its product implementation
+has not started. In campaign terminology its `executed` plan state means the
+specs are registered; it is not an implementation, acceptance, candidate, or
+deployment claim.
+
+The standalone
+[`Plan-012 senior-developer brief`](plan-012-senior-developer-brief.html)
+presents the completed Phase-4 runway, planned architecture, code touchpoints,
+risks, gates, and handoff visually. It is a non-authoritative presentation
+companion; the plan JSON, generated campaign plan, roadmap/backlog, agent specs,
+and tracker remain the execution and continuation authorities.
 
 The imported upstream roadmap also records a stale SND-DESK
 `hardware-optimization` health-feed task. That is a peer-only owner action, not
