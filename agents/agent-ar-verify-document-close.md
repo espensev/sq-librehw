@@ -95,6 +95,13 @@ Do not start, stop, restart, reconfigure, publish, promote, or write under the o
 
 Leave `AGENTS.md`, older plans/specs/history rows, root README, playbook, control-plane, source/tests/projects/packages/gates outside the one project.toml inventory edit, operations manifests/docs, release/candidate/rollback records, live tasks/settings/logs/runtime, and ignored execution/cache state unchanged.
 
+## Exit Criteria
+
+- Every Plan-011 criterion has command- or artifact-backed evidence; no gate is softened to fit a result.
+- All nine exclusive outputs agree on commits, counts, hashes, Phase state, Plan-012/agent `as`, retained A1, live separation, and `implemented` state.
+- No product, test, golden, project, package, solution, web, operations, candidate, release, rollback, task, setting, log, or runtime file changes.
+- Closure is committed and the handoff lists each gate, document, remaining person-only action, and exact cleanup boundary.
+
 ## Constraints
 
 - Edit only the nine exclusive outputs.

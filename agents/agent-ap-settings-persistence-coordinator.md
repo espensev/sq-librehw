@@ -65,6 +65,14 @@ Use `PersistentSettings`’ internal injected writer, unique temporary directori
 
 The concurrency fact must prove the established `PersistentSettings` I/O ordering is retained through the wrapper: an in-flight autosave completes before the final save snapshots/writes the later projected value, and a reload sees the later value.
 
+## Exit Criteria
+
+- Exactly the two exclusive new files change and the test file contains exactly seven `[Fact]` tests.
+- The coordinator follows the projection, skip, validation, save, autosave-suppression, and final-save propagation contract without duplicating `PersistentSettings` ownership.
+- Coordinator facts pass `7/7`; the focused settings family and full Application suite pass at the planned counts.
+- Both x64 Release WinForms targets build with zero warnings and errors.
+- No existing source, test, project, package, gate, documentation, candidate, operations, or live-runtime file changes.
+
 ## Constraints
 
 - Modify exactly the two exclusive output files.

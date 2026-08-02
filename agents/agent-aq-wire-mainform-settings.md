@@ -64,6 +64,13 @@ Keep the existing null guard for `_plotPanel`/`_settings`. Do not move control r
 
 Do not change `PersistentSettings`, `RuntimePaths`, `UiShutdownCoordinator`, `ApplicationLifecycleCoordinator`, `HttpServer`, tests, or projects. If AP’s API cannot support this exact wiring, report the contract defect instead of editing AP-owned files.
 
+## Exit Criteria
+
+- Exactly `MainForm.cs` changes.
+- MainForm composes one settings persistence coordinator and retains exact UI-thread projection keys, values, ordering, timers, messages, and shutdown-save placement.
+- The focused settings and lifecycle families, full Application and Contracts suites, and both x64 Release WinForms builds pass at the planned counts.
+- `PersistentSettings`, `RuntimePaths`, existing tests, projects/packages, gates, docs, operations, candidates, and live runtime remain unchanged.
+
 ## Constraints
 
 - Modify exactly `MainForm.cs`.
