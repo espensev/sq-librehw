@@ -43,9 +43,9 @@ The operation must:
 2. for autosave only, return without validation or file I/O when `PersistentSettings.Modified` is false after projection;
 3. validate the primary path and its `.backup` and `.new` siblings using the existing `RuntimePaths.EnsureSafeMutableFile` contract;
 4. call the unchanged `PersistentSettings.Save`;
-5. suppress only `IOException` and `UnauthorizedAccessException` during autosave, report the exact exception through the injected observer, and leave the store dirty for retry;
-6. let the same failures escape during a final/manual save so `MainForm` can preserve its existing messages;
-7. allow all other exceptions, including projection defects and safety violations outside the two established I/O/access categories, to propagate.
+5. suppress only `IOException` and `UnauthorizedAccessException` from the validation/save stage during autosave, report the exact exception through the injected observer, and leave the store dirty for retry;
+6. wrap those same validation/save-stage failures during a final/manual save in a small internal `SettingsPersistenceException` that preserves the exact original exception as `InnerException`, so `MainForm` can preserve its existing messages without catching projection-origin I/O;
+7. allow all other exceptions, including every projection defect and safety violations outside the two established I/O/access categories, to propagate unchanged.
 
 Do not add independent storage, settings snapshots, locks, retries, background work, XML handling, or new path semantics. `PersistentSettings` remains the sole owner of ordered writes, atomic replacement, backup recovery, transient-load blocking, modified-state transitions, duplicate normalization, and stale-history compaction.
 
@@ -58,7 +58,7 @@ Create `SettingsPersistenceCoordinatorTests.cs` with exactly these behavioral fa
 3. `FinalSave_WritesEvenWhenStoreIsClean`
 4. `Autosave_IOExceptionIsReportedSuppressedAndRemainsDirty`
 5. `Autosave_UnauthorizedAccessIsReportedSuppressedAndRemainsDirty`
-6. `FinalSave_IoFailurePropagatesAndRemainsDirty`
+6. `FinalSave_IoFailurePropagatesAndRemainsDirty` (the coordinator wrapper must preserve each exact I/O/access failure as `InnerException`)
 7. `FinalSave_WaitsBehindInFlightAutosaveAndPersistsLatestProjection`
 
 Use `PersistentSettings`’ internal injected writer, unique temporary directories where path guards require physical parents, `TaskCompletionSource` barriers with `RunContinuationsAsynchronously`, bounded waits, and event/order records. Do not sleep, construct a Form, read live configuration, access hardware/registry/Task Scheduler/listeners, or write outside the test temp root. Release every barrier in `finally` so failed assertions cannot hang the suite.

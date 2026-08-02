@@ -56,7 +56,7 @@ Keep the existing null guard for `_plotPanel`/`_settings`. Do not move control r
 
 - Autosave still returns quietly when unchanged.
 - Autosave I/O/access failures still produce no modal dialog and are debug-reported once for retry.
-- Final/manual `UnauthorizedAccessException` and `IOException` still produce the exact existing message text, caption, buttons, and icon using the same settings path.
+- Catch only AP's `SettingsPersistenceException` for final/manual persistence failures. Inspect its exact `InnerException`: `UnauthorizedAccessException` and `IOException` still produce the exact existing message text, caption, buttons, and icon using the same settings path. Projection-origin I/O/access exceptions remain unwrapped and must retain their existing propagation behavior.
 - Other exceptions keep their existing propagation behavior.
 - `AutoSaveTimer_Tick` still refuses work after shutdown begins.
 - `SystemEvents.SessionEnded` still marshals the complete shutdown onto the UI thread and waits as already characterized.
