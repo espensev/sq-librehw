@@ -55,6 +55,7 @@ public sealed partial class MainForm : Form
     private readonly RuntimePaths _runtimePaths;
     private readonly UserRadioGroup _sensorValuesTimeWindow;
     private readonly PersistentSettings _settings;
+    private readonly SettingsPersistenceCoordinator _settingsPersistenceCoordinator;
     private readonly UserOption _showGadget;
     private readonly UserOption _showValue;
     private readonly UserOption _showMin;
@@ -117,6 +118,11 @@ public sealed partial class MainForm : Form
 
         _settings = new PersistentSettings();
         _settings.Load(_runtimePaths.SettingsFilePath);
+        _settingsPersistenceCoordinator = new SettingsPersistenceCoordinator(
+            _settings,
+            _runtimePaths.SettingsFilePath,
+            ProjectCurrentSettings,
+            ex => Debug.WriteLine("Autosave of settings failed: " + ex.Message));
         _uiTextScalePercent = UiScale.ClampPercent(_settings.GetValue("uiTextScale", UiScale.DefaultPercent));
         _plotTextScalePercent = UiScale.ClampPercent(_settings.GetValue("plotTextScale", UiScale.DefaultPercent));
 
@@ -1644,6 +1650,36 @@ public sealed partial class MainForm : Form
         if (_plotPanel == null || _settings == null)
             return;
 
+        string fileName = _runtimePaths.SettingsFilePath;
+
+        try
+        {
+            _settingsPersistenceCoordinator.Save(autoSave);
+        }
+        catch (SettingsPersistenceException ex) when (ex.InnerException is UnauthorizedAccessException)
+        {
+            MessageBox.Show("Access to the path '" +
+                            fileName +
+                            "' is denied. " +
+                            "The current settings could not be saved.",
+                            "Error",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+        }
+        catch (SettingsPersistenceException ex) when (ex.InnerException is IOException)
+        {
+            MessageBox.Show("The path '" +
+                            fileName +
+                            "' is not writeable. " +
+                            "The current settings could not be saved.",
+                            "Error",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+        }
+    }
+
+    private void ProjectCurrentSettings()
+    {
         _plotPanel.SetCurrentSettings();
 
         foreach (TreeColumn column in treeView.Columns)
@@ -1667,47 +1703,6 @@ public sealed partial class MainForm : Form
         _settings.SetValue("authenticationEnabled", Server.AuthEnabled);
         _settings.SetValue("authenticationUserName", Server.UserName);
         _settings.SetValue("authenticationPassword", Server.PasswordSHA256);
-
-        // Nothing changed since the last save; skip the periodic write to avoid needless disk
-        // churn while the app sits idle in the tray.
-        if (autoSave && !_settings.Modified)
-            return;
-
-        string fileName = _runtimePaths.SettingsFilePath;
-
-        try
-        {
-            RuntimePaths.EnsureSafeMutableFile(fileName, "The runtime settings file");
-            RuntimePaths.EnsureSafeMutableFile(fileName + ".backup", "The runtime settings backup");
-            RuntimePaths.EnsureSafeMutableFile(fileName + ".new", "The runtime settings staging file");
-            _settings.Save(fileName);
-        }
-        catch (Exception ex) when (autoSave && (ex is UnauthorizedAccessException || ex is IOException))
-        {
-            // A periodic save must never interrupt the user with a modal dialog every cycle. The
-            // atomic write preserved the previous file/backup, so just log and retry next tick.
-            Debug.WriteLine("Autosave of settings failed: " + ex.Message);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            MessageBox.Show("Access to the path '" +
-                            fileName +
-                            "' is denied. " +
-                            "The current settings could not be saved.",
-                            "Error",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Error);
-        }
-        catch (IOException)
-        {
-            MessageBox.Show("The path '" +
-                            fileName +
-                            "' is not writeable. " +
-                            "The current settings could not be saved.",
-                            "Error",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Error);
-        }
     }
 
     private void MainForm_Load(object sender, EventArgs e)
