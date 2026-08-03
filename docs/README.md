@@ -81,10 +81,11 @@
 
 ## Roadmap
 
-1. Repair the separate `hardware-optimization` health-feed task's stale
-   log-root default. It already points at a nonexistent legacy
-   `sq-librehw\bin\Release` tree and is not part of the working `librehw`
-   launcher chain.
+1. The separate `hardware-optimization` health-feed task was found entirely
+   absent from Task Scheduler on 2026-08-03 (its stale legacy
+   `sq-librehw\bin\Release` log-root default is therefore moot). Its definition
+   lives outside this repository; the owning package must decide whether to
+   recreate it against the canonical `sqdata` log directory or retire it.
 2. Continue hands-on dashboard and native scrollbar/UI Automation inspection
    through the verified runtime owner; deterministic coverage and the live
    served-asset/telemetry smoke are already complete.

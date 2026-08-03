@@ -305,6 +305,30 @@ the exact absent-process state it is meant to handle.
   new Application 1000/1026 crash event. This is a launcher smoke, not closure
   of separate long-duration native GPU polling stability.
 
+## Managed-task restoration — 2026-08-03
+
+The app was found stopped with `\SevGrp\AdminTask\LibreHW-No-UAC` entirely
+absent (the whole `AdminTask` folder was gone). The last pre-gap CSV write was
+2026-08-01 20:29; no register/update/delete events for the task appeared in the
+last 400 Task Scheduler registration events, so the removal cause is
+undetermined.
+
+- Preflight passed before any mutation: identity `VERIFIED`/`snd-desk`,
+  installed payload hash and manifest, runtime config, public shim hash, and
+  deployed-vs-repo launcher hash all matched this contract.
+- `Register-LhmManagedTask` recreated the task under one attended UAC consent:
+  single Exec on the stable EXE/working directory, one `MSFT_TaskLogonTrigger`,
+  Interactive/Highest principal, `IgnoreNew`, `StartWhenAvailable`, no hard
+  terminate, `PT0S`.
+- The unchanged shim/launcher chain then started one process through the task
+  (last result `0x41301` running). `/`, `/data.json`, and `/metrics` returned
+  HTTP 200 with the `Sensor` envelope; a new `LibreHardwareMonitorLog-2026-08-03.csv`
+  appeared under the `sqdata` logs root. A repeated shim invocation kept the
+  same PID with no duplicate.
+- The separate `hardware-optimization` health-feed task (see
+  `docs/README.md` roadmap) was also absent from Task Scheduler on this date.
+  Its definition lives outside this repository and was not recreated here.
+
 ## Acceptance
 
 - [x] `Get-Command librehw` resolves
