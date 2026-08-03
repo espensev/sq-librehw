@@ -1,7 +1,7 @@
 # LibreHardwareMonitor Structural Refactor Roadmap
 
 **Status:** active
-**Date:** 2026-08-02
+**Date:** 2026-08-03
 **Scope:** repository structure, campaign control, fork-only organization, and
 behavior-preserving seams
 **Out of scope until separately approved:** live deployment relocation,
@@ -274,14 +274,31 @@ both framework targets pass, and no ownership becomes duplicated.
 
 ## Phase 5 — Hardware lifecycle seams
 
-**Status:** not started
+**Status:** complete — all four items landed with Plan-013
 
-- Introduce explicit group/registry lifecycle boundaries around `Computer`.
-- Separate discovery/update/close behavior in the NVIDIA and storage groups.
-- Reuse the immutable snapshot contract rather than exposing mutable hardware
-  trees to new hosts.
-- Preserve upstream mergeability and hardware quirks with characterization
-  tests.
+- [x] Introduce explicit group/registry lifecycle boundaries around `Computer`
+      (Plan-013, 2026-08-03): AW `8745660` extracts the internal sealed
+      `HardwareGroupRegistry` owning the group list, Add/Remove/RemoveType,
+      reverse-order drain, IHardwareChanged forwarding, notification ordering,
+      and first-failure aggregation, while `Computer` keeps lifecycle guards,
+      retry/versioning, OpenDependencies, SMBios, and category policy.
+- [x] Separate discovery/update/close behavior in the NVIDIA and storage groups
+      (Plan-013, 2026-08-03): AX `ff5c913` splits NVIDIA discovery, monitor
+      update, and close into four internal collaborators behind the unchanged
+      `NvidiaGroup` facade; AY `5de6307` splits storage discovery, change
+      application, and close/unsubscribe-retry into internal collaborators
+      behind the unchanged `StorageGroup` facade.
+- [x] Reuse the immutable snapshot contract rather than exposing mutable
+      hardware trees to new hosts (Plan-013, 2026-08-03): every new seam type
+      is internal and snapshot-native, exposing `IReadOnlyList` hardware
+      snapshots; `IComputer` and the public Lib API stay byte-identical and
+      WinForms remains the sole hardware owner.
+- [x] Preserve upstream mergeability and hardware quirks with characterization
+      tests (Plan-013, 2026-08-03): 25 new deterministic facts (11 + 6 + 8)
+      pin registry ordering/forwarding/drain, the IntelGpu-depends-on-CpuGroup
+      quirk, AMD/Intel live-list Hardware semantics, NVIDIA lease/monitor
+      behavior, and storage subscribe/coalesce/retry behavior; Library 93/93,
+      Application 178+1/179, Contracts 73/73, aggregate 344+1/345.
 
 **Exit gate:** no regression in device discovery, polling, close/dispose,
 settings, or downstream sensor identity.
@@ -319,15 +336,15 @@ there.
 At this checkpoint the queue is:
 
 1. **A1** — Plan-001's attended normal-user smoke. Person-only, still open.
-2. **plan-013** — hardware lifecycle seams around `Computer` and the NVIDIA and
-   storage groups, behind the preserved presentation, lifecycle, settings,
-   snapshot, and external contracts. Re-read
-   `docs/campaign-backlog.md` before starting; it is an outline, not a spec.
+2. **plan-014** — runtime and data authority, now limited to the optional
+   data-root change. **Gated behind explicit maintainer authorization; do not
+   register or start without it.** Re-read `docs/campaign-backlog.md` before
+   starting; it is an outline, not a spec.
 
 A2 (Plan-002 acceptance) was completed by the maintainer on 2026-08-01 and is
 recorded in `docs/campaign-history.md`.
 
-Plan-003 through Plan-012 have landed: the Avalonia fixture
+Plan-003 through Plan-013 have landed: the Avalonia fixture
 explorer lives under `experiments/avalonia-fixture-explorer/`, operations are
 split into `ops/candidate`, `ops/deploy/snd-desk`, and `eng/`, current docs are
 grouped under `docs/features/` and `docs/architecture/`, and the flat test
@@ -341,9 +358,13 @@ content ownership; Plan-010 extracts lifecycle, polling, option/reset, and
 shutdown-drain coordination while `MainForm` retains composition policy;
 Plan-011 extracts settings projection/persistence sequencing while `MainForm`
 retains concrete projection policy and `PersistentSettings` retains storage
-ownership. The
+ownership; Plan-012 adds the internal presentation coordinator and four
+one-for-one WinForms adapters while the wrapped surface classes stay unchanged;
+Plan-013 adds the internal `HardwareGroupRegistry` plus the NVIDIA and storage
+lifecycle collaborators behind unchanged `IGroup` facades while the public Lib
+API stays upstream-identical. The
 earlier path moves preserved history and proved configuration-only rewiring with
-the runner byte-identical; Plans 007-011 changed no live state.
+the runner byte-identical; Plans 007-013 changed no live state.
 
 Do not register a plan from a dirty tree; check `plan preflight` first, and see
 `docs/campaign-playbook.md` for the full lifecycle.

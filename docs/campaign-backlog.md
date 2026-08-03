@@ -1,7 +1,7 @@
 # Campaign Backlog
 
 **Status:** active
-**Updated:** 2026-08-02
+**Updated:** 2026-08-03
 **Read first:** `docs/campaign-playbook.md` for how to run any of these,
 `docs/architecture/refactor-roadmap.md` for why each phase exists
 
@@ -26,11 +26,11 @@ campaign owns.
 
 | | |
 |---|---|
-| Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane), 3 (verification suite boundaries), 4 (application and adapter seams); Phase 2 remains partially complete with general engineering grouping open |
-| Last campaign | `plan-012`, WinForms presentation surface adapters, ledger state `implemented` |
-| Next campaign | `plan-013` |
-| Next agent letter | `aw` |
-| Closing now | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; Plan-012 is implemented with all 12 criteria met, Phase 4 is complete, and Plan-013 is next |
+| Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane), 3 (verification suite boundaries), 4 (application and adapter seams), 5 (hardware lifecycle seams); Phase 2 remains partially complete with general engineering grouping open |
+| Last campaign | `plan-013`, hardware lifecycle seams, ledger state `implemented` |
+| Next campaign | `plan-014` — **gated, do not start without separate approval** |
+| Next agent letter | `ba` |
+| Closing now | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; Plan-013 is implemented with all 12 criteria met, Phase 5 is complete, and Plan-014 remains gated behind explicit maintainer authorization |
 
 ---
 
@@ -63,20 +63,6 @@ or correct that while you are there.
 
 A2 (Plan-002 acceptance) completed 2026-08-01: the maintainer accepted the
 campaign and the ledger records it. A1 remains the only standing action.
-
----
-
-## plan-013 — Hardware lifecycle seams
-
-**Phase:** 5
-**Risk:** high
-**Entry:** Phase 4 complete — satisfied by Plan-012 (`implemented`, 2026-08-02)
-
-Explicit group and registry lifecycle boundaries around `Computer`; separated
-discovery, update, and close behavior in the NVIDIA and storage groups; reuse of
-the immutable snapshot rather than exposing mutable hardware trees to new hosts.
-Upstream mergeability and hardware quirks are preserved with characterization
-tests. WinForms remains the sole hardware owner throughout.
 
 ---
 

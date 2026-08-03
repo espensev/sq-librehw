@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor Docs
 
 **Status:** live map only
-**Updated:** 2026-08-02
+**Updated:** 2026-08-03
 
 ## Repository
 
@@ -186,10 +186,19 @@ plot-visibility gate, tray/gadget command relay, and gadget-before-tray
 teardown, while `MainForm` retains composition, UI-thread policy, direct tree
 interaction and layout, plot docking and menu policy, lifecycle, settings, and
 hardware ownership. The wrapped `PlotPanel`, `SystemTray`, `SensorGadget`,
-`Gadget`, `GadgetWindow`, and `TreeModel` files are unchanged. Plan-013,
-hardware lifecycle seams, is next with agent `aw`.
+`Gadget`, `GadgetWindow`, and `TreeModel` files are unchanged. Phase 5 is
+complete after Plan-013 implemented all four items: the internal sealed
+`HardwareGroupRegistry` now owns the `Computer` group list, add/remove/drain,
+IHardwareChanged forwarding, notification ordering, and first-failure
+aggregation while `Computer` retains lifecycle guards and category policy, and
+the NVIDIA and storage groups delegate discovery, update, and close to internal
+lifecycle collaborators behind unchanged `IGroup` facades. The public library
+API including `IComputer` is byte-identical, per-group `Hardware` exposure
+semantics stay pinned, and WinForms remains the sole hardware owner. Plan-014,
+runtime and data authority, is next with agent `ba` and remains gated behind
+explicit maintainer authorization.
 A1, Plan-001's attended normal-user smoke, remains open and person-only. These
-are source-campaign facts only: Plan-012 remains `executed` with ledger state
+are source-campaign facts only: Plan-013 remains `executed` with ledger state
 `implemented`, not person-accepted; it created no candidate and authorized no
 deployment, promotion, or live cutover.
 
@@ -316,12 +325,24 @@ an unqualified SND-HOST command.
 - `docs/features/feature-local-release-system.md` - implemented shallow one-EXE local
   runtime, `sqdata` separation, managed launch ownership, promotion, rollback,
   and attended-finalization contract for SND-DESK only.
+- `docs/features/feature-hardware-lifecycle-seams.md` - internal `Computer` group
+  registry plus NVIDIA and storage lifecycle collaborators behind unchanged
+  `IGroup` facades; public Lib API and WinForms hardware ownership unchanged.
 - `docs/architecture/repository-build-output-cleanup.md` - completed repo-local `bin`/`obj`
   cleanup, preserved historical archive, repeatable cleanup command, retired
   pre-stable recovery boundary, and verified SND-DESK public launcher chain.
 - `LibreHardwareMonitorLib/Hardware/Sensor.cs` - history bounds/persistence.
 - `LibreHardwareMonitorLib/Hardware/TemperatureRateSensor.cs` - bounded direct
   sample regression for temperature rate.
+- `LibreHardwareMonitorLib/Hardware/HardwareGroupRegistry.cs` - internal group
+  list, add/remove/drain, IHardwareChanged forwarding, notification ordering,
+  and first-failure aggregation seam extracted from `Computer`.
+- `LibreHardwareMonitorLib/Hardware/Gpu/Nvidia/NvidiaGroupLifecycle.cs` -
+  internal NVIDIA discovery, monitor-loop, NVML lease, and close collaborators
+  behind the `NvidiaGroup` facade.
+- `LibreHardwareMonitorLib/Hardware/Storage/StorageGroupLifecycle.cs` -
+  internal storage discovery, 256-cap change buffer, and close/unsubscribe-retry
+  collaborators behind the `StorageGroup` facade.
 - `LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs` -
   streaming, cleanup, ordering, and atomic settings writes.
 - `LibreHardwareMonitor.Windows.Forms/UI/SettingsPersistenceCoordinator.cs` -
