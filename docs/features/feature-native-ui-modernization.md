@@ -62,6 +62,36 @@ downstream telemetry contract.
 | Gadget | `SensorGadget`, `GadgetWindow` | Preserve the layered-window compatibility path while extracting state, layout, and formatting |
 | Web Workspace | `workspace.js` bounded profiles/panels | Reuse state and honesty semantics only; do not couple browser storage to native settings |
 | Persistence | `PersistentSettings` and stable `Sensor.Identifier` | Add a dedicated bounded layout codec before storing a versioned native layout document; `/values` cleanup does not bound arbitrary layout JSON |
+| Presentation forwarding | `PresentationSurfaceCoordinator` and `WinFormsPresentationAdapters` (Plan-012) | Reuse the existing operation boundary for tree/plot/tray/gadget forwarding; it is not the host-neutral model described in Phase 5 |
+
+### The Plan-012 legacy adapter boundary is not the Phase-5 seam
+
+Plan-012 introduced one internal `PresentationSurfaceCoordinator` and four
+one-for-one adapters over the already-constructed `TreeViewAdv`, `PlotPanel`,
+`SystemTray`, and optional `SensorGadget`. Its scope is deliberately narrow: it
+owns operation forwarding, the ordered post-poll refresh with its
+plot-visibility gate, tray/gadget command relay preserving the original sender,
+and gadget-before-tray teardown. It owns no control, hardware, timer, settings,
+persistence, or UI-thread policy.
+
+Two boundaries are intentionally retained by `MainForm` rather than routed
+through the coordinator:
+
+- **Direct tree interaction and layout.** Columns, auto-fit, scaling, selection,
+  keyboard and mouse hit testing, context-menu placement, expand/collapse state,
+  themed scroll indicators, canonical `Node`/`TreeModel` order, and the UI
+  Automation bridge stay direct. Only the post-poll tree redraw is forwarded;
+  the layout- and menu-policy repaints remain unconditional control calls.
+- **Plot docking and control parenting.** `MainForm` still chooses the parent
+  and reparents the single `PlotPanel` instance between the split panel and the
+  separate plot window; the coordinator only exposes that instance's identity.
+
+This is a legacy WinForms adapter boundary, **not** the host-neutral immutable
+presentation model in *Phase 5 — host-neutral presentation seam*. It converts
+nothing to DTOs, introduces no alternate renderer, and makes no public
+extensibility promise; every contract is `internal` and net472-compatible. A
+later host-neutral seam must be designed on top of the canonical immutable
+snapshot, not by widening these ports.
 
 ## Governing decisions
 

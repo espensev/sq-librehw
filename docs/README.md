@@ -179,27 +179,26 @@ The structural baseline and phased reorganization are defined in
 `docs/architecture/refactor-roadmap.md`. Phases 0, 1, and 3 are complete.
 Phase 2 is partially complete: Plans 003-005 landed the fork-only experiment,
 operations, and document taxonomy, while general `eng/build` and `eng/test`
-grouping remains open. Phase 4 remains in progress after Plan-011 implemented
-item 4: one internal settings coordinator now owns synchronous current-state
-projection, the autosave dirty skip, safe-path validation, and delegation to
-the unchanged ordered atomic store while `MainForm` retains concrete UI/server
-reads, keys, timers, messages, and final-shutdown placement. Plan-012, WinForms
-presentation adapters, is next with agent `as`.
+grouping remains open. Phase 4 is complete after Plan-012 implemented item 5:
+one internal presentation coordinator and four one-for-one WinForms adapters
+now own operation forwarding, the ordered post-poll refresh and its
+plot-visibility gate, tray/gadget command relay, and gadget-before-tray
+teardown, while `MainForm` retains composition, UI-thread policy, direct tree
+interaction and layout, plot docking and menu policy, lifecycle, settings, and
+hardware ownership. The wrapped `PlotPanel`, `SystemTray`, `SensorGadget`,
+`Gadget`, `GadgetWindow`, and `TreeModel` files are unchanged. Plan-013,
+hardware lifecycle seams, is next with agent `aw`.
 A1, Plan-001's attended normal-user smoke, remains open and person-only. These
-are source-campaign facts only: Plan-011 remains `executed` with ledger state
+are source-campaign facts only: Plan-012 remains `executed` with ledger state
 `implemented`, not person-accepted; it created no candidate and authorized no
-deployment, promotion, or live cutover. Plan-012 is registered with four
-dependency-ordered agents (`as` through `av`), but its product implementation
-has not started. In campaign terminology its `executed` plan state means the
-specs are registered; it is not an implementation, acceptance, candidate, or
-deployment claim.
+deployment, promotion, or live cutover.
 
 The standalone
 [`Plan-012 senior-developer brief`](plan-012-senior-developer-brief.html)
-presents the completed Phase-4 runway, planned architecture, code touchpoints,
-risks, gates, and handoff visually. It is a non-authoritative presentation
-companion; the plan JSON, generated campaign plan, roadmap/backlog, agent specs,
-and tracker remain the execution and continuation authorities.
+presents the completed Phase-4 seams, the implemented Plan-012 architecture,
+code touchpoints, risks, gates, and handoff visually. It is a non-authoritative
+presentation companion; the plan JSON, generated campaign plan, roadmap/backlog,
+agent specs, and tracker remain the execution and continuation authorities.
 
 The imported upstream roadmap also records a stale SND-DESK
 `hardware-optimization` health-feed task. That is a peer-only owner action, not

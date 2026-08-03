@@ -26,11 +26,11 @@ campaign owns.
 
 | | |
 |---|---|
-| Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane), 3 (verification suite boundaries); Phase 2 remains partially complete with general engineering grouping open |
-| Last campaign | `plan-011`, settings projection and persistence coordination, ledger state `implemented` |
-| Next campaign | `plan-012` |
-| Next agent letter | `as` |
-| Closing now | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; Plan-011 is implemented with all 11 criteria met, and Plan-012 is next |
+| Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane), 3 (verification suite boundaries), 4 (application and adapter seams); Phase 2 remains partially complete with general engineering grouping open |
+| Last campaign | `plan-012`, WinForms presentation surface adapters, ledger state `implemented` |
+| Next campaign | `plan-013` |
+| Next agent letter | `aw` |
+| Closing now | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; Plan-012 is implemented with all 12 criteria met, Phase 4 is complete, and Plan-013 is next |
 
 ---
 
@@ -66,35 +66,11 @@ campaign and the ledger records it. A1 remains the only standing action.
 
 ---
 
-## plan-012 — WinForms presentation adapters
-
-**Phase:** 4
-**Risk:** high
-**Entry:** `plan-011` landed with the immutable snapshot/projector, public HTTP,
-lifecycle, and underlying PersistentSettings contracts preserved while
-settings projection/save sequencing moved behind one internal coordinator
-
-One seam per campaign, in this order. `MainForm` stays the composition root
-until each extracted contract is characterized and accepted. No wholesale
-rewrite.
-
-| Plan | Seam | Preserves |
-|---|---|---|
-| `plan-012` | WinForms presentation adapters — tree, plot, tray, gadget | canonical node order, scrollbar hit targets, UI Automation bridge |
-
-Plan-012 must keep both framework targets green, preserve the detached Plan-008
-snapshot, the Plan-009 external `data.json` contract, the Plan-010 lifecycle
-boundary, and the Plan-011 persistence boundary, and must not duplicate
-ownership. Plan-012 is next with agent `as` and owns only presentation adapters;
-the one-seam-at-a-time rule remains in force.
-
----
-
 ## plan-013 — Hardware lifecycle seams
 
 **Phase:** 5
 **Risk:** high
-**Entry:** Phase 4 complete
+**Entry:** Phase 4 complete — satisfied by Plan-012 (`implemented`, 2026-08-02)
 
 Explicit group and registry lifecycle boundaries around `Computer`; separated
 discovery, update, and close behavior in the NVIDIA and storage groups; reuse of

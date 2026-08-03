@@ -306,18 +306,18 @@
         <p class="lede">Plan‑012 inserts a small, testable presentation boundary between the 2,521‑line WinForms composition root and its tree, plot, tray, and gadget surfaces. It is a structural refactor—not a redesign, not a new renderer, and not a deployment.</p>
 
         <div class="status-row" aria-label="Campaign status">
-          <span class="pill"><span class="dot blue" aria-hidden="true"></span>Campaign registered</span>
-          <span class="pill"><span class="dot" aria-hidden="true"></span>Implementation not started</span>
-          <span class="pill"><span class="dot green" aria-hidden="true"></span>Baseline verified</span>
-          <span class="pill">Source baseline · <code>9d4786c</code></span>
+          <span class="pill"><span class="dot green" aria-hidden="true"></span>Ledger state · implemented</span>
+          <span class="pill"><span class="dot green" aria-hidden="true"></span>Source integrated · verified</span>
+          <span class="pill"><span class="dot blue" aria-hidden="true"></span>Acceptance · person‑only, open</span>
+          <span class="pill">Baseline <code>9d4786c</code> → <code>36c7467</code> → <code>7d2600b</code> → <code>444dfd7</code></span>
         </div>
 
-        <div class="notice"><strong>Presentation brief — not execution authority.</strong> Canonical authority remains the Plan‑012 JSON, generated campaign plan, roadmap/backlog, agent specs, and tracker. In the campaign ledger, <em>executed</em> means “registered for execution”; it does not mean product code is implemented, accepted, promoted, or live.</div>
+        <div class="notice"><strong>Presentation brief — not execution authority.</strong> Canonical authority remains the Plan‑012 JSON, generated campaign plan, roadmap/backlog, agent specs, and tracker. The ledger records <em>implemented</em>, never <em>accepted</em>: acceptance is a person‑only decision. <strong>No candidate was created and no deployment, promotion, or live cutover is authorized by this campaign.</strong></div>
 
-        <div class="metrics" aria-label="Verified baseline metrics">
-          <article class="metric"><strong>4</strong><span>Phase‑4 seams already landed</span><small>Plans 008–011</small></article>
-          <article class="metric"><strong>307 + 1</strong><span>deterministic .NET baseline</span><small>passed + established opt‑in skip</small></article>
-          <article class="metric"><strong>8 / 8</strong><span>non‑deploying gates green</span><small>at Plan‑011 closure</small></article>
+        <div class="metrics" aria-label="Verified Plan-012 results">
+          <article class="metric"><strong>5</strong><span>Phase‑4 seams landed</span><small>Plans 008–012 · Phase 4 complete</small></article>
+          <article class="metric"><strong>319 + 1</strong><span>deterministic .NET aggregate</span><small>passed + established opt‑in skip</small></article>
+          <article class="metric"><strong>8 / 8</strong><span>non‑deploying gates green</span><small>at Plan‑012 closure</small></article>
           <article class="metric"><strong>0W / 0E</strong><span>both WinForms Release targets</span><small>net10.0‑windows + net472</small></article>
         </div>
       </div>
@@ -397,7 +397,7 @@
           </article>
 
           <article class="panel">
-            <p class="panel-kicker">Plan‑012 target · planned</p>
+            <p class="panel-kicker">Plan‑012 result · implemented</p>
             <h3>One coordinator, four narrow ports</h3>
             <svg class="diagram" viewBox="0 0 620 360" role="img" aria-labelledby="after-title after-desc">
               <title id="after-title">Target Plan-012 presentation adapter architecture</title>
@@ -452,10 +452,10 @@ _gadget?.<span class="fn">Redraw</span>();
           </article>
 
           <article class="code-card">
-            <div class="code-head"><span>Target · coordinator call</span><span>planned, not implemented</span></div>
+            <div class="code-head"><span>Result · MainForm.cs, coordinator call</span><span>implemented in <code>444dfd7</code></span></div>
             <pre><code><span class="cm">// MainForm still decides when the plot is visible.</span>
-_presentation.<span class="fn">Refresh</span>(
-    plotVisible: _showPlot == <span class="kw">null</span> || _showPlot.Value);
+_presentation.<span class="fn">RefreshSurfaces</span>(
+    _showPlot == <span class="kw">null</span> || _showPlot.Value);
 
 <span class="cm">// Coordinator preserves tree → tray → gadget → plot.</span></code></pre>
           </article>
@@ -472,9 +472,9 @@ _presentation.<span class="fn">Refresh</span>(
           </article>
 
           <article class="code-card">
-            <div class="code-head"><span>Target · exact forwarding</span><span>planned, not implemented</span></div>
+            <div class="code-head"><span>Result · exact forwarding</span><span>implemented in <code>444dfd7</code></span></div>
             <pre><code><span class="cm">// Menu text, selection, and idempotence remain in MainForm.</span>
-sensor =&gt; _presentation.<span class="fn">IsInTray</span>(sensor),
+sensor =&gt; _presentation.<span class="fn">TrayContains</span>(sensor),
 sensor =&gt; _presentation.<span class="fn">AddToTray</span>(sensor, balloonTip: <span class="kw">false</span>),
 sensor =&gt; _presentation.<span class="fn">RemoveFromTray</span>(sensor)
 
@@ -512,7 +512,7 @@ sensor =&gt; _presentation.<span class="fn">RemoveFromTray</span>(sensor)
 
         <div class="gates" style="margin-top:1.25rem">
           <article class="panel">
-            <p class="panel-kicker">Planned acceptance evidence</p>
+            <p class="panel-kicker">Verified acceptance evidence</p>
             <h3>Automated source gates</h3>
             <div class="gate-list">
               <div class="gate"><span class="check">✓</span><div>Coordinator facts</div><b>12 / 12</b></div>
@@ -524,7 +524,7 @@ sensor =&gt; _presentation.<span class="fn">RemoveFromTray</span>(sensor)
               <div class="gate"><span class="check">✓</span><div>Web suites</div><b>315 + 18</b></div>
               <div class="gate"><span class="check">✓</span><div>Non-deploying CI gates</div><b>8 / 8</b></div>
             </div>
-            <p style="color:var(--amber);font-size:.82rem;margin-bottom:0">Targets above are exit gates, not current Plan‑012 results. AV replaces them with actual evidence only after source integration.</p>
+            <p style="font-size:.82rem;margin-bottom:0">Measured by AV on the integrated tree at <code>444dfd7</code>. Avalonia carries only the established AVLN3001 warning; the single skip is the established live‑config opt‑in test; <code>ci-gates</code> is skipped as self‑referential. Green gates are source evidence only — they authorize no candidate or deployment.</p>
           </article>
 
           <article class="panel">
@@ -586,7 +586,10 @@ sensor =&gt; _presentation.<span class="fn">RemoveFromTray</span>(sensor)
             <a class="action-link" href="architecture/refactor-roadmap.md"><span>Continuation authority</span><span aria-hidden="true">↗</span></a>
             <a class="action-link" href="campaign-backlog.md"><span>Sequenced backlog</span><span aria-hidden="true">↗</span></a>
             <a class="action-link" href="features/feature-native-ui-modernization.md"><span>UI product contract</span><span aria-hidden="true">↗</span></a>
-            <a class="action-link" href="../LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs"><span>Current composition root</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="../LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs"><span>Composition root</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="../LibreHardwareMonitor.Windows.Forms/UI/PresentationSurfaceCoordinator.cs"><span>Coordinator &amp; ports</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="../LibreHardwareMonitor.Windows.Forms/UI/WinFormsPresentationAdapters.cs"><span>Concrete adapters</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="../LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/PresentationSurfaceCoordinatorTests.cs"><span>Twelve facts</span><span aria-hidden="true">↗</span></a>
           </div>
         </div>
       </div>

@@ -213,7 +213,7 @@ Release targets pass, and cross-cutting changes still trigger the full gate.
 
 ## Phase 4 — Application and adapter seams
 
-**Status:** in progress — items 1 through 4 landed with Plans 008 through 011
+**Status:** complete — items 1 through 5 landed with Plans 008 through 012
 
 Extract one seam per campaign, in this order:
 
@@ -250,7 +250,21 @@ Extract one seam per campaign, in this order:
    Application 166+1/167, Contracts 73/73, aggregate 307+1/308, both WinForms
    Release targets 0W/0E, and all eight non-deploying gates passed. Read-only
    live proof showed separation and health, not deployment.
-5. [ ] WinForms presentation adapters for tree, plot, tray, and gadget surfaces.
+5. [x] WinForms presentation adapters for tree, plot, tray, and gadget surfaces
+   (Plan-012, 2026-08-02): AS source/integration `36c7467` adds the four
+   internal net472-compatible presentation ports, one sealed
+   `PresentationSurfaceCoordinator`, and twelve deterministic facts; AT
+   `7d2600b` adds only one-for-one concrete adapters over the existing
+   `TreeViewAdv`, `PlotPanel`, `SystemTray`, and optional `SensorGadget`; AU
+   `444dfd7` wires only `MainForm`. The coordinator owns operation forwarding,
+   the ordered post-poll refresh with its plot-visibility gate, command relay
+   with the original sender, and gadget-before-tray teardown, while `MainForm`
+   retains composition, UI-thread policy, direct tree interaction/layout, plot
+   docking and menu policy, lifecycle, settings, and hardware ownership. The
+   wrapped surface classes are byte-identical. Coordinator passed 12/12,
+   Application 178+1/179, Contracts 73/73, aggregate 319+1/320, both WinForms
+   Release targets 0W/0E, and all eight non-deploying gates passed. Read-only
+   live proof showed separation and health, not deployment.
 
 `MainForm` remains the composition root until each extracted contract is
 characterized and accepted. Avoid a wholesale rewrite.
@@ -305,15 +319,15 @@ there.
 At this checkpoint the queue is:
 
 1. **A1** — Plan-001's attended normal-user smoke. Person-only, still open.
-2. **plan-012** — WinForms presentation adapters for tree, plot, tray, and
-   gadget surfaces around the preserved lifecycle, settings, snapshot, and
-   external contracts. Re-read
+2. **plan-013** — hardware lifecycle seams around `Computer` and the NVIDIA and
+   storage groups, behind the preserved presentation, lifecycle, settings,
+   snapshot, and external contracts. Re-read
    `docs/campaign-backlog.md` before starting; it is an outline, not a spec.
 
 A2 (Plan-002 acceptance) was completed by the maintainer on 2026-08-01 and is
 recorded in `docs/campaign-history.md`.
 
-Plan-003 through Plan-011 have landed: the Avalonia fixture
+Plan-003 through Plan-012 have landed: the Avalonia fixture
 explorer lives under `experiments/avalonia-fixture-explorer/`, operations are
 split into `ops/candidate`, `ops/deploy/snd-desk`, and `eng/`, current docs are
 grouped under `docs/features/` and `docs/architecture/`, and the flat test
