@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Runtime.ExceptionServices;
 using LibreHardwareMonitor.Hardware.Battery;
 using LibreHardwareMonitor.Hardware.Controller.AeroCool;
 using LibreHardwareMonitor.Hardware.Controller.AquaComputer;
@@ -38,8 +37,9 @@ public class Computer : IComputer
 {
     internal const int MaxConfigurationBuildAttempts = 4;
 
-    private readonly List<IGroup> _groups = new();
-    private readonly object _lock = new();
+    private readonly HardwareGroupRegistry _registry;
+    private readonly List<IGroup> _groups;
+    private readonly object _lock;
     private readonly OpenDependencies _openDependencies;
     private readonly ISettings _settings;
 
@@ -81,6 +81,9 @@ public class Computer : IComputer
     {
         _settings = settings ?? new Settings();
         _openDependencies = openDependencies ?? throw new ArgumentNullException(nameof(openDependencies));
+        _registry = new HardwareGroupRegistry(() => HardwareAdded, () => HardwareRemoved);
+        _groups = _registry.Groups;
+        _lock = _registry.SyncRoot;
     }
 
     /// <inheritdoc />
@@ -117,11 +120,11 @@ public class Computer : IComputer
 
             if (value)
             {
-                Add(new BatteryGroup(_settings));
+                _registry.Add(new BatteryGroup(_settings));
             }
             else
             {
-                RemoveType<BatteryGroup>();
+                _registry.RemoveType<BatteryGroup>();
             }
 
             CommitEnabledChange(value, ref _batteryEnabled);
@@ -139,25 +142,25 @@ public class Computer : IComputer
 
             if (value)
             {
-                Add(new TBalancerGroup(_settings));
-                Add(new HeatmasterGroup(_settings));
-                Add(new AquaComputerGroup(_settings));
-                Add(new AeroCoolGroup(_settings));
-                Add(new NzxtGroup(_settings));
-                Add(new RazerGroup(_settings));
-                Add(new ArcticGroup(_settings));
-                Add(new MsiGroup(_settings));
+                _registry.Add(new TBalancerGroup(_settings));
+                _registry.Add(new HeatmasterGroup(_settings));
+                _registry.Add(new AquaComputerGroup(_settings));
+                _registry.Add(new AeroCoolGroup(_settings));
+                _registry.Add(new NzxtGroup(_settings));
+                _registry.Add(new RazerGroup(_settings));
+                _registry.Add(new ArcticGroup(_settings));
+                _registry.Add(new MsiGroup(_settings));
             }
             else
             {
-                RemoveType<TBalancerGroup>();
-                RemoveType<HeatmasterGroup>();
-                RemoveType<AquaComputerGroup>();
-                RemoveType<AeroCoolGroup>();
-                RemoveType<NzxtGroup>();
-                RemoveType<RazerGroup>();
-                RemoveType<ArcticGroup>();
-                RemoveType<MsiGroup>();
+                _registry.RemoveType<TBalancerGroup>();
+                _registry.RemoveType<HeatmasterGroup>();
+                _registry.RemoveType<AquaComputerGroup>();
+                _registry.RemoveType<AeroCoolGroup>();
+                _registry.RemoveType<NzxtGroup>();
+                _registry.RemoveType<RazerGroup>();
+                _registry.RemoveType<ArcticGroup>();
+                _registry.RemoveType<MsiGroup>();
             }
 
             CommitEnabledChange(value, ref _controllerEnabled);
@@ -174,9 +177,9 @@ public class Computer : IComputer
                 return;
 
             if (value)
-                Add(new CpuGroup(_settings));
+                _registry.Add(new CpuGroup(_settings));
             else
-                RemoveType<CpuGroup>();
+                _registry.RemoveType<CpuGroup>();
 
             CommitEnabledChange(value, ref _cpuEnabled);
         }
@@ -193,17 +196,17 @@ public class Computer : IComputer
 
             if (value)
             {
-                Add(new AmdGpuGroup(_settings));
-                Add(new NvidiaGroup(_settings));
+                _registry.Add(new AmdGpuGroup(_settings));
+                _registry.Add(new NvidiaGroup(_settings));
 
                 if (_cpuEnabled)
-                    Add(new IntelGpuGroup(GetIntelCpus(), _settings));
+                    _registry.Add(new IntelGpuGroup(GetIntelCpus(), _settings));
             }
             else
             {
-                RemoveType<AmdGpuGroup>();
-                RemoveType<NvidiaGroup>();
-                RemoveType<IntelGpuGroup>();
+                _registry.RemoveType<AmdGpuGroup>();
+                _registry.RemoveType<NvidiaGroup>();
+                _registry.RemoveType<IntelGpuGroup>();
             }
 
             CommitEnabledChange(value, ref _gpuEnabled);
@@ -220,9 +223,9 @@ public class Computer : IComputer
                 return;
 
             if (value)
-                Add(new PowerMonitorGroup(_settings));
+                _registry.Add(new PowerMonitorGroup(_settings));
             else
-                RemoveType<PowerMonitorGroup>();
+                _registry.RemoveType<PowerMonitorGroup>();
 
             CommitEnabledChange(value, ref _powerMonitorEnabled);
         }
@@ -238,9 +241,9 @@ public class Computer : IComputer
                 return;
 
             if (value)
-                Add(new MemoryGroup(_settings));
+                _registry.Add(new MemoryGroup(_settings));
             else
-                RemoveType<MemoryGroup>();
+                _registry.RemoveType<MemoryGroup>();
 
             CommitEnabledChange(value, ref _memoryEnabled);
         }
@@ -256,9 +259,9 @@ public class Computer : IComputer
                 return;
 
             if (value)
-                Add(new MotherboardGroup(_smbios, _settings));
+                _registry.Add(new MotherboardGroup(_smbios, _settings));
             else
-                RemoveType<MotherboardGroup>();
+                _registry.RemoveType<MotherboardGroup>();
 
             CommitEnabledChange(value, ref _motherboardEnabled);
         }
@@ -274,9 +277,9 @@ public class Computer : IComputer
                 return;
 
             if (value)
-                Add(new NetworkGroup(_settings));
+                _registry.Add(new NetworkGroup(_settings));
             else
-                RemoveType<NetworkGroup>();
+                _registry.RemoveType<NetworkGroup>();
 
             CommitEnabledChange(value, ref _networkEnabled);
         }
@@ -293,13 +296,13 @@ public class Computer : IComputer
 
             if (value)
             {
-                Add(new CorsairPsuGroup(_settings));
-                Add(new MsiPsuGroup(_settings));
+                _registry.Add(new CorsairPsuGroup(_settings));
+                _registry.Add(new MsiPsuGroup(_settings));
             }
             else
             {
-                RemoveType<CorsairPsuGroup>();
-                RemoveType<MsiPsuGroup>();
+                _registry.RemoveType<CorsairPsuGroup>();
+                _registry.RemoveType<MsiPsuGroup>();
             }
 
             CommitEnabledChange(value, ref _psuEnabled);
@@ -316,9 +319,9 @@ public class Computer : IComputer
                 return;
 
             if (value)
-                Add(new StorageGroup(_settings));
+                _registry.Add(new StorageGroup(_settings));
             else
-                RemoveType<StorageGroup>();
+                _registry.RemoveType<StorageGroup>();
 
             CommitEnabledChange(value, ref _storageEnabled);
         }
@@ -481,172 +484,6 @@ public class Computer : IComputer
         }
     }
 
-    private void HardwareAddedEvent(IHardware hardware)
-    {
-        Exception firstFailure = null;
-        NotifyHardwareHandlers(HardwareAdded, hardware, ref firstFailure);
-        ThrowIfFailed(firstFailure);
-    }
-
-    private void HardwareRemovedEvent(IHardware hardware)
-    {
-        Exception firstFailure = null;
-        NotifyHardwareHandlers(HardwareRemoved, hardware, ref firstFailure);
-        ThrowIfFailed(firstFailure);
-    }
-
-    private void Add(IGroup group)
-    {
-        if (group == null)
-            return;
-
-        lock (_lock)
-        {
-            if (_groups.Contains(group))
-                return;
-
-            _groups.Add(group);
-
-            if (group is IHardwareChanged hardwareChanged)
-            {
-                hardwareChanged.HardwareAdded += HardwareAddedEvent;
-                hardwareChanged.HardwareRemoved += HardwareRemovedEvent;
-            }
-        }
-
-        Exception firstFailure = null;
-        HardwareEventHandler handlers = HardwareAdded;
-        IReadOnlyList<IHardware> hardwareSnapshot = null;
-
-        if (handlers != null)
-        {
-            CaptureFailure(() => hardwareSnapshot = group.Hardware, ref firstFailure);
-            NotifyHardwareHandlers(handlers, hardwareSnapshot, ref firstFailure);
-        }
-
-        ThrowIfFailed(firstFailure);
-    }
-
-    private void Remove(IGroup group)
-    {
-        Exception firstFailure = null;
-
-        lock (_lock)
-        {
-            if (!_groups.Contains(group))
-                return;
-
-            _groups.Remove(group);
-
-            if (group is IHardwareChanged hardwareChanged)
-            {
-                CaptureFailure(
-                    () => hardwareChanged.HardwareAdded -= HardwareAddedEvent,
-                    ref firstFailure);
-                CaptureFailure(
-                    () => hardwareChanged.HardwareRemoved -= HardwareRemovedEvent,
-                    ref firstFailure);
-            }
-        }
-
-        HardwareEventHandler handlers = HardwareRemoved;
-        IReadOnlyList<IHardware> hardwareSnapshot = null;
-        if (handlers != null)
-        {
-            CaptureFailure(() => hardwareSnapshot = group.Hardware, ref firstFailure);
-            NotifyHardwareHandlers(handlers, hardwareSnapshot, ref firstFailure);
-        }
-
-        CaptureFailure(group.Close, ref firstFailure);
-        ThrowIfFailed(firstFailure);
-    }
-
-    private void RemoveType<T>() where T : IGroup
-    {
-        List<T> list = [];
-
-        lock (_lock)
-        {
-            foreach (IGroup group in _groups)
-            {
-                if (group is T t)
-                    list.Add(t);
-            }
-        }
-
-        Exception firstFailure = null;
-        foreach (T group in list)
-            CaptureFailure(() => Remove(group), ref firstFailure);
-
-        ThrowIfFailed(firstFailure);
-    }
-
-    private static void CaptureFailure(Action action, ref Exception firstFailure)
-    {
-        try
-        {
-            action();
-        }
-        catch (Exception exception)
-        {
-            firstFailure ??= exception;
-        }
-    }
-
-    private static void NotifyHardwareHandlers(
-        HardwareEventHandler handlers,
-        IReadOnlyList<IHardware> hardware,
-        ref Exception firstFailure)
-    {
-        if (handlers == null || hardware == null)
-            return;
-
-        int count;
-        try
-        {
-            count = hardware.Count;
-        }
-        catch (Exception exception)
-        {
-            firstFailure ??= exception;
-            return;
-        }
-
-        for (int i = 0; i < count; i++)
-        {
-            IHardware item;
-            try
-            {
-                item = hardware[i];
-            }
-            catch (Exception exception)
-            {
-                firstFailure ??= exception;
-                continue;
-            }
-
-            NotifyHardwareHandlers(handlers, item, ref firstFailure);
-        }
-    }
-
-    private static void NotifyHardwareHandlers(
-        HardwareEventHandler handlers,
-        IHardware hardware,
-        ref Exception firstFailure)
-    {
-        if (handlers == null)
-            return;
-
-        foreach (HardwareEventHandler handler in handlers.GetInvocationList())
-            CaptureFailure(() => handler(hardware), ref firstFailure);
-    }
-
-    private static void ThrowIfFailed(Exception failure)
-    {
-        if (failure != null)
-            ExceptionDispatchInfo.Capture(failure).Throw();
-    }
-
     /// <summary>
     /// If hasn't been opened before, opens <see cref="SMBios" />, <see cref="OpCode" /> and triggers the private <see cref="AddGroups" /> method depending on which categories are
     /// enabled.
@@ -696,7 +533,7 @@ public class Computer : IComputer
                 }
 
                 if (attempt + 1 < MaxConfigurationBuildAttempts)
-                    RemoveGroups();
+                    _registry.RemoveGroups();
             }
 
             throw new InvalidOperationException(
@@ -736,28 +573,7 @@ public class Computer : IComputer
             _smbios = null;
 
             foreach (IGroup group in groups)
-            {
-                if (group is not IHardwareChanged hardwareChanged)
-                    continue;
-
-                try
-                {
-                    hardwareChanged.HardwareAdded -= HardwareAddedEvent;
-                }
-                catch
-                {
-                    // Keep rolling back the remaining owners.
-                }
-
-                try
-                {
-                    hardwareChanged.HardwareRemoved -= HardwareRemovedEvent;
-                }
-                catch
-                {
-                    // Keep rolling back the remaining owners.
-                }
-            }
+                _registry.Detach(group);
         }
 
         for (int i = groups.Count - 1; i >= 0; i--)
@@ -863,57 +679,57 @@ public class Computer : IComputer
     {
         if (_openDependencies.AddGroups != null)
         {
-            _openDependencies.AddGroups(Add);
+            _openDependencies.AddGroups(_registry.Add);
             return;
         }
 
         if (_motherboardEnabled)
-            Add(new MotherboardGroup(_smbios, _settings));
+            _registry.Add(new MotherboardGroup(_smbios, _settings));
 
         if (_cpuEnabled)
-            Add(new CpuGroup(_settings));
+            _registry.Add(new CpuGroup(_settings));
 
         if (_memoryEnabled)
-            Add(new MemoryGroup(_settings));
+            _registry.Add(new MemoryGroup(_settings));
 
         if (_gpuEnabled)
         {
-            Add(new AmdGpuGroup(_settings));
-            Add(new NvidiaGroup(_settings));
+            _registry.Add(new AmdGpuGroup(_settings));
+            _registry.Add(new NvidiaGroup(_settings));
 
             if (_cpuEnabled)
-                Add(new IntelGpuGroup(GetIntelCpus(), _settings));
+                _registry.Add(new IntelGpuGroup(GetIntelCpus(), _settings));
         }
 
         if (_powerMonitorEnabled)
-            Add(new PowerMonitorGroup(_settings));
+            _registry.Add(new PowerMonitorGroup(_settings));
 
         if (_controllerEnabled)
         {
-            Add(new TBalancerGroup(_settings));
-            Add(new HeatmasterGroup(_settings));
-            Add(new AquaComputerGroup(_settings));
-            Add(new AeroCoolGroup(_settings));
-            Add(new NzxtGroup(_settings));
-            Add(new RazerGroup(_settings));
-            Add(new ArcticGroup(_settings));
-            Add(new MsiGroup(_settings));
+            _registry.Add(new TBalancerGroup(_settings));
+            _registry.Add(new HeatmasterGroup(_settings));
+            _registry.Add(new AquaComputerGroup(_settings));
+            _registry.Add(new AeroCoolGroup(_settings));
+            _registry.Add(new NzxtGroup(_settings));
+            _registry.Add(new RazerGroup(_settings));
+            _registry.Add(new ArcticGroup(_settings));
+            _registry.Add(new MsiGroup(_settings));
         }
 
         if (_storageEnabled)
-            Add(new StorageGroup(_settings));
+            _registry.Add(new StorageGroup(_settings));
 
         if (_networkEnabled)
-            Add(new NetworkGroup(_settings));
+            _registry.Add(new NetworkGroup(_settings));
 
         if (_psuEnabled)
         {
-            Add(new CorsairPsuGroup(_settings));
-            Add(new MsiPsuGroup(_settings));
+            _registry.Add(new CorsairPsuGroup(_settings));
+            _registry.Add(new MsiPsuGroup(_settings));
         }
 
         if (_batteryEnabled)
-            Add(new BatteryGroup(_settings));
+            _registry.Add(new BatteryGroup(_settings));
     }
 
     private static void NewSection(TextWriter writer)
@@ -1006,9 +822,9 @@ public class Computer : IComputer
         Exception firstFailure = null;
         try
         {
-            CaptureFailure(RemoveGroups, ref firstFailure);
-            CaptureFailure(_openDependencies.CloseOpCode, ref firstFailure);
-            CaptureFailure(_openDependencies.CloseMutexes, ref firstFailure);
+            HardwareGroupRegistry.CaptureFailure(_registry.RemoveGroups, ref firstFailure);
+            HardwareGroupRegistry.CaptureFailure(_openDependencies.CloseOpCode, ref firstFailure);
+            HardwareGroupRegistry.CaptureFailure(_openDependencies.CloseMutexes, ref firstFailure);
         }
         finally
         {
@@ -1020,7 +836,7 @@ public class Computer : IComputer
             }
         }
 
-        ThrowIfFailed(firstFailure);
+        HardwareGroupRegistry.ThrowIfFailed(firstFailure);
     }
 
     /// <summary>
@@ -1040,7 +856,7 @@ public class Computer : IComputer
                 resetStarted = true;
             }
 
-            RemoveGroups();
+            _registry.RemoveGroups();
             try
             {
                 for (int attempt = 0; attempt < MaxConfigurationBuildAttempts; attempt++)
@@ -1065,7 +881,7 @@ public class Computer : IComputer
                     }
 
                     if (attempt + 1 < MaxConfigurationBuildAttempts)
-                        RemoveGroups();
+                        _registry.RemoveGroups();
                 }
 
                 throw new InvalidOperationException(
@@ -1077,7 +893,7 @@ public class Computer : IComputer
                 // leave a partial replacement set behind.
                 try
                 {
-                    RemoveGroups();
+                    _registry.RemoveGroups();
                 }
                 catch
                 {
@@ -1095,26 +911,6 @@ public class Computer : IComputer
                     _resetting = false;
             }
         }
-    }
-
-    private void RemoveGroups()
-    {
-        Exception firstFailure = null;
-        while (true)
-        {
-            IGroup group;
-            lock (_lock)
-            {
-                if (_groups.Count == 0)
-                    break;
-
-                group = _groups[_groups.Count - 1];
-            }
-
-            CaptureFailure(() => Remove(group), ref firstFailure);
-        }
-
-        ThrowIfFailed(firstFailure);
     }
 
     private List<IntelCpu> GetIntelCpus()
