@@ -140,30 +140,84 @@ public class Logger
         return timestamp.ToString(RowTimestampFormat, CultureInfo.InvariantCulture);
     }
 
-    // Decimal places kept per sensor unit before the value is written to the CSV.
+    // Minimum decimal places kept per sensor unit before the value is written to the CSV.
     //
     // The round-trip "R" specifier emits the shortest string that reproduces the exact binary
     // float, which is far more precision than any of this hardware resolves: a temperature read
     // as 37.771072 °C or a fan at 1250.4471 RPM is measurement noise past the second decimal.
-    // Those trailing digits are effectively random, so they compress badly. Replaying a real
-    // 424-column day (2026-08-04, SND-HOST) through this method: raw 18.43 -> 14.17 MB (23%),
-    // but the deflate archive 3.79 -> 2.30 MB (39%). The archive is what retention pays for, so
-    // at 365 days this is the difference between ~9.3 GB and ~5.7 GB.
+    // Those trailing digits are effectively random, so they compress badly. Replaying all 9,173
+    // rows of a real 424-column day (2026-08-04, SND-HOST) through this exact method reduced raw
+    // bytes from 19,327,926 to 16,023,769 (17.10%) and the identically compressed archive from
+    // 3,974,710 to 2,732,768 bytes (31.25%), without formatting any non-zero sample as zero.
     //
-    // Voltage and Current keep three places: board rails read in the 0.9-1.5 V range where the
-    // third decimal is a real distinction, and dropping to two would quantise them visibly.
-    // Measured against a flat two-place rule on the same day, the extra place costs ~0.1 MB
-    // compressed - so precision on the rails that need it is effectively free.
+    // Voltage, Current, Factor and Timing keep three places. Their existing native presentation
+    // contracts already retain that resolution, and dropping to two would quantise them visibly.
+    // Every other current sensor type keeps at least two decimal places.
+    //
+    // Fixed decimal places alone are unsafe for scaled or near-zero telemetry. Data is expressed
+    // in GB, so 0.01 GB is roughly 10.7 MB, and real NIC counters around 0.0017 GB would become
+    // zero. Small Load and TemperatureRate values have the same problem. Keep at least four
+    // significant digits by increasing the decimal count for magnitudes below the unit minimum.
+    // On a 600-row sample of the 424-column SND-HOST log, the former fixed two-place policy would
+    // have turned 35% of non-zero Data samples and 12% of non-zero TemperatureRate samples into
+    // zero. The significant-digit floor preserves those values while still removing noisy float
+    // tails from normal-magnitude readings.
     private const int DefaultValueDecimals = 2;
     private const int FineValueDecimals = 3;
+    private const int MinimumSignificantDigits = 4;
+    private const int MaximumValueDecimals = 15;
 
-    internal static int GetValueDecimals(SensorType sensorType)
+    internal static int? GetMinimumValueDecimals(SensorType sensorType)
     {
         return sensorType switch
         {
-            SensorType.Voltage or SensorType.Current => FineValueDecimals,
-            _ => DefaultValueDecimals
+            SensorType.Voltage or
+            SensorType.Current or
+            SensorType.Factor or
+            SensorType.Timing => FineValueDecimals,
+            SensorType.Power or
+            SensorType.Clock or
+            SensorType.Temperature or
+            SensorType.Load or
+            SensorType.Frequency or
+            SensorType.Fan or
+            SensorType.Flow or
+            SensorType.Control or
+            SensorType.Level or
+            SensorType.Data or
+            SensorType.SmallData or
+            SensorType.Throughput or
+            SensorType.TimeSpan or
+            SensorType.Energy or
+            SensorType.Noise or
+            SensorType.Conductivity or
+            SensorType.Humidity or
+            SensorType.TemperatureRate => DefaultValueDecimals,
+            // Preserve a future or unknown sensor type losslessly until its precision contract is
+            // explicitly chosen. The exhaustive test over SensorType makes additions visible in CI.
+            _ => null
         };
+    }
+
+    internal static int? GetValueDecimals(float value, SensorType sensorType)
+    {
+        int? minimumDecimals = GetMinimumValueDecimals(sensorType);
+        if (!minimumDecimals.HasValue)
+            return null;
+
+        if (float.IsNaN(value) || float.IsInfinity(value) || value == 0f)
+            return minimumDecimals;
+
+        double magnitude = Math.Floor(Math.Log10(Math.Abs((double)value)));
+        double significantDecimals = MinimumSignificantDigits - 1 - magnitude;
+        if (significantDecimals <= minimumDecimals.Value)
+            return minimumDecimals;
+
+        // Math.Round accepts no more than 15 decimal places. If four significant digits need
+        // more than that, retain the original float instead of applying a coarse 15-place round.
+        return significantDecimals > MaximumValueDecimals
+            ? null
+            : (int)significantDecimals;
     }
 
     // Round first, then still format with "R" rather than with "F2"/"F3".
@@ -171,24 +225,36 @@ public class Logger
     // A fixed-point specifier expands large magnitudes instead of keeping the compact exponent
     // form: float.MaxValue under "F2" is a 41-character digit run, and this machine already logs
     // Throughput values around 3.5e9, which "F2" would write as 3497850112.00. Rounding to the
-    // target precision and letting "R" pick the shortest representation keeps small values short
+    // target precision and letting "R" pick the shortest representation keeps normal values short
     // (37.77), leaves genuine extremes in exponent form, and preserves NaN/Infinity unchanged.
     //
     // Rounding goes through double because MathF is not available on net472, which this project
-    // still targets; float -> double -> float is exact in both directions for every finite float,
-    // so the narrowing conversion back cannot lose a value the rounding produced. Math.Round uses
-    // banker's rounding (to even on a tie), matching the formatter's previous implicit behaviour.
+    // still targets. The input float converts exactly to double; the rounded result is then
+    // narrowed back to the float value that "R" will serialize. Midpoint-to-even is an explicit,
+    // stable policy for the new decimal compaction step.
     //
     // NaN and both infinities fall through untouched: Math.Round returns them unchanged and the
     // equality test below is false for NaN, so they still reach "R" and print as before.
     //
-    // The zero check collapses negative zero - which appears whenever a small negative reading
-    // such as -0.000102 rounds down to it, and which would otherwise write "-0" into the column.
+    // Unknown future sensor types stay on the historical lossless "R" path. A finite non-zero
+    // value needing more than Math.Round's 15-decimal limit to retain four significant digits is
+    // also written losslessly. The zero fallback is defense in depth, while a genuine negative
+    // zero is normalized to "0".
     internal static string FormatRowValue(float value, SensorType sensorType)
     {
-        float rounded = (float)Math.Round((double)value, GetValueDecimals(sensorType), MidpointRounding.ToEven);
-        if (rounded == 0f)
-            rounded = 0f;
+        if (value == 0f)
+            return "0";
+
+        int? decimals = GetValueDecimals(value, sensorType);
+        if (!decimals.HasValue)
+            return value.ToString("R", CultureInfo.InvariantCulture);
+
+        float rounded = (float)Math.Round(
+            (double)value,
+            decimals.Value,
+            MidpointRounding.ToEven);
+        if (rounded == 0f && value != 0f)
+            return value.ToString("R", CultureInfo.InvariantCulture);
 
         return rounded.ToString("R", CultureInfo.InvariantCulture);
     }

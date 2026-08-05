@@ -312,6 +312,8 @@ an unqualified SND-HOST command.
 - `docs/features/feature-web-dashboard-studio-view.md` - shipped Studio contract.
 - `docs/features/feature-sensor-workspace.md` - active Workspace contract.
 - `docs/features/feature-thermal-trends.md` - additive hotspot-rate contract.
+- `docs/features/feature-csv-log-storage-efficiency.md` - precision-aware CSV
+  compaction contract and archive-replay evidence.
 - `docs/features/feature-host-log-management.md` - archive, retention, and deployment
   safety contract.
 - `docs/features/feature-release-packaging.md` - fail-closed, external dual-framework

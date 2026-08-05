@@ -3,7 +3,9 @@
 // Copyright (C) LibreHardwareMonitor and Contributors.
 // All Rights Reserved.
 
+using System;
 using System.Globalization;
+using System.Linq;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
 using Xunit;
@@ -14,26 +16,42 @@ namespace LibreHardwareMonitor.Tests;
 /// Locks the CSV log sensor-value precision contract. The logger previously wrote every value with
 /// the round-trip "R" specifier, which emits the shortest string reproducing the exact binary float
 /// - far past what the hardware resolves (37.771072 °C, 1250.4471 RPM). Those trailing digits are
-/// effectively random and compress badly: on a measured 424-column day they accounted for 42% of the
-/// compressed archive. Values are now rounded per sensor unit before formatting. These tests pin:
-/// (1) the two-place default, (2) the three-place Voltage/Current exception, (3) that rounding still
-/// formats via "R" so large magnitudes keep the compact exponent form rather than expanding, (4)
-/// culture-invariance, (5) negative-zero suppression, and (6) NaN/Infinity passthrough.
+/// effectively random and compress badly. Values are now rounded per sensor unit before formatting,
+/// with a four-significant-digit floor so genuine small Data, Load and TemperatureRate readings do
+/// not become zero. These tests pin: (1) an exhaustive minimum-precision map for every current
+/// SensorType, (2) the significant-digit floor, (3) lossless fallback for future types and values
+/// beneath Math.Round's decimal limit, (4) compact exponent formatting, (5) culture invariance,
+/// (6) genuine negative-zero suppression, and (7) NaN/Infinity passthrough.
 /// </summary>
 public class CsvValuePrecisionContractTests
 {
     [Theory]
+    [InlineData(SensorType.Voltage, 3)]
+    [InlineData(SensorType.Current, 3)]
+    [InlineData(SensorType.Factor, 3)]
+    [InlineData(SensorType.Timing, 3)]
     [InlineData(SensorType.Temperature, 2)]
     [InlineData(SensorType.Fan, 2)]
     [InlineData(SensorType.Load, 2)]
     [InlineData(SensorType.Power, 2)]
     [InlineData(SensorType.Clock, 2)]
+    [InlineData(SensorType.Data, 2)]
+    [InlineData(SensorType.TemperatureRate, 2)]
     [InlineData(SensorType.Throughput, 2)]
-    [InlineData(SensorType.Voltage, 3)]
-    [InlineData(SensorType.Current, 3)]
-    public void GetValueDecimals_KeepsThreePlacesOnlyForVoltageAndCurrent(SensorType sensorType, int expected)
+    public void GetMinimumValueDecimals_UsesTheExpectedUnitProfile(SensorType sensorType, int expected)
     {
-        Assert.Equal(expected, Logger.GetValueDecimals(sensorType));
+        Assert.Equal(expected, Logger.GetMinimumValueDecimals(sensorType));
+    }
+
+    [Fact]
+    public void GetMinimumValueDecimals_ExplicitlyClassifiesEveryCurrentSensorType()
+    {
+        SensorType[] sensorTypes = (SensorType[])System.Enum.GetValues(typeof(SensorType));
+
+        Assert.Equal(22, sensorTypes.Length);
+        Assert.All(sensorTypes, sensorType => Assert.NotNull(Logger.GetMinimumValueDecimals(sensorType)));
+        Assert.Equal(4, sensorTypes.Count(sensorType => Logger.GetMinimumValueDecimals(sensorType) == 3));
+        Assert.Equal(18, sensorTypes.Count(sensorType => Logger.GetMinimumValueDecimals(sensorType) == 2));
     }
 
     [Fact]
@@ -55,6 +73,17 @@ public class CsvValuePrecisionContractTests
     }
 
     [Fact]
+    public void FormatRowValue_PreservesSmallScaledAndRateTelemetry()
+    {
+        // These are representative live SND-HOST values. A fixed two-decimal policy turned each
+        // into zero even though Data is expressed in GB and TemperatureRate is a derived signal.
+        Assert.Equal("0.001763", Logger.FormatRowValue(0.001763016f, SensorType.Data));
+        Assert.Equal("0.0003937", Logger.FormatRowValue(0.00039373524f, SensorType.Load));
+        Assert.Equal("0.004987", Logger.FormatRowValue(0.00498691f, SensorType.TemperatureRate));
+        Assert.Equal("-0.0001023", Logger.FormatRowValue(-0.000102321144f, SensorType.Load));
+    }
+
+    [Fact]
     public void FormatRowValue_KeepsLargeMagnitudesInExponentForm()
     {
         // The reason rounding is followed by "R" rather than by "F2": a fixed-point specifier
@@ -65,11 +94,10 @@ public class CsvValuePrecisionContractTests
     }
 
     [Fact]
-    public void FormatRowValue_CollapsesNegativeZero()
+    public void FormatRowValue_CollapsesOnlyGenuineNegativeZero()
     {
-        // A small negative reading rounds down to negative zero, which would otherwise write "-0".
-        Assert.Equal("0", Logger.FormatRowValue(-0.000102321144f, SensorType.Load));
-        Assert.Equal("0", Logger.FormatRowValue(-1e-9f, SensorType.Voltage));
+        Assert.Equal("0", Logger.FormatRowValue(-0f, SensorType.Load));
+        Assert.Equal("0", Logger.FormatRowValue(-0f, (SensorType)int.MaxValue));
     }
 
     [Fact]
@@ -89,9 +117,55 @@ public class CsvValuePrecisionContractTests
     [Fact]
     public void FormatRowValue_RoundsHalfToEven()
     {
-        // Banker's rounding, matching the formatter's previous implicit behaviour.
-        Assert.Equal("0.12", Logger.FormatRowValue(0.125f, SensorType.Load));
-        Assert.Equal("0.14", Logger.FormatRowValue(0.135f, SensorType.Load));
+        // Exact binary halves at a magnitude where the four-significant-digit floor still permits
+        // two-decimal rounding.
+        Assert.Equal("12.12", Logger.FormatRowValue(12.125f, SensorType.Load));
+        Assert.Equal("12.38", Logger.FormatRowValue(12.375f, SensorType.Load));
+    }
+
+    [Fact]
+    public void FormatRowValue_FallsBackLosslesslyBelowTheDecimalRoundingLimit()
+    {
+        // 6e-16 rounds to a non-zero 1e-15 when capped at 15 decimal places, so a zero-only
+        // fallback would silently introduce about 67% error. Both signs and a much smaller value
+        // prove that the decision is based on required precision, not only on a zero result.
+        foreach (float tiny in new[] { 6e-16f, -6e-16f, 1e-25f })
+        {
+            Assert.Null(Logger.GetValueDecimals(tiny, SensorType.Load));
+            Assert.Equal(
+                tiny.ToString("R", CultureInfo.InvariantCulture),
+                Logger.FormatRowValue(tiny, SensorType.Load));
+        }
+    }
+
+    [Fact]
+    public void FormatRowValue_StaysWithinTheFourDigitErrorBoundAtDecadeEdges()
+    {
+        // Exercise both sides of the 15-decimal fallback boundary and carry-producing values near
+        // 0.1 and 10. Four-significant-digit rounding has at most about 0.05% relative error;
+        // lossless fallback is tighter still.
+        foreach (float value in new[] { 1e-12f, 1e-13f, 0.099995f, 9.9995f })
+        {
+            string formatted = Logger.FormatRowValue(value, SensorType.Load);
+            float parsed = float.Parse(formatted, NumberStyles.Float, CultureInfo.InvariantCulture);
+            double relativeError = Math.Abs(((double)parsed - value) / value);
+
+            Assert.NotEqual(0f, parsed);
+            Assert.True(
+                relativeError <= 0.00051,
+                $"{value:R} became {formatted} ({relativeError:P6} relative error)");
+        }
+    }
+
+    [Fact]
+    public void FormatRowValue_PreservesUnknownFutureSensorTypesLosslessly()
+    {
+        const float value = 37.771072f;
+
+        Assert.Null(Logger.GetMinimumValueDecimals((SensorType)int.MaxValue));
+        Assert.Equal(
+            value.ToString("R", CultureInfo.InvariantCulture),
+            Logger.FormatRowValue(value, (SensorType)int.MaxValue));
     }
 
     [Fact]

@@ -52,6 +52,7 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
 - `docs/features/feature-thermal-trends.md`: deployed NVIDIA GPU hotspot rate sensor across native, web, CSV, and Prometheus.
 - `docs/features/feature-independent-text-scaling.md`: shipped independent sensor-pane and graph-axis text scaling.
 - `docs/features/feature-host-log-management.md`: deployed host-neutral CSV archive, retention, and task-install package.
+- `docs/features/feature-csv-log-storage-efficiency.md`: source-only compact CSV numeric formatting with a non-zero significant-digit floor; not yet a candidate or live behavior.
 - `docs/features/feature-host-operator-utilities.md`: planned portable thermal snapshot and report-only log evidence analyzer.
 - `docs/features/feature-live-state-verification.md`: read-only, manifest-driven live-state verifier for the SND-HOST operational stack; report-only, no deployment authority.
 - `docs/features/feature-native-ui-modernization.md`: phased native tree, graphics, graph, and Gadget 2.0 roadmap; implementation not started.
