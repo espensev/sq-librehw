@@ -18,7 +18,29 @@ if (-not [System.IO.Directory]::Exists($machineRoot)) {
     return
 }
 
-$cutoffUtc = $Now.ToUniversalTime().AddDays(-$RetentionDays)
+$temporaryCutoffUtc = $Now.ToUniversalTime().AddDays(-1)
+$temporaries = Get-ChildItem -LiteralPath $machineRoot -Filter '*.zip.tmp-*' -File -Recurse
+foreach ($temporary in $temporaries) {
+    if ($temporary.LastWriteTimeUtc -ge $temporaryCutoffUtc) {
+        continue
+    }
+
+    if ($temporary.Name -notmatch '\.zip\.tmp-[0-9a-f]{32}$') {
+        New-LhmLogResult -Action 'Retention' -Status 'Retained' -Source $temporary.FullName -Message 'Unrecognized temporary file retained.'
+        continue
+    }
+
+    if ($PSCmdlet.ShouldProcess($temporary.FullName, 'Remove orphaned temporary archive older than one day')) {
+        Remove-Item -LiteralPath $temporary.FullName -Force
+        New-LhmLogResult -Action 'Retention' -Status 'TempRemoved' -Source $temporary.FullName -Message 'Orphaned temporary archive removed.'
+    }
+    else {
+        New-LhmLogResult -Action 'Retention' -Status 'Planned' -Source $temporary.FullName -Message 'Would remove orphaned temporary archive.'
+    }
+}
+
+$cutoffDate = $Now.Date.AddDays(-$RetentionDays)
+$archivePattern = '^LibreHardwareMonitorLog-(?<date>\d{4}-\d{2}-\d{2})(?:-[A-Za-z0-9._-]+)?\.zip$'
 $archives = Get-ChildItem -LiteralPath $machineRoot -Filter '*.zip' -File -Recurse
 foreach ($archive in $archives) {
     $relative = $archive.FullName.Substring($machineRoot.Length) -replace '^[\\/]+', ''
@@ -26,13 +48,20 @@ foreach ($archive in $archives) {
     $recognizedLayout = $parts.Count -eq 3 -and
                         $parts[0] -match '^\d{4}$' -and
                         $parts[1] -match '^\d{2}-[A-Za-z]{3}$' -and
-                        $parts[2] -match '^LibreHardwareMonitorLog-\d{4}-\d{2}-\d{2}(?:-[A-Za-z0-9._-]+)?\.zip$'
-    if (-not $recognizedLayout) {
+                        $parts[2] -match $archivePattern
+    $logDate = [datetime]::MinValue
+    $recognizedDate = $recognizedLayout -and
+                      [datetime]::TryParseExact($Matches['date'],
+                                                'yyyy-MM-dd',
+                                                [System.Globalization.CultureInfo]::InvariantCulture,
+                                                [System.Globalization.DateTimeStyles]::None,
+                                                [ref]$logDate)
+    if (-not $recognizedDate) {
         New-LhmLogResult -Action 'Retention' -Status 'Retained' -Source $archive.FullName -Message 'Archive path is not recognized.'
         continue
     }
 
-    if ($archive.LastWriteTimeUtc -ge $cutoffUtc) {
+    if ($logDate.Date -ge $cutoffDate) {
         continue
     }
 
@@ -40,11 +69,15 @@ foreach ($archive in $archives) {
     $entryRecognized = $check.Valid -and
                        $check.EntryName -match '^LibreHardwareMonitorLog-\d{4}-\d{2}-\d{2}(?:-[A-Za-z0-9._-]+)?\.csv$'
     if (-not $entryRecognized) {
-        New-LhmLogResult -Action 'Retention' -Status 'Retained' -Source $archive.FullName -Message ('Expired archive failed validation: ' + $check.Reason)
+        $reason = $check.Reason
+        if ($check.Valid) {
+            $reason = 'entry-name-unrecognized: ' + $check.EntryName
+        }
+        New-LhmLogResult -Action 'Retention' -Status 'RetainedInvalid' -Source $archive.FullName -Message ('Expired archive failed validation: ' + $reason)
         continue
     }
 
-    if ($PSCmdlet.ShouldProcess($archive.FullName, "Remove verified archive older than $RetentionDays days")) {
+    if ($PSCmdlet.ShouldProcess($archive.FullName, "Remove verified archive with log date older than $RetentionDays days")) {
         Remove-Item -LiteralPath $archive.FullName -Force
         New-LhmLogResult -Action 'Retention' -Status 'Removed' -Source $archive.FullName -Message 'Verified expired archive removed.'
     }

@@ -1,8 +1,9 @@
-[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High', DefaultParameterSetName = 'Explicit')]
 param(
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$RuntimeDirectory,
-    [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string[]]$SourceDirectory,
-    [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$ArchiveRoot,
+    [Parameter(Mandatory, ParameterSetName = 'Explicit')][ValidateNotNullOrEmpty()][string[]]$SourceDirectory,
+    [Parameter(Mandatory, ParameterSetName = 'Explicit')][ValidateNotNullOrEmpty()][string]$ArchiveRoot,
+    [Parameter(Mandatory, ParameterSetName = 'Reconcile')][switch]$ReconcileFromExistingConfig,
     [ValidateNotNullOrEmpty()][string]$MachineName = $env:COMPUTERNAME,
     [ValidateRange(1, 36500)][int]$RetentionDays = 365,
     [ValidateNotNullOrEmpty()][string]$TaskName = 'SQ LibreHardwareMonitor Log Management',
@@ -15,6 +16,36 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'LhmLogManagement.Common.ps1')
+
+if ($PSCmdlet.ParameterSetName -eq 'Reconcile') {
+    $existingConfigPath = Join-Path (Resolve-LhmFullPath -Path $RuntimeDirectory) 'log-management.json'
+    if (-not [System.IO.File]::Exists($existingConfigPath)) {
+        throw "Reconcile requires an existing configuration: $existingConfigPath"
+    }
+
+    $existingConfig = Get-Content -LiteralPath $existingConfigPath -Raw | ConvertFrom-Json
+    $existingSchemaInfo = $existingConfig.PSObject.Properties['Schema']
+    $existingVersionInfo = $existingConfig.PSObject.Properties['Version']
+    if ($null -eq $existingSchemaInfo -or $existingSchemaInfo.Value -ne 'sq.lhm-log-management' -or $null -eq $existingVersionInfo -or [int]$existingVersionInfo.Value -ne 1) {
+        throw 'Existing log-management configuration has an unsupported schema or version.'
+    }
+
+    foreach ($property in @('SourceDirectories', 'ArchiveRoot', 'MachineName', 'RetentionDays')) {
+        $propertyInfo = $existingConfig.PSObject.Properties[$property]
+        if ($null -eq $propertyInfo -or $null -eq $propertyInfo.Value) {
+            throw "Existing log-management configuration is missing '$property'."
+        }
+    }
+
+    $SourceDirectory = @($existingConfig.SourceDirectories)
+    $ArchiveRoot = [string]$existingConfig.ArchiveRoot
+    if (-not $PSBoundParameters.ContainsKey('MachineName')) {
+        $MachineName = [string]$existingConfig.MachineName
+    }
+    if (-not $PSBoundParameters.ContainsKey('RetentionDays')) {
+        $RetentionDays = [int]$existingConfig.RetentionDays
+    }
+}
 
 $runtimePath = Resolve-LhmFullPath -Path $RuntimeDirectory
 $archiveRootPath = Resolve-LhmFullPath -Path $ArchiveRoot

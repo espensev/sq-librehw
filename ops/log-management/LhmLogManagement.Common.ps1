@@ -156,3 +156,38 @@ function New-LhmLogResult {
         Message = $Message
     }
 }
+
+function Remove-LhmVerifiedSourceFile {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][long]$ExpectedLength,
+        [Parameter(Mandatory)][string]$ExpectedHash
+    )
+
+    $pending = $Path + '.pending-delete-' + [guid]::NewGuid().ToString('N')
+    try {
+        Move-Item -LiteralPath $Path -Destination $pending
+    }
+    catch {
+        return [pscustomobject]@{ Removed = $false; Reason = ('locked at removal point: ' + $_.Exception.Message) }
+    }
+
+    $currentLength = ([System.IO.FileInfo]::new($pending)).Length
+    $currentHash = $null
+    if ($currentLength -eq $ExpectedLength) {
+        $currentHash = Get-LhmFileSha256 -Path $pending
+    }
+
+    if ($currentLength -ne $ExpectedLength -or $currentHash -cne $ExpectedHash.ToLowerInvariant()) {
+        try {
+            Move-Item -LiteralPath $pending -Destination $Path
+            return [pscustomobject]@{ Removed = $false; Reason = 'source changed after verification; source restored' }
+        }
+        catch {
+            return [pscustomobject]@{ Removed = $false; Reason = ('source changed after verification; restore failed: ' + $_.Exception.Message) }
+        }
+    }
+
+    Remove-Item -LiteralPath $pending -Force
+    return [pscustomobject]@{ Removed = $true; Reason = 'verified' }
+}

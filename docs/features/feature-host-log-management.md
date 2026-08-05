@@ -1,7 +1,7 @@
 # Feature Spec: Host-Neutral Log Management
 
-**Status:** deployed on SND-HOST; repaired-path rollover, current paths, archives, and dry-run retention verified
-**Updated:** 2026-07-30
+**Status:** deployed on SND-HOST; repaired-path rollover, current paths, archives, and dry-run retention verified; 2026-08-05 hardening landed in source
+**Updated:** 2026-08-05
 
 ## Problem
 
@@ -30,15 +30,38 @@ separate approved deployment.
   `<archive-root>/<machine>/<yyyy>/<MM-MMM>/<csv-base>.zip`.
 - Each ZIP contains exactly one CSV entry. Source length and SHA-256 are checked
   against the ZIP entry before the source is removed.
-- A matching pre-existing verified ZIP is an idempotent duplicate. A name/hash
-  collision is reported as failure and the source remains intact.
+- Source removal is itself verified: the source is renamed aside, its length and
+  SHA-256 are re-checked against the archived snapshot under the pending name,
+  and only then deleted. A source that changed after compression is restored and
+  reported as failure; a removal interrupted mid-flight is restored by the next
+  run, or retained and reported when its original name is occupied.
+- A matching pre-existing verified ZIP is an idempotent duplicate. A mismatched
+  pre-existing ZIP diverts publication to a deterministic
+  `<base>-conflict-<hash8>.zip` name: the source is removed only after the
+  conflict archive verifies, the mismatched original is retained for review, and
+  the orchestrated run raises a one-shot alert instead of failing permanently.
 - Publishing uses a temporary ZIP in the destination directory followed by a
-  rename. A failed or partial archive never authorizes source deletion.
-- Retention removes only old, readable, one-entry ZIPs in the recognized
-  machine/year/month layout. Unknown or corrupt files are retained.
+  rename. A failed or partial archive never authorizes source deletion, and a
+  published archive that fails its post-publish verification is removed by the
+  same failure path so a bad publish cannot poison later runs.
+- Each file's archival is fault-isolated: one failing file yields a `Failed`
+  record while the remaining files, retention, and result reporting continue.
+- Retention expiry is keyed to the log date embedded in the validated archive
+  filename, not the file timestamp. Retention removes only readable, one-entry
+  ZIPs in the recognized machine/year/month layout whose log date is expired.
+  Unknown files are retained; expired archives that fail validation are retained
+  as `RetainedInvalid` with the actual validation reason, and any such archive
+  fails the orchestrated run. Orphaned `*.zip.tmp-*` temporaries older than one
+  day are swept.
+- Configuration validation reports absent and null required properties with the
+  same curated error under strict mode.
 - Archive, cleanup, and installer entry points support `-WhatIf`. The installer
   copies runtime scripts/configuration and registers or updates one scheduled
-  task only when explicitly run with administrative authority.
+  task only when explicitly run with administrative authority. It accepts
+  `-TaskPath` for non-root task folders, and `-ReconcileFromExistingConfig`
+  re-reads the installed configuration instead of rebuilding it from arguments,
+  so a reconcile cannot silently rewrite deployment values; reconcile without an
+  existing configuration fails closed.
 - Installation never disables or removes a legacy task automatically. Cutover
   requires target identity verification, a dry run, a successful manual run,
   archive inspection, and explicit retirement of the old owner.
@@ -61,13 +84,29 @@ source and write the archive/runtime roots.
 ## Acceptance
 
 - [x] A completed prior-day CSV archives once and is removed only after ZIP
-  entry, length, and hash verification.
-- [x] Exact duplicates converge safely; conflicting content is retained.
+  entry, length, and hash verification, with the removal re-verified under a
+  pending rename before deletion.
+- [x] Exact duplicates converge safely; conflicting content is archived under a
+  deterministic conflict name, the mismatched original is retained for review,
+  and repeated conflict content converges as a duplicate.
 - [x] Current-day and locked files remain untouched.
-- [x] Retention deletes only recognized, readable, expired archives.
-- [x] `-WhatIf` changes no source, archive, runtime, or scheduled-task state.
+- [x] Interrupted removals are restored and re-archived by the next run;
+  occupied restores are retained and reported.
+- [x] Retention deletes only recognized, readable archives whose embedded log
+  date is expired, in both directions: a fresh-timestamp expired-date archive is
+  removed and an ancient-timestamp recent-date archive is retained.
+- [x] Expired archives that fail validation are retained, flagged
+  `RetainedInvalid`, and fail the orchestrated run; conflict archival raises a
+  one-shot orchestrator alert; orphaned temporaries older than one day are
+  swept while recent temporaries are retained.
+- [x] Absent required configuration properties produce the curated error under
+  strict mode.
+- [x] `-WhatIf` changes no source, archive, runtime, or scheduled-task state,
+  including the installer's reconcile mode; reconcile without an existing
+  configuration fails closed.
 - [x] A temporary-directory integration test covers archive, duplicate,
-  collision, retention, and installer preview behavior.
+  conflict, restore, retention, sweep, alert, configuration, and installer
+  preview behavior.
 - [x] No live runtime or scheduled task is changed during repository verification.
 - [x] Identity-verified SND-HOST deployment retains the current-day live CSV,
   and the installed SYSTEM task completes with result `0`.
@@ -89,6 +128,32 @@ then register the new task. Legacy task retirement is a separate approved step.
 
 ## Verification log
 
+- 2026-08-05 hardening (source-side): closed the archival removal race by
+  renaming the source aside and re-verifying length/SHA-256 before deletion
+  (`Remove-LhmVerifiedSourceFile`), fault-isolated each file's archival so one
+  failure cannot abort the run or discard results, replaced the permanent
+  collision failure with verified deterministic conflict-name publication plus a
+  one-shot orchestrator alert, made a failed post-publish verification remove
+  its own bad destination, keyed retention to the embedded log date instead of
+  the file timestamp, flagged expired invalid archives as run-failing
+  `RetainedInvalid` with the true validation reason, added a one-day sweep for
+  orphaned `*.zip.tmp-*` temporaries, added `-Confirm:$false` to the orchestrated
+  archive call, made absent required configuration properties produce the
+  curated error under StrictMode 3.0, and added installer `-TaskPath` reconcile
+  usage plus `-ReconcileFromExistingConfig`. An adversarial review then drove
+  four follow-ups: the orphan-restore path is fault-isolated per file, a failed
+  post-publish verification deletes its own bad destination only on a confirmed
+  content mismatch (never on a transient `unreadable`), the schema/version gate
+  reports absent properties with the curated error, and the temporary-file sweep
+  checks age before name. The expanded integration suite passed under Windows
+  PowerShell 5.1 and PowerShell 7. Deploy note: retention keying changes from
+  file timestamp to embedded log date on the first reconciled run — review a
+  `-WhatIf` retention preview against the production archive before the first
+  scheduled run (on SND-HOST the archive's oldest entry is 2026-07-18, so the
+  switchover deletes nothing today). No live runtime, task, installed script, or
+  archive changed during this source work; the SND-HOST reconcile of the
+  installed copies is a separate identity-verified operation recorded when
+  performed.
 - 2026-07-31 SND-HOST workspace migration: the installed scripts moved to
   `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\operations\log-management`,
   the configured log source moved to `deployments\current`, and the archive moved to
