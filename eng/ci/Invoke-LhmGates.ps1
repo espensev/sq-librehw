@@ -94,6 +94,12 @@ $GateClassification = [ordered]@{
         ExcludedKeys   = @()
         Reason         = 'Host-neutral fixture test; installs nothing.'
     }
+    'live-verification'             = @{
+        Classification = 'included'
+        AllowedKeys    = @('test')
+        ExcludedKeys   = @()
+        Reason         = 'Read-only live-state verifier exercised against a temporary fixture stack; queries nothing live and installs nothing.'
+    }
     'campaign-control'              = @{
         Classification = 'included'
         AllowedKeys    = @('verify', 'test')

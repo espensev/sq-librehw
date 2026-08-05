@@ -32,6 +32,7 @@ web-contracts = ["LibreHardwareMonitor.Windows.Forms/Resources/Web/", "webtests/
 candidate-ops = ["ops/candidate/"]
 snd-desk-deploy-ops = ["ops/deploy/snd-desk/"]
 log-ops = ["ops/log-management/"]
+live-verification-ops = ["ops/live-verification/"]
 campaign-control = [".codex/", "agents/", "data/plans/", "live-tracker.md", "scripts/task_manager.py", "scripts/analysis/", "scripts/task_runtime/"]
 ci = ["eng/ci/", ".github/"]
 docs = ["AGENTS.md", "README.md", "docs/"]
@@ -80,6 +81,7 @@ files = ["docs/**/*.md", "agents/*.md", "data/plans/*.json"]
 "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/**/*.cs" = ["experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/**/*.cs"]
 "ops/candidate/*.ps1" = ["ops/candidate/Test-LhmReleaseSystem.ps1"]
 "ops/log-management/*.ps1" = ["ops/log-management/Test-LhmLogManagement.ps1"]
+"ops/live-verification/*.ps1" = ["ops/live-verification/Test-LhmLiveStateSystem.ps1"]
 "ops/deploy/snd-desk/*.ps1" = ["ops/deploy/snd-desk/Test-LhmLocalRelease.ps1"]
 "scripts/task_runtime/execution.py" = ["scripts/task_runtime/test_execution.py"]
 "scripts/task_runtime/verify.py" = ["scripts/task_runtime/test_verify.py"]
@@ -110,6 +112,10 @@ test = "node --test webtests\\console.tests.js webtests\\workspace.tests.js"
 [build-gate.log-management]
 build = ""
 test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\log-management\\Test-LhmLogManagement.ps1"
+
+[build-gate.live-verification]
+build = ""
+test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\\live-verification\\Test-LhmLiveStateSystem.ps1"
 
 [build-gate.campaign-control]
 build = ""

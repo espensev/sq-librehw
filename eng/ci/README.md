@@ -59,6 +59,7 @@ warning, so a not-yet-registered gate never fails a run.
 | `avalonia-spike` | `build`, `test` | Fixture-only, non-shipping spike solution and its runner. |
 | `web-dashboard` | `verify`, `test` | Static dashboard self-test and Node contract tests. |
 | `log-management` | `test` | Host-neutral fixture test; installs nothing. |
+| `live-verification` | `test` | Read-only live-state verifier exercised against a temporary fixture stack; queries nothing live and installs nothing. |
 | `campaign-control` | `verify`, `test` | Planning preflight and campaign-runtime regression tests. |
 | `release-candidate` | `test` only | See below. |
 | `snd-desk-local-release-fixture` | `test` | Peer-safe fixture using isolated temporary roots; proves the SND-DESK path fails closed on SND-HOST. |
