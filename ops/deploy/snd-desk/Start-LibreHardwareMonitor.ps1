@@ -10,8 +10,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $InstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'
-$ExecutablePath = Join-Path $InstallRoot 'LibreHardwareMonitor.Windows.Forms.exe'
-$RuntimeConfigPath = Join-Path $InstallRoot 'librehw.runtime.json'
+$ExecutablePath =
+    [System.IO.Path]::Combine($InstallRoot, 'LibreHardwareMonitor.Windows.Forms.exe')
+$RuntimeConfigPath = [System.IO.Path]::Combine($InstallRoot, 'librehw.runtime.json')
 $ManagedTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC'
 $IdentityVerifierPath =
     'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
