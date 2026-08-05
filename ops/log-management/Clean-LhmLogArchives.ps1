@@ -45,13 +45,20 @@ $archives = Get-ChildItem -LiteralPath $machineRoot -Filter '*.zip' -File -Recur
 foreach ($archive in $archives) {
     $relative = $archive.FullName.Substring($machineRoot.Length) -replace '^[\\/]+', ''
     $parts = $relative -split '[\\/]'
-    $recognizedLayout = $parts.Count -eq 3 -and
-                        $parts[0] -match '^\d{4}$' -and
-                        $parts[1] -match '^\d{2}-[A-Za-z]{3}$' -and
-                        $parts[2] -match $archivePattern
+    if ($parts.Count -ne 3) {
+        New-LhmLogResult -Action 'Retention' -Status 'Retained' -Source $archive.FullName -Message 'Archive path is not recognized.'
+        continue
+    }
+
+    $recognizedName = $parts[2] -match $archivePattern
+    if (-not $recognizedName) {
+        New-LhmLogResult -Action 'Retention' -Status 'Retained' -Source $archive.FullName -Message 'Archive path is not recognized.'
+        continue
+    }
+
+    $archiveDateText = [string]$Matches['date']
     $logDate = [datetime]::MinValue
-    $recognizedDate = $recognizedLayout -and
-                      [datetime]::TryParseExact($Matches['date'],
+    $recognizedDate = [datetime]::TryParseExact($archiveDateText,
                                                 'yyyy-MM-dd',
                                                 [System.Globalization.CultureInfo]::InvariantCulture,
                                                 [System.Globalization.DateTimeStyles]::None,
@@ -65,13 +72,44 @@ foreach ($archive in $archives) {
         continue
     }
 
+    $expectedYear = $logDate.ToString('yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
+    $expectedMonth = $logDate.ToString('MM-MMM', [System.Globalization.CultureInfo]::InvariantCulture)
+    if ($parts[0] -cne $expectedYear -or $parts[1] -cne $expectedMonth) {
+        New-LhmLogResult -Action 'Retention' -Status 'RetainedInvalid' -Source $archive.FullName -Message ("Expired archive failed validation: archive-layout-mismatch; expected '$expectedYear\$expectedMonth'.")
+        continue
+    }
+
     $check = Test-LhmZipArchive -Path $archive.FullName
-    $entryRecognized = $check.Valid -and
-                       $check.EntryName -match '^LibreHardwareMonitorLog-\d{4}-\d{2}-\d{2}(?:-[A-Za-z0-9._-]+)?\.csv$'
+    $archiveBase = [System.IO.Path]::GetFileNameWithoutExtension($archive.Name)
+    $expectedEntryName = $archiveBase + '.csv'
+    $expectedConflictHash = $null
+    $conflictMatch = [regex]::Match($archiveBase,
+                                    '^(?<entryBase>.+)-conflict-(?<hash>[0-9a-f]{8})$',
+                                    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($conflictMatch.Success) {
+        $expectedEntryName = $conflictMatch.Groups['entryBase'].Value + '.csv'
+        $expectedConflictHash = $conflictMatch.Groups['hash'].Value
+    }
+
+    $entryRecognized = $check.Valid -and $check.EntryName -ceq $expectedEntryName
+    if ($entryRecognized -and $null -ne $expectedConflictHash) {
+        $entryRecognized = $null -ne $check.Hash -and
+                           $check.Hash.Length -ge 8 -and
+                           $check.Hash.Substring(0, 8) -ceq $expectedConflictHash
+    }
     if (-not $entryRecognized) {
         $reason = $check.Reason
         if ($check.Valid) {
-            $reason = 'entry-name-unrecognized: ' + $check.EntryName
+            if ($check.EntryName -cne $expectedEntryName) {
+                $reason = "entry-name-mismatch: expected '$expectedEntryName'; actual '$($check.EntryName)'"
+            }
+            else {
+                $actualConflictHash = '<unavailable>'
+                if ($null -ne $check.Hash -and $check.Hash.Length -ge 8) {
+                    $actualConflictHash = $check.Hash.Substring(0, 8)
+                }
+                $reason = "conflict-hash-mismatch: expected '$expectedConflictHash'; actual '$actualConflictHash'"
+            }
         }
         New-LhmLogResult -Action 'Retention' -Status 'RetainedInvalid' -Source $archive.FullName -Message ('Expired archive failed validation: ' + $reason)
         continue

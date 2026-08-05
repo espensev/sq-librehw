@@ -165,15 +165,20 @@ These apply to every campaign, not just Plan-002:
 ## Phase 2 — Fork-only taxonomy
 
 **Status:** partially complete — Plans 003–005 landed; general engineering
-entry-point grouping remains open
+entry-point grouping remains open and explicitly unqueued
 
 - [x] Move the Avalonia fixture projects into `experiments/avalonia-fixture-explorer/` (Plan-003, 2026-07-31): moved with history preserved, configuration-only rewiring proven by the non-deploying gate runner, and a permanent stale-reference gate added.
 - [x] Separate candidate creation from peer-specific deployment semantics (Plan-004, 2026-07-31): `ops/candidate` (host-neutral), `ops/deploy/snd-desk` (SND-DESK-only), `ops/log-management` (unchanged), and the repository cleanup tool moved to `eng/`. Fail-closed guards proven under `pwsh`; configuration-only rewiring proven by the runner staying byte-identical.
 - [x] Group current documents under architecture, features, operations, and campaigns (Plan-005, 2026-07-31): 13 feature specs under `docs/features/`, refactor-roadmap and repository-build-output-cleanup under `docs/architecture/`, and the completed point-in-time discovery reviews retired. Tooling-coupled docs stay at `docs/` root; `scripts/task_manager.py` unmodified.
-- Move general engineering entry points toward `eng/build`, `eng/test`, and
-  `eng/ci`.
+- [ ] Decide whether concrete general engineering entry points should move
+  toward `eng/build`, `eng/test`, and `eng/ci`. Current inventory has
+  `eng/ci/**` and `eng/Clear-LhmRepositoryBuildOutputs.ps1`; there are no
+  concrete `eng/build` or `eng/test` entry points to move today. Do not create
+  empty directories or fold this taxonomy decision into Plan-014. Queue a
+  dedicated inventory-backed campaign, or record an explicit maintainer
+  no-op/defer decision, before changing paths.
 - Update solutions, scripts, package isolation checks, docs, and test mappings
-  in the same atomic change as each move.
+  in the same atomic change as any approved move.
 
 **Do not move:** inherited product roots, the live runtime, release store,
 rollback store, active logs, or installed operations tooling.
@@ -264,7 +269,10 @@ Extract one seam per campaign, in this order:
    wrapped surface classes are byte-identical. Coordinator passed 12/12,
    Application 178+1/179, Contracts 73/73, aggregate 319+1/320, both WinForms
    Release targets 0W/0E, and all eight non-deploying gates passed. Read-only
-   live proof showed separation and health, not deployment.
+   live proof showed separation and health, not deployment. The source seam is
+   implemented and this roadmap item remains complete; the campaign ledger is
+   11 met / 1 open / 0 waived because required per-agent worktree execution did
+   not occur and has no waiver.
 
 `MainForm` remains the composition root until each extracted contract is
 characterized and accepted. Avoid a wholesale rewrite.
@@ -343,6 +351,11 @@ At this checkpoint the queue is:
 
 A2 (Plan-002 acceptance) was completed by the maintainer on 2026-08-01 and is
 recorded in `docs/campaign-history.md`.
+
+Plan-012 criterion 10 remains open because its required worktree execution did
+not occur; it is a ledger truth correction, not a new queued campaign. The
+remaining Phase-2 engineering-grouping decision is also explicitly unqueued and
+must not be inferred as part of Plan-014.
 
 Plan-003 through Plan-013 have landed: the Avalonia fixture
 explorer lives under `experiments/avalonia-fixture-explorer/`, operations are

@@ -1,7 +1,7 @@
 # Campaign Backlog
 
 **Status:** active
-**Updated:** 2026-08-03
+**Updated:** 2026-08-05
 **Read first:** `docs/campaign-playbook.md` for how to run any of these,
 `docs/architecture/refactor-roadmap.md` for why each phase exists
 
@@ -26,24 +26,28 @@ campaign owns.
 
 | | |
 |---|---|
-| Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane), 3 (verification suite boundaries), 4 (application and adapter seams), 5 (hardware lifecycle seams); Phase 2 remains partially complete with general engineering grouping open |
+| Phases complete | 0 (baseline and ambiguity removal), 1 (campaign and verification control plane), 3 (verification suite boundaries), 4 (application and adapter seams), 5 (hardware lifecycle seams); Phase 2 remains partially complete and its general engineering grouping is explicitly unqueued |
 | Last campaign | `plan-013`, hardware lifecycle seams, ledger state `implemented` |
 | Next campaign | `plan-014` — **gated, do not start without separate approval** |
 | Next agent letter | `ba` |
-| Closing now | A1 is person-only and still open; A2 was accepted by the maintainer on 2026-08-01; Plan-013 is implemented with all 12 criteria met, Phase 5 is complete, and Plan-014 remains gated behind explicit maintainer authorization |
+| Open criteria | Plan-001 criterion 9 (A1 attended smoke) and Plan-012 criterion 10 (required worktree execution did not occur; no waiver) |
+| Unqueued work | Phase-2 general engineering grouping needs a separate inventory-backed decision; it is not part of Plan-014 and must not be inferred as queued |
+| Closing now | A1 is person-only and still open; Plan-012 is implemented with 11 met / 1 open / 0 waived; A2 was accepted by the maintainer on 2026-08-01; Plan-013 is implemented with all 12 criteria met, Phase 5 is complete, and Plan-014 remains gated behind explicit maintainer authorization |
 
 ---
 
 ## Standing acceptance actions
 
-These are not campaigns. They are person-only actions that no automation may
-perform, and both are recorded in `docs/campaign-history.md`.
+Campaign acceptance transitions remain person-only. A1 below is still pending;
+A2 is complete. Plan-012 criterion 10 is a separate open source-campaign
+criterion, recorded after this section.
 
 ### A1 — Plan-001 attended normal-user smoke
 
-The only open criterion in the repository. A person launches the Avalonia
-fixture explorer as a normal user, exercises the loaded, empty, loading, and
-rejection states plus keyboard navigation, and records the result.
+One of two open criteria in the repository, and the only attended one. A person
+launches the Avalonia fixture explorer as a normal user, exercises the loaded,
+empty, loading, and rejection states plus keyboard navigation, and records the
+result.
 
 Three possible outcomes, all legitimate:
 
@@ -62,7 +66,19 @@ it happened afterwards. It is currently `met` with the deviation stated. Confirm
 or correct that while you are there.
 
 A2 (Plan-002 acceptance) completed 2026-08-01: the maintainer accepted the
-campaign and the ledger records it. A1 remains the only standing action.
+campaign and the ledger records it. A1 remains the only standing attended
+action.
+
+### Plan-012 criterion 10 — recorded execution deviation
+
+Plan-012 required per-agent worktrees and dependency-first native fast-forward
+integration. Its source work instead ran inline in the primary checkout. The
+exclusive file ownership and dependency order were preserved, but they do not
+satisfy that conjunctive worktree criterion. The already-landed execution cannot
+be retroactively performed in worktrees, so criterion 10 remains `open` with no
+waiver. This is neither a queued campaign nor authority to rewrite history; only
+a later maintainer waiver with all required fields could close it without the
+original requirement having been met.
 
 ---
 

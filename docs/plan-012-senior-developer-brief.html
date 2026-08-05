@@ -307,6 +307,7 @@
 
         <div class="status-row" aria-label="Campaign status">
           <span class="pill"><span class="dot green" aria-hidden="true"></span>Ledger state · implemented</span>
+          <span class="pill"><span class="dot blue" aria-hidden="true"></span>Criteria · 11 met / 1 open / 0 waived</span>
           <span class="pill"><span class="dot green" aria-hidden="true"></span>Source integrated · verified</span>
           <span class="pill"><span class="dot blue" aria-hidden="true"></span>Acceptance · person‑only, open</span>
           <span class="pill">Baseline <code>9d4786c</code> → <code>36c7467</code> → <code>7d2600b</code> → <code>444dfd7</code></span>
@@ -363,15 +364,15 @@
       <div class="shell">
         <div class="section-head">
           <div><p class="eyebrow">Why Plan‑012</p><h2>Separate orchestration from rendering surfaces.</h2></div>
-          <p>MainForm currently knows every concrete presentation API. The target adds typed forwarding and one ordered coordinator while keeping interaction policy where it already works.</p>
+          <p>Before Plan-012, MainForm knew every concrete presentation API. The integrated result adds typed forwarding and one ordered coordinator while keeping interaction policy where it already works.</p>
         </div>
 
         <div class="architecture">
           <article class="panel">
-            <p class="panel-kicker">Current shape · verified baseline</p>
+            <p class="panel-kicker">Before · verified baseline</p>
             <h3>Direct concrete edges</h3>
             <svg class="diagram" viewBox="0 0 620 360" role="img" aria-labelledby="before-title before-desc">
-              <title id="before-title">Current MainForm direct presentation dependencies</title>
+              <title id="before-title">Pre-campaign MainForm direct presentation dependencies</title>
               <desc id="before-desc">MainForm directly calls the tree view, plot panel, system tray, and sensor gadget.</desc>
               <defs><linearGradient id="mainGrad" x1="0" x2="1"><stop stop-color="#5ee7f7"/><stop offset="1" stop-color="#6d8cff"/></linearGradient></defs>
               <rect x="200" y="24" width="220" height="70" rx="18" fill="url(#mainGrad)" opacity=".95"/>
@@ -400,7 +401,7 @@
             <p class="panel-kicker">Plan‑012 result · implemented</p>
             <h3>One coordinator, four narrow ports</h3>
             <svg class="diagram" viewBox="0 0 620 360" role="img" aria-labelledby="after-title after-desc">
-              <title id="after-title">Target Plan-012 presentation adapter architecture</title>
+              <title id="after-title">Integrated Plan-012 presentation adapter architecture</title>
               <desc id="after-desc">MainForm calls a presentation coordinator, which forwards to narrow adapters over the existing tree, plot, tray, and gadget.</desc>
               <rect x="195" y="18" width="230" height="58" rx="17" fill="#6d8cff"/>
               <text x="310" y="53" fill="#07101d" text-anchor="middle" font-size="19" font-weight="800">MainForm</text>
@@ -437,12 +438,12 @@
       <div class="shell">
         <div class="section-head">
           <div><p class="eyebrow">Code details</p><h2>The seam follows the calls that already exist.</h2></div>
-          <p>These excerpts show the current coupling and the representative target shape. Target code is illustrative and remains unimplemented until Agents AS–AU land.</p>
+          <p>These excerpts show the pre-campaign coupling and the integrated Plan-012 result. The result excerpts are taken from the verified AS–AU source chain.</p>
         </div>
 
         <div class="code-grid">
           <article class="code-card">
-            <div class="code-head"><span>Current · MainForm.cs:839</span><span>verified source</span></div>
+            <div class="code-head"><span>Before · baseline 9d4786c, MainForm.cs:839</span><span>pre-campaign source</span></div>
             <pre><code>treeView.<span class="fn">Invalidate</span>();
 _systemTray.<span class="fn">Redraw</span>();
 _gadget?.<span class="fn">Redraw</span>();
@@ -461,7 +462,7 @@ _presentation.<span class="fn">RefreshSurfaces</span>(
           </article>
 
           <article class="code-card">
-            <div class="code-head"><span>Current · MainForm.cs:2063</span><span>membership policy</span></div>
+            <div class="code-head"><span>Before · baseline 9d4786c, MainForm.cs:2063</span><span>pre-campaign membership policy</span></div>
             <pre><code><span class="fn">AddBulkMembershipMenuItems</span>(
     <span class="st">$"Show Selected in Tray ({count})"</span>,
     <span class="st">$"Remove Selected from Tray ({count})"</span>,
@@ -483,7 +484,7 @@ sensor =&gt; _presentation.<span class="fn">RemoveFromTray</span>(sensor)
         </div>
 
         <details style="margin-top:1rem">
-          <summary>Concrete current touchpoints the wiring agent must preserve</summary>
+          <summary>Concrete touchpoints preserved by the wiring</summary>
           <div class="detail-body">
             <ul>
               <li>Construction: <code>PlotPanel</code> at MainForm line 162, <code>SystemTray</code> at 193, and Windows-only <code>SensorGadget</code> at 214.</li>
@@ -576,13 +577,13 @@ sensor =&gt; _presentation.<span class="fn">RemoveFromTray</span>(sensor)
           <div>
             <p class="eyebrow">Handoff</p>
             <h2>Start with the contract, not MainForm.</h2>
-            <p>The senior developer should review the canonical plan and AS contract first. Implementation begins only with AS in an isolated worktree. AT, AU, and AV follow after dependency‑ordered integration and green gates. The rollback is source-only: revert AU, then AT, then AS back to <code>9d4786c</code>. No operational rollback packet is involved.</p>
+            <p>For review, start with the canonical plan and AS contract, then inspect the AT adapter, AU wiring, and AV verification evidence. AS, AT, AU, and AV ran inline in dependency order rather than in isolated worktrees; that recorded deviation leaves criterion 10 open with no waiver. The rollback remains source-only: revert AU, then AT, then AS back to <code>9d4786c</code>. No operational rollback packet is involved.</p>
             <p><strong>Remaining human gate:</strong> Plan‑001 A1 attended normal-user smoke remains separate and person-only. Plan‑012 itself also cannot be called accepted or deployed by automation.</p>
           </div>
           <div class="link-stack" aria-label="Canonical handoff links">
             <a class="action-link" href="../data/plans/plan-012.json"><span>Canonical Plan‑012 JSON</span><span aria-hidden="true">↗</span></a>
             <a class="action-link" href="campaign-plan-012-winforms-presentation-surface-adapters.md"><span>Generated campaign plan</span><span aria-hidden="true">↗</span></a>
-            <a class="action-link" href="../agents/agent-as-presentation-surface-contract.md"><span>First task · Agent AS</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="../agents/agent-as-presentation-surface-contract.md"><span>Implemented contract · Agent AS</span><span aria-hidden="true">↗</span></a>
             <a class="action-link" href="architecture/refactor-roadmap.md"><span>Continuation authority</span><span aria-hidden="true">↗</span></a>
             <a class="action-link" href="campaign-backlog.md"><span>Sequenced backlog</span><span aria-hidden="true">↗</span></a>
             <a class="action-link" href="features/feature-native-ui-modernization.md"><span>UI product contract</span><span aria-hidden="true">↗</span></a>
@@ -598,7 +599,7 @@ sensor =&gt; _presentation.<span class="fn">RemoveFromTray</span>(sensor)
 
   <footer>
     <div class="shell">
-      <span>Prepared 2026‑08‑02 · SND‑HOST source campaign</span>
+      <span>Prepared 2026‑08‑02 · reviewed 2026‑08‑05 · SND‑HOST source campaign</span>
       <span>Offline · no analytics · no external assets · no deployment authority</span>
     </div>
   </footer>

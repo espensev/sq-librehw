@@ -38,5 +38,21 @@ After approval, remove `-WhatIf`, inspect `log-management.json`, run the copied
 trusting the task. This installer deliberately does not disable or delete any
 legacy task.
 
+The installed version-1 configuration also records the task name, task path,
+daily hour/minute, and PowerShell executable. Preview a source-script reconcile
+without allowing installer defaults to redirect the task:
+
+```powershell
+.\ops\log-management\Install-LhmLogManagementTask.ps1 `
+  -RuntimeDirectory 'E:\stable\lhm-log-management' `
+  -ReconcileFromExistingConfig `
+  -WhatIf
+```
+
+A legacy version-1 configuration without those task fields fails closed. After
+inventorying the existing task, migrate it by supplying all missing task values
+explicitly (`-TaskName`, `-TaskPath`, `-DailyHour`, `-DailyMinute`, and
+`-PowerShellExecutable`) on that reconcile.
+
 See `docs/features/feature-host-log-management.md` for the complete safety and cutover
 contract.

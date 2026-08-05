@@ -48,20 +48,28 @@ separate approved deployment.
   record while the remaining files, retention, and result reporting continue.
 - Retention expiry is keyed to the log date embedded in the validated archive
   filename, not the file timestamp. Retention removes only readable, one-entry
-  ZIPs in the recognized machine/year/month layout whose log date is expired.
-  Unknown files are retained; expired archives that fail validation are retained
-  as `RetainedInvalid` with the actual validation reason, and any such archive
-  fails the orchestrated run. Orphaned `*.zip.tmp-*` temporaries older than one
-  day are swept.
+  ZIPs whose outer filename date, invariant `yyyy/MM-MMM` directory, and inner
+  CSV identity agree. Deterministic `-conflict-<hash8>` ZIPs must contain only
+  the corresponding CSV name before that conflict suffix, and the verified
+  entry SHA-256 must begin with the exact lowercase `hash8`; a conflict-suffixed
+  inner entry is never accepted. Unknown files are retained; expired archives
+  with mismatched layout, entry identity, or conflict hash, or that otherwise
+  fail validation, are retained as `RetainedInvalid` with the actual validation
+  reason, and any such archive fails the orchestrated run. Orphaned
+  `*.zip.tmp-*` temporaries older than one day are swept.
 - Configuration validation reports absent and null required properties with the
   same curated error under strict mode.
 - Archive, cleanup, and installer entry points support `-WhatIf`. The installer
   copies runtime scripts/configuration and registers or updates one scheduled
   task only when explicitly run with administrative authority. It accepts
   `-TaskPath` for non-root task folders, and `-ReconcileFromExistingConfig`
-  re-reads the installed configuration instead of rebuilding it from arguments,
-  so a reconcile cannot silently rewrite deployment values; reconcile without an
-  existing configuration fails closed.
+  re-reads archive inputs plus task name, task path, daily schedule, and
+  PowerShell executable from the installed configuration instead of rebuilding
+  them from defaults. A legacy version-1 configuration without task metadata
+  requires every missing task value explicitly for migration; reconcile without
+  an existing configuration or complete task authority fails closed. Loaded
+  source directories, archive root, machine name, and retention range are
+  revalidated before any installation plan or mutation.
 - Installation never disables or removes a legacy task automatically. Cutover
   requires target identity verification, a dry run, a successful manual run,
   archive inspection, and explicit retirement of the old owner.
@@ -94,7 +102,11 @@ source and write the archive/runtime roots.
   occupied restores are retained and reported.
 - [x] Retention deletes only recognized, readable archives whose embedded log
   date is expired, in both directions: a fresh-timestamp expired-date archive is
-  removed and an ancient-timestamp recent-date archive is retained.
+  removed and an ancient-timestamp recent-date archive is retained. An expired
+  outer/inner identity mismatch and a matching archive in the wrong year/month
+  directory are both retained invalid, while a valid deterministic conflict
+  archive remains eligible for retention. Wrong conflict-hash suffixes and
+  conflict-suffixed inner entries are retained invalid.
 - [x] Expired archives that fail validation are retained, flagged
   `RetainedInvalid`, and fail the orchestrated run; conflict archival raises a
   one-shot orchestrator alert; orphaned temporaries older than one day are
@@ -102,8 +114,10 @@ source and write the archive/runtime roots.
 - [x] Absent required configuration properties produce the curated error under
   strict mode.
 - [x] `-WhatIf` changes no source, archive, runtime, or scheduled-task state,
-  including the installer's reconcile mode; reconcile without an existing
-  configuration fails closed.
+  including the installer's reconcile mode. Reconcile recovers a configured
+  non-root task identity and non-default schedule; legacy configuration without
+  task metadata, empty source arrays, out-of-range retention, and reconcile
+  without an existing configuration fail closed.
 - [x] A temporary-directory integration test covers archive, duplicate,
   conflict, restore, retention, sweep, alert, configuration, and installer
   preview behavior.
@@ -128,6 +142,17 @@ then register the new task. Legacy task retirement is a separate approved step.
 
 ## Verification log
 
+- 2026-08-05 source follow-up: retention now requires expired archive
+  filename, invariant year/month directory, and inner CSV identity to agree,
+  while preserving the deterministic conflict-archive mapping. Installer
+  version-1 configuration now persists task name/path, schedule, and PowerShell
+  executable; reconcile restores them and requires explicit task metadata when
+  migrating an older version-1 configuration. Adversarial outer/inner, layout,
+  valid-conflict, wrong-conflict-hash, conflict-suffixed-inner, non-root
+  reconcile, legacy-migration, invalid-core-value, invalid-path, and
+  invalid-schedule cases passed in the isolated suite under Windows PowerShell
+  5.1 and PowerShell 7. No live runtime, task, configuration, or archive was
+  changed.
 - 2026-08-05 SND-HOST reconcile (identity VERIFIED twice): immediately after
   the 03:45 scheduled run completed with result `0` (archiving the 2026-08-04
   CSV), the four installed scripts were replaced by per-file atomic copy with

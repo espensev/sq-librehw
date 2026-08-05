@@ -1,14 +1,16 @@
 # SQ LibreHardwareMonitor Docs
 
 **Status:** live map only
-**Updated:** 2026-08-03
+**Updated:** 2026-08-05
 
 ## Repository
 
 - `origin` is `celine-anime/librehw-host`; the default and working branch is
-  `main`. **Do not push unless a task explicitly asks for it.** `main` is
-  deliberately kept ahead of `origin/main`; being ahead is the normal state,
-  not a backlog to clear.
+  `main`, which tracks `origin/main`. **Do not push unless a task explicitly
+  asks for it.** Divergence is live Git state, not repository policy: inspect
+  `git status --short --branch` and
+  `git rev-list --left-right --count origin/main...main` instead of inferring
+  ahead/behind state from this document.
 - Full local remote configuration. Two of the three pushes fail closed by
   design:
 
@@ -179,14 +181,20 @@ The structural baseline and phased reorganization are defined in
 `docs/architecture/refactor-roadmap.md`. Phases 0, 1, and 3 are complete.
 Phase 2 is partially complete: Plans 003-005 landed the fork-only experiment,
 operations, and document taxonomy, while general `eng/build` and `eng/test`
-grouping remains open. Phase 4 is complete after Plan-012 implemented item 5:
+grouping remains explicitly unqueued pending a separate inventory-backed
+decision; it is not part of Plan-014. Phase 4 is complete after Plan-012
+implemented item 5:
 one internal presentation coordinator and four one-for-one WinForms adapters
 now own operation forwarding, the ordered post-poll refresh and its
 plot-visibility gate, tray/gadget command relay, and gadget-before-tray
 teardown, while `MainForm` retains composition, UI-thread policy, direct tree
 interaction and layout, plot docking and menu policy, lifecycle, settings, and
 hardware ownership. The wrapped `PlotPanel`, `SystemTray`, `SensorGadget`,
-`Gadget`, `GadgetWindow`, and `TreeModel` files are unchanged. Phase 5 is
+`Gadget`, `GadgetWindow`, and `TreeModel` files are unchanged. Plan-012's ledger
+is `implemented` with 11 met, 1 open, and 0 waived:
+criterion 10 remains open because the required per-agent worktree execution did
+not occur. This truth correction does not reopen the implemented Phase-4 source
+seam. Phase 5 is
 complete after Plan-013 implemented all four items: the internal sealed
 `HardwareGroupRegistry` now owns the `Computer` group list, add/remove/drain,
 IHardwareChanged forwarding, notification ordering, and first-failure
@@ -197,8 +205,10 @@ API including `IComputer` is byte-identical, per-group `Hardware` exposure
 semantics stay pinned, and WinForms remains the sole hardware owner. Plan-014,
 runtime and data authority, is next with agent `ba` and remains gated behind
 explicit maintainer authorization.
-A1, Plan-001's attended normal-user smoke, remains open and person-only. These
-are source-campaign facts only: Plan-013 remains `executed` with ledger state
+A1, Plan-001's attended normal-user smoke, remains open and person-only.
+Plan-012 criterion 10 is the other open repository criterion; it has no waiver
+and is not a queued campaign. These are source-campaign facts only: Plan-013
+remains `executed` with ledger state
 `implemented`, not person-accepted; it created no candidate and authorized no
 deployment, promotion, or live cutover.
 

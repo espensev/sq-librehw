@@ -138,12 +138,63 @@ try {
     @(& $archiveScript -SourceDirectory $source -ArchiveRoot $archiveRoot -MachineName 'TEST-HOST' -Now $now) | Out-Null
     $expiredZip = Join-Path $archiveRoot 'TEST-HOST\2028\06-Jun\LibreHardwareMonitorLog-2028-06-15.zip'
     Assert-LhmTest ([System.IO.File]::Exists($expiredZip)) 'expired-dated log should archive before retention'
+
+    [System.IO.File]::WriteAllText($expiredSource, "Time,CPU`r`n00:00,38`r`n")
+    $expiredConflictRun = @(& $archiveScript -SourceDirectory $source -ArchiveRoot $archiveRoot -MachineName 'TEST-HOST' -Now $now)
+    Assert-LhmTest ($expiredConflictRun.Status -contains 'ArchivedConflict') 'expired conflicting content should publish a deterministic conflict archive'
+    $expiredConflictZips = @(Get-ChildItem -LiteralPath (Split-Path $expiredZip -Parent) -Filter 'LibreHardwareMonitorLog-2028-06-15-conflict-*.zip' -File)
+    Assert-LhmTest ($expiredConflictZips.Count -eq 1) 'expired conflict fixture should have one deterministic conflict archive'
+    $expiredConflictZip = $expiredConflictZips[0].FullName
+
+    $validConflictNameMatch = [regex]::Match([System.IO.Path]::GetFileNameWithoutExtension($expiredConflictZip), '-conflict-(?<hash>[0-9a-f]{8})$')
+    Assert-LhmTest $validConflictNameMatch.Success 'valid conflict fixture should expose its hash suffix'
+    $validConflictHash = $validConflictNameMatch.Groups['hash'].Value
+    $wrongConflictHash = if ($validConflictHash -cne '00000000') { '00000000' } else { 'ffffffff' }
+    $wrongConflictHashZip = Join-Path (Split-Path $expiredConflictZip -Parent) ("LibreHardwareMonitorLog-2028-06-15-conflict-$wrongConflictHash.zip")
+    [System.IO.File]::Copy($expiredConflictZip, $wrongConflictHashZip, $false)
+
+    $conflictSuffixedSeed = Join-Path $source 'conflict-suffixed-entry.tmp'
+    [System.IO.File]::WriteAllText($conflictSuffixedSeed, "Time,CPU`r`n00:00,41`r`n")
+    $conflictSuffixedHash = (Get-LhmFileSha256 -Path $conflictSuffixedSeed).Substring(0, 8)
+    $conflictSuffixedName = "LibreHardwareMonitorLog-2027-04-06-conflict-$conflictSuffixedHash.csv"
+    $conflictSuffixedSource = Join-Path $source $conflictSuffixedName
+    Move-Item -LiteralPath $conflictSuffixedSeed -Destination $conflictSuffixedSource
+    $conflictSuffixedArchiveRun = @(& $archiveScript -SourceDirectory $source -ArchiveRoot $archiveRoot -MachineName 'TEST-HOST' -Now $now)
+    Assert-LhmTest ($conflictSuffixedArchiveRun.Status -contains 'Archived') 'conflict-suffixed inner-entry fixture should archive normally before retention validation'
+    $conflictSuffixedZip = Join-Path $archiveRoot ("TEST-HOST\2027\04-Apr\LibreHardwareMonitorLog-2027-04-06-conflict-$conflictSuffixedHash.zip")
+    $conflictSuffixedCheck = Test-LhmZipArchive -Path $conflictSuffixedZip -ExpectedEntryName $conflictSuffixedName
+    Assert-LhmTest $conflictSuffixedCheck.Valid 'conflict-suffixed inner-entry fixture should be a readable one-entry ZIP with matching content hash'
+
+    $entryMismatchDir = Join-Path $archiveRoot 'TEST-HOST\2027\03-Mar'
+    [System.IO.Directory]::CreateDirectory($entryMismatchDir) | Out-Null
+    $entryMismatchZip = Join-Path $entryMismatchDir 'LibreHardwareMonitorLog-2027-03-05.zip'
+    [System.IO.File]::Copy($destination, $entryMismatchZip, $false)
+
+    $layoutMismatchDir = Join-Path $archiveRoot 'TEST-HOST\2028\07-Jul'
+    [System.IO.Directory]::CreateDirectory($layoutMismatchDir) | Out-Null
+    $layoutMismatchZip = Join-Path $layoutMismatchDir 'LibreHardwareMonitorLog-2028-06-15.zip'
+    [System.IO.File]::Copy($expiredZip, $layoutMismatchZip, $false)
+
     $retentionPreview = @(& $cleanScript -ArchiveRoot $archiveRoot -MachineName 'TEST-HOST' -RetentionDays 365 -Now $now -WhatIf)
     Assert-LhmTest ($retentionPreview.Status -contains 'Planned') 'retention WhatIf should report planned removal'
     Assert-LhmTest ([System.IO.File]::Exists($expiredZip)) 'retention WhatIf should preserve archive'
+    Assert-LhmTest ([System.IO.File]::Exists($expiredConflictZip)) 'retention WhatIf should preserve a valid conflict archive'
+    Assert-LhmTest (@($retentionPreview | Where-Object { $_.Source -eq $entryMismatchZip -and $_.Status -eq 'RetainedInvalid' }).Count -eq 1) 'expired outer/inner identity mismatch should be retained as invalid'
+    Assert-LhmTest (@($retentionPreview | Where-Object { $_.Source -eq $layoutMismatchZip -and $_.Status -eq 'RetainedInvalid' }).Count -eq 1) 'expired archive in the wrong date directory should be retained as invalid'
+    Assert-LhmTest (@($retentionPreview | Where-Object { $_.Source -eq $wrongConflictHashZip -and $_.Status -eq 'RetainedInvalid' -and $_.Message -like '*conflict-hash-mismatch*' }).Count -eq 1) 'conflict archive whose suffix does not match the entry hash should be retained as invalid'
+    Assert-LhmTest (@($retentionPreview | Where-Object { $_.Source -eq $conflictSuffixedZip -and $_.Status -eq 'RetainedInvalid' -and $_.Message -like '*entry-name-mismatch*' }).Count -eq 1) 'conflict-looking outer archive must not accept a conflict-suffixed inner entry'
     $retention = @(& $cleanScript -ArchiveRoot $archiveRoot -MachineName 'TEST-HOST' -RetentionDays 365 -Now $now -Confirm:$false)
     Assert-LhmTest ($retention.Status -contains 'Removed') 'expired log date with a fresh timestamp should be removed'
     Assert-LhmTest (-not [System.IO.File]::Exists($expiredZip)) 'expired verified archive should no longer exist'
+    Assert-LhmTest (-not [System.IO.File]::Exists($expiredConflictZip)) 'expired verified conflict archive should no longer exist'
+    Assert-LhmTest ([System.IO.File]::Exists($entryMismatchZip)) 'entry-mismatched archive should not be removed'
+    Assert-LhmTest ([System.IO.File]::Exists($layoutMismatchZip)) 'layout-mismatched archive should not be removed'
+    Assert-LhmTest ([System.IO.File]::Exists($wrongConflictHashZip)) 'wrong-hash conflict archive should not be removed'
+    Assert-LhmTest ([System.IO.File]::Exists($conflictSuffixedZip)) 'conflict-suffixed inner-entry archive should not be removed'
+    [System.IO.File]::Delete($entryMismatchZip)
+    [System.IO.File]::Delete($layoutMismatchZip)
+    [System.IO.File]::Delete($wrongConflictHashZip)
+    [System.IO.File]::Delete($conflictSuffixedZip)
 
     [System.IO.File]::SetLastWriteTimeUtc($destination, [datetime]'2020-01-01T00:00:00Z')
     @(& $cleanScript -ArchiveRoot $archiveRoot -MachineName 'TEST-HOST' -RetentionDays 365 -Now $now -Confirm:$false) | Out-Null
@@ -259,10 +310,157 @@ try {
         ArchiveRoot = $archiveRoot
         MachineName = 'TEST-HOST'
         RetentionDays = 365
+        TaskName = 'Configured Log Management'
+        TaskPath = '\Configured\'
+        DailyHour = 4
+        DailyMinute = 17
+        PowerShellExecutable = (Get-Command powershell.exe -ErrorAction Stop).Source
     }
-    [System.IO.File]::WriteAllText((Join-Path $reconcileRuntime 'log-management.json'), ($reconcileConfig | ConvertTo-Json -Depth 4))
+    $reconcileConfigPath = Join-Path $reconcileRuntime 'log-management.json'
+    [System.IO.File]::WriteAllText($reconcileConfigPath, ($reconcileConfig | ConvertTo-Json -Depth 4))
+    $reconcileConfigBefore = [System.IO.File]::ReadAllText($reconcileConfigPath)
     $reconcilePreview = @(& $installScript -RuntimeDirectory $reconcileRuntime -ReconcileFromExistingConfig -WhatIf)
     Assert-LhmTest ($reconcilePreview.Status -contains 'Planned') 'reconcile preview should report the planned task'
+    Assert-LhmTest ($reconcilePreview.Message -contains 'Would register \Configured\Configured Log Management at 04:17.') 'reconcile should recover the configured non-root task identity and schedule'
+    Assert-LhmTest ([System.IO.File]::ReadAllText($reconcileConfigPath) -ceq $reconcileConfigBefore) 'reconcile WhatIf should not rewrite the installed configuration'
+
+    $legacyRuntime = Join-Path $testRoot 'reconcile-legacy'
+    [System.IO.Directory]::CreateDirectory($legacyRuntime) | Out-Null
+    $legacyConfig = [ordered]@{
+        Schema = 'sq.lhm-log-management'
+        Version = 1
+        SourceDirectories = @($source)
+        ArchiveRoot = $archiveRoot
+        MachineName = 'TEST-HOST'
+        RetentionDays = 365
+    }
+    [System.IO.File]::WriteAllText((Join-Path $legacyRuntime 'log-management.json'), ($legacyConfig | ConvertTo-Json -Depth 4))
+    $legacyMissing = ''
+    try {
+        & $installScript -RuntimeDirectory $legacyRuntime -ReconcileFromExistingConfig -WhatIf | Out-Null
+    }
+    catch {
+        $legacyMissing = $_.Exception.Message
+    }
+    Assert-LhmTest ($legacyMissing -like "*missing 'TaskName'*migrate this legacy configuration*") 'legacy reconcile without explicit task metadata should fail closed'
+
+    $legacyPreview = @(& $installScript `
+        -RuntimeDirectory $legacyRuntime `
+        -ReconcileFromExistingConfig `
+        -TaskName 'Legacy Log Management' `
+        -TaskPath '\Legacy\' `
+        -DailyHour 5 `
+        -DailyMinute 19 `
+        -PowerShellExecutable (Get-Command powershell.exe -ErrorAction Stop).Source `
+        -WhatIf)
+    Assert-LhmTest ($legacyPreview.Message -contains 'Would register \Legacy\Legacy Log Management at 05:19.') 'legacy reconcile should accept a complete explicit task migration contract'
+
+    $emptySourcesRuntime = Join-Path $testRoot 'reconcile-empty-sources'
+    [System.IO.Directory]::CreateDirectory($emptySourcesRuntime) | Out-Null
+    $emptySourcesConfig = [ordered]@{
+        Schema = 'sq.lhm-log-management'
+        Version = 1
+        SourceDirectories = @()
+        ArchiveRoot = $archiveRoot
+        MachineName = 'TEST-HOST'
+        RetentionDays = 365
+    }
+    [System.IO.File]::WriteAllText((Join-Path $emptySourcesRuntime 'log-management.json'), ($emptySourcesConfig | ConvertTo-Json -Depth 4))
+    $emptySourcesMessage = ''
+    try {
+        & $installScript `
+            -RuntimeDirectory $emptySourcesRuntime `
+            -ReconcileFromExistingConfig `
+            -TaskName 'Empty Sources Log Management' `
+            -TaskPath '\EmptySources\' `
+            -DailyHour 6 `
+            -DailyMinute 1 `
+            -PowerShellExecutable (Get-Command powershell.exe -ErrorAction Stop).Source `
+            -WhatIf | Out-Null
+    }
+    catch {
+        $emptySourcesMessage = $_.Exception.Message
+    }
+    Assert-LhmTest ($emptySourcesMessage -like '*SourceDirector*') 'legacy reconcile with no source directories should fail closed'
+
+    $invalidRetentionRuntime = Join-Path $testRoot 'reconcile-invalid-retention'
+    [System.IO.Directory]::CreateDirectory($invalidRetentionRuntime) | Out-Null
+    $invalidRetentionConfig = [ordered]@{
+        Schema = 'sq.lhm-log-management'
+        Version = 1
+        SourceDirectories = @($source)
+        ArchiveRoot = $archiveRoot
+        MachineName = 'TEST-HOST'
+        RetentionDays = 0
+    }
+    [System.IO.File]::WriteAllText((Join-Path $invalidRetentionRuntime 'log-management.json'), ($invalidRetentionConfig | ConvertTo-Json -Depth 4))
+    $invalidRetentionMessage = ''
+    try {
+        & $installScript `
+            -RuntimeDirectory $invalidRetentionRuntime `
+            -ReconcileFromExistingConfig `
+            -TaskName 'Invalid Retention Log Management' `
+            -TaskPath '\InvalidRetention\' `
+            -DailyHour 6 `
+            -DailyMinute 2 `
+            -PowerShellExecutable (Get-Command powershell.exe -ErrorAction Stop).Source `
+            -WhatIf | Out-Null
+    }
+    catch {
+        $invalidRetentionMessage = $_.Exception.Message
+    }
+    Assert-LhmTest ($invalidRetentionMessage -like '*RetentionDays*') 'legacy reconcile with out-of-range retention should fail closed'
+
+    $invalidTaskRuntime = Join-Path $testRoot 'reconcile-invalid-task'
+    [System.IO.Directory]::CreateDirectory($invalidTaskRuntime) | Out-Null
+    $invalidTaskConfig = [ordered]@{
+        Schema = 'sq.lhm-log-management'
+        Version = 1
+        SourceDirectories = @($source)
+        ArchiveRoot = $archiveRoot
+        MachineName = 'TEST-HOST'
+        RetentionDays = 365
+        TaskName = 'Invalid Log Management'
+        TaskPath = '\Invalid/Segment\'
+        DailyHour = 23
+        DailyMinute = 0
+        PowerShellExecutable = (Get-Command powershell.exe -ErrorAction Stop).Source
+    }
+    [System.IO.File]::WriteAllText((Join-Path $invalidTaskRuntime 'log-management.json'), ($invalidTaskConfig | ConvertTo-Json -Depth 4))
+    $invalidTaskMessage = ''
+    try {
+        & $installScript -RuntimeDirectory $invalidTaskRuntime -ReconcileFromExistingConfig -WhatIf | Out-Null
+    }
+    catch {
+        $invalidTaskMessage = $_.Exception.Message
+    }
+    Assert-LhmTest ($invalidTaskMessage -like '*TaskPath must be*') 'invalid configured task path should fail before task planning'
+
+    $invalidScheduleRuntime = Join-Path $testRoot 'reconcile-invalid-schedule'
+    [System.IO.Directory]::CreateDirectory($invalidScheduleRuntime) | Out-Null
+    $invalidScheduleConfig = [ordered]@{
+        Schema = 'sq.lhm-log-management'
+        Version = 1
+        SourceDirectories = @($source)
+        ArchiveRoot = $archiveRoot
+        MachineName = 'TEST-HOST'
+        RetentionDays = 365
+        TaskName = 'Invalid Schedule Log Management'
+        TaskPath = '\InvalidSchedule\'
+        DailyHour = 24
+        DailyMinute = 0
+        PowerShellExecutable = (Get-Command powershell.exe -ErrorAction Stop).Source
+    }
+    [System.IO.File]::WriteAllText((Join-Path $invalidScheduleRuntime 'log-management.json'), ($invalidScheduleConfig | ConvertTo-Json -Depth 4))
+    $invalidScheduleMessage = ''
+    try {
+        & $installScript -RuntimeDirectory $invalidScheduleRuntime -ReconcileFromExistingConfig -WhatIf | Out-Null
+    }
+    catch {
+        $invalidScheduleMessage = $_.Exception.Message
+    }
+    Assert-LhmTest ($invalidScheduleMessage -like '*DailyHour*') 'invalid configured schedule should fail before task planning'
+
     $reconcileMissing = ''
     try {
         & $installScript -RuntimeDirectory (Join-Path $testRoot 'reconcile-missing') -ReconcileFromExistingConfig -WhatIf | Out-Null
@@ -272,7 +470,7 @@ try {
     }
     Assert-LhmTest ($reconcileMissing -like '*existing configuration*') 'reconcile without configuration should fail closed'
 
-    Write-Output 'PASS: log-management archive, conflict, restore, retention, sweep, alert, config, and installer checks'
+    Write-Output 'PASS: log-management archive, conflict, restore, retention identity, sweep, alert, config, and installer reconcile checks'
 }
 finally {
     if ([System.IO.Directory]::Exists($testRoot)) {
