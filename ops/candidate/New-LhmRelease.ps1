@@ -335,6 +335,7 @@ try {
         -Value $manifest `
         -Path (Join-Path $partialCandidate 'release-manifest.json')
     Test-LhmReleaseCandidate -CandidatePath $partialCandidate | Out-Null
+    $candidateIdentity = Get-LhmCandidateContentIdentity -CandidatePath $partialCandidate
     Assert-LhmRepositoryBuildOutputEmpty -RepositoryRoot $repositoryRoot
     Assert-LhmReleasePathHasNoReparseAncestor -Path $partialCandidate
     Assert-LhmReleasePathHasNoReparseAncestor -Path $readyCandidate
@@ -360,9 +361,18 @@ try {
         Clear-LhmRepositoryBuildOutput -RepositoryRoot $repositoryRoot | Out-Null
     }
     Assert-LhmRepositoryBuildOutputEmpty -RepositoryRoot $repositoryRoot
+
+    # The full candidate verification at line ~337 already validated this content. Between there
+    # and here the only change to the candidate is Directory.Move, a same-volume rename that does
+    # not touch file bytes, so re-running the whole verification re-reads and re-decompresses both
+    # archives to reach a conclusion already established (~530ms warm per call). Re-establish
+    # identity cheaply instead: hash the archives and the manifest and compare against the values
+    # the first pass produced.
+    #
+    # The MANIFEST hash is not optional. Without it, a manifest swapped between the two moves would
+    # go undetected - guarding against exactly that is why a second check exists at all.
     Assert-ReleaseSourceUnchanged
-    Test-LhmReleaseCandidate -CandidatePath $readyCandidate | Out-Null
-    Assert-ReleaseSourceUnchanged
+    Assert-LhmCandidateContentUnchanged -CandidatePath $readyCandidate -Expected $candidateIdentity
 
     [System.IO.Directory]::Move($readyCandidate, $finalCandidate)
     $readyOwned = $false
