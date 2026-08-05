@@ -265,6 +265,45 @@ try {
         Assert-True ($errors.Count -eq 0) "PowerShell parser errors in '$($scriptFile.Name)'."
     }
 
+    $absentFilesystemDriveLetter = $null
+    foreach ($driveLetter in [char[]](90..65)) {
+        $driveName = [string]$driveLetter
+        if ($null -eq (Get-PSDrive -Name $driveName -ErrorAction SilentlyContinue) -and
+            -not [System.IO.Directory]::Exists("$driveName`:\")) {
+            $absentFilesystemDriveLetter = $driveName
+            break
+        }
+    }
+    Assert-True (
+        -not [string]::IsNullOrWhiteSpace($absentFilesystemDriveLetter)
+    ) 'No absent filesystem drive was available for lexical path validation.'
+    $absentFilesystemPath =
+        "$absentFilesystemDriveLetter`:\SQ_HQ\Monitoring\staging\..\LibreHW\librehw.runtime.json"
+    $expectedAbsentFilesystemPath =
+        "$absentFilesystemDriveLetter`:\SQ_HQ\Monitoring\LibreHW\librehw.runtime.json"
+    Assert-True (
+        (Resolve-LhmFullPath -Path $absentFilesystemPath) -ceq
+            $expectedAbsentFilesystemPath
+    ) 'Absolute filesystem path normalization required its drive to exist.'
+
+    $mappedDriveRoot = Join-Path $testRoot 'mapped-drive-root'
+    [System.IO.Directory]::CreateDirectory($mappedDriveRoot) | Out-Null
+    $null = New-PSDrive `
+        -Name $absentFilesystemDriveLetter `
+        -PSProvider FileSystem `
+        -Root $mappedDriveRoot `
+        -Scope Script
+    try {
+        $mappedDrivePath = "$absentFilesystemDriveLetter`:\child\..\payload"
+        Assert-True (
+            (Resolve-LhmFullPath -Path $mappedDrivePath) -ceq
+                (Join-Path $mappedDriveRoot 'payload')
+        ) 'Existing filesystem PSDrive mapping was bypassed during path normalization.'
+    }
+    finally {
+        Remove-PSDrive -Name $absentFilesystemDriveLetter -Scope Script
+    }
+
     $windowsPowerShell = Get-Command powershell.exe -CommandType Application -ErrorAction Stop
     $launcherCompatibilityOutput = @(
         & $windowsPowerShell.Source `

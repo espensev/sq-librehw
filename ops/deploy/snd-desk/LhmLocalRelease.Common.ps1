@@ -46,7 +46,22 @@ function Resolve-LhmFullPath {
         [string] $Path
     )
 
-    $providerPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    try {
+        $providerPath =
+            $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    }
+    catch {
+        $isMissingDrive =
+            $_.Exception -is [System.Management.Automation.DriveNotFoundException] -or
+            $_.Exception.InnerException -is [System.Management.Automation.DriveNotFoundException]
+        $isAbsoluteDrivePath =
+            [System.Text.RegularExpressions.Regex]::IsMatch($Path, '^[A-Za-z]:[\\/]')
+        if (-not $isMissingDrive -or -not $isAbsoluteDrivePath) {
+            throw
+        }
+
+        $providerPath = $Path
+    }
     return [System.IO.Path]::GetFullPath($providerPath).TrimEnd(
         [System.IO.Path]::DirectorySeparatorChar,
         [System.IO.Path]::AltDirectorySeparatorChar)
