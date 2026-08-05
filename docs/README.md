@@ -68,9 +68,10 @@ candidate tooling does not authorize promotion.
 ## Current
 
 - The product is the Windows app plus the read-only dashboard at `/`.
-- Studio and the 2026-07-25 memory/UI/hardware-lifetime reliability baseline
-  are deployed and verified as product version
-  `0.9.6+d693da7.2026-07-25`.
+- The SND-HOST current payload is deployed and verified as product version
+  `0.9.6+5ad1047.2026-08-05`, sourced from candidate
+  `0.9.6-20260805-054355164-5ad1047`. The 2026-07-25
+  `0.9.6+d693da7.2026-07-25` payload is its retained rollback baseline.
 - Sensor Workspace, its four-profile Thermal extension, and the GPU hotspot
   rate sensor are deployed on identity-verified SND-HOST. Live `/`,
   `data.json`, Prometheus, RTX 3080 rate, CSV logging, and controller-to-host
@@ -87,7 +88,8 @@ candidate tooling does not authorize promotion.
   through a clean external staging root and publishes independently verified
   ZIP packages plus `release-manifest.json` outside the repository. Candidate
   `0.9.6-20260725-165558646-d693da7` remains the immutable provenance of the
-  live net10 promotion; it is historical rather than current-source evidence.
+  former live net10 promotion and current rollback baseline; it is historical
+  rather than current-source evidence.
   Candidate creation and validation themselves remain non-deploying. Before
   using a newer candidate, require both `-RequirePromotable` and
   `-RequireCurrentSource` against the external release store.
@@ -98,7 +100,7 @@ candidate tooling does not authorize promotion.
   verification, and both WinForms ZIP inventories contained zero Avalonia or
   spike entries. An attended normal-user smoke remains pending. The spike is
   not in `LibreHardwareMonitor.sln`, a task, or the live runtime. The live
-  SND-HOST product remains the version recorded below.
+  SND-HOST product remains the version recorded above.
 - `/dash/cardtruth[/]` is retired; `data.json` and CSV IDs are contracts.
 - Standard context layouts are merged and browser-fixture-verified; this packet
   did not replace a live LibreHardwareMonitor runtime.
@@ -262,15 +264,15 @@ an unqualified SND-HOST command.
 
 ## Source and live runtime contracts
 
-- The live SND-HOST runtime remains product `0.9.6+d693da7.2026-07-25`.
-  Its external proxy guard blocks public reset routes; this source integration
-  has not replaced that process.
+- The live SND-HOST runtime is product `0.9.6+5ad1047.2026-08-05`, promoted
+  from exact-source candidate `0.9.6-20260805-054355164-5ad1047`. Its external
+  proxy guard blocks public reset routes.
 - In merged source, GET `/Sensor` failures return JSON; GET Set and ResetMinMax
   are rejected. POST Set validates/clamps values. `ResetMinMax` and
   `/ResetAllMinMax` mutate only on POST. Cross-origin browser POSTs are rejected
   before mutation; header-less script clients remain allowed when they POST.
-  These stricter request contracts are not live until a separately approved
-  candidate is promoted.
+  Those request contracts are present in the current `5ad1047` payload; the
+  current live smoke covered read-only routes, not an attended write exercise.
 - Sensor history, decompression, HTTP ownership, and dashboard state are bounded.
 - Settings writes are ordered, atomic, backup-aware, and compact stale history.
 - RTX 5090 hot spot and its rate remain unavailable until live telemetry proves
