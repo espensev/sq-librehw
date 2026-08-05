@@ -1,7 +1,7 @@
 # External Release Candidate Packaging
 
-**Status:** implemented; clean promotable candidate and separate SND-HOST promotion verified; post-upstream-sync source gates verified; any new candidate or promotion remains a separate non-deploying or identity-verified gate
-**Updated:** 2026-07-30
+**Status:** implemented; candidate creation remains non-deploying
+**Updated:** 2026-08-05
 
 ## Problem
 
@@ -122,12 +122,10 @@ collision failure rather than an overwrite. If a final handoff check fails
 after publication, the command rolls back only the candidate it owns and
 returns no `VERIFIED` result.
 
-Candidate identity covers content, not only paths and lengths. The fixture
-suite proves that validation rejects a manifest byte change, an equal-length
-byte flip inside an archive, truncation, an added package, and a removed
-package, then accepts the fully restored candidate. Release packaging keeps its
-established ZIP byte stream; changing compression-stream boundaries is a
-separate versioned format decision even when the extracted payload is equal.
+Candidate identity covers relative path, length, and SHA-256 and rejects
+reparse-backed roots or descendants. The build-output path cache is valid only
+for the tracked project list that produced it. Release packaging keeps its
+established ZIP byte stream; changing that stream is a separate format change.
 
 ## Source-state policy
 
@@ -315,76 +313,9 @@ The real candidate command is a packaging gate, not deployment proof. Do not
 run a normal repository-output build after its final output assertion when
 verifying the cleanup contract.
 
-## Verification log
+## Latest verification
 
-- 2026-08-05 SND-HOST source verification: the release-system fixture suite
-  passed all 135 assertions under both PowerShell 7 and Windows PowerShell 5.1.
-  It adds a real process-loaded build-output cleanup refusal with preservation
-  of every discovered output tree, a failed-CIM fail-closed case, defensive
-  cache isolation, and equal-length manifest/archive plus truncation, addition,
-  and removal content mutations. The fixtures were disposable; no candidate
-  was published and no live runtime or operational evidence was changed.
-- 2026-07-30 SND-HOST source integration: runtime-path tests prove that runtime
-  configuration and `LIBREHARDWAREMONITOR_DATA_ROOT` remain explicit authorities
-  while ambient `sqdata` is ignored and the portable executable-directory
-  fallback is preserved. A present directory, reparse point, unreadable, locked,
-  or invalid runtime descriptor fails closed rather than falling through to
-  another root. The dashboard self-test passed 315/315, focused Node tests
-  18/18, the .NET suite 258 passed with one intentional skip, both x64
-  Release targets built with zero warnings/errors, log-management checks passed
-  26/26, release-system checks passed 114/114 under Windows PowerShell 5.1 and
-  PowerShell 7, and the peer-scoped local-release fixture passed all failure,
-  recovery-manifest, hostile-reparse, launcher-compatibility, and cleanup
-  groups. This was source verification only: temporary fixture candidates and
-  payloads were removed, no external/promotable candidate was published, and no
-  live SND-HOST runtime, task, configuration, or logs were changed. Guarded
-  post-build cleanup removed 556 generated files (111,664,958 bytes), and all
-  declared repository `bin`/`obj` roots were absent at handoff.
-- 2026-07-25 SND-HOST clean candidate and separate promotion: candidate
-  `0.9.6-20260725-165558646-d693da7` came from clean `main` commit
-  `d693da7b1cd23159732123ba1a672ed8d9cf244b`, recorded no source changes, and
-  was independently accepted with both `-RequirePromotable` and
-  `-RequireCurrentSource` under PowerShell 7 and Windows PowerShell 5.1. The
-  gate passed 306/306 dashboard checks, 18/18 focused Node tests, 182 .NET tests
-  with one documented opt-in skip, and both Release builds with zero warnings
-  or errors. Net10 contains 35 files and net472 45; both are
-  framework-dependent `win-x64` packages with no `runtimes/` subtree.
-  Repository `bin`/`obj` and external staging were empty afterward. Through a
-  separate maintainer-approved, identity-verified workflow, the net10 package
-  was clean-materialized at `E:\SQ_HQ\Monitoring\LibreHardwareMonitor` with a
-  complete rollback and live HTTP/sensor/log-growth proof. The release scripts
-  did not perform that promotion.
-- 2026-07-25 SND-HOST: the hardened release-system fixture suite passed all 114
-  assertions under PowerShell 7 and Windows PowerShell 5.1. It covers disjoint
-  and live-junction roots, descendant reparse rejection, case-insensitive
-  tracked-child protection, exact cleanup, immutable dual ZIPs, failure and
-  source-drift rollback, strict manifest types/coherence, recalculated archive
-  and entry hashes, explicit ZIP-directory rejection, actual entry-point
-  version proof, safe origin normalization, dirty-ID enforcement, pinned-SDK
-  working-directory proof, exact framework-dependent `win-x64` build routing,
-  residual-runtime-subtree rejection, and the `-Latest`
-  promotable/current-source build-gate path.
-- The historical first full current-tree proof created dirty, non-promotable
-  candidate `0.9.6-20260725-151355368-52f9c03-dirty` under an earlier manifest
-  validator. It removed 645 generated files totalling 136,403,711 bytes from
-  guarded repository/project output roots; the final hardened candidate below
-  supersedes it as handoff evidence.
-- The earlier final handoff candidate
-  `0.9.6-20260725-final-hardening-52f9c03-dirty` passed the 306/306 dashboard
-  self-test, all 18 focused Node tests, the .NET suite with 182 passed and one
-  opt-in skip, and both x64 Release builds with zero build warnings/errors.
-  Both external ZIP packages, every declared entry, and the versions read from
-  both archived entry points passed the then-current independent validation.
-  `-Latest
-  -RequireCurrentSource` passed, while `-RequirePromotable` rejected it as
-  intended because the reviewed source was not committed. It is now superseded:
-  its net10 archive had 69 files, including 37 cross-platform/runtime-variant
-  entries that a Windows x64 release does not need.
-- RID-specific external probes then built both targets with zero warnings or
-  errors. Net10 reduced to 35 files and net472 contained 45; neither had a
-  `runtimes/` subtree. Both remained framework-dependent. The manifest contract,
-  creator, and validator now lock that result to `win-x64`.
-- The probes and fixture runs used SDK `10.0.302`; repository `bin`/`obj`
-  output roots were absent afterward and all guarded temporary roots were
-  removed. No runtime, process, task, configuration, or deployment target was
-  promoted or changed by these source checks.
+- 2026-08-05: PowerShell 7 and Windows PowerShell 5.1 fixture runs covered
+  invalid Git checkout rejection, process-loaded cleanup refusal, failed
+  process inventory, tracked-project cache invalidation, reparse rejection, and
+  candidate content tampering. No candidate or deployment was created.

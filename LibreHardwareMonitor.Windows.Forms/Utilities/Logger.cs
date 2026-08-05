@@ -125,14 +125,8 @@ public class Logger
         return fileName;
     }
 
-    // Row timestamp format: the historical US-locale layout ("MM/dd/yyyy HH:mm:ss") with milliseconds
-    // (.fff) appended. The general "G" specifier has no fractional-seconds field, so it collapsed every
-    // sub-second sample onto a duplicate whole second (~25% of rows at faster-than-1 Hz logging),
-    // losing their ordering and true sub-second position (GH #9). Only the formatting dropped the
-    // resolution; DateTime.Now already carries it. The leading fields are byte-for-byte the legacy
-    // form, so a consumer reading second-resolution timestamps still parses unchanged; the downstream
-    // ThermalTrace parser also accepts this .fff form. Deliberate local-fork divergence from upstream's
-    // second-resolution "G".
+    // Preserve the historical timestamp layout and add milliseconds for sub-second ordering.
+    // This is a deliberate local-fork divergence from upstream's second-resolution "G" format.
     internal const string RowTimestampFormat = "MM/dd/yyyy HH:mm:ss.fff";
 
     internal static string FormatRowTimestamp(DateTime timestamp)
@@ -140,28 +134,8 @@ public class Logger
         return timestamp.ToString(RowTimestampFormat, CultureInfo.InvariantCulture);
     }
 
-    // Minimum decimal places kept per sensor unit before the value is written to the CSV.
-    //
-    // The round-trip "R" specifier emits the shortest string that reproduces the exact binary
-    // float, which is far more precision than any of this hardware resolves: a temperature read
-    // as 37.771072 °C or a fan at 1250.4471 RPM is measurement noise past the second decimal.
-    // Those trailing digits are effectively random, so they compress badly. Replaying all 9,173
-    // rows of a real 424-column day (2026-08-04, SND-HOST) through this exact method reduced raw
-    // bytes from 19,327,926 to 16,023,769 (17.10%) and the identically compressed archive from
-    // 3,974,710 to 2,732,768 bytes (31.25%), without formatting any non-zero sample as zero.
-    //
-    // Voltage, Current, Factor and Timing keep three places. Their existing native presentation
-    // contracts already retain that resolution, and dropping to two would quantise them visibly.
-    // Every other current sensor type keeps at least two decimal places.
-    //
-    // Fixed decimal places alone are unsafe for scaled or near-zero telemetry. Data is expressed
-    // in GB, so 0.01 GB is roughly 10.7 MB, and real NIC counters around 0.0017 GB would become
-    // zero. Small Load and TemperatureRate values have the same problem. Keep at least four
-    // significant digits by increasing the decimal count for magnitudes below the unit minimum.
-    // On a 600-row sample of the 424-column SND-HOST log, the former fixed two-place policy would
-    // have turned 35% of non-zero Data samples and 12% of non-zero TemperatureRate samples into
-    // zero. The significant-digit floor preserves those values while still removing noisy float
-    // tails from normal-magnitude readings.
+    // CSV values use a unit-specific decimal minimum and retain at least four significant digits.
+    // Unknown sensor types remain on the lossless round-trip path.
     private const int DefaultValueDecimals = 2;
     private const int FineValueDecimals = 3;
     private const int MinimumSignificantDigits = 4;
@@ -193,8 +167,7 @@ public class Logger
             SensorType.Conductivity or
             SensorType.Humidity or
             SensorType.TemperatureRate => DefaultValueDecimals,
-            // Preserve a future or unknown sensor type losslessly until its precision contract is
-            // explicitly chosen. The exhaustive test over SensorType makes additions visible in CI.
+            // Preserve a future or unknown type until its precision contract is defined.
             _ => null
         };
     }
@@ -213,33 +186,14 @@ public class Logger
         if (significantDecimals <= minimumDecimals.Value)
             return minimumDecimals;
 
-        // Math.Round accepts no more than 15 decimal places. If four significant digits need
-        // more than that, retain the original float instead of applying a coarse 15-place round.
+        // Math.Round accepts at most 15 decimal places; smaller values stay lossless.
         return significantDecimals > MaximumValueDecimals
             ? null
             : (int)significantDecimals;
     }
 
-    // Round first, then still format with "R" rather than with "F2"/"F3".
-    //
-    // A fixed-point specifier expands large magnitudes instead of keeping the compact exponent
-    // form: float.MaxValue under "F2" is a 41-character digit run, and this machine already logs
-    // Throughput values around 3.5e9, which "F2" would write as 3497850112.00. Rounding to the
-    // target precision and letting "R" pick the shortest representation keeps normal values short
-    // (37.77), leaves genuine extremes in exponent form, and preserves NaN/Infinity unchanged.
-    //
-    // Rounding goes through double because MathF is not available on net472, which this project
-    // still targets. The input float converts exactly to double; the rounded result is then
-    // narrowed back to the float value that "R" will serialize. Midpoint-to-even is an explicit,
-    // stable policy for the new decimal compaction step.
-    //
-    // NaN and both infinities fall through untouched: Math.Round returns them unchanged and the
-    // equality test below is false for NaN, so they still reach "R" and print as before.
-    //
-    // Unknown future sensor types stay on the historical lossless "R" path. A finite non-zero
-    // value needing more than Math.Round's 15-decimal limit to retain four significant digits is
-    // also written losslessly. The zero fallback is defense in depth, while a genuine negative
-    // zero is normalized to "0".
+    // Round through double for net472 compatibility, then use "R" for compact invariant output.
+    // Unknown types and values beyond Math.Round's decimal limit remain lossless.
     internal static string FormatRowValue(float value, SensorType sensorType)
     {
         if (value == 0f)

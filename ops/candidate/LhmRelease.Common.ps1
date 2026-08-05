@@ -73,10 +73,7 @@ function Assert-LhmDirectoryTreeHasNoReparsePoints {
     $pending.Push($root)
     while ($pending.Count -gt 0) {
         $directory = $pending.Pop()
-        # EnumerateFileSystemInfos rather than EnumerateFileSystemEntries + Get-Item: the
-        # enumeration already carries Attributes and FullName, so the per-entry cmdlet
-        # invocation was buying data the directory walk had in hand. Measured over 2,000 real
-        # entries, 380ms -> 29ms. Same attribute bits, same traversal order, same exceptions.
+        # DirectoryInfo already provides the attributes needed for the reparse check.
         foreach ($entry in [System.IO.DirectoryInfo]::new($directory).EnumerateFileSystemInfos()) {
             if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
                 throw "Release cleanup cannot traverse reparse points: $($entry.FullName)"
@@ -241,36 +238,16 @@ function Get-LhmRepositoryBuildOutputPaths {
 
     $repositoryPath = Resolve-LhmReleaseFullPath -Path $RepositoryRoot
 
-    # Memoized per resolved repository path: this spawns two git processes to compute a list that
-    # is fixed for the run (repo bin + bin/obj per tracked .csproj), and a successful release calls
-    # it ~10 times - ~20 spawns at ~44ms each for the identical answer. Safe to cache because the
-    # release path independently proves the tracked source set is unchanged via
-    # Assert-ReleaseSourceUnchanged; if that assertion fails the run aborts rather than proceeding
-    # on a stale list. The cache is script-scoped, so it lives only as long as the dot-sourced
-    # session - a fresh release process always recomputes.
-    # Test-Path rather than a $null comparison: under Set-StrictMode -Version Latest, READING an
-    # unassigned script-scoped variable throws rather than yielding $null, so the usual
-    # initialize-if-null idiom fails on the very first call.
+    # Cache resolved paths only while the tracked project list is unchanged. This keeps direct
+    # helper reuse safe in long-lived sessions where projects may be added, moved, or removed.
     if (-not (Test-Path -Path 'variable:script:LhmBuildOutputPathCache')) {
         $script:LhmBuildOutputPathCache = @{}
     }
-    # Hand back a fresh array each time. Every current caller only pipes the result into
-    # ForEach-Object/Where-Object, but returning the cached instance would let any future caller
-    # mutate the list every later call sees - a cache that is silently wrong is worse than the
-    # spawns it saves.
-    if ($script:LhmBuildOutputPathCache.ContainsKey($repositoryPath)) {
-        return @($script:LhmBuildOutputPathCache[$repositoryPath])
-    }
-
-    $paths = [System.Collections.Generic.HashSet[string]]::new(
-        [System.StringComparer]::OrdinalIgnoreCase)
-    [void]$paths.Add((Join-Path $repositoryPath 'bin'))
 
     $insideWorkTree = @(& git -C $repositoryPath rev-parse --is-inside-work-tree 2>$null)
     $isGitCheckout = $LASTEXITCODE -eq 0 -and
         $insideWorkTree.Count -eq 1 -and
         ([string]$insideWorkTree[0]).Trim() -ceq 'true'
-
     if (-not $isGitCheckout) {
         throw "Build-output discovery requires a valid Git checkout: $repositoryPath"
     }
@@ -281,6 +258,18 @@ function Get-LhmRepositoryBuildOutputPaths {
     if ($LASTEXITCODE -ne 0) {
         throw 'Unable to enumerate tracked project files for build-output cleanup.'
     }
+
+    $projectListKey = [string]::Join("`0", [string[]]$trackedProjects)
+    if ($script:LhmBuildOutputPathCache.ContainsKey($repositoryPath)) {
+        $cached = $script:LhmBuildOutputPathCache[$repositoryPath]
+        if ($cached.ProjectListKey -ceq $projectListKey) {
+            return @($cached.Paths)
+        }
+    }
+
+    $paths = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    [void]$paths.Add((Join-Path $repositoryPath 'bin'))
 
     foreach ($relativeProject in $trackedProjects) {
         $canonical = ([string]$relativeProject).Replace('\', '/')
@@ -296,7 +285,10 @@ function Get-LhmRepositoryBuildOutputPaths {
     }
 
     $resolved = @($paths | ForEach-Object { Resolve-LhmReleaseFullPath -Path $_ } | Sort-Object)
-    $script:LhmBuildOutputPathCache[$repositoryPath] = $resolved
+    $script:LhmBuildOutputPathCache[$repositoryPath] = [pscustomobject]@{
+        ProjectListKey = $projectListKey
+        Paths = $resolved
+    }
     return $resolved
 }
 
@@ -376,10 +368,7 @@ function Clear-LhmRepositoryBuildOutput {
         }
     )
 
-    # One pass over the tracked-file list for all targets instead of re-filtering the whole list
-    # per target. The previous Where-Object ran targets x trackedFiles scriptblock invocations
-    # (21 x 677 here); this walks each file once and tests it against every target prefix, which
-    # is the same comparison set without the pipeline overhead. Measured 427ms -> 122ms.
+    # Walk the tracked-file list once and compare each path with every cleanup target.
     foreach ($trackedFile in $trackedRepositoryFiles) {
         $trackedText = [string]$trackedFile
         foreach ($relative in $relativeTargets) {
@@ -389,19 +378,8 @@ function Clear-LhmRepositoryBuildOutput {
         }
     }
 
-    # Deliberately NOT batched into a single `check-ignore --stdin` call, though that would save
-    # ~20 process spawns (~0.9s). Two behaviours measured on this host (git 2.55.0.vfs.0.3) make
-    # the batched form unverifiable rather than merely different:
-    #   - `--stdin` without -z C-quotes echoed paths and PowerShell's native-command pipeline
-    #     appends CR, so the returned set has to be un-quoted and trimmed before it can be diffed
-    #     against the requested set;
-    #   - `--stdin -z` and the per-path form disagreed about the same path in the same repository,
-    #     and PowerShell's pipe does not cleanly carry NUL-delimited input to a native command.
-    # The batched form also loses per-path attribution: the aggregate exit code cannot say WHICH
-    # target failed, so the refusal message would degrade. This guard decides whether a directory
-    # is safe to delete recursively; a spawn-per-target is the right price for a check that is
-    # exactly as strict as it reads. If this is ever revisited, diff returned-vs-requested and
-    # prove old/new agreement on a fixture matrix first.
+    # Keep per-path checks so a refusal names the exact target. This guard precedes recursive
+    # deletion; any future batching must prove identical path handling first.
     foreach ($relative in $relativeTargets) {
         & git -C $repositoryPath check-ignore -q -- $relative
         if ($LASTEXITCODE -ne 0) {
@@ -414,29 +392,19 @@ function Clear-LhmRepositoryBuildOutput {
         return @()
     }
 
-    # Normalize each target once. Test-LhmReleasePathWithin re-runs GetFullPath on both operands
-    # per call, so calling it inside the process loop re-normalized every target once per process
-    # (~5,700 redundant normalizations here). The prefixes are loop-invariant; hoist them.
+    # Normalize target prefixes once before process inspection.
     $targetPrefixes = @($existingTargets | ForEach-Object { Get-LhmReleasePathPrefix -Path $_ })
 
-    # Get-CimInstance rather than Get-Process: reading .Path on a Process object forces MainModule
-    # resolution, which opens a handle and enumerates modules per process. Measured on this host,
-    # ~380 processes cost 5.56s that way versus 231ms via CIM. CIM also reports ExecutablePath as
-    # null for processes it cannot read instead of throwing, so the guard below is a null check
-    # rather than a try/catch. Note the property names differ from Get-Process: Name carries the
-    # .exe extension where ProcessName does not, and the identifier is ProcessId, not Id.
+    # CIM provides executable paths without resolving MainModule for every process.
     $loadedFromTargets = @()
-    # This guard protects a recursive delete. Fail closed here even when a future caller dot-sources
-    # the helper without setting a terminating ErrorActionPreference.
+    # Process inventory is a destructive-cleanup boundary and must fail closed.
     foreach ($process in Get-CimInstance -ClassName Win32_Process -Property ProcessId, Name, ExecutablePath -ErrorAction Stop) {
         $processPath = $process.ExecutablePath
         if ([string]::IsNullOrWhiteSpace($processPath)) {
             continue
         }
 
-        # GetFullPath rejects malformed paths. Get-Process's .Path was wrapped in a try/catch that
-        # swallowed such failures, so keep a guard here: a single unparseable ExecutablePath must
-        # not abort a release. Normalize once per process rather than once per target.
+        # Ignore a malformed executable path but normalize valid paths only once per process.
         try {
             $fullProcessPath = Resolve-LhmReleaseFullPath -Path $processPath
         }
@@ -445,8 +413,7 @@ function Clear-LhmRepositoryBuildOutput {
         }
 
         for ($i = 0; $i -lt $existingTargets.Count; $i++) {
-            # Mirrors Test-LhmReleasePathWithin exactly: an exact match counts as within, not just
-            # a prefix match. Dropping the equality arm would make this guard weaker than before.
+            # Exact target matches count as loaded from the target.
             if ($fullProcessPath.Equals($existingTargets[$i], [System.StringComparison]::OrdinalIgnoreCase) -or
                 $fullProcessPath.StartsWith($targetPrefixes[$i], [System.StringComparison]::OrdinalIgnoreCase)) {
                 $loadedFromTargets += "$($process.Name)[$($process.ProcessId)] -> $processPath"
@@ -538,11 +505,7 @@ function Get-LhmGitSourceFingerprint {
         }
 
         if ([System.IO.File]::Exists($fullPath)) {
-            # FileInfo rather than Get-Item: only Length is needed, and a full cmdlet invocation
-            # plus PSObject construction per file is ~8x the cost of the constructor. Measured over
-            # this repo's 677 fingerprinted files, 87ms -> 11ms; the fingerprint runs 5x per
-            # release, so the metadata probe was costing more than the SHA-256 work it precedes.
-            # Length is identical either way, so the emitted record text is byte-for-byte unchanged.
+            # Only file length is needed here.
             $item = [System.IO.FileInfo]::new($fullPath)
             $records.Add(
                 $canonical + "`0" +
@@ -625,9 +588,7 @@ function Get-LhmPayloadFileEntries {
         }
     }
 
-    # The Sort-Object is load-bearing beyond manifest tidiness: New-LhmReleaseZip creates ZIP
-    # entries in exactly this order, so changing it changes the archive bytes and every previously
-    # recorded candidate archive SHA-256 stops reproducing.
+    # Entry order is part of the reproducible archive byte stream.
     return @(
         $items |
             Where-Object { -not $_.PSIsContainer } |
@@ -663,13 +624,8 @@ function New-LhmReleaseZip {
     [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($destinationPath)) | Out-Null
     $temporaryPath = $destinationPath + '.tmp-' + [guid]::NewGuid().ToString('N')
 
-    # Payload files are deliberately read twice: hashed here, then re-read by the archive loop
-    # below. Fusing the two (hashing while streaming into the entry) saves ~23 MB of reads per
-    # release but was measured to change the archive bytes: a wrapper or chunked write around the
-    # entry stream changes DeflateStream's block boundaries while decompressing identically. That
-    # is not corruption when deliberately versioned into a new candidate, but it complicates
-    # reproducibility and provenance for negligible release-time savings. Keep the established
-    # byte stream unless a separate packaging-format decision explicitly changes it.
+    # Hash first, then create the archive with the established byte stream. Combining the streams
+    # changes archive bytes and requires a separate packaging-format decision.
     $entries = @(Get-LhmPayloadFileEntries -PayloadRoot $payloadPath)
     if ($entries.Count -eq 0) {
         throw "Release payload is empty: $payloadPath"
@@ -871,17 +827,19 @@ function Get-LhmZipEntryVersionInfo {
 function Get-LhmCandidateContentIdentity {
     param([Parameter(Mandatory)][string]$CandidatePath)
 
-    # A cheap content fingerprint of a candidate directory: the manifest plus every package
-    # archive, by relative path, length and SHA-256. Used to prove a candidate is unchanged across
-    # a same-volume Directory.Move without re-running the full verification, which would re-read
-    # and re-decompress every archive to reach a conclusion already established.
+    # Compare candidate files by relative path, length, and SHA-256 across finalization renames.
     $candidate = Resolve-LhmReleaseFullPath -Path $CandidatePath
     if (-not [System.IO.Directory]::Exists($candidate)) {
         throw "Release candidate directory does not exist: $candidate"
     }
 
+    Assert-LhmDirectoryTreeHasNoReparsePoints -Path $candidate
+
     $records = [System.Collections.Generic.List[string]]::new()
     foreach ($file in @(Get-ChildItem -LiteralPath $candidate -Force -Recurse -File | Sort-Object FullName)) {
+        if (($file.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Release candidate content identity cannot traverse reparse points: $($file.FullName)"
+        }
         $relative = ConvertTo-LhmReleaseRelativePath -Root $candidate -Path $file.FullName
         $records.Add(
             $relative + "`0" +
@@ -892,6 +850,8 @@ function Get-LhmCandidateContentIdentity {
     if ($records.Count -eq 0) {
         throw "Release candidate contains no files: $candidate"
     }
+
+    Assert-LhmDirectoryTreeHasNoReparsePoints -Path $candidate
 
     return [string]::Join("`n", $records)
 }

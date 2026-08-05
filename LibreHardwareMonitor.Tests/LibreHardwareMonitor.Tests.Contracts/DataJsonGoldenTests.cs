@@ -58,7 +58,7 @@ public class DataJsonGoldenTests
             if (!File.Exists(goldenPath))
             {
                 File.WriteAllBytes(goldenPath, actual);
-                Assert.True(false, $"Golden master did not exist and was created at {goldenPath}; review it, then re-run.");
+                Assert.Fail($"Golden master did not exist and was created at {goldenPath}; review it, then re-run.");
             }
 
             byte[] expected = File.ReadAllBytes(goldenPath);

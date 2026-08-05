@@ -109,6 +109,14 @@ try {
     & git -C $fakeRepository add -- .
     & git -C $fakeRepository commit -q -m 'cleanup fixture'
     if ($LASTEXITCODE -ne 0) { throw 'Cleanup fixture Git commit failed.' }
+
+    $bareRepository = Join-Path $testRoot 'bare-repository'
+    & git init -q --bare $bareRepository
+    if ($LASTEXITCODE -ne 0) { throw 'Bare-repository fixture Git initialization failed.' }
+    Assert-LhmReleaseThrows {
+        Get-LhmRepositoryBuildOutputPaths -RepositoryRoot $bareRepository | Out-Null
+    } 'build-output discovery must reject a bare repository' '*valid Git checkout*'
+
     $generatedPaths = @(
         (Join-Path $fakeRepository 'bin'),
         (Join-Path $fakeRepository 'obj'),
@@ -121,9 +129,7 @@ try {
     $unrelated = Join-Path $fakeRepository 'keep.txt'
     [System.IO.File]::WriteAllText($unrelated, 'keep')
 
-    # The cleanup path recursively deletes bin/obj, so the process-origin guard must remain a
-    # durable regression test rather than a one-off performance harness. Run a copied system
-    # executable from the exact root bin directory and prove cleanup refuses before deleting it.
+    # Cleanup must refuse while a process is loaded from a target tree.
     $guardExecutable = Join-Path $fakeRepository 'bin\guardprobe.exe'
     [System.IO.File]::Copy(
         (Join-Path $env:WINDIR 'System32\cmd.exe'),
@@ -177,8 +183,7 @@ try {
         }
     }
 
-    # The CIM inventory is the last process-safety boundary before recursive deletion. Prove it
-    # fails closed independently of a caller's ambient ErrorActionPreference.
+    # Process inventory must fail closed independently of the caller's error preference.
     function Get-CimInstance {
         [CmdletBinding()]
         param(
@@ -211,6 +216,41 @@ try {
         $freshBuildOutputPaths[0] -ceq $firstCachedBuildOutputPath
     ) 'build-output path cache must return a defensive array copy'
 
+    $lateProject = Join-Path $fakeRepository 'LateProject'
+    [System.IO.Directory]::CreateDirectory($lateProject) | Out-Null
+    [System.IO.File]::WriteAllText(
+        (Join-Path $lateProject 'LateProject.csproj'),
+        '<Project />')
+    & git -C $fakeRepository add -- LateProject/LateProject.csproj
+    if ($LASTEXITCODE -ne 0) { throw 'Late-project fixture Git add failed.' }
+
+    $lateBuildOutputPaths = @(Get-LhmRepositoryBuildOutputPaths -RepositoryRoot $fakeRepository)
+    Assert-LhmReleaseTest (
+        (Join-Path $lateProject 'bin') -in $lateBuildOutputPaths -and
+        (Join-Path $lateProject 'obj') -in $lateBuildOutputPaths
+    ) 'build-output path cache must discover a newly tracked project'
+
+    $movedProject = Join-Path $fakeRepository 'MovedProject'
+    [System.IO.Directory]::CreateDirectory($movedProject) | Out-Null
+    & git -C $fakeRepository mv -- LateProject/LateProject.csproj MovedProject/MovedProject.csproj
+    if ($LASTEXITCODE -ne 0) { throw 'Moved-project fixture Git move failed.' }
+
+    $movedBuildOutputPaths = @(Get-LhmRepositoryBuildOutputPaths -RepositoryRoot $fakeRepository)
+    $movedGeneratedPaths = @(
+        (Join-Path $movedProject 'bin'),
+        (Join-Path $movedProject 'obj'))
+    Assert-LhmReleaseTest (
+        $movedGeneratedPaths[0] -in $movedBuildOutputPaths -and
+        $movedGeneratedPaths[1] -in $movedBuildOutputPaths -and
+        (Join-Path $lateProject 'bin') -notin $movedBuildOutputPaths -and
+        (Join-Path $lateProject 'obj') -notin $movedBuildOutputPaths
+    ) 'build-output path cache must invalidate after a tracked project move'
+    $generatedPaths += $movedGeneratedPaths
+    foreach ($generatedPath in $movedGeneratedPaths) {
+        [System.IO.Directory]::CreateDirectory($generatedPath) | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $generatedPath 'stale.bin'), 'stale')
+    }
+
     $nestedJunctionTarget = Join-Path $testRoot 'nested-cleanup-junction-target'
     $nestedJunctionMarker = Join-Path $nestedJunctionTarget 'must-survive.txt'
     $nestedJunction = Join-Path $fakeRepository 'bin\nested-junction'
@@ -238,7 +278,7 @@ try {
     }
 
     $cleaned = @(Clear-LhmRepositoryBuildOutput -RepositoryRoot $fakeRepository)
-    Assert-LhmReleaseTest ($cleaned.Count -eq 4) 'cleanup should target each exact generated root once'
+    Assert-LhmReleaseTest ($cleaned.Count -eq 6) 'cleanup should target each exact generated root once'
     Assert-LhmReleaseTest ([System.IO.File]::Exists($unrelated)) 'cleanup must preserve unrelated repository files'
     Assert-LhmReleaseTest (-not [System.IO.Directory]::Exists((Join-Path $fakeRepository 'bin'))) 'root bin should be removed'
     Assert-LhmReleaseTest (-not [System.IO.Directory]::Exists((Join-Path $subProject 'obj'))) 'project obj should be removed'
@@ -706,12 +746,52 @@ exit 0
     )
     Assert-LhmReleaseTest ($wrapperResult.Status -contains 'VERIFIED') 'candidate wrapper should verify an explicit external candidate'
 
-    # The ready-directory check in New-LhmRelease uses this cheaper content identity between two
-    # same-volume renames. Keep every tamper case that justified replacing the middle full
-    # verification in the permanent fixture suite.
+    # Candidate identity must detect content and filesystem-boundary changes.
     $candidateIdentity = Get-LhmCandidateContentIdentity -CandidatePath $candidate
     Assert-LhmCandidateContentUnchanged -CandidatePath $candidate -Expected $candidateIdentity
     Assert-LhmReleaseTest $true 'unchanged candidate content identity should verify'
+
+    $candidateIdentityAlias = Join-Path $testRoot 'candidate-identity-alias'
+    try {
+        New-Item `
+            -ItemType Junction `
+            -Path $candidateIdentityAlias `
+            -Target $candidate | Out-Null
+        Assert-LhmReleaseThrows {
+            Get-LhmCandidateContentIdentity -CandidatePath $candidateIdentityAlias | Out-Null
+        } 'candidate content identity must reject a reparse-backed root' '*reparse*'
+    }
+    finally {
+        if ([System.IO.Directory]::Exists($candidateIdentityAlias)) {
+            [System.IO.Directory]::Delete($candidateIdentityAlias)
+        }
+    }
+
+    $identityJunctionTarget = Join-Path $testRoot 'candidate-identity-junction-target'
+    $identityJunction = Join-Path $packages 'candidate-identity-junction'
+    [System.IO.Directory]::CreateDirectory($identityJunctionTarget) | Out-Null
+    [System.IO.File]::WriteAllText(
+        (Join-Path $identityJunctionTarget 'outside.txt'),
+        'must remain outside candidate identity')
+    try {
+        New-Item `
+            -ItemType Junction `
+            -Path $identityJunction `
+            -Target $identityJunctionTarget | Out-Null
+        Assert-LhmReleaseThrows {
+            Assert-LhmCandidateContentUnchanged `
+                -CandidatePath $candidate `
+                -Expected $candidateIdentity
+        } 'candidate content identity must reject descendant reparse points' '*reparse*'
+        Assert-LhmReleaseTest (
+            [System.IO.File]::Exists((Join-Path $identityJunctionTarget 'outside.txt'))
+        ) 'rejected candidate identity must preserve the reparse target'
+    }
+    finally {
+        if ([System.IO.Directory]::Exists($identityJunction)) {
+            [System.IO.Directory]::Delete($identityJunction)
+        }
+    }
 
     $manifestPath = Join-Path $candidate 'release-manifest.json'
     $originalManifestBytes = [System.IO.File]::ReadAllBytes($manifestPath)

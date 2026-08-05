@@ -362,15 +362,8 @@ try {
     }
     Assert-LhmRepositoryBuildOutputEmpty -RepositoryRoot $repositoryRoot
 
-    # The full candidate verification at line ~337 already validated this content. Between there
-    # and here the only change to the candidate is Directory.Move, a same-volume rename that does
-    # not touch file bytes, so re-running the whole verification re-reads and re-decompresses both
-    # archives to reach a conclusion already established (~530ms warm per call). Re-establish
-    # identity cheaply instead: hash the archives and the manifest and compare against the values
-    # the first pass produced.
-    #
-    # The MANIFEST hash is not optional. Without it, a manifest swapped between the two moves would
-    # go undetected - guarding against exactly that is why a second check exists at all.
+    # The candidate was fully verified before the same-volume rename. Recheck the manifest and
+    # every archive by path, length, and SHA-256 before final publication.
     Assert-ReleaseSourceUnchanged
     Assert-LhmCandidateContentUnchanged -CandidatePath $readyCandidate -Expected $candidateIdentity
 
