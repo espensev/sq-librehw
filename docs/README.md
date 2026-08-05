@@ -306,6 +306,9 @@ an unqualified SND-HOST command.
   release-candidate packaging and validation contract.
 - `docs/features/feature-host-operator-utilities.md` - planned portable thermal snapshot
   and evidence-gated log analysis.
+- `docs/features/feature-live-state-verification.md` - read-only, manifest-driven
+  live-state verifier for the SND-HOST stack (process, tasks, endpoints, CSV
+  growth, installed tooling); report-only, no deployment authority.
 - `docs/features/feature-independent-text-scaling.md` - shipped independent sensor-pane,
   tracker, and graph-axis text scaling contract.
 - `docs/features/feature-native-ui-modernization.md` - phased native tree organization,
@@ -362,6 +365,8 @@ an unqualified SND-HOST command.
 - `LibreHardwareMonitor.Windows.Forms/Resources/Web/workspace.js` - bounded
   Workspace model, presets, profile operations, and import/export.
 - `ops/log-management/` - host-neutral log operations and task-install package.
+- `ops/live-verification/` - read-only manifest-driven live-state verifier and
+  its fixture self-test; no deploy, task, or manifest mutation.
 - `ops/candidate/` - external clean staging, candidate manifest/hash validation,
   guarded repository-output cleanup, and release-system regression tests; no
   deployment or promotion.
@@ -409,6 +414,7 @@ node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\workspace.js
 node webtests\selftest.node.js
 node --test webtests\console.tests.js webtests\workspace.tests.js
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-LhmLogManagement.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\live-verification\Test-LhmLiveStateSystem.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File experiments\avalonia-fixture-explorer\Test-AvaloniaSpike.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseSystem.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\New-LhmRelease.ps1 -ReleaseRoot <external-release-root>
