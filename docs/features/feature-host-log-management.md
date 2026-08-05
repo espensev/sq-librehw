@@ -128,6 +128,18 @@ then register the new task. Legacy task retirement is a separate approved step.
 
 ## Verification log
 
+- 2026-08-05 SND-HOST reconcile (identity VERIFIED twice): immediately after
+  the 03:45 scheduled run completed with result `0` (archiving the 2026-08-04
+  CSV), the four installed scripts were replaced by per-file atomic copy with
+  the hardened versions from clean commit `9ccaeee`; after-hashes match the
+  repository files exactly and `log-management.json`, the scheduled task, and
+  the archive were untouched. Production `-WhatIf` previews with the hardened
+  scripts showed only the current-day retention record and zero retention
+  selections (no date-keying switchover deletions; oldest archive 2026-07-18).
+  A manual task start was blocked by the session permission gate, so the first
+  scheduled hardened run is 2026-08-06 03:45. Evidence packet:
+  `deployments\history\20260805-034905-log-tooling-hardening` in the stack,
+  including an 11/11-Pass live-state verifier report.
 - 2026-08-05 hardening (source-side): closed the archival removal race by
   renaming the source aside and re-verifying length/SHA-256 before deletion
   (`Remove-LhmVerifiedSourceFile`), fault-isolated each file's archival so one

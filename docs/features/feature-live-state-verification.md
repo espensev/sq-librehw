@@ -102,5 +102,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\live-verification\Te
 
 ## Verification log
 
-- 2026-08-05: implemented with fixture self-test passing under both engines;
-  first live SND-HOST run recorded separately once executed.
+- 2026-08-05: implemented with fixture self-test passing under both engines.
+  First live SND-HOST run the same day: 11/11 checks Pass, exit 0 — manifests,
+  machine, live root, exact-path process (PID 15988), entry-point SHA-256
+  matching `channels\live.json`, both task bindings (entry task Running; log
+  task last run 03:45:01 result 0), listener 192.168.2.5:8080, all three
+  endpoints 200, current-day CSV growth, and complete installed log tooling.
+  JSON report preserved in the stack packet
+  `deployments\history\20260805-034905-log-tooling-hardening`.
