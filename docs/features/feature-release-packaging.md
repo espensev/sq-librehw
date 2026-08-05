@@ -122,6 +122,13 @@ collision failure rather than an overwrite. If a final handoff check fails
 after publication, the command rolls back only the candidate it owns and
 returns no `VERIFIED` result.
 
+Candidate identity covers content, not only paths and lengths. The fixture
+suite proves that validation rejects a manifest byte change, an equal-length
+byte flip inside an archive, truncation, an added package, and a removed
+package, then accepts the fully restored candidate. Release packaging keeps its
+established ZIP byte stream; changing compression-stream boundaries is a
+separate versioned format decision even when the extracted payload is equal.
+
 ## Source-state policy
 
 Candidate creation checks tracked and untracked Git state independently of the
@@ -310,6 +317,13 @@ verifying the cleanup contract.
 
 ## Verification log
 
+- 2026-08-05 SND-HOST source verification: the release-system fixture suite
+  passed all 135 assertions under both PowerShell 7 and Windows PowerShell 5.1.
+  It adds a real process-loaded build-output cleanup refusal with preservation
+  of every discovered output tree, a failed-CIM fail-closed case, defensive
+  cache isolation, and equal-length manifest/archive plus truncation, addition,
+  and removal content mutations. The fixtures were disposable; no candidate
+  was published and no live runtime or operational evidence was changed.
 - 2026-07-30 SND-HOST source integration: runtime-path tests prove that runtime
   configuration and `LIBREHARDWAREMONITOR_DATA_ROOT` remain explicit authorities
   while ambient `sqdata` is ignored and the portable executable-directory

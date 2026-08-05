@@ -109,16 +109,107 @@ try {
     & git -C $fakeRepository add -- .
     & git -C $fakeRepository commit -q -m 'cleanup fixture'
     if ($LASTEXITCODE -ne 0) { throw 'Cleanup fixture Git commit failed.' }
-    foreach ($generatedPath in @(
+    $generatedPaths = @(
         (Join-Path $fakeRepository 'bin'),
         (Join-Path $fakeRepository 'obj'),
         (Join-Path $subProject 'bin'),
-        (Join-Path $subProject 'obj'))) {
+        (Join-Path $subProject 'obj'))
+    foreach ($generatedPath in $generatedPaths) {
         [System.IO.Directory]::CreateDirectory($generatedPath) | Out-Null
         [System.IO.File]::WriteAllText((Join-Path $generatedPath 'stale.bin'), 'stale')
     }
     $unrelated = Join-Path $fakeRepository 'keep.txt'
     [System.IO.File]::WriteAllText($unrelated, 'keep')
+
+    # The cleanup path recursively deletes bin/obj, so the process-origin guard must remain a
+    # durable regression test rather than a one-off performance harness. Run a copied system
+    # executable from the exact root bin directory and prove cleanup refuses before deleting it.
+    $guardExecutable = Join-Path $fakeRepository 'bin\guardprobe.exe'
+    [System.IO.File]::Copy(
+        (Join-Path $env:WINDIR 'System32\cmd.exe'),
+        $guardExecutable,
+        $false)
+    $guardProcess = Start-Process `
+        -FilePath $guardExecutable `
+        -ArgumentList '/d', '/c', 'ping -n 30 127.0.0.1 >nul' `
+        -PassThru `
+        -WindowStyle Hidden
+    try {
+        $guardDeadline = [datetime]::UtcNow.AddSeconds(5)
+        $guardObservation = $null
+        do {
+            $guardObservation = Get-CimInstance `
+                -ClassName Win32_Process `
+                -Filter "ProcessId = $($guardProcess.Id)" `
+                -Property ProcessId, ExecutablePath `
+                -ErrorAction Stop
+            if ($null -ne $guardObservation -and
+                -not [string]::IsNullOrWhiteSpace($guardObservation.ExecutablePath)) {
+                break
+            }
+            Start-Sleep -Milliseconds 100
+        } while ([datetime]::UtcNow -lt $guardDeadline -and -not $guardProcess.HasExited)
+
+        Assert-LhmReleaseTest (
+            $null -ne $guardObservation -and
+            (Resolve-LhmReleaseFullPath -Path $guardObservation.ExecutablePath).Equals(
+                (Resolve-LhmReleaseFullPath -Path $guardExecutable),
+                [System.StringComparison]::OrdinalIgnoreCase)
+        ) 'process-guard fixture must run from the exact build-output path'
+        Assert-LhmReleaseThrows {
+            Clear-LhmRepositoryBuildOutput -RepositoryRoot $fakeRepository | Out-Null
+        } 'cleanup must reject build output loaded by a process' '*loaded by a process*'
+        Assert-LhmReleaseTest (
+            [System.IO.File]::Exists($guardExecutable)
+        ) 'rejected process-loaded cleanup must preserve the build-output tree'
+        Assert-LhmReleaseTest (
+            @($generatedPaths | Where-Object {
+                -not [System.IO.File]::Exists((Join-Path $_ 'stale.bin'))
+            }).Count -eq 0
+        ) 'rejected process-loaded cleanup must preserve every discovered build-output tree'
+    }
+    finally {
+        if ($null -ne $guardProcess -and -not $guardProcess.HasExited) {
+            Stop-Process -Id $guardProcess.Id -Force -ErrorAction Stop
+            if (-not $guardProcess.WaitForExit(5000)) {
+                throw "Guard fixture process did not exit: $($guardProcess.Id)"
+            }
+        }
+    }
+
+    # The CIM inventory is the last process-safety boundary before recursive deletion. Prove it
+    # fails closed independently of a caller's ambient ErrorActionPreference.
+    function Get-CimInstance {
+        [CmdletBinding()]
+        param(
+            [string]$ClassName,
+            [string[]]$Property,
+            [string]$Filter
+        )
+
+        throw 'injected CIM inventory failure'
+    }
+    try {
+        Assert-LhmReleaseThrows {
+            Clear-LhmRepositoryBuildOutput -RepositoryRoot $fakeRepository | Out-Null
+        } 'cleanup must fail closed when process inventory fails' '*injected CIM inventory failure*'
+        Assert-LhmReleaseTest (
+            @($generatedPaths | Where-Object {
+                -not [System.IO.File]::Exists((Join-Path $_ 'stale.bin'))
+            }).Count -eq 0
+        ) 'failed process inventory must preserve every discovered build-output tree'
+    }
+    finally {
+        Remove-Item -LiteralPath Function:\Get-CimInstance -Force
+    }
+
+    $cachedBuildOutputPaths = @(Get-LhmRepositoryBuildOutputPaths -RepositoryRoot $fakeRepository)
+    $firstCachedBuildOutputPath = $cachedBuildOutputPaths[0]
+    $cachedBuildOutputPaths[0] = Join-Path $testRoot 'caller-mutation-must-not-stick'
+    $freshBuildOutputPaths = @(Get-LhmRepositoryBuildOutputPaths -RepositoryRoot $fakeRepository)
+    Assert-LhmReleaseTest (
+        $freshBuildOutputPaths[0] -ceq $firstCachedBuildOutputPath
+    ) 'build-output path cache must return a defensive array copy'
 
     $nestedJunctionTarget = Join-Path $testRoot 'nested-cleanup-junction-target'
     $nestedJunctionMarker = Join-Path $nestedJunctionTarget 'must-survive.txt'
@@ -615,6 +706,61 @@ exit 0
     )
     Assert-LhmReleaseTest ($wrapperResult.Status -contains 'VERIFIED') 'candidate wrapper should verify an explicit external candidate'
 
+    # The ready-directory check in New-LhmRelease uses this cheaper content identity between two
+    # same-volume renames. Keep every tamper case that justified replacing the middle full
+    # verification in the permanent fixture suite.
+    $candidateIdentity = Get-LhmCandidateContentIdentity -CandidatePath $candidate
+    Assert-LhmCandidateContentUnchanged -CandidatePath $candidate -Expected $candidateIdentity
+    Assert-LhmReleaseTest $true 'unchanged candidate content identity should verify'
+
+    $manifestPath = Join-Path $candidate 'release-manifest.json'
+    $originalManifestBytes = [System.IO.File]::ReadAllBytes($manifestPath)
+    $changedManifestBytes = [byte[]]$originalManifestBytes.Clone()
+    $manifestFlipIndex = [int][Math]::Floor($changedManifestBytes.Length / 2)
+    $changedManifestBytes[$manifestFlipIndex] = $changedManifestBytes[$manifestFlipIndex] -bxor 0x01
+    [System.IO.File]::WriteAllBytes($manifestPath, $changedManifestBytes)
+    Assert-LhmReleaseThrows {
+        Assert-LhmCandidateContentUnchanged -CandidatePath $candidate -Expected $candidateIdentity
+    } 'candidate content identity must detect an equal-length manifest byte change' '*content changed*'
+    [System.IO.File]::WriteAllBytes($manifestPath, $originalManifestBytes)
+
+    $identityArchivePath = [string]$manifest.packages[0].archive
+    $identityArchive = Join-Path $candidate ($identityArchivePath.Replace('/', '\'))
+    $originalIdentityArchiveBytes = [System.IO.File]::ReadAllBytes($identityArchive)
+    $changedIdentityArchiveBytes = [byte[]]$originalIdentityArchiveBytes.Clone()
+    $changedIdentityArchiveBytes[100] = $changedIdentityArchiveBytes[100] -bxor 0xFF
+    [System.IO.File]::WriteAllBytes($identityArchive, $changedIdentityArchiveBytes)
+    Assert-LhmReleaseThrows {
+        Assert-LhmCandidateContentUnchanged -CandidatePath $candidate -Expected $candidateIdentity
+    } 'candidate content identity must detect an equal-length archive byte change' '*content changed*'
+
+    [System.IO.File]::WriteAllBytes(
+        $identityArchive,
+        $originalIdentityArchiveBytes[0..($originalIdentityArchiveBytes.Length - 2)])
+    Assert-LhmReleaseThrows {
+        Assert-LhmCandidateContentUnchanged -CandidatePath $candidate -Expected $candidateIdentity
+    } 'candidate content identity must detect archive truncation' '*content changed*'
+    [System.IO.File]::WriteAllBytes($identityArchive, $originalIdentityArchiveBytes)
+
+    $identityExtraPackage = Join-Path $packages 'unexpected-identity-package.zip'
+    [System.IO.File]::WriteAllBytes($identityExtraPackage, [byte[]](1, 2, 3, 4))
+    Assert-LhmReleaseThrows {
+        Assert-LhmCandidateContentUnchanged -CandidatePath $candidate -Expected $candidateIdentity
+    } 'candidate content identity must detect an added package' '*content changed*'
+    [System.IO.File]::Delete($identityExtraPackage)
+
+    $secondIdentityArchivePath = [string]$manifest.packages[1].archive
+    $secondIdentityArchive = Join-Path $candidate ($secondIdentityArchivePath.Replace('/', '\'))
+    $secondIdentityArchiveBytes = [System.IO.File]::ReadAllBytes($secondIdentityArchive)
+    [System.IO.File]::Delete($secondIdentityArchive)
+    Assert-LhmReleaseThrows {
+        Assert-LhmCandidateContentUnchanged -CandidatePath $candidate -Expected $candidateIdentity
+    } 'candidate content identity must detect a removed package' '*content changed*'
+    [System.IO.File]::WriteAllBytes($secondIdentityArchive, $secondIdentityArchiveBytes)
+
+    Assert-LhmCandidateContentUnchanged -CandidatePath $candidate -Expected $candidateIdentity
+    Assert-LhmReleaseTest $true 'restored candidate content identity should verify again'
+
     $unexpectedRootFile = Join-Path $candidate 'unexpected.txt'
     [System.IO.File]::WriteAllText($unexpectedRootFile, 'unexpected')
     Assert-LhmReleaseThrows {
@@ -629,7 +775,6 @@ exit 0
     } 'candidate verification must reject undeclared package files' '*undeclared or missing*'
     [System.IO.File]::Delete($unexpectedPackage)
 
-    $manifestPath = Join-Path $candidate 'release-manifest.json'
     $originalManifestJson = Get-Content -Raw -LiteralPath $manifestPath
 
     foreach ($requiredSourceProperty in @(

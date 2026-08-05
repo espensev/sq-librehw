@@ -426,7 +426,9 @@ function Clear-LhmRepositoryBuildOutput {
     # rather than a try/catch. Note the property names differ from Get-Process: Name carries the
     # .exe extension where ProcessName does not, and the identifier is ProcessId, not Id.
     $loadedFromTargets = @()
-    foreach ($process in Get-CimInstance -ClassName Win32_Process -Property ProcessId, Name, ExecutablePath) {
+    # This guard protects a recursive delete. Fail closed here even when a future caller dot-sources
+    # the helper without setting a terminating ErrorActionPreference.
+    foreach ($process in Get-CimInstance -ClassName Win32_Process -Property ProcessId, Name, ExecutablePath -ErrorAction Stop) {
         $processPath = $process.ExecutablePath
         if ([string]::IsNullOrWhiteSpace($processPath)) {
             continue
@@ -663,10 +665,11 @@ function New-LhmReleaseZip {
 
     # Payload files are deliberately read twice: hashed here, then re-read by the archive loop
     # below. Fusing the two (hashing while streaming into the entry) saves ~23 MB of reads per
-    # release but was measured to CHANGE THE ARCHIVE BYTES - any wrapper or chunked write around
-    # the entry stream alters DeflateStream's block boundaries, so the compressed output differs
-    # while decompressing identically. The archive SHA-256 is recorded in every published
-    # candidate manifest, so that is a silent provenance break. Do not fuse these passes.
+    # release but was measured to change the archive bytes: a wrapper or chunked write around the
+    # entry stream changes DeflateStream's block boundaries while decompressing identically. That
+    # is not corruption when deliberately versioned into a new candidate, but it complicates
+    # reproducibility and provenance for negligible release-time savings. Keep the established
+    # byte stream unless a separate packaging-format decision explicitly changes it.
     $entries = @(Get-LhmPayloadFileEntries -PayloadRoot $payloadPath)
     if ($entries.Count -eq 0) {
         throw "Release payload is empty: $payloadPath"
