@@ -46,8 +46,32 @@ function Resolve-LhmFullPath {
         [string] $Path
     )
 
-    $providerPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
-    return [System.IO.Path]::GetFullPath($providerPath).TrimEnd(
+    try {
+        $providerPath =
+            $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    }
+    catch {
+        $isMissingDrive =
+            $_.Exception -is [System.Management.Automation.DriveNotFoundException] -or
+            $_.Exception.InnerException -is [System.Management.Automation.DriveNotFoundException]
+        $isAbsoluteDrivePath =
+            [System.Text.RegularExpressions.Regex]::IsMatch($Path, '^[A-Za-z]:[\\/]')
+        if (-not $isMissingDrive -or -not $isAbsoluteDrivePath) {
+            throw
+        }
+
+        $providerPath = $Path
+    }
+    $fullPath = [System.IO.Path]::GetFullPath($providerPath)
+    $pathRoot = [System.IO.Path]::GetPathRoot($fullPath)
+    if ([string]::Equals(
+        $fullPath,
+        $pathRoot,
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $fullPath
+    }
+
+    return $fullPath.TrimEnd(
         [System.IO.Path]::DirectorySeparatorChar,
         [System.IO.Path]::AltDirectorySeparatorChar)
 }
@@ -80,7 +104,22 @@ function Test-LhmPathWithin {
 
     $fullPath = Resolve-LhmFullPath -Path $Path
     $fullRoot = Resolve-LhmFullPath -Path $Root
-    $prefix = $fullRoot + [System.IO.Path]::DirectorySeparatorChar
+    if ([string]::Equals(
+        $fullPath,
+        $fullRoot,
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+
+    $prefix = $fullRoot
+    if (-not $prefix.EndsWith(
+        [string][System.IO.Path]::DirectorySeparatorChar,
+        [System.StringComparison]::Ordinal) -and
+        -not $prefix.EndsWith(
+            [string][System.IO.Path]::AltDirectorySeparatorChar,
+            [System.StringComparison]::Ordinal)) {
+        $prefix += [System.IO.Path]::DirectorySeparatorChar
+    }
 
     return $fullPath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
 }

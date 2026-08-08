@@ -314,9 +314,9 @@ public sealed class NvidiaGroupSnapshotTests
     }
 
     [Fact]
-    public void Monitor_RecordsCycleFailuresAndContinuesRefreshing()
+    public async Task Monitor_RecordsCycleFailuresAndContinuesRefreshing()
     {
-        using var recovered = new ManualResetEventSlim();
+        var recovered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var startMonitorCycle = new ManualResetEventSlim();
         var refreshError = new InvalidOperationException("Enumeration failed.");
         var callbackError = new ApplicationException("Removal callback failed.");
@@ -345,13 +345,12 @@ public sealed class NvidiaGroupSnapshotTests
 
         createdHardware[0].CloseError = closeError;
         group.HardwareRemoved += _ => throw callbackError;
-        group.HardwareAdded += _ => recovered.Set();
+        group.HardwareAdded += _ => recovered.TrySetResult(true);
         startMonitorCycle.Set();
 
         try
         {
-            Assert.True(recovered.Wait(TimeSpan.FromSeconds(5)));
-            Assert.True(SpinWait.SpinUntil(() => group.MonitorErrorCount >= 2, TimeSpan.FromSeconds(5)));
+            Assert.True(await recovered.Task.WaitAsync(TimeSpan.FromSeconds(5)));
 
             Assert.Equal(2, group.MonitorErrorCount);
             IReadOnlyList<Exception> monitorErrors = group.MonitorErrors;
@@ -370,6 +369,7 @@ public sealed class NvidiaGroupSnapshotTests
         }
         finally
         {
+            createdHardware[0].CloseError = null;
             group.Close();
         }
 

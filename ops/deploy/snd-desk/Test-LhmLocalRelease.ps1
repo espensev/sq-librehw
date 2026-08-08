@@ -9,9 +9,12 @@ $opsRoot = $PSScriptRoot
 $commonScript = Join-Path $opsRoot 'LhmLocalRelease.Common.ps1'
 $installScript = Join-Path $opsRoot 'Install-LibreHardwareMonitorRelease.ps1'
 $rollbackScript = Join-Path $opsRoot 'Restore-LibreHardwareMonitorRelease.ps1'
+$finalizeScript = Join-Path $opsRoot 'Finalize-LibreHardwareMonitorCutover.ps1'
+$legacyRecoveryScript = Join-Path $opsRoot 'Restore-LegacyLibreHardwareMonitorStartup.ps1'
+$preStableRecoveryScript =
+    Join-Path $opsRoot 'Restore-PreStableLibreHardwareMonitorStartup.ps1'
 $canonicalLauncher = Join-Path $opsRoot 'Start-LibreHardwareMonitor.ps1'
 $cleanupScript = Join-Path $repositoryRoot 'eng\Clear-LhmRepositoryBuildOutputs.ps1'
-. $commonScript
 
 function Assert-True {
     param(
@@ -45,6 +48,2026 @@ function Assert-Throws {
         return
     }
     throw "Expected failure matching '$MessagePattern', but the action succeeded."
+}
+
+function Assert-LhmNoLoadTimeDirectiveText {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Text,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    $loadTimeDirectivePattern =
+        '(?is)\busing(?:\s|`\r?\n|<\#.*?\#>)+(?:module|assembly)\b'
+    Assert-True ($Text -notmatch $loadTimeDirectivePattern) `
+        "$Label contains a load-time using module or assembly directive."
+}
+
+function Get-LhmScriptAst {
+    param([Parameter(Mandatory)][string] $Path)
+
+    $resolvedPath = (Resolve-Path -LiteralPath $Path).Path
+    $scriptText = [System.IO.File]::ReadAllText($resolvedPath)
+    Assert-LhmNoLoadTimeDirectiveText -Text $scriptText -Label $Path
+    $tokens = $null
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+        $resolvedPath,
+        [ref]$tokens,
+        [ref]$errors)
+    Assert-True ($errors.Count -eq 0) "PowerShell parser errors in '$Path'."
+    return $ast
+}
+
+function Get-LhmNearestFunctionDefinitionAst {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.Ast] $Node
+    )
+
+    $current = $Node.Parent
+    while ($null -ne $current) {
+        if ($current -is [System.Management.Automation.Language.FunctionDefinitionAst]) {
+            return $current
+        }
+        $current = $current.Parent
+    }
+    return $null
+}
+
+function Get-LhmTopLevelFunctionMap {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst
+    )
+
+    $functions = @{}
+    foreach ($statement in $ScriptAst.EndBlock.Statements) {
+        if ($statement -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+            continue
+        }
+        Assert-True (-not $functions.ContainsKey($statement.Name)) `
+            "Duplicate top-level function '$($statement.Name)'."
+        $functions[$statement.Name] = $statement
+    }
+    return $functions
+}
+
+function Assert-LhmStandalonePipelineCommand {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.CommandAst] $CommandAst,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    $pipeline = $CommandAst.Parent
+    $isBackground = $false
+    if ($pipeline -is [System.Management.Automation.Language.PipelineAst]) {
+        $backgroundProperty = $pipeline.PSObject.Properties['Background']
+        if ($null -ne $backgroundProperty) {
+            $isBackground = [bool]$backgroundProperty.Value
+        }
+    }
+    Assert-True (
+        $pipeline -is [System.Management.Automation.Language.PipelineAst] -and
+        $pipeline.PipelineElements.Count -eq 1 -and
+        [object]::ReferenceEquals($pipeline.PipelineElements[0], $CommandAst) -and
+        -not $isBackground
+    ) "$Label must be a foreground command with no pipeline input or output."
+}
+
+function Assert-LhmBareIdentityCommand {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.CommandAst] $CommandAst,
+
+        [Parameter(Mandatory)]
+        [string] $ExpectedName,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    Assert-True (
+        $CommandAst.GetCommandName() -ceq $ExpectedName -and
+        $CommandAst.InvocationOperator -eq
+            [System.Management.Automation.Language.TokenKind]::Unknown -and
+        $CommandAst.CommandElements.Count -eq 1 -and
+        @($CommandAst.Redirections).Count -eq 0
+    ) "$Label must directly invoke bare command '$ExpectedName' without arguments."
+    Assert-LhmStandalonePipelineCommand -CommandAst $CommandAst -Label $Label
+}
+
+function Assert-LhmCanonicalIdentityAssignment {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.AssignmentStatementAst] $AssignmentAst,
+
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.CommandAst] $CommandAst,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    Assert-True (
+        $AssignmentAst.Left -is
+            [System.Management.Automation.Language.VariableExpressionAst] -and
+        $AssignmentAst.Left.Extent.Text -ceq '$null' -and
+        $AssignmentAst.Operator -eq
+            [System.Management.Automation.Language.TokenKind]::Equals -and
+        [object]::ReferenceEquals($AssignmentAst.Right, $CommandAst.Parent)
+    ) "$Label must use the identity command as the complete RHS of a `$null assignment."
+}
+
+function Assert-LhmLiteralThrowStatement {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ThrowStatementAst] $ThrowAst,
+
+        [Parameter(Mandatory)]
+        [string] $Label,
+
+        [AllowNull()]
+        [object] $ExpectedMessage = $null
+    )
+
+    $pipeline = $ThrowAst.Pipeline
+    $isBackground = $false
+    if ($pipeline -is [System.Management.Automation.Language.PipelineAst]) {
+        $backgroundProperty = $pipeline.PSObject.Properties['Background']
+        if ($null -ne $backgroundProperty) {
+            $isBackground = [bool]$backgroundProperty.Value
+        }
+    }
+    Assert-True (
+        -not $ThrowAst.IsRethrow -and
+        $pipeline -is [System.Management.Automation.Language.PipelineAst] -and
+        $pipeline.PipelineElements.Count -eq 1 -and
+        -not $isBackground -and
+        $pipeline.PipelineElements[0] -is
+            [System.Management.Automation.Language.CommandExpressionAst] -and
+        $pipeline.PipelineElements[0].Redirections.Count -eq 0 -and
+        $pipeline.PipelineElements[0].Expression -is
+            [System.Management.Automation.Language.StringConstantExpressionAst] -and
+        ($null -eq $ExpectedMessage -or
+            $pipeline.PipelineElements[0].Expression.Value -ceq $ExpectedMessage)
+    ) "$Label must throw only its reviewed literal message."
+}
+
+function Assert-LhmPinnedTopLevelLiteral {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst,
+
+        [Parameter(Mandatory)]
+        [string] $VariableText,
+
+        [Parameter(Mandatory)]
+        [string] $ExpectedValue,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    Assert-True ($VariableText.StartsWith('$')) `
+        "$Label pinned variable name must begin with a dollar sign."
+    $semanticVariableName = $VariableText.Substring(1)
+    $assignments = @($ScriptAst.EndBlock.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+            $node.Left.VariablePath.UserPath -ieq $semanticVariableName
+    }, $true) | Where-Object {
+        $null -eq (Get-LhmNearestFunctionDefinitionAst -Node $_)
+    })
+    Assert-True ($assignments.Count -eq 1) `
+        "$Label must assign $VariableText exactly once at top level."
+    $right = $assignments[0].Right
+    Assert-True (
+        $assignments[0].Operator -eq
+            [System.Management.Automation.Language.TokenKind]::Equals -and
+        $right -is [System.Management.Automation.Language.CommandExpressionAst] -and
+        $right.Expression -is
+            [System.Management.Automation.Language.StringConstantExpressionAst] -and
+        $right.Expression.Value -ceq $ExpectedValue
+    ) "$Label must keep $VariableText pinned to its reviewed literal."
+}
+
+function Assert-LhmInertBypassSwitch {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst,
+
+        [Parameter(Mandatory)]
+        [string] $ParameterName,
+
+        [Parameter(Mandatory)]
+        [string] $Label,
+
+        [switch] $RequireMandatory
+    )
+
+    $parameters = @($ScriptAst.ParamBlock.Parameters | Where-Object {
+        $_.Name.VariablePath.UserPath -ieq $ParameterName
+    })
+    Assert-True ($parameters.Count -eq 1) `
+        "$Label must declare exactly one $ParameterName bypass parameter."
+    $parameter = $parameters[0]
+    $attributes = @($parameter.Attributes)
+    $typeConstraints = @($attributes | Where-Object {
+        $_ -is [System.Management.Automation.Language.TypeConstraintAst]
+    })
+    $validationAttributes = @($attributes | Where-Object {
+        $_ -isnot [System.Management.Automation.Language.TypeConstraintAst]
+    })
+    Assert-True (
+        $typeConstraints.Count -eq 1 -and
+        $typeConstraints[0].TypeName.FullName -ceq 'switch' -and
+        $null -eq $parameter.DefaultValue
+    ) "$Label $ParameterName bypass must be a default-false switch only."
+    if ($RequireMandatory) {
+        Assert-True (
+            $validationAttributes.Count -eq 1 -and
+            $validationAttributes[0] -is
+                [System.Management.Automation.Language.AttributeAst] -and
+            $validationAttributes[0].TypeName.FullName -ceq 'Parameter' -and
+            $validationAttributes[0].PositionalArguments.Count -eq 0 -and
+            $validationAttributes[0].NamedArguments.Count -eq 1 -and
+            $validationAttributes[0].NamedArguments[0].ArgumentName -ceq 'Mandatory' -and
+            $validationAttributes[0].NamedArguments[0].Argument -is
+                [System.Management.Automation.Language.ConstantExpressionAst] -and
+            $validationAttributes[0].NamedArguments[0].Argument.Value -eq $true
+        ) "$Label $ParameterName must remain a mandatory switch."
+    }
+    else {
+        Assert-True ($validationAttributes.Count -eq 0) `
+            "$Label $ParameterName bypass must not have validation attributes."
+    }
+
+    $runtimeAssignments = @($ScriptAst.EndBlock.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+            $node.Left.VariablePath.UserPath -ieq $ParameterName
+    }, $true) | Where-Object {
+        $null -eq (Get-LhmNearestFunctionDefinitionAst -Node $_)
+    })
+    Assert-True ($runtimeAssignments.Count -eq 0) `
+        "$Label must not reassign the $ParameterName bypass at runtime."
+}
+
+function Assert-LhmSafeScriptBindingContract {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst,
+
+        [Parameter(Mandatory)]
+        [string] $Label,
+
+        [switch] $AllowNoParamBlock
+    )
+
+    Assert-True (@($ScriptAst.UsingStatements).Count -eq 0) `
+        "$Label must not contain a using statement before identity verification."
+    Assert-True ($null -eq $ScriptAst.ScriptRequirements) `
+        "$Label must not contain a script requirement before identity verification."
+
+    $nonEndBlocks = @(
+        @{ Name = 'begin'; Value = $ScriptAst.BeginBlock },
+        @{ Name = 'process'; Value = $ScriptAst.ProcessBlock },
+        @{ Name = 'dynamicparam'; Value = $ScriptAst.DynamicParamBlock }
+    )
+    $cleanBlockProperty = $ScriptAst.PSObject.Properties['CleanBlock']
+    if ($null -ne $cleanBlockProperty) {
+        $nonEndBlocks += @{ Name = 'clean'; Value = $cleanBlockProperty.Value }
+    }
+    foreach ($block in $nonEndBlocks) {
+        Assert-True ($null -eq $block.Value) (
+            "$Label must not contain a non-End execution block '$($block.Name)'."
+        )
+    }
+    Assert-True ($null -ne $ScriptAst.EndBlock) `
+        "$Label must contain one End execution block."
+
+    if ($null -eq $ScriptAst.ParamBlock) {
+        Assert-True $AllowNoParamBlock `
+            "$Label must declare an inert CmdletBinding parameter block."
+        return
+    }
+
+    $scriptAttributes = @($ScriptAst.ParamBlock.Attributes)
+    Assert-True (
+        $scriptAttributes.Count -eq 1 -and
+        $scriptAttributes[0] -is [System.Management.Automation.Language.AttributeAst] -and
+        $scriptAttributes[0].TypeName.FullName -ceq 'CmdletBinding' -and
+        $scriptAttributes[0].PositionalArguments.Count -eq 0
+    ) "$Label parameter binding must use only [CmdletBinding()]."
+    $cmdletBindingArguments = @($scriptAttributes[0].NamedArguments)
+    Assert-True (
+        $cmdletBindingArguments.Count -eq 0 -or
+        ($cmdletBindingArguments.Count -eq 2 -and
+            @($cmdletBindingArguments | Where-Object {
+                $_.ArgumentName -ceq 'SupportsShouldProcess' -and
+                $_.Argument -is
+                    [System.Management.Automation.Language.ConstantExpressionAst] -and
+                $_.Argument.Value -eq $true
+            }).Count -eq 1 -and
+            @($cmdletBindingArguments | Where-Object {
+                $_.ArgumentName -ceq 'ConfirmImpact' -and
+                $_.Argument -is
+                    [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                $_.Argument.Value -ceq 'High'
+            }).Count -eq 1)
+    ) "$Label parameter binding contains unapproved CmdletBinding arguments."
+
+    $allowedAttributeNames = @(
+        'Parameter',
+        'ValidateNotNullOrEmpty',
+        'ValidateRange',
+        'ValidateSet'
+    )
+    $allowedTypeNames = @('int', 'string', 'switch', 'uri')
+    foreach ($parameter in @($ScriptAst.ParamBlock.Parameters)) {
+        Assert-True (
+            $parameter.Name.Extent.Text -match '^\$[A-Za-z_][A-Za-z0-9_]*$'
+        ) "$Label parameter binding contains a scoped or invalid parameter name."
+
+        foreach ($attribute in @($parameter.Attributes)) {
+            if ($attribute -is [System.Management.Automation.Language.TypeConstraintAst]) {
+                Assert-True ($allowedTypeNames -contains $attribute.TypeName.FullName) (
+                    "$Label parameter binding contains type '$($attribute.TypeName.FullName)'."
+                )
+                continue
+            }
+
+            Assert-True (
+                $attribute -is [System.Management.Automation.Language.AttributeAst] -and
+                $allowedAttributeNames -contains $attribute.TypeName.FullName
+            ) "$Label parameter binding contains an unapproved validation attribute."
+
+            $allowedNamedArguments = if (
+                $attribute.TypeName.FullName -ceq 'Parameter'
+            ) {
+                @('Mandatory')
+            }
+            else {
+                @()
+            }
+            foreach ($namedArgument in @($attribute.NamedArguments)) {
+                Assert-True (
+                    $allowedNamedArguments -contains $namedArgument.ArgumentName -and
+                    $namedArgument.Argument -is
+                        [System.Management.Automation.Language.ConstantExpressionAst]
+                ) "$Label parameter binding contains a dynamic or unapproved attribute argument."
+            }
+            foreach ($positionalArgument in @($attribute.PositionalArguments)) {
+                Assert-True (
+                    $positionalArgument -is
+                        [System.Management.Automation.Language.ConstantExpressionAst] -or
+                    $positionalArgument -is
+                        [System.Management.Automation.Language.StringConstantExpressionAst]
+                ) "$Label parameter binding contains a dynamic attribute argument."
+            }
+        }
+
+        if ($null -ne $parameter.DefaultValue) {
+            Assert-True (
+                $parameter.DefaultValue -is
+                    [System.Management.Automation.Language.ConstantExpressionAst] -or
+                $parameter.DefaultValue -is
+                    [System.Management.Automation.Language.StringConstantExpressionAst]
+            ) "$Label parameter default must be a literal constant."
+        }
+    }
+
+    $bindingEffects = @($ScriptAst.ParamBlock.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.CommandAst] -or
+            $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -or
+            $node -is [System.Management.Automation.Language.AssignmentStatementAst] -or
+            $node -is [System.Management.Automation.Language.RedirectionAst] -or
+            ($node -is [System.Management.Automation.Language.UnaryExpressionAst] -and
+                $node.TokenKind.ToString() -match 'PlusPlus|MinusMinus')
+    }, $true))
+    Assert-True ($bindingEffects.Count -eq 0) `
+        "$Label parameter binding contains executable or mutating syntax."
+}
+
+function Assert-LhmReadOnlyAst {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.Ast] $Root,
+
+        [Parameter(Mandatory)]
+        [hashtable] $FunctionMap,
+
+        [Parameter(Mandatory)]
+        [string] $Label,
+
+        [string[]] $AllowedCommands = @(),
+
+        [hashtable] $AllowedCommandParameters = @{},
+
+        [string[]] $ScriptBlockOnlyCommands = @(),
+
+        [string[]] $AllowedMemberCalls = @(),
+
+        [string[]] $AllowedDynamicCommands = @(),
+
+        [AllowNull()]
+        [System.Management.Automation.Language.FunctionDefinitionAst] $OwnerFunction,
+
+        [hashtable] $VisitedFunctions = @{}
+    )
+
+    if ($null -ne $OwnerFunction -and $null -ne $OwnerFunction.Body.ParamBlock) {
+        $functionParamBlock = $OwnerFunction.Body.ParamBlock
+        $functionAttributes = @($functionParamBlock.Attributes)
+        Assert-True (
+            $functionAttributes.Count -eq 0 -or
+            ($functionAttributes.Count -eq 1 -and
+                $functionAttributes[0] -is
+                    [System.Management.Automation.Language.AttributeAst] -and
+                $functionAttributes[0].TypeName.FullName -ceq 'CmdletBinding' -and
+                $functionAttributes[0].PositionalArguments.Count -eq 0 -and
+                $functionAttributes[0].NamedArguments.Count -eq 0)
+        ) "$Label function parameter binding contains an unapproved script attribute."
+
+        foreach ($parameter in @($functionParamBlock.Parameters)) {
+            Assert-True (
+                $parameter.Name.Extent.Text -match '^\$[A-Za-z_][A-Za-z0-9_]*$'
+            ) "$Label function parameter binding contains a scoped or invalid name."
+            foreach ($attribute in @($parameter.Attributes)) {
+                if ($attribute -is [System.Management.Automation.Language.TypeConstraintAst]) {
+                    Assert-True (
+                        @('int', 'string', 'switch', 'uri') -contains
+                            $attribute.TypeName.FullName
+                    ) "$Label function parameter binding contains an unapproved type."
+                    continue
+                }
+
+                Assert-True (
+                    $attribute -is [System.Management.Automation.Language.AttributeAst] -and
+                    @(
+                        'Parameter',
+                        'ValidateNotNullOrEmpty',
+                        'ValidateRange',
+                        'ValidateSet'
+                    ) -contains $attribute.TypeName.FullName
+                ) "$Label function parameter binding contains an unapproved attribute."
+                $allowedNamedArguments = if (
+                    $attribute.TypeName.FullName -ceq 'Parameter'
+                ) {
+                    @('Mandatory')
+                }
+                else {
+                    @()
+                }
+                foreach ($namedArgument in @($attribute.NamedArguments)) {
+                    Assert-True (
+                        $allowedNamedArguments -contains $namedArgument.ArgumentName -and
+                        $namedArgument.Argument -is
+                            [System.Management.Automation.Language.ConstantExpressionAst]
+                    ) "$Label function parameter binding contains a dynamic argument."
+                }
+                foreach ($positionalArgument in @($attribute.PositionalArguments)) {
+                    Assert-True (
+                        $positionalArgument -is
+                            [System.Management.Automation.Language.ConstantExpressionAst] -or
+                        $positionalArgument -is
+                            [System.Management.Automation.Language.StringConstantExpressionAst]
+                    ) "$Label function parameter binding contains a dynamic argument."
+                }
+            }
+
+            if ($null -ne $parameter.DefaultValue) {
+                Assert-True (
+                    $parameter.DefaultValue -is
+                        [System.Management.Automation.Language.ConstantExpressionAst] -or
+                    $parameter.DefaultValue -is
+                        [System.Management.Automation.Language.StringConstantExpressionAst]
+                ) "$Label function parameter default must be a literal constant."
+            }
+        }
+
+        $functionBindingEffects = @($functionParamBlock.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -or
+                $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -or
+                $node -is [System.Management.Automation.Language.AssignmentStatementAst] -or
+                $node -is [System.Management.Automation.Language.RedirectionAst] -or
+                ($node -is [System.Management.Automation.Language.UnaryExpressionAst] -and
+                    $node.TokenKind.ToString() -match 'PlusPlus|MinusMinus')
+        }, $true))
+        Assert-True ($functionBindingEffects.Count -eq 0) `
+            "$Label function parameter binding contains executable or mutating syntax."
+    }
+
+    $belongsToRoot = {
+        param($node)
+        $nearestFunction = Get-LhmNearestFunctionDefinitionAst -Node $node
+        if ($null -eq $OwnerFunction) {
+            return $null -eq $nearestFunction
+        }
+        return [object]::ReferenceEquals($nearestFunction, $OwnerFunction)
+    }
+
+    $nestedFunctions = @($Root.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst]
+    }, $true) | Where-Object { & $belongsToRoot $_ })
+    Assert-True ($nestedFunctions.Count -eq 0) `
+        "$Label contains a nested function definition in its read-only graph."
+
+    foreach ($assignment in @($Root.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.AssignmentStatementAst]
+    }, $true))) {
+        if (-not (& $belongsToRoot $assignment)) {
+            continue
+        }
+        Assert-True (
+            $assignment.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+            $assignment.Left.Extent.Text -match '^\$[A-Za-z_][A-Za-z0-9_]*$'
+        ) "$Label contains a non-local assignment '$($assignment.Extent.Text)'."
+    }
+
+    $mutatingUnaryExpressions = @($Root.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.UnaryExpressionAst] -and
+            $node.TokenKind.ToString() -match 'PlusPlus|MinusMinus'
+    }, $true) | Where-Object { & $belongsToRoot $_ })
+    Assert-True ($mutatingUnaryExpressions.Count -eq 0) `
+        "$Label contains an increment or decrement mutation."
+
+    $redirections = @($Root.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.RedirectionAst]
+    }, $true) | Where-Object { & $belongsToRoot $_ })
+    Assert-True ($redirections.Count -eq 0) `
+        "$Label contains a file or stream redirection."
+
+    foreach ($command in @($Root.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.CommandAst]
+    }, $true))) {
+        if (-not (& $belongsToRoot $command)) {
+            continue
+        }
+
+        $commandName = $command.GetCommandName()
+        if ([string]::IsNullOrWhiteSpace($commandName)) {
+            $dynamicTarget = if ($command.CommandElements.Count -gt 0) {
+                $command.CommandElements[0].Extent.Text.Trim()
+            }
+            else {
+                '<missing>'
+            }
+            Assert-True ($AllowedDynamicCommands -contains $dynamicTarget) (
+                "$Label contains dynamic or unresolved command '$dynamicTarget'."
+            )
+            Assert-True (
+                $command.InvocationOperator -eq
+                    [System.Management.Automation.Language.TokenKind]::Ampersand
+            ) "$Label dynamic command '$dynamicTarget' must use the call operator."
+            Assert-True ($command.CommandElements.Count -eq 1) (
+                "$Label dynamic command '$dynamicTarget' must be invoked without arguments."
+            )
+            Assert-LhmStandalonePipelineCommand `
+                -CommandAst $command `
+                -Label "$Label dynamic command '$dynamicTarget'"
+            continue
+        }
+
+        $splattedArguments = @($command.CommandElements | Where-Object {
+            $_ -is [System.Management.Automation.Language.VariableExpressionAst] -and
+                $_.Splatted
+        })
+        Assert-True ($splattedArguments.Count -eq 0) (
+            "$Label contains splatted arguments for command '$commandName'."
+        )
+
+        $allowedParameters = if ($AllowedCommandParameters.ContainsKey($commandName)) {
+            @($AllowedCommandParameters[$commandName])
+        }
+        else {
+            @()
+        }
+        foreach ($commandParameter in @($command.CommandElements | Where-Object {
+            $_ -is [System.Management.Automation.Language.CommandParameterAst]
+        })) {
+            Assert-True (
+                $allowedParameters -contains $commandParameter.ParameterName
+            ) (
+                "$Label contains unapproved parameter " +
+                "'-$($commandParameter.ParameterName)' for command '$commandName'."
+            )
+        }
+
+        if ($ScriptBlockOnlyCommands -contains $commandName) {
+            $positionalArguments = @($command.CommandElements | Select-Object -Skip 1)
+            Assert-True (
+                $positionalArguments.Count -gt 0 -and
+                @($positionalArguments | Where-Object {
+                    $_ -isnot
+                        [System.Management.Automation.Language.ScriptBlockExpressionAst]
+                }).Count -eq 0
+            ) "$Label command '$commandName' must use positional script blocks only."
+        }
+
+        if ($FunctionMap.ContainsKey($commandName)) {
+            if (-not $VisitedFunctions.ContainsKey($commandName)) {
+                $VisitedFunctions[$commandName] = $true
+                $functionDefinition = $FunctionMap[$commandName]
+                Assert-LhmReadOnlyAst `
+                    -Root $functionDefinition.Body `
+                    -FunctionMap $FunctionMap `
+                    -Label "$Label -> $commandName" `
+                    -AllowedCommands $AllowedCommands `
+                    -AllowedCommandParameters $AllowedCommandParameters `
+                    -ScriptBlockOnlyCommands $ScriptBlockOnlyCommands `
+                    -AllowedMemberCalls $AllowedMemberCalls `
+                    -AllowedDynamicCommands $AllowedDynamicCommands `
+                    -OwnerFunction $functionDefinition `
+                    -VisitedFunctions $VisitedFunctions
+            }
+            continue
+        }
+
+        Assert-True ($AllowedCommands -contains $commandName) (
+            "$Label contains command '$commandName', which is not proven read-only."
+        )
+    }
+
+    foreach ($memberCall in @($Root.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst]
+    }, $true))) {
+        if (-not (& $belongsToRoot $memberCall)) {
+            continue
+        }
+        $memberName = $memberCall.Member.Extent.Text.Trim("'`"")
+        $memberKey = "$($memberCall.Expression.Extent.Text.Trim())::$memberName"
+        Assert-True ($AllowedMemberCalls -contains $memberKey) (
+            "$Label contains member invocation '$memberKey', which is not proven read-only."
+        )
+    }
+}
+
+function Assert-LhmNoRuntimeTrap {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    $runtimeTraps = @($ScriptAst.EndBlock.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.TrapStatementAst]
+    }, $true) | Where-Object {
+        $null -eq (Get-LhmNearestFunctionDefinitionAst -Node $_)
+    })
+    Assert-True ($runtimeTraps.Count -eq 0) `
+        "$Label must not define a runtime trap that can swallow identity failure."
+}
+
+function Assert-LhmCommonIdentityContract {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    Assert-LhmSafeScriptBindingContract `
+        -ScriptAst $ScriptAst `
+        -Label $Label `
+        -AllowNoParamBlock
+    $statements = @($ScriptAst.EndBlock.Statements)
+    Assert-True ($statements.Count -gt 20) "$Label is unexpectedly incomplete."
+    Assert-True (
+        $statements[0] -is [System.Management.Automation.Language.PipelineAst] -and
+        $statements[0].Extent.Text.Trim() -ceq 'Set-StrictMode -Version Latest'
+    ) "$Label must begin with Set-StrictMode only."
+
+    foreach ($statement in $statements[1..($statements.Count - 1)]) {
+        if ($statement -is [System.Management.Automation.Language.FunctionDefinitionAst]) {
+            continue
+        }
+        Assert-True (
+            $statement -is [System.Management.Automation.Language.AssignmentStatementAst]
+        ) "$Label dot-source path contains executable top-level code."
+        Assert-True (
+            $statement.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+            $statement.Left.Extent.Text -match '^\$script:Lhm[A-Za-z0-9_]+$'
+        ) "$Label dot-source path assigns outside its constant script metadata."
+        $assignments = @($statement.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.AssignmentStatementAst]
+        }, $true))
+        Assert-True (
+            $assignments.Count -eq 1 -and
+            [object]::ReferenceEquals($assignments[0], $statement)
+        ) "$Label top-level metadata contains a nested assignment."
+        $mutatingUnaryExpressions = @($statement.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.UnaryExpressionAst] -and
+                $node.TokenKind.ToString() -match 'PlusPlus|MinusMinus'
+        }, $true))
+        Assert-True ($mutatingUnaryExpressions.Count -eq 0) `
+            "$Label top-level metadata contains increment or decrement mutation."
+        $redirections = @($statement.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.RedirectionAst]
+        }, $true))
+        Assert-True ($redirections.Count -eq 0) `
+            "$Label top-level metadata contains a redirection."
+        $commands = @($statement.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -or
+                $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst]
+        }, $true))
+        Assert-True ($commands.Count -eq 0) `
+            "$Label top-level assignment invokes executable code."
+    }
+
+    Assert-LhmPinnedTopLevelLiteral `
+        -ScriptAst $ScriptAst `
+        -VariableText '$script:LhmExpectedMachineId' `
+        -ExpectedValue 'snd-desk' `
+        -Label $Label
+    Assert-LhmPinnedTopLevelLiteral `
+        -ScriptAst $ScriptAst `
+        -VariableText '$script:LhmIdentityVerifierPath' `
+        -ExpectedValue `
+            'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1' `
+        -Label $Label
+
+    $functionMap = Get-LhmTopLevelFunctionMap -ScriptAst $ScriptAst
+    Assert-True ($functionMap.ContainsKey('Assert-LhmVerifiedMachineIdentity')) `
+        "$Label does not define Assert-LhmVerifiedMachineIdentity."
+    $identityFunction = $functionMap['Assert-LhmVerifiedMachineIdentity']
+    Assert-LhmReadOnlyAst `
+        -Root $identityFunction.Body `
+        -FunctionMap $functionMap `
+        -Label "$Label identity function" `
+        -AllowedCommands @('Test-Path') `
+        -AllowedCommandParameters @{
+            'Test-Path' = @('LiteralPath', 'PathType')
+        } `
+        -AllowedDynamicCommands @('$script:LhmIdentityVerifierPath') `
+        -OwnerFunction $identityFunction
+}
+
+function Assert-LhmCommonPrelude {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst,
+
+        [Parameter(Mandatory)]
+        [int] $GateIndex,
+
+        [Parameter(Mandatory)]
+        [string] $Label,
+
+        [string[]] $AllowedFunctionNames = @()
+    )
+
+    $statements = @($ScriptAst.EndBlock.Statements)
+    Assert-True ($GateIndex -ge 3) "$Label identity gate appears before its safe prelude."
+    Assert-True (
+        $statements[0].Extent.Text.Trim() -ceq 'Set-StrictMode -Version Latest' -and
+        $statements[1] -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $statements[1].Extent.Text.Trim() -ceq "`$ErrorActionPreference = 'Stop'" -and
+        $statements[2] -is [System.Management.Automation.Language.PipelineAst] -and
+        $statements[2].Extent.Text.Trim() -ceq
+            ". (Join-Path `$PSScriptRoot 'LhmLocalRelease.Common.ps1')"
+    ) "$Label pre-identity prelude changed from strict mode, error policy, and common definitions."
+
+    $preGateFunctionNames = @()
+    for ($index = 3; $index -lt $GateIndex; $index++) {
+        Assert-True (
+            $statements[$index] -is
+                [System.Management.Automation.Language.FunctionDefinitionAst]
+        ) "$Label executes code before the production identity gate."
+        $functionName = $statements[$index].Name
+        Assert-True ($AllowedFunctionNames -contains $functionName) (
+            "$Label contains unapproved pre-gate function '$functionName'."
+        )
+        $preGateFunctionNames += $functionName
+    }
+    Assert-True (
+        $preGateFunctionNames.Count -eq $AllowedFunctionNames.Count -and
+        @($AllowedFunctionNames | Where-Object {
+            $preGateFunctionNames -notcontains $_
+        }).Count -eq 0
+    ) "$Label pre-gate function allowlist changed."
+    Assert-True (
+        @($preGateFunctionNames | Select-Object -Unique).Count -eq
+            $preGateFunctionNames.Count
+    ) "$Label contains a duplicate pre-gate function definition."
+}
+
+function Assert-LhmEntryPointEnvelope {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    Assert-LhmSafeScriptBindingContract -ScriptAst $ScriptAst -Label $Label
+    Assert-LhmNoRuntimeTrap -ScriptAst $ScriptAst -Label $Label
+}
+
+function Assert-LhmLiveIdentityGate {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    Assert-LhmEntryPointEnvelope -ScriptAst $ScriptAst -Label $Label
+    Assert-LhmInertBypassSwitch `
+        -ScriptAst $ScriptAst `
+        -ParameterName 'NonLiveTestMode' `
+        -Label $Label
+    $statements = @($ScriptAst.EndBlock.Statements)
+    $gates = @($statements | Where-Object {
+        $_ -is [System.Management.Automation.Language.IfStatementAst] -and
+            $_.Clauses.Count -eq 1 -and
+            $_.Clauses[0].Item1.Extent.Text.Trim() -ceq '-not $NonLiveTestMode'
+    })
+    Assert-True ($gates.Count -eq 1) `
+        "$Label must have one explicit NonLiveTestMode identity bypass."
+    $gate = $gates[0]
+    Assert-True ($null -eq $gate.ElseClause) `
+        "$Label production identity gate must not have an else branch."
+
+    $gateIndex = -1
+    for ($index = 0; $index -lt $statements.Count; $index++) {
+        if ([object]::ReferenceEquals($statements[$index], $gate)) {
+            $gateIndex = $index
+            break
+        }
+    }
+    Assert-True ($gateIndex -ge 0) "$Label identity gate is not top-level."
+    Assert-LhmCommonPrelude `
+        -ScriptAst $ScriptAst `
+        -GateIndex $gateIndex `
+        -Label $Label `
+        -AllowedFunctionNames @('Invoke-TestFailurePoint')
+
+    $gateStatements = @($gate.Clauses[0].Item2.Statements)
+    Assert-True (
+        $gateStatements.Count -eq 1 -and
+        $gateStatements[0] -is
+            [System.Management.Automation.Language.AssignmentStatementAst]
+    ) "$Label identity gate must contain one direct assignment."
+    $gateCommands = @($gateStatements[0].FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.CommandAst]
+    }, $true))
+    Assert-True (
+        $gateCommands.Count -eq 1
+    ) "$Label identity gate must contain exactly one command."
+    Assert-LhmBareIdentityCommand `
+        -CommandAst $gateCommands[0] `
+        -ExpectedName 'Assert-LhmVerifiedMachineIdentity' `
+        -Label "$Label identity gate"
+    Assert-LhmCanonicalIdentityAssignment `
+        -AssignmentAst $gateStatements[0] `
+        -CommandAst $gateCommands[0] `
+        -Label "$Label identity gate"
+
+    $runtimeIdentityCalls = @($ScriptAst.EndBlock.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.GetCommandName() -ceq 'Assert-LhmVerifiedMachineIdentity'
+    }, $true) | Where-Object {
+        $null -eq (Get-LhmNearestFunctionDefinitionAst -Node $_)
+    })
+    Assert-True ($runtimeIdentityCalls.Count -eq 1) `
+        "$Label must call Assert-LhmVerifiedMachineIdentity exactly once at runtime."
+}
+
+function Assert-LhmFinalizeIdentityGate {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    Assert-LhmEntryPointEnvelope -ScriptAst $ScriptAst -Label $Label
+    Assert-LhmInertBypassSwitch `
+        -ScriptAst $ScriptAst `
+        -ParameterName 'AttendedUiAccepted' `
+        -Label $Label `
+        -RequireMandatory
+    Assert-LhmInertBypassSwitch `
+        -ScriptAst $ScriptAst `
+        -ParameterName 'NormalUserLauncherAccepted' `
+        -Label $Label `
+        -RequireMandatory
+    $statements = @($ScriptAst.EndBlock.Statements)
+    Assert-LhmCommonPrelude -ScriptAst $ScriptAst -GateIndex 3 -Label $Label
+    $expectedGuards = @(
+        @{
+            Condition = '-not $AttendedUiAccepted'
+            Message =
+                'Use -AttendedUiAccepted only after checking the populated restored UI.'
+        },
+        @{
+            Condition = '-not $NormalUserLauncherAccepted'
+            Message =
+                'Use -NormalUserLauncherAccepted only after invoking librehw.cmd from a normal unelevated shell.'
+        }
+    )
+    for ($offset = 0; $offset -lt $expectedGuards.Count; $offset++) {
+        $guard = $statements[3 + $offset]
+        Assert-True (
+            $guard -is [System.Management.Automation.Language.IfStatementAst] -and
+            $guard.Clauses.Count -eq 1 -and
+            $null -eq $guard.ElseClause -and
+            $guard.Clauses[0].Item1.Extent.Text.Trim() -ceq
+                $expectedGuards[$offset].Condition -and
+            $guard.Clauses[0].Item2.Statements.Count -eq 1 -and
+            $guard.Clauses[0].Item2.Statements[0] -is
+                [System.Management.Automation.Language.ThrowStatementAst]
+        ) "$Label acceptance guard changed before identity verification."
+        $throwStatement = $guard.Clauses[0].Item2.Statements[0]
+        Assert-LhmLiteralThrowStatement `
+            -ThrowAst $throwStatement `
+            -ExpectedMessage $expectedGuards[$offset].Message `
+            -Label "$Label acceptance guard"
+    }
+
+    $identityStatement = $statements[5]
+    $identityCommands = @($identityStatement.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.CommandAst]
+    }, $true))
+    Assert-True (
+        $identityStatement -is
+            [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $identityCommands.Count -eq 1
+    ) "$Label identity verification must immediately follow its two acceptance guards."
+    Assert-LhmBareIdentityCommand `
+        -CommandAst $identityCommands[0] `
+        -ExpectedName 'Assert-LhmVerifiedMachineIdentity' `
+        -Label "$Label identity gate"
+    Assert-LhmCanonicalIdentityAssignment `
+        -AssignmentAst $identityStatement `
+        -CommandAst $identityCommands[0] `
+        -Label "$Label identity gate"
+    $runtimeIdentityCalls = @($ScriptAst.EndBlock.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.GetCommandName() -ceq 'Assert-LhmVerifiedMachineIdentity'
+    }, $true) | Where-Object {
+        $null -eq (Get-LhmNearestFunctionDefinitionAst -Node $_)
+    })
+    Assert-True ($runtimeIdentityCalls.Count -eq 1) `
+        "$Label must call Assert-LhmVerifiedMachineIdentity exactly once at runtime."
+}
+
+function Assert-LhmRetiredIdentityGate {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    Assert-LhmEntryPointEnvelope -ScriptAst $ScriptAst -Label $Label
+    $statements = @($ScriptAst.EndBlock.Statements)
+    Assert-True ($statements.Count -eq 5) `
+        "$Label retired entry point must contain exactly five top-level statements."
+    Assert-LhmCommonPrelude -ScriptAst $ScriptAst -GateIndex 3 -Label $Label
+    $identityCommands = @($statements[3].FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.CommandAst]
+    }, $true))
+    Assert-True (
+        $statements[3] -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $identityCommands.Count -eq 1 -and
+        $statements[4] -is [System.Management.Automation.Language.ThrowStatementAst]
+    ) "$Label retired entry point must verify identity and then terminate."
+    Assert-LhmBareIdentityCommand `
+        -CommandAst $identityCommands[0] `
+        -ExpectedName 'Assert-LhmVerifiedMachineIdentity' `
+        -Label "$Label identity gate"
+    Assert-LhmCanonicalIdentityAssignment `
+        -AssignmentAst $statements[3] `
+        -CommandAst $identityCommands[0] `
+        -Label "$Label identity gate"
+    Assert-LhmLiteralThrowStatement `
+        -ThrowAst $statements[4] `
+        -Label "$Label retired terminal throw"
+}
+
+function Assert-LhmLauncherIdentityGate {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    Assert-LhmEntryPointEnvelope -ScriptAst $ScriptAst -Label $Label
+    Assert-LhmInertBypassSwitch `
+        -ScriptAst $ScriptAst `
+        -ParameterName 'ValidateScriptOnly' `
+        -Label $Label
+    $statements = @($ScriptAst.EndBlock.Statements)
+    Assert-LhmPinnedTopLevelLiteral `
+        -ScriptAst $ScriptAst `
+        -VariableText '$ExpectedMachineId' `
+        -ExpectedValue 'snd-desk' `
+        -Label $Label
+    Assert-LhmPinnedTopLevelLiteral `
+        -ScriptAst $ScriptAst `
+        -VariableText '$IdentityVerifierPath' `
+        -ExpectedValue `
+            'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1' `
+        -Label $Label
+    $functionMap = Get-LhmTopLevelFunctionMap -ScriptAst $ScriptAst
+    Assert-True ($functionMap.ContainsKey('Assert-LauncherMachineIdentity')) `
+        "$Label does not define Assert-LauncherMachineIdentity."
+    $identityFunction = $functionMap['Assert-LauncherMachineIdentity']
+    Assert-LhmReadOnlyAst `
+        -Root $identityFunction.Body `
+        -FunctionMap $functionMap `
+        -Label "$Label identity function" `
+        -AllowedCommands @('Test-Path') `
+        -AllowedCommandParameters @{
+            'Test-Path' = @('LiteralPath', 'PathType')
+        } `
+        -AllowedDynamicCommands @('$IdentityVerifierPath') `
+        -OwnerFunction $identityFunction
+
+    $validationBranches = @($statements | Where-Object {
+        $_ -is [System.Management.Automation.Language.IfStatementAst] -and
+            $_.Clauses.Count -eq 1 -and
+            $_.Clauses[0].Item1.Extent.Text.Trim() -ceq '$ValidateScriptOnly'
+    })
+    Assert-True ($validationBranches.Count -eq 1) `
+        "$Label must have one top-level ValidateScriptOnly branch."
+    $validationBranch = $validationBranches[0]
+    Assert-True ($null -eq $validationBranch.ElseClause) `
+        "$Label ValidateScriptOnly branch must not have an else branch."
+
+    $validationIndex = -1
+    for ($index = 0; $index -lt $statements.Count; $index++) {
+        if ([object]::ReferenceEquals($statements[$index], $validationBranch)) {
+            $validationIndex = $index
+            break
+        }
+    }
+    Assert-True ($validationIndex -ge 2) "$Label validation branch is not top-level."
+    for ($index = 0; $index -lt $validationIndex; $index++) {
+        $statement = $statements[$index]
+        if ($statement -is [System.Management.Automation.Language.FunctionDefinitionAst]) {
+            continue
+        }
+        Assert-True (
+            $statement -is [System.Management.Automation.Language.PipelineAst] -or
+            ($statement -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                $statement.Left -is [System.Management.Automation.Language.VariableExpressionAst])
+        ) "$Label executes a control-flow statement before validation and identity."
+        Assert-LhmReadOnlyAst `
+            -Root $statement `
+            -FunctionMap $functionMap `
+            -Label "$Label pre-identity statement $index" `
+            -AllowedCommands @('Set-StrictMode') `
+            -AllowedCommandParameters @{
+                'Set-StrictMode' = @('Version')
+            } `
+            -AllowedMemberCalls @('[System.IO.Path]::Combine')
+    }
+
+    $validationStatements = @($validationBranch.Clauses[0].Item2.Statements)
+    Assert-True (
+        $validationStatements.Count -gt 0 -and
+        $validationStatements[-1] -is
+            [System.Management.Automation.Language.ReturnStatementAst]
+    ) "$Label ValidateScriptOnly branch must terminate with return."
+    Assert-LhmReadOnlyAst `
+        -Root $validationBranch.Clauses[0].Item2 `
+        -FunctionMap $functionMap `
+        -Label "$Label ValidateScriptOnly graph" `
+        -AllowedCommands @('ForEach-Object', 'Get-Process', 'Where-Object') `
+        -AllowedCommandParameters @{
+            'ForEach-Object' = @()
+            'Get-LibreHardwareMonitorProcess' = @('InspectionOnly')
+            'Get-Process' = @('Name', 'ErrorAction')
+            'Test-LauncherPathEqual' = @('Left', 'Right')
+            'Where-Object' = @()
+        } `
+        -ScriptBlockOnlyCommands @('ForEach-Object', 'Where-Object') `
+        -AllowedMemberCalls @(
+            '[string]::Equals',
+            '[System.IO.Path]::GetFullPath'
+        )
+
+    Assert-True ($validationIndex + 1 -lt $statements.Count) `
+        "$Label has no production identity statement after validation."
+    $identityStatement = $statements[$validationIndex + 1]
+    $identityCommands = @($identityStatement.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.CommandAst]
+    }, $true))
+    Assert-True (
+        $identityStatement -is [System.Management.Automation.Language.PipelineAst] -and
+        $identityCommands.Count -eq 1
+    ) "$Label identity must be the immediate executable statement after validation."
+    Assert-LhmBareIdentityCommand `
+        -CommandAst $identityCommands[0] `
+        -ExpectedName 'Assert-LauncherMachineIdentity' `
+        -Label "$Label identity gate"
+    Assert-True (
+        [object]::ReferenceEquals($identityStatement, $identityCommands[0].Parent)
+    ) "$Label identity command must be the complete identity statement."
+
+    $runtimeIdentityCalls = @($ScriptAst.EndBlock.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.GetCommandName() -ceq 'Assert-LauncherMachineIdentity'
+    }, $true) | Where-Object {
+        $null -eq (Get-LhmNearestFunctionDefinitionAst -Node $_)
+    })
+    Assert-True ($runtimeIdentityCalls.Count -eq 1) `
+        "$Label must call Assert-LauncherMachineIdentity exactly once at runtime."
+}
+
+function Invoke-LhmIdentityContractPreflight {
+    Assert-LhmCommonIdentityContract `
+        -ScriptAst (Get-LhmScriptAst -Path $commonScript) `
+        -Label 'LhmLocalRelease.Common.ps1'
+    Assert-LhmLiveIdentityGate `
+        -ScriptAst (Get-LhmScriptAst -Path $installScript) `
+        -Label 'Install-LibreHardwareMonitorRelease.ps1'
+    Assert-LhmLiveIdentityGate `
+        -ScriptAst (Get-LhmScriptAst -Path $rollbackScript) `
+        -Label 'Restore-LibreHardwareMonitorRelease.ps1'
+    Assert-LhmFinalizeIdentityGate `
+        -ScriptAst (Get-LhmScriptAst -Path $finalizeScript) `
+        -Label 'Finalize-LibreHardwareMonitorCutover.ps1'
+    Assert-LhmRetiredIdentityGate `
+        -ScriptAst (Get-LhmScriptAst -Path $legacyRecoveryScript) `
+        -Label 'Restore-LegacyLibreHardwareMonitorStartup.ps1'
+    Assert-LhmRetiredIdentityGate `
+        -ScriptAst (Get-LhmScriptAst -Path $preStableRecoveryScript) `
+        -Label 'Restore-PreStableLibreHardwareMonitorStartup.ps1'
+    Assert-LhmLauncherIdentityGate `
+        -ScriptAst (Get-LhmScriptAst -Path $canonicalLauncher) `
+        -Label 'Start-LibreHardwareMonitor.ps1'
+
+    $noGateTokens = $null
+    $noGateErrors = $null
+    $noGateAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $NonLiveTestMode)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+function Invoke-TestFailurePoint { }
+$mode = Assert-LhmOperationMode -NonLiveTestMode:$NonLiveTestMode
+'@, [ref]$noGateTokens, [ref]$noGateErrors)
+    Assert-True ($noGateErrors.Count -eq 0) `
+        'Removed identity-gate fixture did not parse.'
+    Assert-Throws -MessagePattern 'one explicit NonLiveTestMode identity bypass' -Action {
+        Assert-LhmLiveIdentityGate `
+            -ScriptAst $noGateAst `
+            -Label 'removed identity-gate fixture'
+    }
+
+    $truthyBypassTokens = $null
+    $truthyBypassErrors = $null
+    $truthyBypassAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([int] $NonLiveTestMode = 1)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+function Invoke-TestFailurePoint { }
+if (-not $NonLiveTestMode) {
+    $null = Assert-LhmVerifiedMachineIdentity
+}
+'@, [ref]$truthyBypassTokens, [ref]$truthyBypassErrors)
+    Assert-True ($truthyBypassErrors.Count -eq 0) `
+        'Truthy NonLiveTestMode default fixture did not parse.'
+    Assert-Throws -MessagePattern 'default-false switch only' -Action {
+        Assert-LhmLiveIdentityGate `
+            -ScriptAst $truthyBypassAst `
+            -Label 'truthy NonLiveTestMode default fixture'
+    }
+
+    $noLauncherGateTokens = $null
+    $noLauncherGateErrors = $null
+    $noLauncherGateAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $ValidateScriptOnly)
+
+$ErrorActionPreference = 'Stop'
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$ExpectedMachineId = 'snd-desk'
+function Assert-LauncherMachineIdentity { }
+if ($ValidateScriptOnly) {
+    return
+}
+Initialize-LauncherNativeMethods
+'@, [ref]$noLauncherGateTokens, [ref]$noLauncherGateErrors)
+    Assert-True ($noLauncherGateErrors.Count -eq 0) `
+        'Removed launcher identity-gate fixture did not parse.'
+    Assert-Throws -MessagePattern "bare command 'Assert-LauncherMachineIdentity'" -Action {
+        Assert-LhmLauncherIdentityGate `
+            -ScriptAst $noLauncherGateAst `
+            -Label 'removed launcher identity-gate fixture'
+    }
+
+    $truthyValidationTokens = $null
+    $truthyValidationErrors = $null
+    $truthyValidationAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([int] $ValidateScriptOnly = 1)
+
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$ExpectedMachineId = 'snd-desk'
+function Assert-LauncherMachineIdentity { }
+if ($ValidateScriptOnly) {
+    return
+}
+Assert-LauncherMachineIdentity
+'@, [ref]$truthyValidationTokens, [ref]$truthyValidationErrors)
+    Assert-True ($truthyValidationErrors.Count -eq 0) `
+        'Truthy ValidateScriptOnly default fixture did not parse.'
+    Assert-Throws -MessagePattern 'default-false switch only' -Action {
+        Assert-LhmLauncherIdentityGate `
+            -ScriptAst $truthyValidationAst `
+            -Label 'truthy ValidateScriptOnly default fixture'
+    }
+
+    $dynamicValidationTokens = $null
+    $dynamicValidationErrors = $null
+    $dynamicValidationAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $ValidateScriptOnly)
+
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$ExpectedMachineId = 'snd-desk'
+function Assert-LauncherMachineIdentity { }
+function Invoke-UnsafeValidation { & $LauncherTargetPath }
+if ($ValidateScriptOnly) {
+    Invoke-UnsafeValidation
+    return
+}
+Assert-LauncherMachineIdentity
+'@, [ref]$dynamicValidationTokens, [ref]$dynamicValidationErrors)
+    Assert-True ($dynamicValidationErrors.Count -eq 0) `
+        'Dynamic validation-effect fixture did not parse.'
+    Assert-Throws -MessagePattern 'dynamic or unresolved command' -Action {
+        Assert-LhmLauncherIdentityGate `
+            -ScriptAst $dynamicValidationAst `
+            -Label 'dynamic validation-effect fixture'
+    }
+
+    $memberValidationTokens = $null
+    $memberValidationErrors = $null
+    $memberValidationAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $ValidateScriptOnly)
+
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$ExpectedMachineId = 'snd-desk'
+function Assert-LauncherMachineIdentity { }
+function Invoke-UnsafeValidation { $shortcut.Save() }
+if ($ValidateScriptOnly) {
+    Invoke-UnsafeValidation
+    return
+}
+Assert-LauncherMachineIdentity
+'@, [ref]$memberValidationTokens, [ref]$memberValidationErrors)
+    Assert-True ($memberValidationErrors.Count -eq 0) `
+        'Member validation-effect fixture did not parse.'
+    Assert-Throws -MessagePattern 'member invocation' -Action {
+        Assert-LhmLauncherIdentityGate `
+            -ScriptAst $memberValidationAst `
+            -Label 'member validation-effect fixture'
+    }
+
+    $nestedFunctionTokens = $null
+    $nestedFunctionErrors = $null
+    $nestedFunctionAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $ValidateScriptOnly)
+
+$ErrorActionPreference = 'Stop'
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$ExpectedMachineId = 'snd-desk'
+function Assert-LauncherMachineIdentity { }
+if ($ValidateScriptOnly) {
+    function Get-Process { Remove-Item 'C:\safety-sentinel' }
+    Get-Process
+    return
+}
+Assert-LauncherMachineIdentity
+'@, [ref]$nestedFunctionTokens, [ref]$nestedFunctionErrors)
+    Assert-True ($nestedFunctionErrors.Count -eq 0) `
+        'Nested function-shadow fixture did not parse.'
+    Assert-Throws -MessagePattern 'nested function definition' -Action {
+        Assert-LhmLauncherIdentityGate `
+            -ScriptAst $nestedFunctionAst `
+            -Label 'nested function-shadow fixture'
+    }
+
+    $shadowedGateTokens = $null
+    $shadowedGateErrors = $null
+    $shadowedGateAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $NonLiveTestMode)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+function Assert-LhmVerifiedMachineIdentity { }
+function Invoke-TestFailurePoint { }
+if (-not $NonLiveTestMode) {
+    $null = Assert-LhmVerifiedMachineIdentity
+}
+'@, [ref]$shadowedGateTokens, [ref]$shadowedGateErrors)
+    Assert-True ($shadowedGateErrors.Count -eq 0) `
+        'Shadowed identity-gate fixture did not parse.'
+    Assert-Throws -MessagePattern 'unapproved pre-gate function' -Action {
+        Assert-LhmLiveIdentityGate `
+            -ScriptAst $shadowedGateAst `
+            -Label 'shadowed identity-gate fixture'
+    }
+
+    $gateArgumentTokens = $null
+    $gateArgumentErrors = $null
+    $gateArgumentAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $NonLiveTestMode)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+function Invoke-TestFailurePoint { }
+if (-not $NonLiveTestMode) {
+    $null = Assert-LhmVerifiedMachineIdentity `
+        ([System.IO.File]::WriteAllText('C:\safety-sentinel', 'unsafe'))
+}
+'@, [ref]$gateArgumentTokens, [ref]$gateArgumentErrors)
+    Assert-True ($gateArgumentErrors.Count -eq 0) `
+        'Identity-gate argument fixture did not parse.'
+    Assert-Throws -MessagePattern 'without arguments' -Action {
+        Assert-LhmLiveIdentityGate `
+            -ScriptAst $gateArgumentAst `
+            -Label 'identity-gate argument fixture'
+    }
+
+    $gateRedirectionTokens = $null
+    $gateRedirectionErrors = $null
+    $gateRedirectionAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $NonLiveTestMode)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+function Invoke-TestFailurePoint { }
+if (-not $NonLiveTestMode) {
+    $null = Assert-LhmVerifiedMachineIdentity 3> 'C:\safety-sentinel'
+}
+'@, [ref]$gateRedirectionTokens, [ref]$gateRedirectionErrors)
+    Assert-True ($gateRedirectionErrors.Count -eq 0) `
+        'Identity-gate redirection fixture did not parse.'
+    Assert-Throws -MessagePattern 'without arguments' -Action {
+        Assert-LhmLiveIdentityGate `
+            -ScriptAst $gateRedirectionAst `
+            -Label 'identity-gate redirection fixture'
+    }
+
+    $gateSubexpressionTokens = $null
+    $gateSubexpressionErrors = $null
+    $gateSubexpressionAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $NonLiveTestMode)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+function Invoke-TestFailurePoint { }
+if (-not $NonLiveTestMode) {
+    $null = $([System.IO.File]::Delete('C:\safety-sentinel');
+        Assert-LhmVerifiedMachineIdentity)
+}
+'@, [ref]$gateSubexpressionTokens, [ref]$gateSubexpressionErrors)
+    Assert-True ($gateSubexpressionErrors.Count -eq 0) `
+        'Identity-gate subexpression fixture did not parse.'
+    Assert-Throws -MessagePattern 'complete RHS' -Action {
+        Assert-LhmLiveIdentityGate `
+            -ScriptAst $gateSubexpressionAst `
+            -Label 'identity-gate subexpression fixture'
+    }
+
+    $finalizeGuardTokens = $null
+    $finalizeGuardErrors = $null
+    $finalizeGuardAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)]
+    [switch] $AttendedUiAccepted,
+
+    [Parameter(Mandatory)]
+    [switch] $NormalUserLauncherAccepted
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+if (-not $AttendedUiAccepted) {
+    throw ([System.IO.File]::Delete('C:\safety-sentinel'))
+}
+if (-not $NormalUserLauncherAccepted) {
+    throw 'Use -NormalUserLauncherAccepted only after invoking librehw.cmd from a normal unelevated shell.'
+}
+$null = Assert-LhmVerifiedMachineIdentity
+'@, [ref]$finalizeGuardTokens, [ref]$finalizeGuardErrors)
+    Assert-True ($finalizeGuardErrors.Count -eq 0) `
+        'Finalize acceptance-guard effect fixture did not parse.'
+    Assert-Throws -MessagePattern 'reviewed literal message' -Action {
+        Assert-LhmFinalizeIdentityGate `
+            -ScriptAst $finalizeGuardAst `
+            -Label 'finalize acceptance-guard effect fixture'
+    }
+
+    $finalizeTruthyTokens = $null
+    $finalizeTruthyErrors = $null
+    $finalizeTruthyAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param(
+    [int] $AttendedUiAccepted = 1,
+    [int] $NormalUserLauncherAccepted = 1
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+if (-not $AttendedUiAccepted) {
+    throw 'Use -AttendedUiAccepted only after checking the populated restored UI.'
+}
+if (-not $NormalUserLauncherAccepted) {
+    throw 'Use -NormalUserLauncherAccepted only after invoking librehw.cmd from a normal unelevated shell.'
+}
+$null = Assert-LhmVerifiedMachineIdentity
+'@, [ref]$finalizeTruthyTokens, [ref]$finalizeTruthyErrors)
+    Assert-True ($finalizeTruthyErrors.Count -eq 0) `
+        'Truthy finalize-acceptance defaults fixture did not parse.'
+    Assert-Throws -MessagePattern 'default-false switch only' -Action {
+        Assert-LhmFinalizeIdentityGate `
+            -ScriptAst $finalizeTruthyAst `
+            -Label 'truthy finalize-acceptance defaults fixture'
+    }
+
+    $retiredThrowTokens = $null
+    $retiredThrowErrors = $null
+    $retiredThrowAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param()
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+$null = Assert-LhmVerifiedMachineIdentity
+throw $(Remove-Item 'C:\safety-sentinel'; 'retired')
+'@, [ref]$retiredThrowTokens, [ref]$retiredThrowErrors)
+    Assert-True ($retiredThrowErrors.Count -eq 0) `
+        'Retired mutating-throw fixture did not parse.'
+    Assert-Throws -MessagePattern 'reviewed literal message' -Action {
+        Assert-LhmRetiredIdentityGate `
+            -ScriptAst $retiredThrowAst `
+            -Label 'retired mutating-throw fixture'
+    }
+
+    $memberNameTokens = $null
+    $memberNameErrors = $null
+    $memberNameAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $ValidateScriptOnly)
+
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$ExpectedMachineId = 'snd-desk'
+function Assert-LauncherMachineIdentity { }
+function Invoke-UnsafeValidation {
+    Get-Process | ForEach-Object -MemberName Kill
+}
+if ($ValidateScriptOnly) {
+    Invoke-UnsafeValidation
+    return
+}
+Assert-LauncherMachineIdentity
+'@, [ref]$memberNameTokens, [ref]$memberNameErrors)
+    Assert-True ($memberNameErrors.Count -eq 0) `
+        'ForEach-Object MemberName fixture did not parse.'
+    Assert-Throws -MessagePattern "unapproved parameter '-MemberName'" -Action {
+        Assert-LhmLauncherIdentityGate `
+            -ScriptAst $memberNameAst `
+            -Label 'ForEach-Object MemberName fixture'
+    }
+
+    $outputVariableTokens = $null
+    $outputVariableErrors = $null
+    $outputVariableAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $ValidateScriptOnly)
+
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$ExpectedMachineId = 'snd-desk'
+function Assert-LauncherMachineIdentity { }
+function Invoke-UnsafeValidation {
+    Get-Process -OutVariable global:LhmUnsafeOutput
+}
+if ($ValidateScriptOnly) {
+    Invoke-UnsafeValidation
+    return
+}
+Assert-LauncherMachineIdentity
+'@, [ref]$outputVariableTokens, [ref]$outputVariableErrors)
+    Assert-True ($outputVariableErrors.Count -eq 0) `
+        'Scoped output-variable fixture did not parse.'
+    Assert-Throws -MessagePattern "unapproved parameter '-OutVariable'" -Action {
+        Assert-LhmLauncherIdentityGate `
+            -ScriptAst $outputVariableAst `
+            -Label 'scoped output-variable fixture'
+    }
+
+    $splatTokens = $null
+    $splatErrors = $null
+    $splatAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $ValidateScriptOnly)
+
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$ExpectedMachineId = 'snd-desk'
+function Assert-LauncherMachineIdentity { }
+function Invoke-UnsafeValidation {
+    $arguments = @{ OutVariable = 'global:LhmUnsafeOutput' }
+    Get-Process @arguments
+}
+if ($ValidateScriptOnly) {
+    Invoke-UnsafeValidation
+    return
+}
+Assert-LauncherMachineIdentity
+'@, [ref]$splatTokens, [ref]$splatErrors)
+    Assert-True ($splatErrors.Count -eq 0) `
+        'Splatted validation-argument fixture did not parse.'
+    Assert-Throws -MessagePattern 'splatted arguments' -Action {
+        Assert-LhmLauncherIdentityGate `
+            -ScriptAst $splatAst `
+            -Label 'splatted validation-argument fixture'
+    }
+
+    $unsafeDefaultTokens = $null
+    $unsafeDefaultErrors = $null
+    $unsafeDefaultAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param(
+    [switch] $NonLiveTestMode,
+    [string] $Probe = $(Remove-Item 'C:\safety-sentinel')
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+function Invoke-TestFailurePoint { }
+if (-not $NonLiveTestMode) {
+    $null = Assert-LhmVerifiedMachineIdentity
+}
+'@, [ref]$unsafeDefaultTokens, [ref]$unsafeDefaultErrors)
+    Assert-True ($unsafeDefaultErrors.Count -eq 0) `
+        'Unsafe parameter-default fixture did not parse.'
+    Assert-Throws -MessagePattern 'parameter default must be a literal constant' -Action {
+        Assert-LhmLiveIdentityGate `
+            -ScriptAst $unsafeDefaultAst `
+            -Label 'unsafe parameter-default fixture'
+    }
+
+    $nonEndTokens = $null
+    $nonEndErrors = $null
+    $nonEndAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+[CmdletBinding()]
+param([switch] $NonLiveTestMode)
+
+begin {
+    Remove-Item 'C:\safety-sentinel'
+}
+end {
+    Set-StrictMode -Version Latest
+    $ErrorActionPreference = 'Stop'
+    . (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+    function Invoke-TestFailurePoint { }
+    if (-not $NonLiveTestMode) {
+        $null = Assert-LhmVerifiedMachineIdentity
+    }
+}
+'@, [ref]$nonEndTokens, [ref]$nonEndErrors)
+    Assert-True ($nonEndErrors.Count -eq 0) `
+        'Non-End execution-block fixture did not parse.'
+    Assert-Throws -MessagePattern 'non-End execution block' -Action {
+        Assert-LhmLiveIdentityGate `
+            -ScriptAst $nonEndAst `
+            -Label 'non-End execution-block fixture'
+    }
+
+    $usingTokens = $null
+    $usingErrors = $null
+    $usingAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+using namespace System
+
+[CmdletBinding()]
+param([switch] $NonLiveTestMode)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+function Invoke-TestFailurePoint { }
+if (-not $NonLiveTestMode) {
+    $null = Assert-LhmVerifiedMachineIdentity
+}
+'@, [ref]$usingTokens, [ref]$usingErrors)
+    Assert-True ($usingErrors.Count -eq 0) `
+        'Using-statement fixture did not parse.'
+    Assert-Throws -MessagePattern 'using statement' -Action {
+        Assert-LhmLiveIdentityGate `
+            -ScriptAst $usingAst `
+            -Label 'using-statement fixture'
+    }
+
+    Assert-Throws -MessagePattern 'load-time using module or assembly' -Action {
+        Assert-LhmNoLoadTimeDirectiveText `
+            -Text 'using <# split token #> module UnsafeModule' `
+            -Label 'load-time module fixture'
+    }
+
+    $requiresTokens = $null
+    $requiresErrors = $null
+    $requiresAst = [System.Management.Automation.Language.Parser]::ParseInput(@'
+#requires -Version 5.1
+[CmdletBinding()]
+param([switch] $NonLiveTestMode)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLocalRelease.Common.ps1')
+function Invoke-TestFailurePoint { }
+if (-not $NonLiveTestMode) {
+    $null = Assert-LhmVerifiedMachineIdentity
+}
+'@, [ref]$requiresTokens, [ref]$requiresErrors)
+    Assert-True ($requiresErrors.Count -eq 0) `
+        'Script-requirement fixture did not parse.'
+    Assert-Throws -MessagePattern 'script requirement' -Action {
+        Assert-LhmLiveIdentityGate `
+            -ScriptAst $requiresAst `
+            -Label 'script-requirement fixture'
+    }
+
+    $commonText = [System.IO.File]::ReadAllText($commonScript)
+    $unsafeCommonText = $commonText.Replace(
+        '$script:LhmExecutableName = ''LibreHardwareMonitor.Windows.Forms.exe''',
+        '$script:LhmExecutableName = ' +
+            '($global:LhmUnsafeMetadata = ''LibreHardwareMonitor.Windows.Forms.exe'')')
+    Assert-True ($unsafeCommonText -cne $commonText) `
+        'Nested metadata-assignment fixture replacement did not apply.'
+    $unsafeCommonTokens = $null
+    $unsafeCommonErrors = $null
+    $unsafeCommonAst = [System.Management.Automation.Language.Parser]::ParseInput(
+        $unsafeCommonText,
+        [ref]$unsafeCommonTokens,
+        [ref]$unsafeCommonErrors)
+    Assert-True ($unsafeCommonErrors.Count -eq 0) `
+        'Nested metadata-assignment fixture did not parse.'
+    Assert-Throws -MessagePattern 'nested assignment' -Action {
+        Assert-LhmCommonIdentityContract `
+            -ScriptAst $unsafeCommonAst `
+            -Label 'nested metadata-assignment fixture'
+    }
+
+    $unsafeUnaryText = $commonText.Replace(
+        '$script:LhmExecutableName = ''LibreHardwareMonitor.Windows.Forms.exe''',
+        '$script:LhmExecutableName = ($global:LhmUnsafeMetadata++)')
+    Assert-True ($unsafeUnaryText -cne $commonText) `
+        'Unary metadata-mutation fixture replacement did not apply.'
+    $unsafeUnaryTokens = $null
+    $unsafeUnaryErrors = $null
+    $unsafeUnaryAst = [System.Management.Automation.Language.Parser]::ParseInput(
+        $unsafeUnaryText,
+        [ref]$unsafeUnaryTokens,
+        [ref]$unsafeUnaryErrors)
+    Assert-True ($unsafeUnaryErrors.Count -eq 0) `
+        'Unary metadata-mutation fixture did not parse.'
+    Assert-Throws -MessagePattern 'increment or decrement mutation' -Action {
+        Assert-LhmCommonIdentityContract `
+            -ScriptAst $unsafeUnaryAst `
+            -Label 'unary metadata-mutation fixture'
+    }
+
+    $verifierInvocation = '$identity = & $script:LhmIdentityVerifierPath'
+    $unsafeVerifierCalls = @(
+        @{
+            Name = 'dynamic verifier splat'
+            Replacement =
+                '$identity = & $script:LhmIdentityVerifierPath @LhmUnsafeArguments'
+            Message = 'must be invoked without arguments'
+        },
+        @{
+            Name = 'dynamic verifier positional argument'
+            Replacement =
+                '$identity = & $script:LhmIdentityVerifierPath ''unsafe'''
+            Message = 'must be invoked without arguments'
+        },
+        @{
+            Name = 'dynamic verifier dot-source'
+            Replacement = '$identity = . $script:LhmIdentityVerifierPath'
+            Message = 'must use the call operator'
+        },
+        @{
+            Name = 'dynamic verifier pipeline input'
+            Replacement =
+                '$identity = ''unsafe'' | & $script:LhmIdentityVerifierPath'
+            Message = 'no pipeline input or output'
+        }
+    )
+    foreach ($unsafeVerifierCall in $unsafeVerifierCalls) {
+        $unsafeVerifierText = $commonText.Replace(
+            $verifierInvocation,
+            $unsafeVerifierCall.Replacement)
+        Assert-True ($unsafeVerifierText -cne $commonText) `
+            "$($unsafeVerifierCall.Name) fixture replacement did not apply."
+        $unsafeVerifierTokens = $null
+        $unsafeVerifierErrors = $null
+        $unsafeVerifierAst = [System.Management.Automation.Language.Parser]::ParseInput(
+            $unsafeVerifierText,
+            [ref]$unsafeVerifierTokens,
+            [ref]$unsafeVerifierErrors)
+        Assert-True ($unsafeVerifierErrors.Count -eq 0) `
+            "$($unsafeVerifierCall.Name) fixture did not parse."
+        Assert-Throws -MessagePattern $unsafeVerifierCall.Message -Action {
+            Assert-LhmCommonIdentityContract `
+                -ScriptAst $unsafeVerifierAst `
+            -Label "$($unsafeVerifierCall.Name) fixture"
+        }
+    }
+
+    $unsafeCommonMetadata = @(
+        @{
+            Name = 'common expected machine'
+            Search = '$script:LhmExpectedMachineId = ''snd-desk'''
+            Replacement = '$script:LhmExpectedMachineId = ''snd-host'''
+        },
+        @{
+            Name = 'common verifier path'
+            Search = '''C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'''
+            Replacement = '''C:\Users\Dev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'''
+        }
+    )
+    foreach ($metadataCase in $unsafeCommonMetadata) {
+        $unsafeMetadataText = $commonText.Replace(
+            $metadataCase.Search,
+            $metadataCase.Replacement)
+        Assert-True ($unsafeMetadataText -cne $commonText) `
+            "$($metadataCase.Name) fixture replacement did not apply."
+        $unsafeMetadataTokens = $null
+        $unsafeMetadataErrors = $null
+        $unsafeMetadataAst = [System.Management.Automation.Language.Parser]::ParseInput(
+            $unsafeMetadataText,
+            [ref]$unsafeMetadataTokens,
+            [ref]$unsafeMetadataErrors)
+        Assert-True ($unsafeMetadataErrors.Count -eq 0) `
+            "$($metadataCase.Name) fixture did not parse."
+        Assert-Throws -MessagePattern 'pinned to its reviewed literal' -Action {
+            Assert-LhmCommonIdentityContract `
+                -ScriptAst $unsafeMetadataAst `
+                -Label "$($metadataCase.Name) fixture"
+        }
+    }
+
+    $commonMachineAssignment = '$script:LhmExpectedMachineId = ''snd-desk'''
+    $commonAliasText = $commonText.Replace(
+        $commonMachineAssignment,
+        $commonMachineAssignment + "`n" +
+            '$script:LhmExpectedmachineid = ''snd-host''')
+    Assert-True ($commonAliasText -cne $commonText) `
+        'Common case-alias metadata fixture replacement did not apply.'
+    $commonAliasTokens = $null
+    $commonAliasErrors = $null
+    $commonAliasAst = [System.Management.Automation.Language.Parser]::ParseInput(
+        $commonAliasText,
+        [ref]$commonAliasTokens,
+        [ref]$commonAliasErrors)
+    Assert-True ($commonAliasErrors.Count -eq 0) `
+        'Common case-alias metadata fixture did not parse.'
+    Assert-Throws -MessagePattern 'assign .* exactly once' -Action {
+        Assert-LhmCommonIdentityContract `
+            -ScriptAst $commonAliasAst `
+            -Label 'common case-alias metadata fixture'
+    }
+
+    $commonPlusText = $commonText.Replace(
+        $commonMachineAssignment,
+        '$script:LhmExpectedMachineId += ''snd-desk''')
+    Assert-True ($commonPlusText -cne $commonText) `
+        'Common additive metadata fixture replacement did not apply.'
+    $commonPlusTokens = $null
+    $commonPlusErrors = $null
+    $commonPlusAst = [System.Management.Automation.Language.Parser]::ParseInput(
+        $commonPlusText,
+        [ref]$commonPlusTokens,
+        [ref]$commonPlusErrors)
+    Assert-True ($commonPlusErrors.Count -eq 0) `
+        'Common additive metadata fixture did not parse.'
+    Assert-Throws -MessagePattern 'pinned to its reviewed literal' -Action {
+        Assert-LhmCommonIdentityContract `
+            -ScriptAst $commonPlusAst `
+            -Label 'common additive metadata fixture'
+    }
+
+    $launcherText = [System.IO.File]::ReadAllText($canonicalLauncher)
+    $unsafeLauncherMetadata = @(
+        @{
+            Name = 'launcher expected machine'
+            Search = '$ExpectedMachineId = ''snd-desk'''
+            Replacement = '$ExpectedMachineId = ''snd-host'''
+        },
+        @{
+            Name = 'launcher verifier path'
+            Search = '''C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'''
+            Replacement = '''C:\Users\Dev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'''
+        }
+    )
+    foreach ($metadataCase in $unsafeLauncherMetadata) {
+        $unsafeMetadataText = $launcherText.Replace(
+            $metadataCase.Search,
+            $metadataCase.Replacement)
+        Assert-True ($unsafeMetadataText -cne $launcherText) `
+            "$($metadataCase.Name) fixture replacement did not apply."
+        $unsafeMetadataTokens = $null
+        $unsafeMetadataErrors = $null
+        $unsafeMetadataAst = [System.Management.Automation.Language.Parser]::ParseInput(
+            $unsafeMetadataText,
+            [ref]$unsafeMetadataTokens,
+            [ref]$unsafeMetadataErrors)
+        Assert-True ($unsafeMetadataErrors.Count -eq 0) `
+            "$($metadataCase.Name) fixture did not parse."
+        Assert-Throws -MessagePattern 'pinned to its reviewed literal' -Action {
+            Assert-LhmLauncherIdentityGate `
+                -ScriptAst $unsafeMetadataAst `
+                -Label "$($metadataCase.Name) fixture"
+        }
+    }
+
+    $launcherMachineAssignment = '$ExpectedMachineId = ''snd-desk'''
+    $launcherAliasText = $launcherText.Replace(
+        $launcherMachineAssignment,
+        $launcherMachineAssignment + "`n" +
+            '$Expectedmachineid = ''snd-host''')
+    Assert-True ($launcherAliasText -cne $launcherText) `
+        'Launcher case-alias metadata fixture replacement did not apply.'
+    $launcherAliasTokens = $null
+    $launcherAliasErrors = $null
+    $launcherAliasAst = [System.Management.Automation.Language.Parser]::ParseInput(
+        $launcherAliasText,
+        [ref]$launcherAliasTokens,
+        [ref]$launcherAliasErrors)
+    Assert-True ($launcherAliasErrors.Count -eq 0) `
+        'Launcher case-alias metadata fixture did not parse.'
+    Assert-Throws -MessagePattern 'assign .* exactly once' -Action {
+        Assert-LhmLauncherIdentityGate `
+            -ScriptAst $launcherAliasAst `
+            -Label 'launcher case-alias metadata fixture'
+    }
+
+    $launcherPlusText = $launcherText.Replace(
+        $launcherMachineAssignment,
+        '$ExpectedMachineId += ''snd-desk''')
+    Assert-True ($launcherPlusText -cne $launcherText) `
+        'Launcher additive metadata fixture replacement did not apply.'
+    $launcherPlusTokens = $null
+    $launcherPlusErrors = $null
+    $launcherPlusAst = [System.Management.Automation.Language.Parser]::ParseInput(
+        $launcherPlusText,
+        [ref]$launcherPlusTokens,
+        [ref]$launcherPlusErrors)
+    Assert-True ($launcherPlusErrors.Count -eq 0) `
+        'Launcher additive metadata fixture did not parse.'
+    Assert-Throws -MessagePattern 'pinned to its reviewed literal' -Action {
+        Assert-LhmLauncherIdentityGate `
+            -ScriptAst $launcherPlusAst `
+            -Label 'launcher additive metadata fixture'
+    }
+
+    return $true
+}
+
+$identityGateContractsVerified = Invoke-LhmIdentityContractPreflight
+. $commonScript
+
+function New-TestIdentityVerifier {
+    param(
+        [Parameter(Mandatory)][string] $Root,
+        [Parameter(Mandatory)][string] $Name,
+        [string] $Status,
+        [string] $MachineId,
+        [switch] $NoResult
+    )
+
+    $path = Join-Path $Root "$Name.ps1"
+    $content = if ($NoResult) {
+        'return'
+    }
+    else {
+@"
+[pscustomobject][ordered]@{
+    status = '$Status'
+    machineId = '$MachineId'
+    instanceId = '11111111-1111-1111-1111-111111111111'
+    computerName = 'SND-DESK'
+    user = 'Sev'
+    qualifiedUser = 'SND-DESK\Sev'
+    sshAlias = 'maindesk'
+    sshHostname = 'snd-desk.example.invalid'
+    displayName = 'SND-DESK fixture'
+    registryPath = 'C:\fixture\machines.json'
+    markerPath = 'C:\fixture\machine-identity.json'
+    verifiedAtUtc = '2030-01-01T00:00:00.0000000Z'
+}
+"@
+    }
+    $content | Set-Content -LiteralPath $path -Encoding UTF8
+    return $path
+}
+
+function Invoke-TestLauncherIdentity {
+    param(
+        [Parameter(Mandatory)][string] $LauncherPath,
+        [Parameter(Mandatory)][string] $VerifierPath
+    )
+
+    $windowsPowerShell =
+        Get-Command powershell.exe -CommandType Application -ErrorAction Stop
+    $launcherLiteral = $LauncherPath.Replace("'", "''")
+    $verifierLiteral = $VerifierPath.Replace("'", "''")
+    $harness = @"
+function Get-Process {
+    [CmdletBinding()]
+    param([string] `$Name)
+    return @()
+}
+
+. '$launcherLiteral' -ValidateScriptOnly | Out-Null
+`$IdentityVerifierPath = '$verifierLiteral'
+`$ExpectedMachineId = 'snd-desk'
+Assert-LauncherMachineIdentity
+"@
+    $oldErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = @(
+            & $windowsPowerShell.Source `
+                -NoLogo `
+                -NoProfile `
+                -ExecutionPolicy Bypass `
+                -Command $harness 2>&1
+        )
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Output = ($output -join "`n")
+    }
 }
 
 function Get-TreeSignature {
@@ -265,20 +2288,183 @@ try {
         Assert-True ($errors.Count -eq 0) "PowerShell parser errors in '$($scriptFile.Name)'."
     }
 
+    $identityFixtureRoot = Join-Path $testRoot 'identity-verifiers'
+    [System.IO.Directory]::CreateDirectory($identityFixtureRoot) | Out-Null
+    $originalIdentityVerifierPath = $script:LhmIdentityVerifierPath
+    $originalExpectedMachineId = $script:LhmExpectedMachineId
+    $missingIdentityVerifier = Join-Path $identityFixtureRoot 'missing.ps1'
+    try {
+        $script:LhmExpectedMachineId = 'snd-desk'
+        $script:LhmIdentityVerifierPath = $missingIdentityVerifier
+        Assert-Throws -MessagePattern 'Machine identity verifier not found' -Action {
+            $null = Assert-LhmVerifiedMachineIdentity
+        }
+
+        $noResultIdentityVerifier = New-TestIdentityVerifier `
+            -Root $identityFixtureRoot `
+            -Name 'no-result' `
+            -NoResult
+        $script:LhmIdentityVerifierPath = $noResultIdentityVerifier
+        Assert-Throws -MessagePattern 'verifier returned no result' -Action {
+            $null = Assert-LhmVerifiedMachineIdentity
+        }
+
+        $unverifiedIdentityVerifier = New-TestIdentityVerifier `
+            -Root $identityFixtureRoot `
+            -Name 'unverified' `
+            -Status 'UNVERIFIED' `
+            -MachineId 'snd-desk'
+        $script:LhmIdentityVerifierPath = $unverifiedIdentityVerifier
+        Assert-Throws -MessagePattern "status is 'UNVERIFIED', not 'VERIFIED'" -Action {
+            $null = Assert-LhmVerifiedMachineIdentity
+        }
+
+        $wrongMachineIdentityVerifier = New-TestIdentityVerifier `
+            -Root $identityFixtureRoot `
+            -Name 'wrong-machine' `
+            -Status 'VERIFIED' `
+            -MachineId 'snd-host'
+        $script:LhmIdentityVerifierPath = $wrongMachineIdentityVerifier
+        Assert-Throws -MessagePattern "identity is 'snd-host', not 'snd-desk'" -Action {
+            $null = Assert-LhmVerifiedMachineIdentity
+        }
+
+        $verifiedIdentityVerifier = New-TestIdentityVerifier `
+            -Root $identityFixtureRoot `
+            -Name 'verified-snd-desk' `
+            -Status 'VERIFIED' `
+            -MachineId 'snd-desk'
+        $script:LhmIdentityVerifierPath = $verifiedIdentityVerifier
+        $verifiedIdentity = Assert-LhmVerifiedMachineIdentity
+        Assert-True (
+            [string]$verifiedIdentity.status -ceq 'VERIFIED' -and
+            [string]$verifiedIdentity.machineId -ceq 'snd-desk'
+        ) 'The valid SND-DESK identity result was not returned unchanged.'
+    }
+    finally {
+        $script:LhmIdentityVerifierPath = $originalIdentityVerifierPath
+        $script:LhmExpectedMachineId = $originalExpectedMachineId
+    }
+
+    $launcherMissingIdentity = Invoke-TestLauncherIdentity `
+        -LauncherPath $canonicalLauncher `
+        -VerifierPath $missingIdentityVerifier
+    Assert-True (
+        $launcherMissingIdentity.ExitCode -ne 0 -and
+        $launcherMissingIdentity.Output -match 'Machine identity verifier not found'
+    ) 'The launcher identity gate accepted a missing verifier.'
+
+    $launcherUnverifiedIdentity = Invoke-TestLauncherIdentity `
+        -LauncherPath $canonicalLauncher `
+        -VerifierPath $unverifiedIdentityVerifier
+    Assert-True (
+        $launcherUnverifiedIdentity.ExitCode -ne 0 -and
+        $launcherUnverifiedIdentity.Output -match 'restricted to verified machine'
+    ) 'The launcher identity gate accepted an unverified identity.'
+
+    $launcherWrongMachineIdentity = Invoke-TestLauncherIdentity `
+        -LauncherPath $canonicalLauncher `
+        -VerifierPath $wrongMachineIdentityVerifier
+    Assert-True (
+        $launcherWrongMachineIdentity.ExitCode -ne 0 -and
+        $launcherWrongMachineIdentity.Output -match 'restricted to verified machine'
+    ) 'The launcher identity gate accepted a different machine.'
+
+    $launcherVerifiedIdentity = Invoke-TestLauncherIdentity `
+        -LauncherPath $canonicalLauncher `
+        -VerifierPath $verifiedIdentityVerifier
+    Assert-True ($launcherVerifiedIdentity.ExitCode -eq 0) (
+        'The launcher identity gate rejected VERIFIED/snd-desk: ' +
+        $launcherVerifiedIdentity.Output
+    )
+
+    $absentFilesystemDriveLetter = $null
+    foreach ($driveLetter in [char[]](90..65)) {
+        $driveName = [string]$driveLetter
+        if ($null -eq (Get-PSDrive -Name $driveName -ErrorAction SilentlyContinue) -and
+            -not [System.IO.Directory]::Exists("$driveName`:\")) {
+            $absentFilesystemDriveLetter = $driveName
+            break
+        }
+    }
+    Assert-True (
+        -not [string]::IsNullOrWhiteSpace($absentFilesystemDriveLetter)
+    ) 'No absent filesystem drive was available for lexical path validation.'
+    $absentFilesystemPath =
+        "$absentFilesystemDriveLetter`:\SQ_HQ\Monitoring\staging\..\LibreHW\librehw.runtime.json"
+    $expectedAbsentFilesystemPath =
+        "$absentFilesystemDriveLetter`:\SQ_HQ\Monitoring\LibreHW\librehw.runtime.json"
+    Assert-True (
+        (Resolve-LhmFullPath -Path $absentFilesystemPath) -ceq
+            $expectedAbsentFilesystemPath
+    ) 'Absolute filesystem path normalization required its drive to exist.'
+    $absentFilesystemRoot = "$absentFilesystemDriveLetter`:\"
+    Assert-True (
+        (Resolve-LhmFullPath -Path $absentFilesystemRoot) -ceq
+            $absentFilesystemRoot
+    ) 'Absolute filesystem root normalization removed its root separator.'
+    Assert-True (
+        Test-LhmPathWithin `
+            -Path ($absentFilesystemRoot + 'nested\payload.txt') `
+            -Root $absentFilesystemRoot
+    ) 'Filesystem root containment added a second root separator.'
+    Assert-True (
+        -not (Test-LhmPathWithin `
+            -Path $absentFilesystemRoot `
+            -Root $absentFilesystemRoot)
+    ) 'Filesystem root containment must remain strictly below the root.'
+    $existingFilesystemRoot = [System.IO.Path]::GetPathRoot(
+        (Resolve-LhmFullPath -Path $testRoot))
+    Assert-True (
+        Test-LhmPathWithin -Path $testRoot -Root $existingFilesystemRoot
+    ) 'Existing filesystem root containment added a second root separator.'
+    Assert-True (
+        -not (Test-LhmPathWithin `
+            -Path $existingFilesystemRoot `
+            -Root $existingFilesystemRoot)
+    ) 'Existing filesystem root containment must remain strictly below the root.'
+
+    $mappedDriveRoot = Join-Path $testRoot 'mapped-drive-root'
+    [System.IO.Directory]::CreateDirectory($mappedDriveRoot) | Out-Null
+    $null = New-PSDrive `
+        -Name $absentFilesystemDriveLetter `
+        -PSProvider FileSystem `
+        -Root $mappedDriveRoot `
+        -Scope Script
+    try {
+        $mappedDrivePath = "$absentFilesystemDriveLetter`:\child\..\payload"
+        Assert-True (
+            (Resolve-LhmFullPath -Path $mappedDrivePath) -ceq
+                (Join-Path $mappedDriveRoot 'payload')
+        ) 'Existing filesystem PSDrive mapping was bypassed during path normalization.'
+    }
+    finally {
+        Remove-PSDrive -Name $absentFilesystemDriveLetter -Scope Script
+    }
+
     $windowsPowerShell = Get-Command powershell.exe -CommandType Application -ErrorAction Stop
+    $launcherCompatibilityHarness = @"
+function Get-Process {
+    [CmdletBinding()]
+    param([string] `$Name)
+    return @()
+}
+
+. '$canonicalLauncher' -ValidateScriptOnly | Out-Null
+Initialize-LauncherNativeMethods
+"@
     $launcherCompatibilityOutput = @(
         & $windowsPowerShell.Source `
             -NoLogo `
             -NoProfile `
             -ExecutionPolicy Bypass `
-            -File $canonicalLauncher `
-            -ValidateScriptOnly 2>&1
+            -Command $launcherCompatibilityHarness 2>&1
     )
     $launcherCompatibilityExitCode = $LASTEXITCODE
     Assert-True (
         $launcherCompatibilityExitCode -eq 0
     ) (
-        'Windows PowerShell 5.1 launcher compatibility failed: ' +
+        'Windows PowerShell 5.1 launcher/native compilation compatibility failed: ' +
         ($launcherCompatibilityOutput -join "`n")
     )
 
@@ -1818,6 +4004,7 @@ function Get-Process {
         FailureInjectionCases = 12
         HostileRecoveryManifestCases = 16
         HostileReparseCases = 12
+        IdentityGateContractsVerified = $identityGateContractsVerified
         WindowsPowerShellLauncherCompatibility = $true
         WindowsPowerShellCleanupCompatibility = $true
         JunctionParentCleanupGuard = $true
