@@ -92,8 +92,9 @@ function Assert-InstalledRuntime {
     }
 }
 
-if (-not ('Sev.LibreHardwareMonitorLauncher.NativeMethods' -as [type])) {
-    Add-Type -TypeDefinition @'
+function Initialize-LauncherNativeMethods {
+    if (-not ('Sev.LibreHardwareMonitorLauncher.NativeMethods' -as [type])) {
+        Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -295,6 +296,7 @@ namespace Sev.LibreHardwareMonitorLauncher
     }
 }
 '@
+    }
 }
 
 function Get-LibreHardwareMonitorProcess {
@@ -419,6 +421,9 @@ if ($ValidateScriptOnly) {
     return
 }
 
+Assert-LauncherMachineIdentity
+Initialize-LauncherNativeMethods
+
 $launcherMutex = [System.Threading.Mutex]::new($false, $MutexName)
 $lockTaken = $false
 
@@ -434,7 +439,6 @@ try {
         throw 'Timed out waiting for another Libre Hardware Monitor launch request.'
     }
 
-    Assert-LauncherMachineIdentity
     Assert-InstalledRuntime
 
     $processes = @(Get-LibreHardwareMonitorProcess)

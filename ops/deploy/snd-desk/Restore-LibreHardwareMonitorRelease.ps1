@@ -38,6 +38,10 @@ function Invoke-TestFailurePoint {
     }
 }
 
+if (-not $NonLiveTestMode) {
+    $null = Assert-LhmVerifiedMachineIdentity
+}
+
 $mode = Assert-LhmOperationMode `
     -InstallRoot $InstallRoot `
     -DataRoot $DataRoot `
@@ -67,7 +71,6 @@ else {
         -not [string]::IsNullOrWhiteSpace($TestExternalStateRoot)) {
         throw 'Failure injection and test external state are available only in NonLiveTestMode.'
     }
-    $null = Assert-LhmVerifiedMachineIdentity
 }
 
 $null = Assert-LhmNearestExistingPathAncestry `
