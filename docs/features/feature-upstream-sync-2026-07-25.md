@@ -180,3 +180,33 @@ under both PowerShell engines, and the peer-scoped local-release fixture
 passed. Temporary fixture state was removed; no external/promotable candidate
 was published and no live SND-HOST runtime, task, configuration, or log was
 changed.
+
+## SND-HOST official sync — 2026-08-09
+
+`main` merged official `LibreHardwareMonitor/LibreHardwareMonitor` master at
+`d6cb260` (six commits since the `81e8f83` merge base) from the fetch-only
+`vanilla` reference clone:
+
+- `d6cb260` RAMSPDToolkit 1.6.0 and PawnIO modules refreshed to the 0.2.10
+  release, adding `Nvidia.bin`;
+- `6ec8f4e` / `b6439da` EC sensor tables for ROG STRIX B850-E and X870E-E
+  GAMING WIFI (the `Model` enum entries already existed at the merge base);
+- `3f2b4ba` AMD GFX-temperature fallback when the edge sensor is unavailable;
+- `6bdf1cc` NVMe Available Spare / Spare Threshold / Percentage Used level
+  sensors;
+- `404b551` Dependabot 10.0.10 bumps, already pinned centrally.
+
+Integration decisions: kept versionless `PackageReference` entries in all
+three conflicted `.csproj` files (every upstream change there was an inline
+version bump) and ported the single real change — RAMSPDToolkit-NDD
+1.5.0 → 1.6.0 — into `Directory.Packages.props`. Upstream ships `Nvidia.bin`
+without an `EmbeddedResource` entry or code reference; the fork matches
+upstream exactly and does not wire it locally.
+
+Verification on `snd-host`: staged conflict-marker, inline-package-version,
+and whitespace scans clean; `net10.0-windows` and `net472` x64 Release builds
+zero warnings/errors; .NET tests 370 passed with the one intentional skip
+(Contracts 99 including the data.json golden masters, Library 93, Application
+178); dashboard self-test 315/315; focused Node tests 18/18; log-management
+checks passed. Source-only integration: no candidate was published and no
+live SND-HOST runtime, task, configuration, or log was changed.

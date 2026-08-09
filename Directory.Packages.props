@@ -26,7 +26,7 @@
     <PackageVersion Include="Mono.Posix.NETStandard" Version="1.0.0" />
     <PackageVersion Include="OxyPlot.Core" Version="2.2.0" />
     <PackageVersion Include="OxyPlot.WindowsForms" Version="2.2.0" />
-    <PackageVersion Include="RAMSPDToolkit-NDD" Version="1.5.0" />
+    <PackageVersion Include="RAMSPDToolkit-NDD" Version="1.6.0" />
     <PackageVersion Include="System.IO.FileSystem.AccessControl" Version="5.0.0" />
     <PackageVersion Include="System.IO.Ports" Version="10.0.10" />
     <PackageVersion Include="System.Management" Version="10.0.10" />
