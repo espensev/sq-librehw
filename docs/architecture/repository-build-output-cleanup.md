@@ -1,7 +1,7 @@
 # Repository Build-Output Cleanup
 
 **Status:** completed on verified `snd-desk`
-**Updated:** 2026-07-28
+**Updated:** 2026-08-09
 
 **Machine scope:** the runtime, mutable-data, launcher, archive, and cleanup
 evidence below belong to SND-DESK. On SND-HOST this document is historical
@@ -175,8 +175,11 @@ launcher, task, or shortcut mutation. Installed-release rollback remains
 
 ## Separate external consumer
 
-The `hardware-optimization` health-feed task is outside this repository and was
-already configured with a different, nonexistent legacy root:
-`E:\SQ_HQ\Monitoring\sq-librehw\bin\Release\net10.0-windows`. It is not part of
-the `librehw` launch chain or this deletion scope; its stale log-root default
-requires a separate repair to the canonical `sqdata` log directory.
+During this cleanup, the `hardware-optimization` health-feed task was outside
+this repository and configured with a different, nonexistent legacy root:
+`E:\SQ_HQ\Monitoring\sq-librehw\bin\Release\net10.0-windows`. It was not part
+of the `librehw` launch chain or this deletion scope. A later SND-DESK
+observation on 2026-08-03 found the task entirely absent; its external owner
+must decide whether to recreate it against the canonical `sqdata` log directory
+or retire it. See `docs\features\feature-local-release-system.md` for the dated
+restoration evidence.

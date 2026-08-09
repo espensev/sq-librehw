@@ -7,7 +7,7 @@ users, or runtime state as SND-HOST instructions.
 
 **Status:** implemented on SND-DESK, installed, attended-finalization verified,
 and repository-output cleanup complete
-**Updated:** 2026-07-28
+**Updated:** 2026-08-09
 
 ## Problem
 
@@ -333,6 +333,31 @@ or invoke production task actions.
   without requiring symbolic-link privilege.
 - No SND-DESK path, task, launcher, configuration, or runtime state was
   materialized on SND-HOST.
+
+## Managed-task restoration — 2026-08-03
+
+The app was found stopped with `\SevGrp\AdminTask\LibreHW-No-UAC` entirely
+absent (the whole `AdminTask` folder was gone). The last pre-gap CSV write was
+2026-08-01 20:29; no register/update/delete events for the task appeared in the
+last 400 Task Scheduler registration events, so the removal cause is
+undetermined.
+
+- Preflight passed before any mutation: identity `VERIFIED`/`snd-desk`,
+  installed payload hash and manifest, runtime config, public shim hash, and
+  deployed-vs-repo launcher hash all matched this contract.
+- `Register-LhmManagedTask` recreated the task under one attended UAC consent:
+  single Exec on the stable EXE/working directory, one `MSFT_TaskLogonTrigger`,
+  Interactive/Highest principal, `IgnoreNew`, `StartWhenAvailable`, no hard
+  terminate, `PT0S`.
+- The unchanged shim/launcher chain then started one process through the task
+  (last result `0x41301` running). `/`, `/data.json`, and `/metrics` all
+  returned HTTP 200; `/data.json` retained the expected `Sensor` envelope. A
+  new `LibreHardwareMonitorLog-2026-08-03.csv` appeared under the `sqdata` logs
+  root. A repeated shim invocation kept the same PID with no duplicate.
+- The separate `hardware-optimization` health-feed task was also absent from
+  Task Scheduler on this date. Its definition lives outside this repository;
+  the owning package must decide whether to recreate it against the canonical
+  `sqdata` log directory or retire it. It was not recreated here.
 
 ## Acceptance
 

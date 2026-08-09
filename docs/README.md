@@ -48,6 +48,10 @@ Use live Git commands for branch, cleanliness, and ahead/behind state.
 - `ops\log-management` is the source package for installed host log tooling.
 - `ops\deploy\snd-desk` is target-gated to SND-DESK and is not SND-HOST
   deployment authority.
+- The 2026-08-03 SND-DESK managed-task restoration and absent
+  `hardware-optimization` task are dated peer evidence in
+  `docs\features\feature-local-release-system.md`; they do not describe or
+  authorize SND-HOST runtime state.
 - Keep `AssemblyVersion` at `0.9.6`; build with `-p:Platform=x64`.
 
 Open gates:
@@ -72,6 +76,7 @@ Open gates:
 | `docs\features\feature-csv-log-storage-efficiency.md` | Source-only CSV formatting contract |
 | `docs\features\feature-host-log-management.md` | Log archive and retention contract |
 | `docs\features\feature-live-state-verification.md` | Read-only host verification contract |
+| `docs\features\feature-local-release-system.md` | SND-DESK-only release contract and dated restoration evidence |
 | `eng\ci\README.md` | Non-deploying gate runner |
 
 Other feature documents contain their own status and acceptance criteria.
