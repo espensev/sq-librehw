@@ -14,7 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageVersion Include="DiskInfoToolkit" Version="2.1.2" />
+    <PackageVersion Include="DiskInfoToolkit" Version="2.1.3" />
     <PackageVersion Include="HidSharp" Version="2.6.4" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageVersion Include="Microsoft.Win32.Registry" Version="5.0.0" />
@@ -22,7 +22,7 @@
     <PackageVersion Include="Mono.Posix.NETStandard" Version="1.0.0" />
     <PackageVersion Include="OxyPlot.Core" Version="2.2.0" />
     <PackageVersion Include="OxyPlot.WindowsForms" Version="2.2.0" />
-    <PackageVersion Include="RAMSPDToolkit-NDD" Version="1.5.0" />
+    <PackageVersion Include="RAMSPDToolkit-NDD" Version="1.6.0" />
     <PackageVersion Include="System.IO.FileSystem.AccessControl" Version="5.0.0" />
     <PackageVersion Include="System.IO.Ports" Version="10.0.10" />
     <PackageVersion Include="System.Management" Version="10.0.10" />
