@@ -15,7 +15,7 @@ $ExecutablePath =
 $RuntimeConfigPath = [System.IO.Path]::Combine($InstallRoot, 'librehw.runtime.json')
 $ManagedTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC'
 $IdentityVerifierPath =
-    'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+    'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
 $ProcessName = 'LibreHardwareMonitor.Windows.Forms'
 $MutexName = 'Local\Sev.LibreHardwareMonitorLauncher'

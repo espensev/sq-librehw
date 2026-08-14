@@ -33,7 +33,7 @@ This repository is worked on from **SND-HOST**. Before any machine-sensitive
 mutation:
 
 ```powershell
-& 'C:\Users\Dev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+& 'C:\Users\Dev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 ```
 
 Stop unless it returns `VERIFIED` with machine ID `snd-host`.

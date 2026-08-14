@@ -11,7 +11,7 @@ $script:LhmProductionDataRoot = 'E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor'
 $script:LhmManagedTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC'
 $script:LhmExpectedMachineId = 'snd-desk'
 $script:LhmIdentityVerifierPath =
-    'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+    'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $script:LhmProcessName = 'LibreHardwareMonitor.Windows.Forms'
 $script:LhmLauncherTargetPath =
     'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'

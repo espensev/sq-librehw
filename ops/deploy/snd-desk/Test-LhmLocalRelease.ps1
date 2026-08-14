@@ -808,7 +808,7 @@ function Assert-LhmCommonIdentityContract {
         -ScriptAst $ScriptAst `
         -VariableText '$script:LhmIdentityVerifierPath' `
         -ExpectedValue `
-            'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1' `
+            'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1' `
         -Label $Label
 
     $functionMap = Get-LhmTopLevelFunctionMap -ScriptAst $ScriptAst
@@ -1104,7 +1104,7 @@ function Assert-LhmLauncherIdentityGate {
         -ScriptAst $ScriptAst `
         -VariableText '$IdentityVerifierPath' `
         -ExpectedValue `
-            'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1' `
+            'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1' `
         -Label $Label
     $functionMap = Get-LhmTopLevelFunctionMap -ScriptAst $ScriptAst
     Assert-True ($functionMap.ContainsKey('Assert-LauncherMachineIdentity')) `
@@ -1287,7 +1287,7 @@ if (-not $NonLiveTestMode) {
 param([switch] $ValidateScriptOnly)
 
 $ErrorActionPreference = 'Stop'
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
 function Assert-LauncherMachineIdentity { }
 if ($ValidateScriptOnly) {
@@ -1309,7 +1309,7 @@ Initialize-LauncherNativeMethods
 [CmdletBinding()]
 param([int] $ValidateScriptOnly = 1)
 
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
 function Assert-LauncherMachineIdentity { }
 if ($ValidateScriptOnly) {
@@ -1331,7 +1331,7 @@ Assert-LauncherMachineIdentity
 [CmdletBinding()]
 param([switch] $ValidateScriptOnly)
 
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
 function Assert-LauncherMachineIdentity { }
 function Invoke-UnsafeValidation { & $LauncherTargetPath }
@@ -1355,7 +1355,7 @@ Assert-LauncherMachineIdentity
 [CmdletBinding()]
 param([switch] $ValidateScriptOnly)
 
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
 function Assert-LauncherMachineIdentity { }
 function Invoke-UnsafeValidation { $shortcut.Save() }
@@ -1380,7 +1380,7 @@ Assert-LauncherMachineIdentity
 param([switch] $ValidateScriptOnly)
 
 $ErrorActionPreference = 'Stop'
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
 function Assert-LauncherMachineIdentity { }
 if ($ValidateScriptOnly) {
@@ -1574,7 +1574,7 @@ throw $(Remove-Item 'C:\safety-sentinel'; 'retired')
 [CmdletBinding()]
 param([switch] $ValidateScriptOnly)
 
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
 function Assert-LauncherMachineIdentity { }
 function Invoke-UnsafeValidation {
@@ -1600,7 +1600,7 @@ Assert-LauncherMachineIdentity
 [CmdletBinding()]
 param([switch] $ValidateScriptOnly)
 
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
 function Assert-LauncherMachineIdentity { }
 function Invoke-UnsafeValidation {
@@ -1626,7 +1626,7 @@ Assert-LauncherMachineIdentity
 [CmdletBinding()]
 param([switch] $ValidateScriptOnly)
 
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
 function Assert-LauncherMachineIdentity { }
 function Invoke-UnsafeValidation {
@@ -1847,8 +1847,8 @@ if (-not $NonLiveTestMode) {
         },
         @{
             Name = 'common verifier path'
-            Search = '''C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'''
-            Replacement = '''C:\Users\Dev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'''
+            Search = '''C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'''
+            Replacement = '''C:\Users\Dev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'''
         }
     )
     foreach ($metadataCase in $unsafeCommonMetadata) {
@@ -1921,8 +1921,8 @@ if (-not $NonLiveTestMode) {
         },
         @{
             Name = 'launcher verifier path'
-            Search = '''C:\Users\Sev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'''
-            Replacement = '''C:\Users\Dev\OneDrive\common\common_dev\Get-VerifiedMachineIdentity.ps1'''
+            Search = '''C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'''
+            Replacement = '''C:\Users\Dev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'''
         }
     )
     foreach ($metadataCase in $unsafeLauncherMetadata) {
