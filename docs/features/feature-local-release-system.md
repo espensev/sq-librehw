@@ -359,6 +359,39 @@ undetermined.
   the owning package must decide whether to recreate it against the canonical
   `sqdata` log directory or retire it. It was not recreated here.
 
+## Rebuilt-profile deployment — 2026-08-14
+
+An identity-verified `snd-desk` deployment started with no installed runtime,
+launcher, managed task, or prior Libre Hardware Monitor data root. The source
+was fast-forwarded from `librehw-host/main`; the local release workflow then
+needed two bounded fixes before it could safely bootstrap that clean state.
+
+- The machine verifier authority now uses the enrolled
+  `OneDrive\Common\common_development\common_dev` path in both the installer
+  and deployed launcher.
+- First-install recovery accepts both legacy startup owners being absent and
+  writes a manifest-only packet. It still rejects either asymmetric state.
+  The non-live release suite covers both the ownerless success and asymmetric
+  rejection.
+- The final published and installed release is
+  `0.9.6_e977e57.2026-08-14-e977e577ea13-20260814T205711Z`; its installed EXE
+  SHA-256 is
+  `e2ac66b3791dba60d77d297708056d5716e44ec596d63f1b778e950352f0fca8`.
+- One exact-path process remained at the stable shallow runtime after repeated
+  direct and SoleX activation. The native window was visible and responsive
+  with the named `treeView` pane, five menu items, and two scrollbars.
+- `/`, `/data.json`, and `/metrics` returned HTTP 200. The data payload kept
+  its `Sensor` envelope, metrics exposed 670 lines, and the new 1-second CSV
+  grew from 142,535 to 149,240 bytes during the acceptance sample.
+- The public `librehw.cmd` retained its required hash. The additive
+  `librehw-solex.cmd` extension uses the app-owned launcher for a tray-hidden
+  process; that path returned exit 0, restored the same PID, and created no
+  duplicate.
+- The canonical all-target gate passed 9/9 runnable targets. This included 370
+  deterministic .NET tests passing with one intentional skip, both shipping
+  framework builds, 75/75 Avalonia spike tests, dashboard checks, and the
+  SND-DESK local-release fixture.
+
 ## Acceptance
 
 - [x] `Get-Command librehw` resolves
