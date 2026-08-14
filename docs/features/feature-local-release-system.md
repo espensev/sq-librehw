@@ -374,6 +374,9 @@ undetermined.
   reparse-point ancestors or leaves before touching an external target.
 - [x] An explicit current config migrates with verified length/hash and retains
   listener, dashboard, logging, UI, and sensor settings.
+- [x] A rebuilt-profile first install may record both legacy startup owners as
+  absent; an asymmetric packet with only the launcher or only the task still
+  fails closed.
 - [x] `\SevGrp\AdminTask\LibreHW-No-UAC` owns on-demand and intended logon start,
   with the stable action/working directory.
 - [x] Both Start Menu shortcuts route through the unchanged
@@ -416,6 +419,8 @@ Release gate:
 - run a single-file launch smoke without touching the live install;
 - run installer and rollback integration tests against temporary install/data
   roots;
+- cover an ownerless first install and require its bounded recovery packet to
+  contain only the manifest with both legacy owners recorded absent;
 - preserve external sentinels across hostile launcher, payload, rollback,
   transaction, settings, log, cleanup, and recovery reparse cases;
 - verify `-WhatIf` changes no file, process, task, shortcut, or runtime state.

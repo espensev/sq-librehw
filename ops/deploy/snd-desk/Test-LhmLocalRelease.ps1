@@ -3492,6 +3492,75 @@ function Get-Process {
     }
     Assert-NoTransactionDebris -InstallRoot $ownedDirectoryParent
 
+    $ownerlessRoot = Join-Path $testRoot 'ownerless-first-install'
+    $ownerlessInstallRoot = Join-Path $ownerlessRoot 'install'
+    $ownerlessDataRoot = Join-Path $ownerlessRoot 'data'
+    $ownerlessExternalRoot = Join-Path $ownerlessRoot 'external-state'
+    $ownerlessLauncher = Join-Path $ownerlessRoot 'script-data\Start-LibreHardwareMonitor.ps1'
+    $ownerlessShim = Join-Path $ownerlessRoot 'bin\librehw.cmd'
+    [System.IO.Directory]::CreateDirectory((Split-Path -Parent $ownerlessShim)) | Out-Null
+    '@echo off' | Set-Content -LiteralPath $ownerlessShim -Encoding ASCII
+    $ownerlessShimHash = Get-LhmFileSha256 -Path $ownerlessShim
+
+    $null = & $installScript `
+        -CandidateDirectory $candidate1 `
+        -InstallRoot $ownerlessInstallRoot `
+        -DataRoot $ownerlessDataRoot `
+        -InitialConfigSource $initialConfig `
+        -LauncherTargetPath $ownerlessLauncher `
+        -PublicShimPath $ownerlessShim `
+        -TestExternalStateRoot $ownerlessExternalRoot `
+        -NonLiveTestMode `
+        -Confirm:$false
+    $ownerlessRecoveryRoot =
+        Join-Path $ownerlessDataRoot 'release-recovery\pre-stable-startup'
+    $ownerlessRecovery = Read-LhmPreStableRecoveryPacket `
+        -RecoveryRoot $ownerlessRecoveryRoot `
+        -ExpectedLauncherTargetPath $ownerlessLauncher `
+        -ExpectedManagedTaskPath $script:LhmManagedTaskPath `
+        -ExpectedPublicShimPath $ownerlessShim `
+        -ExpectedPublicShimSha256 $ownerlessShimHash `
+        -NonLiveTestMode `
+        -TestExternalStateRoot $ownerlessExternalRoot
+    Assert-True (
+        -not [bool]$ownerlessRecovery.Manifest.launcherExisted -and
+        -not [bool]$ownerlessRecovery.Manifest.managedTaskExisted
+    ) 'Ownerless first install did not record both startup owners as absent.'
+    Assert-True (
+        @(Get-ChildItem -LiteralPath $ownerlessRecoveryRoot -Force).Count -eq 1
+    ) 'Ownerless first install retained an unexpected recovery backup.'
+    $asymmetricRecoveryRoot = Join-Path $ownerlessRoot 'asymmetric-recovery'
+    Copy-Item `
+        -LiteralPath $ownerlessRecoveryRoot `
+        -Destination $asymmetricRecoveryRoot `
+        -Recurse
+    $asymmetricLauncherBackup = Join-Path $asymmetricRecoveryRoot 'launcher-backup.ps1'
+    'legacy launcher' | Set-Content -LiteralPath $asymmetricLauncherBackup -Encoding UTF8
+    $asymmetricLauncherHash = Get-LhmFileSha256 -Path $asymmetricLauncherBackup
+    $asymmetricManifestPath = Join-Path $asymmetricRecoveryRoot 'recovery.json'
+    $asymmetricManifest =
+        Get-Content -LiteralPath $asymmetricManifestPath -Raw | ConvertFrom-Json
+    $asymmetricManifest.launcherExisted = $true
+    $asymmetricManifest.launcherBackup = 'launcher-backup.ps1'
+    $asymmetricManifest.launcherSha256 = $asymmetricLauncherHash
+    $asymmetricManifest | ConvertTo-Json -Depth 5 | Set-Content `
+        -LiteralPath $asymmetricManifestPath -Encoding UTF8
+    Assert-Throws -MessagePattern 'both discovered startup owners or record both as absent' -Action {
+        $null = Read-LhmPreStableRecoveryPacket `
+            -RecoveryRoot $asymmetricRecoveryRoot `
+            -ExpectedLauncherTargetPath $ownerlessLauncher `
+            -ExpectedManagedTaskPath $script:LhmManagedTaskPath `
+            -ExpectedPublicShimPath $ownerlessShim `
+            -ExpectedPublicShimSha256 $ownerlessShimHash `
+            -ExpectedLauncherBackupSha256 $asymmetricLauncherHash `
+            -NonLiveTestMode `
+            -TestExternalStateRoot $ownerlessExternalRoot
+    }
+    Assert-True (
+        Test-Path -LiteralPath (Join-Path $ownerlessInstallRoot $script:LhmExecutableName) -PathType Leaf
+    ) 'Ownerless first install did not install the release executable.'
+    Assert-NoTransactionDebris -InstallRoot $ownerlessInstallRoot
+
     $beforeWhatIf = Get-TreeSignature -Root $testRoot
     & $installScript `
         -CandidateDirectory $candidate1 `

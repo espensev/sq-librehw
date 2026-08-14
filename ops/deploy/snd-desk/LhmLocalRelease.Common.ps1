@@ -1003,10 +1003,8 @@ function Read-LhmPreStableRecoveryPacket {
         throw 'Pre-stable managed-task absence state is inconsistent with its backup fields.'
     }
 
-    if (-not $NonLiveTestMode -and
-        (-not [bool]$manifest.launcherExisted -or
-            -not [bool]$manifest.managedTaskExisted)) {
-        throw 'Production pre-stable recovery must preserve both discovered startup owners.'
+    if ([bool]$manifest.launcherExisted -ne [bool]$manifest.managedTaskExisted) {
+        throw 'Pre-stable recovery must preserve both discovered startup owners or record both as absent.'
     }
 
     if ((Get-LhmFileSha256 -Path $ExpectedPublicShimPath) -cne $ExpectedPublicShimSha256) {
