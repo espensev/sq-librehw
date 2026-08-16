@@ -15,8 +15,9 @@ $ExecutablePath =
     [System.IO.Path]::Combine($InstallRoot, 'LibreHardwareMonitor.Windows.Forms.exe')
 $RuntimeConfigPath = [System.IO.Path]::Combine($InstallRoot, 'librehw.runtime.json')
 $ManagedTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC'
-$IdentityVerifierPath =
-    'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = [System.IO.Path]::Combine(
+    [Environment]::GetFolderPath('LocalApplicationData'),
+    'common_dev\v2\Test-LocalMachineIdentity.ps1')
 $ExpectedMachineId = 'snd-desk'
 $ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 $ProcessName = 'LibreHardwareMonitor.Windows.Forms'
@@ -28,6 +29,11 @@ function Assert-LauncherMachineIdentity {
     }
 
     $identity = & $IdentityVerifierPath
+    if (@($identity).Count -ne 1) {
+        throw 'Machine identity verifier must return exactly one result.'
+    }
+
+    $identity = @($identity)[0]
     if ([string]$identity.status -cne 'VERIFIED' -or
         [string]$identity.machineId -cne $ExpectedMachineId -or
         [string]$identity.instanceId -cne $ExpectedInstanceId) {

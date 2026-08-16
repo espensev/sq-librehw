@@ -259,6 +259,41 @@ function Assert-LhmPinnedTopLevelLiteral {
     ) "$Label must keep $VariableText pinned to its reviewed literal."
 }
 
+function Assert-LhmKnownFolderVerifierAssignment {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Language.ScriptBlockAst] $ScriptAst,
+
+        [Parameter(Mandatory)]
+        [string] $VariableText,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+
+    Assert-True ($VariableText.StartsWith('$')) `
+        "$Label verifier variable name must begin with a dollar sign."
+    $semanticVariableName = $VariableText.Substring(1)
+    $assignments = @($ScriptAst.EndBlock.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+            $node.Left.VariablePath.UserPath -ieq $semanticVariableName
+    }, $true) | Where-Object {
+        $null -eq (Get-LhmNearestFunctionDefinitionAst -Node $_)
+    })
+    Assert-True ($assignments.Count -eq 1) `
+        "$Label must assign $VariableText exactly once at top level."
+    $normalizedRight = $assignments[0].Right.Extent.Text -replace '\s+', ''
+    $expectedRight =
+        "[System.IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'),'common_dev\v2\Test-LocalMachineIdentity.ps1')"
+    Assert-True (
+        $assignments[0].Operator -eq
+            [System.Management.Automation.Language.TokenKind]::Equals -and
+        $normalizedRight -ceq $expectedRight
+    ) "$Label must resolve $VariableText from the Windows LocalApplicationData known folder."
+}
+
 function Assert-LhmInertBypassSwitch {
     param(
         [Parameter(Mandatory)]
@@ -796,8 +831,13 @@ function Assert-LhmCommonIdentityContract {
             $node -is [System.Management.Automation.Language.CommandAst] -or
                 $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst]
         }, $true))
-        Assert-True ($commands.Count -eq 0) `
-            "$Label top-level assignment invokes executable code."
+        $isVerifierAssignment =
+            $statement.Left.VariablePath.UserPath -ieq
+                'script:LhmIdentityVerifierPath'
+        if (-not $isVerifierAssignment) {
+            Assert-True ($commands.Count -eq 0) `
+                "$Label top-level assignment invokes executable code."
+        }
     }
 
     Assert-LhmPinnedTopLevelLiteral `
@@ -810,11 +850,9 @@ function Assert-LhmCommonIdentityContract {
         -VariableText '$script:LhmExpectedInstanceId' `
         -ExpectedValue 'ca96d510-7d87-4cec-8e1a-bd8fc3866903' `
         -Label $Label
-    Assert-LhmPinnedTopLevelLiteral `
+    Assert-LhmKnownFolderVerifierAssignment `
         -ScriptAst $ScriptAst `
         -VariableText '$script:LhmIdentityVerifierPath' `
-        -ExpectedValue `
-            'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1' `
         -Label $Label
 
     $functionMap = Get-LhmTopLevelFunctionMap -ScriptAst $ScriptAst
@@ -1111,11 +1149,9 @@ function Assert-LhmLauncherIdentityGate {
         -VariableText '$ExpectedInstanceId' `
         -ExpectedValue 'ca96d510-7d87-4cec-8e1a-bd8fc3866903' `
         -Label $Label
-    Assert-LhmPinnedTopLevelLiteral `
+    Assert-LhmKnownFolderVerifierAssignment `
         -ScriptAst $ScriptAst `
         -VariableText '$IdentityVerifierPath' `
-        -ExpectedValue `
-            'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1' `
         -Label $Label
     $functionMap = Get-LhmTopLevelFunctionMap -ScriptAst $ScriptAst
     Assert-True ($functionMap.ContainsKey('Assert-LauncherMachineIdentity')) `
@@ -1169,7 +1205,10 @@ function Assert-LhmLauncherIdentityGate {
             -AllowedCommandParameters @{
                 'Set-StrictMode' = @('Version')
             } `
-            -AllowedMemberCalls @('[System.IO.Path]::Combine')
+            -AllowedMemberCalls @(
+                '[System.IO.Path]::Combine',
+                '[Environment]::GetFolderPath'
+            )
     }
 
     $validationStatements = @($validationBranch.Clauses[0].Item2.Statements)
@@ -1301,7 +1340,7 @@ if (-not $NonLiveTestMode) {
 param([switch] $ValidateScriptOnly)
 
 $ErrorActionPreference = 'Stop'
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = [System.IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'), 'common_dev\v2\Test-LocalMachineIdentity.ps1')
 $ExpectedMachineId = 'snd-desk'
 $ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
@@ -1324,7 +1363,7 @@ Initialize-LauncherNativeMethods
 [CmdletBinding()]
 param([int] $ValidateScriptOnly = 1)
 
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = [System.IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'), 'common_dev\v2\Test-LocalMachineIdentity.ps1')
 $ExpectedMachineId = 'snd-desk'
 $ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
@@ -1347,7 +1386,7 @@ Assert-LauncherMachineIdentity
 [CmdletBinding()]
 param([switch] $ValidateScriptOnly)
 
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = [System.IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'), 'common_dev\v2\Test-LocalMachineIdentity.ps1')
 $ExpectedMachineId = 'snd-desk'
 $ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
@@ -1372,7 +1411,7 @@ Assert-LauncherMachineIdentity
 [CmdletBinding()]
 param([switch] $ValidateScriptOnly)
 
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = [System.IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'), 'common_dev\v2\Test-LocalMachineIdentity.ps1')
 $ExpectedMachineId = 'snd-desk'
 $ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
@@ -1398,7 +1437,7 @@ Assert-LauncherMachineIdentity
 param([switch] $ValidateScriptOnly)
 
 $ErrorActionPreference = 'Stop'
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = [System.IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'), 'common_dev\v2\Test-LocalMachineIdentity.ps1')
 $ExpectedMachineId = 'snd-desk'
 $ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
@@ -1593,7 +1632,7 @@ throw $(Remove-Item 'C:\safety-sentinel'; 'retired')
 [CmdletBinding()]
 param([switch] $ValidateScriptOnly)
 
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = [System.IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'), 'common_dev\v2\Test-LocalMachineIdentity.ps1')
 $ExpectedMachineId = 'snd-desk'
 $ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
@@ -1620,7 +1659,7 @@ Assert-LauncherMachineIdentity
 [CmdletBinding()]
 param([switch] $ValidateScriptOnly)
 
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = [System.IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'), 'common_dev\v2\Test-LocalMachineIdentity.ps1')
 $ExpectedMachineId = 'snd-desk'
 $ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
@@ -1647,7 +1686,7 @@ Assert-LauncherMachineIdentity
 [CmdletBinding()]
 param([switch] $ValidateScriptOnly)
 
-$IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
+$IdentityVerifierPath = [System.IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'), 'common_dev\v2\Test-LocalMachineIdentity.ps1')
 $ExpectedMachineId = 'snd-desk'
 $ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
@@ -1866,16 +1905,19 @@ if (-not $NonLiveTestMode) {
             Name = 'common expected machine'
             Search = '$script:LhmExpectedMachineId = ''snd-desk'''
             Replacement = '$script:LhmExpectedMachineId = ''snd-host'''
+            Message = 'pinned to its reviewed literal'
         },
         @{
             Name = 'common expected installation'
             Search = '$script:LhmExpectedInstanceId = ''ca96d510-7d87-4cec-8e1a-bd8fc3866903'''
             Replacement = '$script:LhmExpectedInstanceId = ''11111111-1111-1111-1111-111111111111'''
+            Message = 'pinned to its reviewed literal'
         },
         @{
             Name = 'common verifier path'
-            Search = '''C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'''
-            Replacement = '''C:\Users\Dev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'''
+            Search = '''common_dev\v2\Test-LocalMachineIdentity.ps1'''
+            Replacement = '''common_dev\v2\UntrustedIdentity.ps1'''
+            Message = 'Windows LocalApplicationData known folder'
         }
     )
     foreach ($metadataCase in $unsafeCommonMetadata) {
@@ -1892,7 +1934,7 @@ if (-not $NonLiveTestMode) {
             [ref]$unsafeMetadataErrors)
         Assert-True ($unsafeMetadataErrors.Count -eq 0) `
             "$($metadataCase.Name) fixture did not parse."
-        Assert-Throws -MessagePattern 'pinned to its reviewed literal' -Action {
+        Assert-Throws -MessagePattern $metadataCase.Message -Action {
             Assert-LhmCommonIdentityContract `
                 -ScriptAst $unsafeMetadataAst `
                 -Label "$($metadataCase.Name) fixture"
@@ -1945,16 +1987,19 @@ if (-not $NonLiveTestMode) {
             Name = 'launcher expected machine'
             Search = '$ExpectedMachineId = ''snd-desk'''
             Replacement = '$ExpectedMachineId = ''snd-host'''
+            Message = 'pinned to its reviewed literal'
         },
         @{
             Name = 'launcher expected installation'
             Search = '$ExpectedInstanceId = ''ca96d510-7d87-4cec-8e1a-bd8fc3866903'''
             Replacement = '$ExpectedInstanceId = ''11111111-1111-1111-1111-111111111111'''
+            Message = 'pinned to its reviewed literal'
         },
         @{
             Name = 'launcher verifier path'
-            Search = '''C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'''
-            Replacement = '''C:\Users\Dev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'''
+            Search = '''common_dev\v2\Test-LocalMachineIdentity.ps1'''
+            Replacement = '''common_dev\v2\UntrustedIdentity.ps1'''
+            Message = 'Windows LocalApplicationData known folder'
         }
     )
     foreach ($metadataCase in $unsafeLauncherMetadata) {
@@ -1971,7 +2016,7 @@ if (-not $NonLiveTestMode) {
             [ref]$unsafeMetadataErrors)
         Assert-True ($unsafeMetadataErrors.Count -eq 0) `
             "$($metadataCase.Name) fixture did not parse."
-        Assert-Throws -MessagePattern 'pinned to its reviewed literal' -Action {
+        Assert-Throws -MessagePattern $metadataCase.Message -Action {
             Assert-LhmLauncherIdentityGate `
                 -ScriptAst $unsafeMetadataAst `
                 -Label "$($metadataCase.Name) fixture"
@@ -2046,7 +2091,8 @@ function New-TestIdentityVerifier {
         [string] $Status,
         [string] $MachineId,
         [string] $InstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903',
-        [switch] $NoResult
+        [switch] $NoResult,
+        [switch] $DuplicateResult
     )
 
     $path = Join-Path $Root "$Name.ps1"
@@ -2054,7 +2100,7 @@ function New-TestIdentityVerifier {
         'return'
     }
     else {
-@"
+$identityObject = @"
 [pscustomobject][ordered]@{
     status = '$Status'
     machineId = '$MachineId'
@@ -2070,6 +2116,12 @@ function New-TestIdentityVerifier {
     verifiedAtUtc = '2030-01-01T00:00:00.0000000Z'
 }
 "@
+        if ($DuplicateResult) {
+            $identityObject + "`n" + $identityObject
+        }
+        else {
+            $identityObject
+        }
     }
     $content | Set-Content -LiteralPath $path -Encoding UTF8
     return $path
@@ -2771,7 +2823,18 @@ try {
             -Name 'no-result' `
             -NoResult
         $script:LhmIdentityVerifierPath = $noResultIdentityVerifier
-        Assert-Throws -MessagePattern 'verifier returned no result' -Action {
+        Assert-Throws -MessagePattern 'must return exactly one result' -Action {
+            $null = Assert-LhmVerifiedMachineIdentity
+        }
+
+        $duplicateIdentityVerifier = New-TestIdentityVerifier `
+            -Root $identityFixtureRoot `
+            -Name 'duplicate-result' `
+            -Status 'VERIFIED' `
+            -MachineId 'snd-desk' `
+            -DuplicateResult
+        $script:LhmIdentityVerifierPath = $duplicateIdentityVerifier
+        Assert-Throws -MessagePattern 'must return exactly one result' -Action {
             $null = Assert-LhmVerifiedMachineIdentity
         }
 
@@ -2833,6 +2896,14 @@ try {
         $launcherMissingIdentity.ExitCode -ne 0 -and
         $launcherMissingIdentity.Output -match 'Machine identity verifier not found'
     ) 'The launcher identity gate accepted a missing verifier.'
+
+    $launcherDuplicateIdentity = Invoke-TestLauncherIdentity `
+        -LauncherPath $canonicalLauncher `
+        -VerifierPath $duplicateIdentityVerifier
+    Assert-True (
+        $launcherDuplicateIdentity.ExitCode -ne 0 -and
+        $launcherDuplicateIdentity.Output -match 'must return exactly one result'
+    ) 'The launcher identity gate accepted multiple verifier results.'
 
     $launcherUnverifiedIdentity = Invoke-TestLauncherIdentity `
         -LauncherPath $canonicalLauncher `

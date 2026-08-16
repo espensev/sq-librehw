@@ -18,8 +18,9 @@ $script:LhmManagedTaskPrincipalSid =
     'S-1-5-21-3033086598-3000262358-161002696-1001'
 $script:LhmManagedTaskPrincipalUserId = 'Sev'
 $script:LhmManagedTaskLogonUserId = 'SND-Desk\Sev'
-$script:LhmIdentityVerifierPath =
-    'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
+$script:LhmIdentityVerifierPath = [System.IO.Path]::Combine(
+    [Environment]::GetFolderPath('LocalApplicationData'),
+    'common_dev\v2\Test-LocalMachineIdentity.ps1')
 $script:LhmProcessName = 'LibreHardwareMonitor.Windows.Forms'
 $script:LhmLauncherTargetPath =
     'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'
@@ -443,9 +444,11 @@ function Assert-LhmVerifiedMachineIdentity {
     }
 
     $identity = & $script:LhmIdentityVerifierPath
-    if ($null -eq $identity) {
-        throw 'Machine identity verifier returned no result.'
+    if (@($identity).Count -ne 1) {
+        throw 'Machine identity verifier must return exactly one result.'
     }
+
+    $identity = @($identity)[0]
 
     if ([string]$identity.status -cne 'VERIFIED') {
         throw "Machine identity status is '$($identity.status)', not 'VERIFIED'."

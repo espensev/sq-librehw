@@ -110,9 +110,32 @@ try {
         -FilePath $dotnetCommand.Source `
         -ArgumentList @('--version') `
         -Description 'resolve pinned .NET SDK')
+    $resolvedSdk = if ($sdkOutput.Count -eq 1) {
+        $sdkOutput[0].Trim()
+    }
+    else {
+        ''
+    }
+    $parsedPinnedSdk = $null
+    $parsedResolvedSdk = $null
+    $versionsParsed =
+        [version]::TryParse($pinnedSdk, [ref]$parsedPinnedSdk) -and
+        [version]::TryParse($resolvedSdk, [ref]$parsedResolvedSdk)
+    $sameFeatureBand =
+        $versionsParsed -and
+        $parsedResolvedSdk.Major -eq $parsedPinnedSdk.Major -and
+        $parsedResolvedSdk.Minor -eq $parsedPinnedSdk.Minor -and
+        [math]::Floor($parsedResolvedSdk.Build / 100) -eq
+            [math]::Floor($parsedPinnedSdk.Build / 100)
+    $sdkMatchesPolicy = if ([string]$globalJson.sdk.rollForward -ceq 'latestPatch') {
+        $sameFeatureBand -and $parsedResolvedSdk -ge $parsedPinnedSdk
+    }
+    else {
+        $resolvedSdk -ceq $pinnedSdk
+    }
     if ($sdkOutput.Count -ne 1 -or
-        $sdkOutput[0].Trim() -cne $pinnedSdk -or
-        $sdkOutput[0].Contains('-')) {
+        $resolvedSdk.Contains('-') -or
+        -not $sdkMatchesPolicy) {
         throw "Expected pinned stable SDK '$pinnedSdk'; resolved '$($sdkOutput -join ', ')'."
     }
     $completedGateCount++
@@ -453,7 +476,11 @@ try {
     Write-Output 'PASS: Avalonia fixture spike source and regression gate'
     Write-Output "  Fail-fast gates: $completedGateCount/$expectedGateCount"
     Write-Output '  Native nonzero exit probe: 1/1 rejected'
-    Write-Output "  SDK: 1/1 pinned stable version ($pinnedSdk)"
+    Write-Output (
+        "  SDK: 1/1 stable same-feature-band version " +
+        "(baseline $pinnedSdk; resolved $resolvedSdk; " +
+        "rollForward $([string]$globalJson.sdk.rollForward))"
+    )
     Write-Output "  Spike project inventory: $spikeProjectCount projects"
     Write-Output (
         "  Spike restore/build: 1/1 solution restored; 1/1 solution built " +
