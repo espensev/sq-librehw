@@ -6,7 +6,7 @@ param(
 
     [string] $InstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW',
 
-    [string] $DataRoot = 'E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor',
+    [string] $DataRoot = 'E:\Data\LibreHardwareMonitor',
 
     [string] $ManagedStartupTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC',
 

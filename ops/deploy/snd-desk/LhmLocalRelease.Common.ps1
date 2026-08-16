@@ -7,9 +7,17 @@ $script:LhmSettingsFileName = 'LibreHardwareMonitor.Windows.Forms.config'
 $script:LhmReleaseSchema = 'sq.librehw.local-release.v1'
 $script:LhmRuntimeSchema = 'sq.librehw.runtime.v1'
 $script:LhmProductionInstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'
-$script:LhmProductionDataRoot = 'E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor'
+$script:LhmPreviousProductionDataRoot =
+    'E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor'
+$script:LhmProductionDataRoot = 'E:\Data\LibreHardwareMonitor'
 $script:LhmManagedTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC'
+$script:LhmProductionHealthUri = 'http://localhost:8085/data.json'
 $script:LhmExpectedMachineId = 'snd-desk'
+$script:LhmExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
+$script:LhmManagedTaskPrincipalSid =
+    'S-1-5-21-3033086598-3000262358-161002696-1001'
+$script:LhmManagedTaskPrincipalUserId = 'Sev'
+$script:LhmManagedTaskLogonUserId = 'SND-Desk\Sev'
 $script:LhmIdentityVerifierPath =
     'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $script:LhmProcessName = 'LibreHardwareMonitor.Windows.Forms'
@@ -18,6 +26,8 @@ $script:LhmLauncherTargetPath =
 $script:LhmPublicShimPath = 'E:\SQ_HQ\u-programs\bin\librehw.cmd'
 $script:LhmPublicShimSha256 =
     'fe319aabd007a3a639cd618c748d480f7881dd18864db6f9c94bac537bd10d73'
+$script:LhmPreRelocationLauncherSha256 =
+    '74148efe09a18cb00047d3c6915153717071c9a5e3c1198193caeb0f0dac63c0'
 $script:LhmPreStableLauncherSha256 =
     '79a45f697d40d7f3d9897228d5b6f35ad04974f3a42e4a69eb0f24a29e2c6432'
 $script:LhmPreStableManagedExecutablePath =
@@ -445,6 +455,10 @@ function Assert-LhmVerifiedMachineIdentity {
         throw "Machine identity is '$($identity.machineId)', not '$($script:LhmExpectedMachineId)'."
     }
 
+    if ([string]$identity.instanceId -cne $script:LhmExpectedInstanceId) {
+        throw "Machine installation identity is '$($identity.instanceId)', not '$($script:LhmExpectedInstanceId)'."
+    }
+
     return $identity
 }
 
@@ -470,7 +484,30 @@ function Get-LhmFileSha256 {
         [string] $Path
     )
 
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    # Windows PowerShell 5.1 propagates WhatIfPreference into Get-FileHash's
+    # provider lookup, suppressing that read-only query and returning no hash.
+    # Use a read-only .NET stream so preflight remains active under -WhatIf.
+    $resolvedPath = Resolve-LhmFullPath -Path $Path
+    $stream = $null
+    $sha256 = $null
+    try {
+        $stream = [System.IO.File]::Open(
+            $resolvedPath,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::ReadWrite)
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        $hashBytes = $sha256.ComputeHash($stream)
+    }
+    finally {
+        if ($null -ne $sha256) {
+            $sha256.Dispose()
+        }
+        if ($null -ne $stream) {
+            $stream.Dispose()
+        }
+    }
+    return [System.BitConverter]::ToString($hashBytes).Replace('-', '').ToLowerInvariant()
 }
 
 function Read-LhmReleasePayload {

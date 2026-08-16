@@ -1,7 +1,8 @@
 # Repository Build-Output Cleanup
 
-**Status:** completed on verified `snd-desk`
-**Updated:** 2026-08-09
+**Status:** cleanup completed on verified `snd-desk`; guarded data-root
+relocation is independently source-verified and live-accepted
+**Updated:** 2026-08-15
 
 **Machine scope:** the runtime, mutable-data, launcher, archive, and cleanup
 evidence below belong to SND-DESK. On SND-HOST this document is historical
@@ -20,7 +21,7 @@ Stable runtime:
 E:\SQ_HQ\Monitoring\LibreHW\LibreHardwareMonitor.Windows.Forms.exe
 
 Mutable data:
-E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor\
+E:\Data\LibreHardwareMonitor\
 
 Public command:
 E:\SQ_HQ\u-programs\bin\librehw.cmd
@@ -48,7 +49,7 @@ They and the three old mutable config files were moved without flattening names
 to:
 
 ```text
-E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor\historical\
+E:\Data\LibreHardwareMonitor\historical\
   pre-stable-repo-build-output-2026-07-25\
     logs\
     config\Debug\
@@ -70,7 +71,7 @@ Archive proof:
 
 After preserving those 3,364 files, the cleanup removed 2,791 reproducible files
 totalling 681,081,208 bytes, including all 32 repo-output EXEs. No stable runtime
-or live `sqdata` file was part of the deletion scope.
+or then-live mutable-data file was part of the deletion scope.
 
 The one EXE that remains elsewhere in the repository is the tracked
 `LibreHardwareMonitor.Windows.Forms\Resources\PawnIO_setup.exe` application
@@ -113,6 +114,11 @@ Get-Command librehw
 Every path converges on one exact stable process. The managed task action and
 working directory use the shallow stable directory, and health is checked at
 `http://localhost:8085/data.json`.
+
+The runtime and launcher locations are intentionally retained as a compatibility
+island. Mutable configuration, backup, historical archive, and logs now belong
+under `E:\Data\LibreHardwareMonitor`; neither the public shim nor its delegated
+`E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1` path moves.
 
 The final command-chain test also covers the actual Windows PowerShell 5.1 host
 started by `librehw.cmd`. A scalar-`Count` incompatibility found during this
@@ -166,12 +172,35 @@ polling stability remains a separate concern.
 ## Retired pre-stable recovery
 
 The old recovery packets name the removed Debug and Release payloads. Their
-launcher/task definitions remain under `sqdata\release-recovery` as historical
+launcher/task definitions remain under
+`E:\Data\LibreHardwareMonitor\release-recovery` as historical
 audit evidence, but restoring them would create broken startup entries.
 Accordingly, both old startup-recovery entry points now fail closed before any
 launcher, task, or shortcut mutation. Installed-release rollback remains
 `Restore-LibreHardwareMonitorRelease.ps1` and uses only the bounded stable
 `rollback` slot.
+
+## Data-root relocation gate — 2026-08-15
+
+The mutable tree was moved normally to `E:\Data\LibreHardwareMonitor`; the old
+data directory is absent. The stable EXE, public shim, delegated launcher path,
+and managed-task action remain at their compatibility locations above. The
+runtime descriptor now selects the new data root, and the existing managed task
+is enabled and running with one exact stable process. Live readback returned
+HTTP 200 and showed a fresh CSV write under the new data root; the public shim
+and immutable pre-stable recovery manifest remained byte-identical.
+
+`Relocate-LibreHardwareMonitorDataRoot.ps1` validates those exact boundaries and
+the existing pre-stable packet, then persists only config/launcher/task recovery
+before atomically replacing the runtime descriptor and deployed launcher. It
+does not copy app or data payloads. It enables and starts the existing task only
+after readback, then requires one exact stable process and HTTP health. Failure
+before activation leaves the task disabled with resumable evidence. The
+non-live suite covers refusal, junction, recovery-tamper, failure/resume, and
+idempotence paths under PowerShell 7 and Windows PowerShell 5.1. The attended
+production command separately returned `PASS`; its recovery directory contains
+exactly the four bounded config/launcher/task/manifest files, and the full
+post-live suite passed again in both engines.
 
 ## Separate external consumer
 
@@ -180,6 +209,7 @@ this repository and configured with a different, nonexistent legacy root:
 `E:\SQ_HQ\Monitoring\sq-librehw\bin\Release\net10.0-windows`. It was not part
 of the `librehw` launch chain or this deletion scope. A later SND-DESK
 observation on 2026-08-03 found the task entirely absent; its external owner
-must decide whether to recreate it against the canonical `sqdata` log directory
-or retire it. See `docs\features\feature-local-release-system.md` for the dated
+must decide whether to recreate it against
+`E:\Data\LibreHardwareMonitor\logs` or retire it. See
+`docs\features\feature-local-release-system.md` for the dated
 restoration evidence.

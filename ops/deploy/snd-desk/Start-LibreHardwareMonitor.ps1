@@ -10,6 +10,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $InstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'
+$DataRoot = 'E:\Data\LibreHardwareMonitor'
 $ExecutablePath =
     [System.IO.Path]::Combine($InstallRoot, 'LibreHardwareMonitor.Windows.Forms.exe')
 $RuntimeConfigPath = [System.IO.Path]::Combine($InstallRoot, 'librehw.runtime.json')
@@ -17,6 +18,7 @@ $ManagedTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC'
 $IdentityVerifierPath =
     'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
+$ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 $ProcessName = 'LibreHardwareMonitor.Windows.Forms'
 $MutexName = 'Local\Sev.LibreHardwareMonitorLauncher'
 
@@ -27,8 +29,9 @@ function Assert-LauncherMachineIdentity {
 
     $identity = & $IdentityVerifierPath
     if ([string]$identity.status -cne 'VERIFIED' -or
-        [string]$identity.machineId -cne $ExpectedMachineId) {
-        throw "This launcher is restricted to verified machine '$ExpectedMachineId'."
+        [string]$identity.machineId -cne $ExpectedMachineId -or
+        [string]$identity.instanceId -cne $ExpectedInstanceId) {
+        throw "This launcher is restricted to verified machine '$ExpectedMachineId' instance '$ExpectedInstanceId'."
     }
 }
 
@@ -45,6 +48,33 @@ function Test-LauncherPathEqual {
         [System.IO.Path]::GetFullPath($Left),
         [System.IO.Path]::GetFullPath($Right),
         [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Assert-LauncherNormalDataRoot {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Path
+    )
+
+    $currentPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not (Test-Path -LiteralPath $currentPath -PathType Container)) {
+        throw "Libre Hardware Monitor data root was not found at '$currentPath'."
+    }
+    while (-not [string]::IsNullOrWhiteSpace($currentPath)) {
+        $item = Get-Item -LiteralPath $currentPath -Force -ErrorAction Stop
+        if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+            throw "Libre Hardware Monitor data-root ancestry contains a reparse point: '$currentPath'."
+        }
+        $parentPath = Split-Path -Parent $currentPath
+        if ([string]::IsNullOrWhiteSpace($parentPath) -or
+            [string]::Equals(
+                $parentPath,
+                $currentPath,
+                [System.StringComparison]::OrdinalIgnoreCase)) {
+            break
+        }
+        $currentPath = $parentPath
+    }
 }
 
 function Assert-InstalledRuntime {
@@ -78,9 +108,10 @@ function Assert-InstalledRuntime {
     }
     if (-not (Test-LauncherPathEqual `
         -Left ([string]$runtimeConfig.dataRoot) `
-        -Right 'E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor')) {
+        -Right $DataRoot)) {
         throw 'Libre Hardware Monitor runtime dataRoot is not the fixed machine-local data root.'
     }
+    Assert-LauncherNormalDataRoot -Path $DataRoot
     if ([string]$runtimeConfig.managedStartupTaskPath -cne $ManagedTaskPath) {
         throw "Libre Hardware Monitor runtime task must be '$ManagedTaskPath'."
     }
@@ -411,10 +442,12 @@ if ($ValidateScriptOnly) {
     [pscustomobject]@{
         Result = 'PASS'
         InstallRoot = $InstallRoot
+        DataRoot = $DataRoot
         ExecutablePath = $ExecutablePath
         RuntimeConfigPath = $RuntimeConfigPath
         ManagedTaskPath = $ManagedTaskPath
         ExpectedMachineId = $ExpectedMachineId
+        ExpectedInstanceId = $ExpectedInstanceId
         DetectedProcessCount = $detectedProcesses.Count
         MutationPerformed = $false
     }

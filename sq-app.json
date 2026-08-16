@@ -1,0 +1,64 @@
+{
+  "schema": "sq.app.v1",
+  "machineId": "snd-desk",
+  "verifiedOn": "2026-08-15",
+  "id": "sq-librehw",
+  "kind": "git-source",
+  "root": "E:\\Monitoring\\sq-librehw",
+  "mutableState": [
+    {
+      "location": "filesystem",
+      "path": "E:\\Data\\LibreHardwareMonitor",
+      "role": "managed-data-root"
+    }
+  ],
+  "deployments": [
+    {
+      "kind": "managed-runtime",
+      "root": "E:\\SQ_HQ\\Monitoring\\LibreHW",
+      "executable": "E:\\SQ_HQ\\Monitoring\\LibreHW\\LibreHardwareMonitor.Windows.Forms.exe",
+      "releaseManifest": "E:\\SQ_HQ\\Monitoring\\LibreHW\\release.json",
+      "runtimeConfig": "E:\\SQ_HQ\\Monitoring\\LibreHW\\librehw.runtime.json",
+      "releaseId": "0.9.6_e977e57.2026-08-14-e977e577ea13-20260814T205711Z",
+      "commit": "e977e577ea133fa6e9486f40f29b2266dcc22d70"
+    }
+  ],
+  "consumers": [
+    {
+      "kind": "scheduledTask",
+      "name": "\\SevGrp\\AdminTask\\LibreHW-No-UAC",
+      "execute": "E:\\SQ_HQ\\Monitoring\\LibreHW\\LibreHardwareMonitor.Windows.Forms.exe",
+      "arguments": "",
+      "workingDirectory": "E:\\SQ_HQ\\Monitoring\\LibreHW"
+    },
+    {
+      "kind": "scriptLauncher",
+      "path": "E:\\UserProfile\\script-data\\Start-LibreHardwareMonitor.ps1"
+    },
+    {
+      "kind": "pathShim",
+      "path": "E:\\SQ_HQ\\u-programs\\bin\\librehw.cmd"
+    },
+    {
+      "kind": "solexEffectiveCatalog",
+      "name": "librehw-solex",
+      "authorityPath": "E:\\SQ_HQ\\sqprofile\\sqdata\\SoleX\\generated\\solex.effective.json"
+    }
+  ],
+  "source": {
+    "kind": "git",
+    "remote": "origin",
+    "uri": "https://github.com/espensev/sq-librehw.git",
+    "commit": "570fca4758f1e4c08aa54d6710d77c874ea16ef7"
+  },
+  "compatibility": {
+    "phase": 1,
+    "surfaces": [
+      "E:\\SQ_HQ\\Monitoring\\LibreHW",
+      "E:\\UserProfile\\script-data\\Start-LibreHardwareMonitor.ps1",
+      "E:\\SQ_HQ\\u-programs\\bin\\librehw.cmd"
+    ],
+    "recoveryRoot": "E:\\Data\\LibreHardwareMonitor\\release-recovery",
+    "runtimeInventory": "closed-release-owned; do not add sq-app.json to the managed runtime root"
+  }
+}

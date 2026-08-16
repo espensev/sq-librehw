@@ -5,9 +5,9 @@ launcher actions fail closed to `snd-desk`; the non-live fixture is intentionall
 peer-safe under isolated temporary roots. Do not treat these paths, tasks,
 users, or runtime state as SND-HOST instructions.
 
-**Status:** implemented on SND-DESK, installed, attended-finalization verified,
-and repository-output cleanup complete
-**Updated:** 2026-08-09
+**Status:** stable release installed on SND-DESK; guarded data-root relocation
+implemented, independently source-verified, and live-accepted on 2026-08-15
+**Updated:** 2026-08-15
 
 ## Problem
 
@@ -31,7 +31,8 @@ coupled.
 - Keep `librehw.cmd` as the permanent public command, unchanged.
 - Run one fixed, shallow installed EXE rather than a Debug/Release build output.
 - Publish the local net10 x64 app as one framework-dependent EXE.
-- Keep config, backups, and CSV logs under machine-local `sqdata`.
+- Keep config, backups, and CSV logs under the dedicated machine-local
+  `E:\Data\LibreHardwareMonitor` root.
 - Provide manifest-backed promotion, exactly one rollback slot, and bounded
   retention.
 - Converge the launcher, no-UAC task, logon start, shortcuts, and process checks
@@ -46,8 +47,8 @@ coupled.
 - Deploying net472 locally; it remains a compatibility build gate.
 - Retaining an unbounded release/package history.
 - Deleting or archiving the existing 9 GB log store during release cutover. A
-  later, separately accepted repository-output cleanup preserved it under
-  machine-local `sqdata`.
+  later, separately accepted repository-output cleanup preserved it outside the
+  repository; the bounded 2026-08-15 relocation keeps that payload intact.
 - Force-stopping an unknown or path-mismatched process.
 - Changing the existing managed tray-toggle/foreground restoration behavior.
 
@@ -80,7 +81,7 @@ coupled.
 
 ## Selected release shape
 
-### Stable runtime
+### Stable compatibility runtime
 
 ```text
 E:\SQ_HQ\Monitoring\LibreHW\
@@ -103,18 +104,21 @@ retains only the current and immediately previous verified payload. The
 `rollback` directory is empty after the first install and holds one verified
 EXE/manifest pair after a later successful promotion.
 
+The install root deliberately remains at this old shallow path. The data-root
+relocation does not move, copy, or republish the application payload.
+
 ### Mutable data
 
 ```text
-E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor\
+E:\Data\LibreHardwareMonitor\
 ├─ LibreHardwareMonitor.Windows.Forms.config
 ├─ LibreHardwareMonitor.Windows.Forms.config.backup
 └─ logs\
    └─ LibreHardwareMonitorLog-*.csv
 ```
 
-The installed SND-DESK runtime manifest selects the machine-local
-`sqdata\LibreHardwareMonitor` directory explicitly. The app resolves that
+The installed SND-DESK runtime manifest selects `E:\Data\LibreHardwareMonitor`
+explicitly. The app resolves that
 runtime configuration first, then an explicit Libre Hardware Monitor data-root
 override, then falls back to executable-adjacent storage. Ambient `%sqdata%` is
 deliberately not application authority because other hosts and shells may bind
@@ -123,9 +127,52 @@ it to unrelated state.
 ### Public launcher
 
 `E:\SQ_HQ\u-programs\bin\librehw.cmd` remains byte-for-byte unchanged. Its
-delegated PowerShell script now targets the stable EXE and working directory.
+delegated compatibility script remains
+`E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1`; that script targets
+the stable EXE/working directory and the dedicated data root.
 Existing-process restore still uses the app-owned tray-toggle path. When no
 process exists, elevated start routes through the managed no-UAC task.
+
+### Data-root relocation compatibility island — 2026-08-15
+
+The pre-activation handoff keeps the install and public-launch chain fixed while
+changing only authoritative mutable-data selection:
+
+```text
+E:\SQ_HQ\u-programs\bin\librehw.cmd
+  -> E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1
+  -> \SevGrp\AdminTask\LibreHW-No-UAC
+  -> E:\SQ_HQ\Monitoring\LibreHW\LibreHardwareMonitor.Windows.Forms.exe
+
+Authoritative data -> E:\Data\LibreHardwareMonitor
+```
+
+The mutable payload has already been moved normally to the new data root and
+the previous `E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor` root is absent.
+The live runtime descriptor now selects `E:\Data\LibreHardwareMonitor`; the
+existing managed task is enabled and running from the retained stable install
+root. The public shim and pre-stable recovery packet remain byte-identical.
+
+`Relocate-LibreHardwareMonitorDataRoot.ps1` is the single production transition
+entry point. It requires verified `snd-desk` identity, the exact three roots and
+compatibility launcher/shim paths, normal non-reparse boundaries, an existing
+installed release, the exact managed-task contract, and the existing
+manifest-only pre-stable packet. First convergence requires the task disabled;
+validated recovery and already-converged states are resumable. Before changing
+anything it atomically
+persists a bounded packet under
+`E:\Data\LibreHardwareMonitor\release-recovery\data-root-relocation` containing
+only the old runtime config, launcher, task definition, and recovery manifest.
+It never copies application or data payloads and never rewrites or removes the
+pre-stable packet.
+
+Runtime config and canonical launcher deployment use same-directory temporary
+files plus rename/readback. Only after config, launcher, shim, task, and recovery
+readback does the script enable and start the existing task. Acceptance then
+requires one exact installed process, the new data-root descriptor, and HTTP
+health. A pre-activation failure leaves the task disabled and the recovery
+packet intact; a rerun resumes without rewriting that packet. The public shim
+hash must remain unchanged throughout.
 
 ## Package decision
 
@@ -265,11 +312,11 @@ the health contract. The smaller Debug config does not enable the web server.
   populated `SND-DESK` hardware tree.
 - The native window was responding and exposed populated tree/menu/scrollbar
   controls through UI Automation.
-- A new CSV appeared under the `sqdata` log directory.
+- A new CSV appeared under the then-selected `sqdata` log directory.
 - The 3,361 existing Release-tree CSV files (9,058,052,916 bytes) remained
   untouched during installation. The later accepted cleanup moved them,
   unchanged and collision-isolated, under
-  `sqdata\LibreHardwareMonitor\historical\pre-stable-repo-build-output-2026-07-25`.
+  `E:\Data\LibreHardwareMonitor\historical\pre-stable-repo-build-output-2026-07-25`.
 - The public command still resolves to the unchanged `librehw.cmd`; an
   elevated invocation restored the existing stable process without creating a
   duplicate.
@@ -352,12 +399,14 @@ undetermined.
 - The unchanged shim/launcher chain then started one process through the task
   (last result `0x41301` running). `/`, `/data.json`, and `/metrics` all
   returned HTTP 200; `/data.json` retained the expected `Sensor` envelope. A
-  new `LibreHardwareMonitorLog-2026-08-03.csv` appeared under the `sqdata` logs
+  new `LibreHardwareMonitorLog-2026-08-03.csv` appeared under the then-selected
+  `sqdata` logs
   root. A repeated shim invocation kept the same PID with no duplicate.
 - The separate `hardware-optimization` health-feed task was also absent from
   Task Scheduler on this date. Its definition lives outside this repository;
-  the owning package must decide whether to recreate it against the canonical
-  `sqdata` log directory or retire it. It was not recreated here.
+  the owning package must decide whether to recreate it against the dedicated
+  `E:\Data\LibreHardwareMonitor\logs` directory or retire it. It was not
+  recreated here.
 
 ## Rebuilt-profile deployment — 2026-08-14
 
@@ -401,7 +450,7 @@ needed two bounded fixes before it could safely bootstrap that clean state.
 - [x] The installed process path is the fixed shallow path.
 - [x] Debug/Release builds and tests do not write into the installed runtime.
 - [x] Config load/save and the generated backup stay under the selected
-  `sqdata` root.
+  data root.
 - [x] New CSV logs appear only under the selected `logs` root.
 - [x] Launcher promotion/repair and persistent settings/log writes reject
   reparse-point ancestors or leaves before touching an external target.
@@ -434,6 +483,18 @@ needed two bounded fixes before it could safely bootstrap that clean state.
 - [x] The later accepted cleanup preserves all 3,361 historical CSVs and three
   old config files outside the repo, then removes every ignored repo-local
   `bin`/`obj` tree and all 32 non-authoritative EXEs.
+- [x] The non-live relocation fixture covers exact-path refusal, old-root
+  presence refusal, junction refusal, bounded recovery validation and tamper
+  rejection, pre-activation task disablement, resumability, and a byte-stable
+  idempotent Windows PowerShell 5.1 rerun.
+- [x] Production relocation readback proved the unchanged public shim, canonical
+  compatibility launcher, enabled existing task, one exact stable process using
+  `E:\Data\LibreHardwareMonitor`, HTTP 200 health, and a fresh CSV write. The
+  deployed/canonical launcher SHA-256 was
+  `8C71D3167F8DC212E9BF282F086F848CE0C80BC6BFDCFCDA3F15448EE7061096`;
+  the public shim (`FE319AAB...0D73`) and immutable pre-stable recovery manifest
+  (`3A9366E8...CE04`) were unchanged. The relocation recovery directory contains
+  exactly the four bounded config/launcher/task/manifest files.
 
 ## Verification
 
@@ -452,6 +513,9 @@ Release gate:
 - run a single-file launch smoke without touching the live install;
 - run installer and rollback integration tests against temporary install/data
   roots;
+- run the relocation entry point against temporary roots, including a
+  Windows PowerShell 5.1 idempotence pass, recovery tamper, reparse, and injected
+  pre-activation failure/resume cases;
 - cover an ownerless first install and require its bounded recovery packet to
   contain only the manifest with both legacy owners recorded absent;
 - preserve external sentinels across hostile launcher, payload, rollback,
@@ -463,6 +527,10 @@ Operator workflow:
 ```powershell
 # Non-live parser, failure-injection, hostile-input, and rollback checks
 .\ops\deploy\snd-desk\Test-LhmLocalRelease.ps1
+
+# After QA: relocate only runtime authority, launcher content, and existing task
+.\ops\deploy\snd-desk\Relocate-LibreHardwareMonitorDataRoot.ps1 `
+  -DataMoveAlreadyCompleted -Confirm:$false
 
 # Publish an isolated candidate; omit -AllowDirty for normal committed releases
 .\ops\deploy\snd-desk\Publish-LibreHardwareMonitor.ps1 `

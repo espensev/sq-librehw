@@ -9,6 +9,7 @@ $opsRoot = $PSScriptRoot
 $commonScript = Join-Path $opsRoot 'LhmLocalRelease.Common.ps1'
 $installScript = Join-Path $opsRoot 'Install-LibreHardwareMonitorRelease.ps1'
 $rollbackScript = Join-Path $opsRoot 'Restore-LibreHardwareMonitorRelease.ps1'
+$relocationScript = Join-Path $opsRoot 'Relocate-LibreHardwareMonitorDataRoot.ps1'
 $finalizeScript = Join-Path $opsRoot 'Finalize-LibreHardwareMonitorCutover.ps1'
 $legacyRecoveryScript = Join-Path $opsRoot 'Restore-LegacyLibreHardwareMonitorStartup.ps1'
 $preStableRecoveryScript =
@@ -806,6 +807,11 @@ function Assert-LhmCommonIdentityContract {
         -Label $Label
     Assert-LhmPinnedTopLevelLiteral `
         -ScriptAst $ScriptAst `
+        -VariableText '$script:LhmExpectedInstanceId' `
+        -ExpectedValue 'ca96d510-7d87-4cec-8e1a-bd8fc3866903' `
+        -Label $Label
+    Assert-LhmPinnedTopLevelLiteral `
+        -ScriptAst $ScriptAst `
         -VariableText '$script:LhmIdentityVerifierPath' `
         -ExpectedValue `
             'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1' `
@@ -1102,6 +1108,11 @@ function Assert-LhmLauncherIdentityGate {
         -Label $Label
     Assert-LhmPinnedTopLevelLiteral `
         -ScriptAst $ScriptAst `
+        -VariableText '$ExpectedInstanceId' `
+        -ExpectedValue 'ca96d510-7d87-4cec-8e1a-bd8fc3866903' `
+        -Label $Label
+    Assert-LhmPinnedTopLevelLiteral `
+        -ScriptAst $ScriptAst `
         -VariableText '$IdentityVerifierPath' `
         -ExpectedValue `
             'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1' `
@@ -1225,6 +1236,9 @@ function Invoke-LhmIdentityContractPreflight {
     Assert-LhmLiveIdentityGate `
         -ScriptAst (Get-LhmScriptAst -Path $rollbackScript) `
         -Label 'Restore-LibreHardwareMonitorRelease.ps1'
+    Assert-LhmLiveIdentityGate `
+        -ScriptAst (Get-LhmScriptAst -Path $relocationScript) `
+        -Label 'Relocate-LibreHardwareMonitorDataRoot.ps1'
     Assert-LhmFinalizeIdentityGate `
         -ScriptAst (Get-LhmScriptAst -Path $finalizeScript) `
         -Label 'Finalize-LibreHardwareMonitorCutover.ps1'
@@ -1289,6 +1303,7 @@ param([switch] $ValidateScriptOnly)
 $ErrorActionPreference = 'Stop'
 $IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
+$ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
 if ($ValidateScriptOnly) {
     return
@@ -1311,6 +1326,7 @@ param([int] $ValidateScriptOnly = 1)
 
 $IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
+$ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
 if ($ValidateScriptOnly) {
     return
@@ -1333,6 +1349,7 @@ param([switch] $ValidateScriptOnly)
 
 $IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
+$ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
 function Invoke-UnsafeValidation { & $LauncherTargetPath }
 if ($ValidateScriptOnly) {
@@ -1357,6 +1374,7 @@ param([switch] $ValidateScriptOnly)
 
 $IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
+$ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
 function Invoke-UnsafeValidation { $shortcut.Save() }
 if ($ValidateScriptOnly) {
@@ -1382,6 +1400,7 @@ param([switch] $ValidateScriptOnly)
 $ErrorActionPreference = 'Stop'
 $IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
+$ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
 if ($ValidateScriptOnly) {
     function Get-Process { Remove-Item 'C:\safety-sentinel' }
@@ -1576,6 +1595,7 @@ param([switch] $ValidateScriptOnly)
 
 $IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
+$ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
 function Invoke-UnsafeValidation {
     Get-Process | ForEach-Object -MemberName Kill
@@ -1602,6 +1622,7 @@ param([switch] $ValidateScriptOnly)
 
 $IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
+$ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
 function Invoke-UnsafeValidation {
     Get-Process -OutVariable global:LhmUnsafeOutput
@@ -1628,6 +1649,7 @@ param([switch] $ValidateScriptOnly)
 
 $IdentityVerifierPath = 'C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'
 $ExpectedMachineId = 'snd-desk'
+$ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 function Assert-LauncherMachineIdentity { }
 function Invoke-UnsafeValidation {
     $arguments = @{ OutVariable = 'global:LhmUnsafeOutput' }
@@ -1846,6 +1868,11 @@ if (-not $NonLiveTestMode) {
             Replacement = '$script:LhmExpectedMachineId = ''snd-host'''
         },
         @{
+            Name = 'common expected installation'
+            Search = '$script:LhmExpectedInstanceId = ''ca96d510-7d87-4cec-8e1a-bd8fc3866903'''
+            Replacement = '$script:LhmExpectedInstanceId = ''11111111-1111-1111-1111-111111111111'''
+        },
+        @{
             Name = 'common verifier path'
             Search = '''C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'''
             Replacement = '''C:\Users\Dev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'''
@@ -1920,6 +1947,11 @@ if (-not $NonLiveTestMode) {
             Replacement = '$ExpectedMachineId = ''snd-host'''
         },
         @{
+            Name = 'launcher expected installation'
+            Search = '$ExpectedInstanceId = ''ca96d510-7d87-4cec-8e1a-bd8fc3866903'''
+            Replacement = '$ExpectedInstanceId = ''11111111-1111-1111-1111-111111111111'''
+        },
+        @{
             Name = 'launcher verifier path'
             Search = '''C:\Users\Sev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'''
             Replacement = '''C:\Users\Dev\OneDrive\Common\common_development\common_dev\Get-VerifiedMachineIdentity.ps1'''
@@ -1992,12 +2024,28 @@ if (-not $NonLiveTestMode) {
 $identityGateContractsVerified = Invoke-LhmIdentityContractPreflight
 . $commonScript
 
+$relocationBehaviorAst = Get-LhmScriptAst -Path $relocationScript
+foreach ($functionName in @(
+    'Assert-LhmRelocationHealthUri',
+    'Assert-LhmRelocationTaskContract'
+)) {
+    $functionAsts = @($relocationBehaviorAst.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -ceq $functionName
+    }, $true))
+    Assert-True ($functionAsts.Count -eq 1) `
+        "Relocation script must define $functionName exactly once."
+    . ([scriptblock]::Create($functionAsts[0].Extent.Text))
+}
+
 function New-TestIdentityVerifier {
     param(
         [Parameter(Mandatory)][string] $Root,
         [Parameter(Mandatory)][string] $Name,
         [string] $Status,
         [string] $MachineId,
+        [string] $InstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903',
         [switch] $NoResult
     )
 
@@ -2010,7 +2058,7 @@ function New-TestIdentityVerifier {
 [pscustomobject][ordered]@{
     status = '$Status'
     machineId = '$MachineId'
-    instanceId = '11111111-1111-1111-1111-111111111111'
+    instanceId = '$InstanceId'
     computerName = 'SND-DESK'
     user = 'Sev'
     qualifiedUser = 'SND-DESK\Sev'
@@ -2047,6 +2095,7 @@ function Get-Process {
 . '$launcherLiteral' -ValidateScriptOnly | Out-Null
 `$IdentityVerifierPath = '$verifierLiteral'
 `$ExpectedMachineId = 'snd-desk'
+`$ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 Assert-LauncherMachineIdentity
 "@
     $oldErrorActionPreference = $ErrorActionPreference
@@ -2151,6 +2200,136 @@ function New-TestCandidate {
 
     $null = Read-LhmReleasePayload -Directory $candidateRoot -RequireCandidateShape
     return $candidateRoot
+}
+
+function New-ProductionRelocationTaskFixture {
+    param(
+        [Parameter(Mandatory)][string] $ExecutablePath,
+        [Parameter(Mandatory)][string] $InstallRoot
+    )
+
+    return [pscustomobject]@{
+        Actions = @([pscustomobject]@{
+            Execute = $ExecutablePath
+            Arguments = $null
+            WorkingDirectory = $InstallRoot
+        })
+        Principal = [pscustomobject]@{
+            UserId = $script:LhmManagedTaskPrincipalUserId
+            LogonType = 'Interactive'
+            RunLevel = 'Highest'
+        }
+        Settings = [pscustomobject]@{
+            Enabled = $false
+            MultipleInstances = 'IgnoreNew'
+            StartWhenAvailable = $true
+            AllowHardTerminate = $false
+        }
+        Triggers = @([pscustomobject]@{
+            CimClass = [pscustomobject]@{ CimClassName = 'MSFT_TaskLogonTrigger' }
+            UserId = $script:LhmManagedTaskLogonUserId
+            Enabled = $true
+        })
+        State = 'Disabled'
+    }
+}
+
+function New-DataRootRelocationFixture {
+    param(
+        [Parameter(Mandatory)][string] $Root,
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $CandidateDirectory
+    )
+
+    $fixtureRoot = Join-Path $Root "relocation-$Name"
+    $installRoot = Join-Path $fixtureRoot 'install'
+    $sourceDataRoot = Join-Path $fixtureRoot 'old-data'
+    $dataRoot = Join-Path $fixtureRoot 'new-data'
+    $externalRoot = Join-Path $fixtureRoot 'external-state'
+    $launcherTarget = Join-Path $fixtureRoot 'script-data\Start-LibreHardwareMonitor.ps1'
+    $shimPath = Join-Path $fixtureRoot 'bin\librehw.cmd'
+    $recoveryParent = Join-Path $dataRoot 'release-recovery'
+    $preStableRecoveryRoot = Join-Path $recoveryParent 'pre-stable-startup'
+
+    [System.IO.Directory]::CreateDirectory($fixtureRoot) | Out-Null
+    [System.IO.Directory]::CreateDirectory($dataRoot) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Join-Path $dataRoot 'logs')) | Out-Null
+    [System.IO.Directory]::CreateDirectory($externalRoot) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Split-Path -Parent $launcherTarget)) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Split-Path -Parent $shimPath)) | Out-Null
+    [System.IO.Directory]::CreateDirectory($preStableRecoveryRoot) | Out-Null
+
+    $null = Copy-LhmPayloadPair `
+        -SourceDirectory $CandidateDirectory `
+        -DestinationDirectory $installRoot
+    [ordered]@{
+        schema = $script:LhmRuntimeSchema
+        dataRoot = $sourceDataRoot
+        managedStartupTaskPath = $script:LhmManagedTaskPath
+    } | ConvertTo-Json | Set-Content `
+        -LiteralPath (Join-Path $installRoot $script:LhmRuntimeConfigName) `
+        -Encoding UTF8
+    '<configuration><appSettings /></configuration>' | Set-Content `
+        -LiteralPath (Join-Path $dataRoot $script:LhmSettingsFileName) `
+        -Encoding UTF8
+    'relocation log sentinel' | Set-Content `
+        -LiteralPath (Join-Path $dataRoot 'logs\sentinel.csv') `
+        -Encoding UTF8
+    @"
+# Pre-relocation launcher fixture.
+`$DataRoot = '$sourceDataRoot'
+"@ | Set-Content -LiteralPath $launcherTarget -Encoding UTF8
+    @"
+@echo off
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$launcherTarget" %*
+"@ | Set-Content -LiteralPath $shimPath -Encoding ASCII
+    [ordered]@{
+        taskPath = $script:LhmManagedTaskPath
+        execute = Join-Path $installRoot $script:LhmExecutableName
+        arguments = $null
+        workingDirectory = $installRoot
+        principalUserId = $script:LhmManagedTaskPrincipalUserId
+        runLevel = 'Highest'
+        logonType = 'InteractiveToken'
+        trigger = 'LogonAndOnDemand'
+        triggerUserId = $script:LhmManagedTaskLogonUserId
+        multipleInstances = 'IgnoreNew'
+        startWhenAvailable = $true
+        allowHardTerminate = $false
+        enabled = $false
+    } | ConvertTo-Json | Set-Content `
+        -LiteralPath (Join-Path $externalRoot 'managed-task.json') `
+        -Encoding UTF8
+
+    $shimHash = Get-LhmFileSha256 -Path $shimPath
+    [ordered]@{
+        schema = 'sq.librehw.pre-stable-startup-recovery.v1'
+        createdAt = [DateTimeOffset]::UtcNow.ToString('o')
+        launcherTargetPath = $launcherTarget
+        launcherExisted = $false
+        launcherBackup = $null
+        launcherSha256 = $null
+        managedTaskPath = $script:LhmManagedTaskPath
+        managedTaskExisted = $false
+        managedTaskBackup = $null
+        managedTaskSha256 = $null
+        publicShimPath = $shimPath
+        publicShimSha256 = $shimHash
+    } | ConvertTo-Json -Depth 5 | Set-Content `
+        -LiteralPath (Join-Path $preStableRecoveryRoot 'recovery.json') `
+        -Encoding UTF8
+
+    return [pscustomobject]@{
+        Root = $fixtureRoot
+        InstallRoot = $installRoot
+        SourceDataRoot = $sourceDataRoot
+        DataRoot = $dataRoot
+        ExternalRoot = $externalRoot
+        LauncherTarget = $launcherTarget
+        ShimPath = $shimPath
+        PreStableRecoveryRoot = $preStableRecoveryRoot
+        RelocationRecoveryRoot = Join-Path $recoveryParent 'data-root-relocation'
+    }
 }
 
 function Assert-NoTransactionDebris {
@@ -2277,6 +2456,291 @@ try {
     $candidate2 = New-TestCandidate `
         -Root $testRoot -Name 'two' -Version '1.0.2' -ShortCommit 'abcde02'
 
+    Assert-True (
+        $script:LhmProductionInstallRoot -ceq 'E:\SQ_HQ\Monitoring\LibreHW' -and
+        $script:LhmPreviousProductionDataRoot -ceq
+            'E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor' -and
+        $script:LhmProductionDataRoot -ceq 'E:\Data\LibreHardwareMonitor' -and
+        $script:LhmProductionHealthUri -ceq 'http://localhost:8085/data.json' -and
+        $script:LhmExpectedInstanceId -ceq
+            'ca96d510-7d87-4cec-8e1a-bd8fc3866903' -and
+        $script:LhmPreRelocationLauncherSha256 -ceq
+            '74148efe09a18cb00047d3c6915153717071c9a5e3c1198193caeb0f0dac63c0' -and
+        $script:LhmManagedTaskPrincipalSid -ceq
+            'S-1-5-21-3033086598-3000262358-161002696-1001' -and
+        $script:LhmManagedTaskPrincipalUserId -ceq 'Sev' -and
+        $script:LhmManagedTaskLogonUserId -ceq 'SND-Desk\Sev' -and
+        $script:LhmLauncherTargetPath -ceq
+            'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'
+    ) 'Production compatibility-island roots do not match the reviewed relocation contract.'
+    foreach ($releaseScript in @($installScript, $rollbackScript, $relocationScript)) {
+        $releaseText = Get-Content -LiteralPath $releaseScript -Raw
+        Assert-True (
+            $releaseText -match [regex]::Escape(
+                "[string] `$InstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'") -and
+            $releaseText -match [regex]::Escape(
+                "[string] `$DataRoot = 'E:\Data\LibreHardwareMonitor'") -and
+            $releaseText -match [regex]::Escape(
+                "'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'")
+        ) "Production defaults drifted in '$releaseScript'."
+    }
+    $launcherText = Get-Content -LiteralPath $canonicalLauncher -Raw
+    Assert-True (
+        $launcherText -match [regex]::Escape(
+            "`$InstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'") -and
+        $launcherText -match [regex]::Escape(
+            "`$DataRoot = 'E:\Data\LibreHardwareMonitor'")
+    ) 'Canonical launcher does not preserve the old install root with the new data root.'
+    $finalizerText = Get-Content -LiteralPath $finalizeScript -Raw
+    Assert-True (
+        $finalizerText -match [regex]::Escape(
+            '-File "E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1"')
+    ) 'Finalizer no longer requires the compatibility public-shim launcher path.'
+
+    $relocation = New-DataRootRelocationFixture `
+        -Root $testRoot `
+        -Name 'success' `
+        -CandidateDirectory $candidate1
+    $relocationBeforeWhatIf = Get-TreeSignature -Root $relocation.Root
+    $null = & $relocationScript `
+        -InstallRoot $relocation.InstallRoot `
+        -SourceDataRoot $relocation.SourceDataRoot `
+        -DataRoot $relocation.DataRoot `
+        -LauncherTargetPath $relocation.LauncherTarget `
+        -PublicShimPath $relocation.ShimPath `
+        -TestExternalStateRoot $relocation.ExternalRoot `
+        -DataMoveAlreadyCompleted `
+        -NonLiveTestMode `
+        -WhatIf
+    Assert-True (
+        (Get-TreeSignature -Root $relocation.Root) -ceq $relocationBeforeWhatIf
+    ) 'Relocation -WhatIf changed its non-live fixture.'
+    $relocationShimHash = Get-LhmFileSha256 -Path $relocation.ShimPath
+    $preStableSignature = Get-TreeSignature -Root $relocation.PreStableRecoveryRoot
+    $relocationResult = & $relocationScript `
+        -InstallRoot $relocation.InstallRoot `
+        -SourceDataRoot $relocation.SourceDataRoot `
+        -DataRoot $relocation.DataRoot `
+        -LauncherTargetPath $relocation.LauncherTarget `
+        -PublicShimPath $relocation.ShimPath `
+        -TestExternalStateRoot $relocation.ExternalRoot `
+        -DataMoveAlreadyCompleted `
+        -NonLiveTestMode `
+        -Confirm:$false
+    Assert-True (
+        $relocationResult.Result -ceq 'PASS' -and
+        -not [bool]$relocationResult.AlreadyConverged -and
+        -not [bool]$relocationResult.Activated -and
+        [bool]$relocationResult.TestMode
+    ) 'Non-live data-root relocation did not report a successful first convergence.'
+    $null = Read-LhmRuntimeConfig `
+        -Path (Join-Path $relocation.InstallRoot $script:LhmRuntimeConfigName) `
+        -ExpectedDataRoot $relocation.DataRoot `
+        -ExpectedManagedTaskPath $script:LhmManagedTaskPath
+    Assert-True (
+        (Get-LhmFileSha256 -Path $relocation.LauncherTarget) -ceq
+            (Get-LhmFileSha256 -Path $canonicalLauncher)
+    ) 'Relocation did not deploy the canonical launcher content.'
+    $relocatedTask = Get-Content `
+        -LiteralPath (Join-Path $relocation.ExternalRoot 'managed-task.json') `
+        -Raw | ConvertFrom-Json
+    Assert-True ([bool]$relocatedTask.enabled) `
+        'Relocation did not enable the existing managed task after readback.'
+    $relocationRecoveryNames = @(Get-ChildItem `
+        -LiteralPath $relocation.RelocationRecoveryRoot `
+        -Force | ForEach-Object Name | Sort-Object)
+    Assert-True (
+        ($relocationRecoveryNames -join "`n") -ceq
+            ((@(
+                'launcher-backup.ps1',
+                'managed-task.test.json',
+                'recovery.json',
+                'runtime-config-backup.json'
+            ) | Sort-Object) -join "`n")
+    ) 'Relocation recovery is not bounded to config, launcher, task, and manifest.'
+    $relocationRecoveryManifest = Get-Content `
+        -LiteralPath (Join-Path $relocation.RelocationRecoveryRoot 'recovery.json') `
+        -Raw | ConvertFrom-Json
+    Assert-True (
+        [string]$relocationRecoveryManifest.schema -ceq
+            'sq.librehw.data-root-relocation-recovery.v1'
+    ) 'Relocation recovery manifest schema is wrong.'
+    Assert-True (
+        (Get-TreeSignature -Root $relocation.PreStableRecoveryRoot) -ceq
+            $preStableSignature
+    ) 'Relocation rewrote the existing pre-stable recovery packet.'
+    Assert-True (
+        (Get-LhmFileSha256 -Path $relocation.ShimPath) -ceq $relocationShimHash
+    ) 'Relocation changed the public shim bytes.'
+    Assert-True (
+        -not (Test-Path -LiteralPath $relocation.SourceDataRoot) -and
+        (Test-Path `
+            -LiteralPath (Join-Path $relocation.DataRoot 'logs\sentinel.csv') `
+            -PathType Leaf)
+    ) 'Relocation copied, recreated, or removed a mutable-data payload.'
+
+    $relocationRecoverySignature =
+        Get-TreeSignature -Root $relocation.RelocationRecoveryRoot
+    $relocationStateSignature = @(
+        Get-LhmFileSha256 -Path (Join-Path $relocation.InstallRoot $script:LhmRuntimeConfigName)
+        Get-LhmFileSha256 -Path $relocation.LauncherTarget
+        Get-LhmFileSha256 -Path (Join-Path $relocation.ExternalRoot 'managed-task.json')
+        Get-LhmFileSha256 -Path $relocation.ShimPath
+    ) -join "`n"
+    $windowsPowerShellForRelocation =
+        Get-Command powershell.exe -CommandType Application -ErrorAction Stop
+    $relocationIdempotenceCommand =
+        "& '$($relocationScript.Replace("'", "''"))' " +
+        "-InstallRoot '$($relocation.InstallRoot.Replace("'", "''"))' " +
+        "-SourceDataRoot '$($relocation.SourceDataRoot.Replace("'", "''"))' " +
+        "-DataRoot '$($relocation.DataRoot.Replace("'", "''"))' " +
+        "-LauncherTargetPath '$($relocation.LauncherTarget.Replace("'", "''"))' " +
+        "-PublicShimPath '$($relocation.ShimPath.Replace("'", "''"))' " +
+        "-TestExternalStateRoot '$($relocation.ExternalRoot.Replace("'", "''"))' " +
+        '-DataMoveAlreadyCompleted -NonLiveTestMode -Confirm:$false'
+    $relocationIdempotenceOutput = @(
+        & $windowsPowerShellForRelocation.Source `
+            -NoLogo `
+            -NoProfile `
+            -ExecutionPolicy Bypass `
+            -Command $relocationIdempotenceCommand 2>&1
+    )
+    $relocationIdempotenceExitCode = $LASTEXITCODE
+    Assert-True (
+        $relocationIdempotenceExitCode -eq 0
+    ) (
+        'Windows PowerShell 5.1 relocation/idempotence run failed: ' +
+        ($relocationIdempotenceOutput -join "`n")
+    )
+    Assert-True (
+        (Get-TreeSignature -Root $relocation.RelocationRecoveryRoot) -ceq
+            $relocationRecoverySignature -and
+        (@(
+            Get-LhmFileSha256 -Path (Join-Path $relocation.InstallRoot $script:LhmRuntimeConfigName)
+            Get-LhmFileSha256 -Path $relocation.LauncherTarget
+            Get-LhmFileSha256 -Path (Join-Path $relocation.ExternalRoot 'managed-task.json')
+            Get-LhmFileSha256 -Path $relocation.ShimPath
+        ) -join "`n") -ceq $relocationStateSignature
+    ) 'Idempotent relocation rewrote recovery or converged state.'
+
+    [System.IO.Directory]::CreateDirectory($relocation.SourceDataRoot) | Out-Null
+    Assert-Throws -MessagePattern 'source data root must be absent' -Action {
+        $null = & $relocationScript `
+            -InstallRoot $relocation.InstallRoot `
+            -SourceDataRoot $relocation.SourceDataRoot `
+            -DataRoot $relocation.DataRoot `
+            -LauncherTargetPath $relocation.LauncherTarget `
+            -PublicShimPath $relocation.ShimPath `
+            -TestExternalStateRoot $relocation.ExternalRoot `
+            -DataMoveAlreadyCompleted `
+            -NonLiveTestMode `
+            -Confirm:$false
+    }
+
+    $reparseRelocation = New-DataRootRelocationFixture `
+        -Root $testRoot `
+        -Name 'reparse' `
+        -CandidateDirectory $candidate1
+    $reparseTarget = Join-Path $reparseRelocation.Root 'redirected-data'
+    Move-Item -LiteralPath $reparseRelocation.DataRoot -Destination $reparseTarget
+    $null = New-Item `
+        -ItemType Junction `
+        -Path $reparseRelocation.DataRoot `
+        -Target $reparseTarget
+    try {
+        Assert-Throws -MessagePattern 'reparse point' -Action {
+            $null = & $relocationScript `
+                -InstallRoot $reparseRelocation.InstallRoot `
+                -SourceDataRoot $reparseRelocation.SourceDataRoot `
+                -DataRoot $reparseRelocation.DataRoot `
+                -LauncherTargetPath $reparseRelocation.LauncherTarget `
+                -PublicShimPath $reparseRelocation.ShimPath `
+                -TestExternalStateRoot $reparseRelocation.ExternalRoot `
+                -DataMoveAlreadyCompleted `
+                -NonLiveTestMode `
+                -Confirm:$false
+        }
+        Assert-True (
+            Test-Path -LiteralPath (Join-Path $reparseTarget 'logs\sentinel.csv') -PathType Leaf
+        ) 'Relocation traversed a reparse-point data root.'
+    }
+    finally {
+        if ([System.IO.Directory]::Exists($reparseRelocation.DataRoot)) {
+            [System.IO.Directory]::Delete($reparseRelocation.DataRoot, $false)
+        }
+    }
+
+    $failedRelocation = New-DataRootRelocationFixture `
+        -Root $testRoot `
+        -Name 'failure-resume' `
+        -CandidateDirectory $candidate1
+    $failedShimHash = Get-LhmFileSha256 -Path $failedRelocation.ShimPath
+    $failedPreStableSignature =
+        Get-TreeSignature -Root $failedRelocation.PreStableRecoveryRoot
+    Assert-Throws -MessagePattern 'AfterTaskEnabled' -Action {
+        $null = & $relocationScript `
+            -InstallRoot $failedRelocation.InstallRoot `
+            -SourceDataRoot $failedRelocation.SourceDataRoot `
+            -DataRoot $failedRelocation.DataRoot `
+            -LauncherTargetPath $failedRelocation.LauncherTarget `
+            -PublicShimPath $failedRelocation.ShimPath `
+            -TestExternalStateRoot $failedRelocation.ExternalRoot `
+            -DataMoveAlreadyCompleted `
+            -NonLiveTestMode `
+            -TestFailurePoint AfterTaskEnabled `
+            -Confirm:$false
+    }
+    $failedTask = Get-Content `
+        -LiteralPath (Join-Path $failedRelocation.ExternalRoot 'managed-task.json') `
+        -Raw | ConvertFrom-Json
+    Assert-True (-not [bool]$failedTask.enabled) `
+        'Pre-activation relocation failure did not leave the managed task disabled.'
+    Assert-True (
+        Test-Path -LiteralPath $failedRelocation.RelocationRecoveryRoot -PathType Container
+    ) 'Pre-activation relocation failure did not retain recovery evidence.'
+    Assert-True (
+        (Get-LhmFileSha256 -Path $failedRelocation.ShimPath) -ceq $failedShimHash -and
+        (Get-TreeSignature -Root $failedRelocation.PreStableRecoveryRoot) -ceq
+            $failedPreStableSignature
+    ) 'Pre-activation failure changed the shim or pre-stable recovery packet.'
+    $failedRecoverySignature =
+        Get-TreeSignature -Root $failedRelocation.RelocationRecoveryRoot
+    $null = & $relocationScript `
+        -InstallRoot $failedRelocation.InstallRoot `
+        -SourceDataRoot $failedRelocation.SourceDataRoot `
+        -DataRoot $failedRelocation.DataRoot `
+        -LauncherTargetPath $failedRelocation.LauncherTarget `
+        -PublicShimPath $failedRelocation.ShimPath `
+        -TestExternalStateRoot $failedRelocation.ExternalRoot `
+        -DataMoveAlreadyCompleted `
+        -NonLiveTestMode `
+        -Confirm:$false
+    Assert-True (
+        (Get-TreeSignature -Root $failedRelocation.RelocationRecoveryRoot) -ceq
+            $failedRecoverySignature
+    ) 'Resumed relocation rewrote its original recovery evidence.'
+    $resumedTask = Get-Content `
+        -LiteralPath (Join-Path $failedRelocation.ExternalRoot 'managed-task.json') `
+        -Raw | ConvertFrom-Json
+    Assert-True ([bool]$resumedTask.enabled) `
+        'Resumed relocation did not converge the existing managed task.'
+
+    Add-Content `
+        -LiteralPath (Join-Path $failedRelocation.RelocationRecoveryRoot 'launcher-backup.ps1') `
+        -Value '# tampered'
+    Assert-Throws -MessagePattern 'hash' -Action {
+        $null = & $relocationScript `
+            -InstallRoot $failedRelocation.InstallRoot `
+            -SourceDataRoot $failedRelocation.SourceDataRoot `
+            -DataRoot $failedRelocation.DataRoot `
+            -LauncherTargetPath $failedRelocation.LauncherTarget `
+            -PublicShimPath $failedRelocation.ShimPath `
+            -TestExternalStateRoot $failedRelocation.ExternalRoot `
+            -DataMoveAlreadyCompleted `
+            -NonLiveTestMode `
+            -Confirm:$false
+    }
+
     $allScripts = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1' -File)
     foreach ($scriptFile in $allScripts) {
         $tokens = $null
@@ -2292,9 +2756,11 @@ try {
     [System.IO.Directory]::CreateDirectory($identityFixtureRoot) | Out-Null
     $originalIdentityVerifierPath = $script:LhmIdentityVerifierPath
     $originalExpectedMachineId = $script:LhmExpectedMachineId
+    $originalExpectedInstanceId = $script:LhmExpectedInstanceId
     $missingIdentityVerifier = Join-Path $identityFixtureRoot 'missing.ps1'
     try {
         $script:LhmExpectedMachineId = 'snd-desk'
+        $script:LhmExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
         $script:LhmIdentityVerifierPath = $missingIdentityVerifier
         Assert-Throws -MessagePattern 'Machine identity verifier not found' -Action {
             $null = Assert-LhmVerifiedMachineIdentity
@@ -2329,6 +2795,17 @@ try {
             $null = Assert-LhmVerifiedMachineIdentity
         }
 
+        $wrongInstanceIdentityVerifier = New-TestIdentityVerifier `
+            -Root $identityFixtureRoot `
+            -Name 'wrong-instance' `
+            -Status 'VERIFIED' `
+            -MachineId 'snd-desk' `
+            -InstanceId '11111111-1111-1111-1111-111111111111'
+        $script:LhmIdentityVerifierPath = $wrongInstanceIdentityVerifier
+        Assert-Throws -MessagePattern "installation identity is '11111111-1111-1111-1111-111111111111'" -Action {
+            $null = Assert-LhmVerifiedMachineIdentity
+        }
+
         $verifiedIdentityVerifier = New-TestIdentityVerifier `
             -Root $identityFixtureRoot `
             -Name 'verified-snd-desk' `
@@ -2338,12 +2815,15 @@ try {
         $verifiedIdentity = Assert-LhmVerifiedMachineIdentity
         Assert-True (
             [string]$verifiedIdentity.status -ceq 'VERIFIED' -and
-            [string]$verifiedIdentity.machineId -ceq 'snd-desk'
+            [string]$verifiedIdentity.machineId -ceq 'snd-desk' -and
+            [string]$verifiedIdentity.instanceId -ceq
+                'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
         ) 'The valid SND-DESK identity result was not returned unchanged.'
     }
     finally {
         $script:LhmIdentityVerifierPath = $originalIdentityVerifierPath
         $script:LhmExpectedMachineId = $originalExpectedMachineId
+        $script:LhmExpectedInstanceId = $originalExpectedInstanceId
     }
 
     $launcherMissingIdentity = Invoke-TestLauncherIdentity `
@@ -2370,6 +2850,14 @@ try {
         $launcherWrongMachineIdentity.Output -match 'restricted to verified machine'
     ) 'The launcher identity gate accepted a different machine.'
 
+    $launcherWrongInstanceIdentity = Invoke-TestLauncherIdentity `
+        -LauncherPath $canonicalLauncher `
+        -VerifierPath $wrongInstanceIdentityVerifier
+    Assert-True (
+        $launcherWrongInstanceIdentity.ExitCode -ne 0 -and
+        $launcherWrongInstanceIdentity.Output -match 'restricted to verified machine'
+    ) 'The launcher identity gate accepted a different installation.'
+
     $launcherVerifiedIdentity = Invoke-TestLauncherIdentity `
         -LauncherPath $canonicalLauncher `
         -VerifierPath $verifiedIdentityVerifier
@@ -2377,6 +2865,77 @@ try {
         'The launcher identity gate rejected VERIFIED/snd-desk: ' +
         $launcherVerifiedIdentity.Output
     )
+
+    $hashWithoutWhatIf = Get-LhmFileSha256 -Path $canonicalLauncher
+    $savedWhatIfPreference = $WhatIfPreference
+    try {
+        $WhatIfPreference = $true
+        $hashWithWhatIf = Get-LhmFileSha256 -Path $canonicalLauncher
+    }
+    finally {
+        $WhatIfPreference = $savedWhatIfPreference
+    }
+    Assert-True ($hashWithWhatIf -ceq $hashWithoutWhatIf) `
+        'Read-only SHA-256 preflight did not survive inherited WhatIfPreference.'
+
+    $null = Assert-LhmRelocationHealthUri `
+        -HealthUri ([uri]$script:LhmProductionHealthUri)
+    Assert-Throws -MessagePattern 'Production health URI must be' -Action {
+        $null = Assert-LhmRelocationHealthUri `
+            -HealthUri ([uri]'http://localhost:18085/data.json')
+    }
+    $null = Assert-LhmRelocationHealthUri `
+        -HealthUri ([uri]'http://localhost:18085/data.json') `
+        -IsTest
+
+    $productionTaskExecutable =
+        'E:\SQ_HQ\Monitoring\LibreHW\LibreHardwareMonitor.Windows.Forms.exe'
+    $productionTaskInstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'
+    $productionTask = New-ProductionRelocationTaskFixture `
+        -ExecutablePath $productionTaskExecutable `
+        -InstallRoot $productionTaskInstallRoot
+    $null = Assert-LhmRelocationTaskContract `
+        -Task $productionTask `
+        -ManagedTaskPath $script:LhmManagedTaskPath `
+        -ExpectedExecutablePath $productionTaskExecutable `
+        -ExpectedInstallRoot $productionTaskInstallRoot `
+        -RequireDisabled
+
+    $foreignArgumentsTask = New-ProductionRelocationTaskFixture `
+        -ExecutablePath $productionTaskExecutable `
+        -InstallRoot $productionTaskInstallRoot
+    $foreignArgumentsTask.Actions[0].Arguments = '--foreign'
+    Assert-Throws -MessagePattern 'exact relocation contract' -Action {
+        $null = Assert-LhmRelocationTaskContract `
+            -Task $foreignArgumentsTask `
+            -ManagedTaskPath $script:LhmManagedTaskPath `
+            -ExpectedExecutablePath $productionTaskExecutable `
+            -ExpectedInstallRoot $productionTaskInstallRoot
+    }
+
+    $foreignPrincipalTask = New-ProductionRelocationTaskFixture `
+        -ExecutablePath $productionTaskExecutable `
+        -InstallRoot $productionTaskInstallRoot
+    $foreignPrincipalTask.Principal.UserId = 'OtherUser'
+    Assert-Throws -MessagePattern 'exact relocation contract' -Action {
+        $null = Assert-LhmRelocationTaskContract `
+            -Task $foreignPrincipalTask `
+            -ManagedTaskPath $script:LhmManagedTaskPath `
+            -ExpectedExecutablePath $productionTaskExecutable `
+            -ExpectedInstallRoot $productionTaskInstallRoot
+    }
+
+    $foreignTriggerTask = New-ProductionRelocationTaskFixture `
+        -ExecutablePath $productionTaskExecutable `
+        -InstallRoot $productionTaskInstallRoot
+    $foreignTriggerTask.Triggers[0].UserId = 'SND-HOST\Sev'
+    Assert-Throws -MessagePattern 'exact relocation contract' -Action {
+        $null = Assert-LhmRelocationTaskContract `
+            -Task $foreignTriggerTask `
+            -ManagedTaskPath $script:LhmManagedTaskPath `
+            -ExpectedExecutablePath $productionTaskExecutable `
+            -ExpectedInstallRoot $productionTaskInstallRoot
+    }
 
     $absentFilesystemDriveLetter = $null
     foreach ($driveLetter in [char[]](90..65)) {
@@ -2442,6 +3001,15 @@ try {
         Remove-PSDrive -Name $absentFilesystemDriveLetter -Scope Script
     }
 
+    $currentLauncherValidation = & $canonicalLauncher -ValidateScriptOnly
+    Assert-True (
+        $currentLauncherValidation.Result -ceq 'PASS' -and
+        $currentLauncherValidation.DataRoot -ceq 'E:\Data\LibreHardwareMonitor' -and
+        $currentLauncherValidation.ExpectedInstanceId -ceq
+            'ca96d510-7d87-4cec-8e1a-bd8fc3866903' -and
+        -not [bool]$currentLauncherValidation.MutationPerformed
+    ) 'PowerShell 7 launcher validation did not report the dedicated data root.'
+
     $windowsPowerShell = Get-Command powershell.exe -CommandType Application -ErrorAction Stop
     $launcherCompatibilityHarness = @"
 function Get-Process {
@@ -2493,10 +3061,12 @@ function Get-Process {
     )
     Assert-True (
         ($launcherNoProcessOutput -join "`n") -match
-            'DetectedProcessCount\s*:\s*0'
+            'DetectedProcessCount\s*:\s*0' -and
+        ($launcherNoProcessOutput -join "`n") -match
+            'DataRoot\s*:\s*E:\\Data\\LibreHardwareMonitor'
     ) (
         'Windows PowerShell 5.1 empty-process launcher validation did not ' +
-        'report zero detected processes.'
+        'report zero detected processes and the dedicated data root.'
     )
 
     $launcherMismatchedProcessHarness = @"
@@ -4073,8 +4643,13 @@ function Get-Process {
         FailureInjectionCases = 12
         HostileRecoveryManifestCases = 16
         HostileReparseCases = 12
+        DataRootRelocationCases = 6
+        ProductionTaskContractNegativeCases = 3
+        ProductionHealthUriNegativeCases = 1
+        InstallationIdentityNegativeCases = 2
         IdentityGateContractsVerified = $identityGateContractsVerified
         WindowsPowerShellLauncherCompatibility = $true
+        WindowsPowerShellDataRootRelocationCompatibility = $true
         WindowsPowerShellCleanupCompatibility = $true
         JunctionParentCleanupGuard = $true
         NestedJunctionCleanupGuard = $true
