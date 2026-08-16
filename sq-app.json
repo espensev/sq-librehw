@@ -1,7 +1,7 @@
 {
   "schema": "sq.app.v1",
   "machineId": "snd-desk",
-  "verifiedOn": "2026-08-15",
+  "verifiedOn": "2026-08-16",
   "id": "sq-librehw",
   "kind": "git-source",
   "root": "E:\\Monitoring\\sq-librehw",
@@ -49,7 +49,7 @@
     "kind": "git",
     "remote": "origin",
     "uri": "https://github.com/espensev/sq-librehw.git",
-    "commit": "570fca4758f1e4c08aa54d6710d77c874ea16ef7"
+    "commit": "e523c74dc23d7b5f83c18f23078bc30fe30010ff"
   },
   "compatibility": {
     "phase": 1,
