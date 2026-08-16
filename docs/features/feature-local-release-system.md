@@ -6,8 +6,8 @@ peer-safe under isolated temporary roots. Do not treat these paths, tasks,
 users, or runtime state as SND-HOST instructions.
 
 **Status:** stable release installed on SND-DESK; guarded data-root relocation
-live-accepted on 2026-08-15; runtime-root retirement implemented and pending
-live activation
+live-accepted on 2026-08-15; runtime-root retirement implemented, verified, and
+live-accepted on 2026-08-16
 **Updated:** 2026-08-16
 
 ## Problem
@@ -478,10 +478,39 @@ needed two bounded fixes before it could safely bootstrap that clean state.
   framework builds, 75/75 Avalonia spike tests, dashboard checks, and the
   SND-DESK local-release fixture.
 
+## Runtime-root retirement acceptance — 2026-08-16
+
+- Source commit `9de2314dbe1a770153f6d254f3c3b01a96d4533f` passed the
+  complete non-live local-release suite, including two runtime-root migration
+  cases, and the canonical launcher passed `-ValidateScriptOnly` in PowerShell
+  7.6.5 and Windows PowerShell 5.1.
+- The installed DevMesh v2 verifier returned exactly one `VERIFIED` identity for
+  `snd-desk` instance `ca96d510-7d87-4cec-8e1a-bd8fc3866903` before mutation.
+  Live `Apply` and an independent `Validate` then returned `PASS`.
+- One exact process runs from
+  `E:\Monitoring\LibreHW\Runtime\LibreHardwareMonitor.Windows.Forms.exe`; the
+  managed task uses that executable and working directory with
+  Interactive/Highest, `IgnoreNew`, and `PT0S`. `data.json` returned HTTP 200
+  and a new `LibreHardwareMonitorLog-2026-08-16-4.csv` grew under the dedicated
+  data root.
+- Direct `E:\Bin\librehw.cmd` and SoleX `librehw-solex` calls retained one PID
+  and restored the visible `Libre Hardware Monitor - Sev IQ` window. Fresh
+  PowerShell 7 and 5.1 sessions both resolve `librehw` to `E:\Bin\librehw.cmd`.
+- The SoleX extension authority and generated catalog now use the app-owned
+  launcher directory and exact migrated executable. Tasks, services, running
+  process paths, User/Machine environment, registry startup values, shortcuts,
+  and managed live-file text contain no executable binding to `E:\SQ_HQ` or
+  `E:\UserProfile`. The controlling Codex process retains one inherited stale
+  pre-cutover PATH entry, which is not persistent and is absent from fresh
+  shells.
+- Both legacy roots are absent. The exact pre-migration launcher, shim, task,
+  release ID, and hashes remain in the bounded recovery packet at
+  `E:\Data\LibreHardwareMonitor\release-recovery\runtime-root-relocation`.
+
 ## Acceptance
 
-- [x] `Get-Command librehw` resolves
-  `E:\SQ_HQ\u-programs\bin\librehw.cmd`, and its bytes are unchanged.
+- [x] `Get-Command librehw` resolves `E:\Bin\librehw.cmd` in fresh PowerShell 7
+  and Windows PowerShell 5.1 sessions.
 - [x] Publish emits exactly one framework-dependent x64 EXE and a separate
   bounded manifest.
 - [x] The installed process path is the fixed shallow path.
@@ -498,9 +527,9 @@ needed two bounded fixes before it could safely bootstrap that clean state.
   fails closed.
 - [x] `\SevGrp\AdminTask\LibreHW-No-UAC` owns on-demand and intended logon start,
   with the stable action/working directory.
-- [x] Both Start Menu shortcuts route through the unchanged
-  `E:\SQ_HQ\u-programs\bin\librehw.cmd`; neither target nor working directory
-  references a repository `bin` tree.
+- [x] The Start Menu/Desktop shortcut scan contains no legacy-root binding;
+  public command entry points route through `E:\Bin` rather than a repository
+  `bin` tree.
 - [x] The duplicate scheduler-root task is absent after accepted cutover.
 - [x] Direct task, normal-user `librehw.cmd`, and repeated launcher calls
   converge on one process.
@@ -532,6 +561,10 @@ needed two bounded fixes before it could safely bootstrap that clean state.
   the public shim (`FE319AAB...0D73`) and immutable pre-stable recovery manifest
   (`3A9366E8...CE04`) were unchanged. The relocation recovery directory contains
   exactly the four bounded config/launcher/task/manifest files.
+- [x] Runtime-root migration moved the verified payload and launcher into
+  `E:\Monitoring\LibreHW`, rebound the task and SoleX metadata, preserved the
+  release/data contract, and removed `E:\SQ_HQ` and `E:\UserProfile` only after
+  exact-process, HTTP, logging, and launcher acceptance passed.
 
 ## Verification
 

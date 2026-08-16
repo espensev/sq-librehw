@@ -15,10 +15,10 @@
   "deployments": [
     {
       "kind": "managed-runtime",
-      "root": "E:\\SQ_HQ\\Monitoring\\LibreHW",
-      "executable": "E:\\SQ_HQ\\Monitoring\\LibreHW\\LibreHardwareMonitor.Windows.Forms.exe",
-      "releaseManifest": "E:\\SQ_HQ\\Monitoring\\LibreHW\\release.json",
-      "runtimeConfig": "E:\\SQ_HQ\\Monitoring\\LibreHW\\librehw.runtime.json",
+      "root": "E:\\Monitoring\\LibreHW\\Runtime",
+      "executable": "E:\\Monitoring\\LibreHW\\Runtime\\LibreHardwareMonitor.Windows.Forms.exe",
+      "releaseManifest": "E:\\Monitoring\\LibreHW\\Runtime\\release.json",
+      "runtimeConfig": "E:\\Monitoring\\LibreHW\\Runtime\\librehw.runtime.json",
       "releaseId": "0.9.6_e977e57.2026-08-14-e977e577ea13-20260814T205711Z",
       "commit": "e977e577ea133fa6e9486f40f29b2266dcc22d70"
     }
@@ -27,38 +27,42 @@
     {
       "kind": "scheduledTask",
       "name": "\\SevGrp\\AdminTask\\LibreHW-No-UAC",
-      "execute": "E:\\SQ_HQ\\Monitoring\\LibreHW\\LibreHardwareMonitor.Windows.Forms.exe",
+      "execute": "E:\\Monitoring\\LibreHW\\Runtime\\LibreHardwareMonitor.Windows.Forms.exe",
       "arguments": "",
-      "workingDirectory": "E:\\SQ_HQ\\Monitoring\\LibreHW"
+      "workingDirectory": "E:\\Monitoring\\LibreHW\\Runtime"
     },
     {
       "kind": "scriptLauncher",
-      "path": "E:\\UserProfile\\script-data\\Start-LibreHardwareMonitor.ps1"
+      "path": "E:\\Monitoring\\LibreHW\\Scripts\\Start-LibreHardwareMonitor.ps1"
     },
     {
       "kind": "pathShim",
-      "path": "E:\\SQ_HQ\\u-programs\\bin\\librehw.cmd"
+      "path": "E:\\Bin\\librehw.cmd"
     },
     {
       "kind": "solexEffectiveCatalog",
       "name": "librehw-solex",
-      "authorityPath": "E:\\SQ_HQ\\sqprofile\\sqdata\\SoleX\\generated\\solex.effective.json"
+      "authorityPath": "E:\\Data\\SoleX\\generated\\solex.effective.json"
     }
   ],
   "source": {
     "kind": "git",
     "remote": "origin",
     "uri": "https://github.com/espensev/sq-librehw.git",
-    "commit": "e523c74dc23d7b5f83c18f23078bc30fe30010ff"
+    "commit": "9de2314dbe1a770153f6d254f3c3b01a96d4533f"
   },
   "compatibility": {
-    "phase": 1,
+    "phase": 2,
     "surfaces": [
-      "E:\\SQ_HQ\\Monitoring\\LibreHW",
-      "E:\\UserProfile\\script-data\\Start-LibreHardwareMonitor.ps1",
-      "E:\\SQ_HQ\\u-programs\\bin\\librehw.cmd"
+      "E:\\Monitoring\\LibreHW\\Runtime",
+      "E:\\Monitoring\\LibreHW\\Scripts\\Start-LibreHardwareMonitor.ps1",
+      "E:\\Bin\\librehw.cmd"
     ],
-    "recoveryRoot": "E:\\Data\\LibreHardwareMonitor\\release-recovery",
+    "retiredRoots": [
+      "E:\\SQ_HQ",
+      "E:\\UserProfile"
+    ],
+    "recoveryRoot": "E:\\Data\\LibreHardwareMonitor\\release-recovery\\runtime-root-relocation",
     "runtimeInventory": "closed-release-owned; do not add sq-app.json to the managed runtime root"
   }
 }
