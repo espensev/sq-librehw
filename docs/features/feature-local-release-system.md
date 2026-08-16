@@ -6,8 +6,9 @@ peer-safe under isolated temporary roots. Do not treat these paths, tasks,
 users, or runtime state as SND-HOST instructions.
 
 **Status:** stable release installed on SND-DESK; guarded data-root relocation
-implemented, independently source-verified, and live-accepted on 2026-08-15
-**Updated:** 2026-08-15
+live-accepted on 2026-08-15; runtime-root retirement implemented and pending
+live activation
+**Updated:** 2026-08-16
 
 ## Problem
 
@@ -28,7 +29,7 @@ coupled.
 
 ## Goals
 
-- Keep `librehw.cmd` as the permanent public command, unchanged.
+- Keep `librehw.cmd` as the permanent public command under `E:\Bin`.
 - Run one fixed, shallow installed EXE rather than a Debug/Release build output.
 - Publish the local net10 x64 app as one framework-dependent EXE.
 - Keep config, backups, and CSV logs under the dedicated machine-local
@@ -81,22 +82,25 @@ coupled.
 
 ## Selected release shape
 
-### Stable compatibility runtime
+### Stable runtime
 
 ```text
-E:\SQ_HQ\Monitoring\LibreHW\
-├─ LibreHardwareMonitor.Windows.Forms.exe
-├─ release.json
-├─ librehw.runtime.json
-└─ rollback\
-   ├─ LibreHardwareMonitor.Windows.Forms.exe
-   └─ release.json
+E:\Monitoring\LibreHW\
+├─ Runtime\
+│  ├─ LibreHardwareMonitor.Windows.Forms.exe
+│  ├─ release.json
+│  ├─ librehw.runtime.json
+│  └─ rollback\
+│     ├─ LibreHardwareMonitor.Windows.Forms.exe
+│     └─ release.json
+└─ Scripts\
+   └─ Start-LibreHardwareMonitor.ps1
 ```
 
 The fixed process path is:
 
 ```text
-E:\SQ_HQ\Monitoring\LibreHW\LibreHardwareMonitor.Windows.Forms.exe
+E:\Monitoring\LibreHW\Runtime\LibreHardwareMonitor.Windows.Forms.exe
 ```
 
 There are no version-named live directories and no package cache. Promotion
@@ -104,8 +108,10 @@ retains only the current and immediately previous verified payload. The
 `rollback` directory is empty after the first install and holds one verified
 EXE/manifest pair after a later successful promotion.
 
-The install root deliberately remains at this old shallow path. The data-root
-relocation does not move, copy, or republish the application payload.
+The runtime remains shallow and release-owned, while the sibling `Scripts`
+directory holds the source-controlled launcher outside the closed runtime
+inventory. The earlier data-root relocation did not move, copy, or republish
+the application payload; the later guarded runtime-root migration does.
 
 ### Mutable data
 
@@ -126,10 +132,9 @@ it to unrelated state.
 
 ### Public launcher
 
-`E:\SQ_HQ\u-programs\bin\librehw.cmd` remains byte-for-byte unchanged. Its
-delegated compatibility script remains
-`E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1`; that script targets
-the stable EXE/working directory and the dedicated data root.
+`E:\Bin\librehw.cmd` remains the public command. It delegates to the app-owned
+`E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1`; that script
+targets the stable EXE/working directory and the dedicated data root.
 Existing-process restore still uses the app-owned tray-toggle path. When no
 process exists, elevated start routes through the managed no-UAC task.
 
@@ -173,6 +178,38 @@ requires one exact installed process, the new data-root descriptor, and HTTP
 health. A pre-activation failure leaves the task disabled and the recovery
 packet intact; a rerun resumes without rewriting that packet. The public shim
 hash must remain unchanged throughout.
+
+### Runtime-root retirement — 2026-08-16
+
+`Move-LibreHardwareMonitorRuntimeRoot.ps1` is the only production entry point
+for retiring the compatibility runtime and launcher roots. Production paths are
+fixed to:
+
+```text
+E:\SQ_HQ\Monitoring\LibreHW                    old runtime
+E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1
+                                                   old launcher
+E:\Monitoring\LibreHW\Runtime                  new runtime
+E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1
+                                                   new launcher
+E:\Bin\librehw.cmd                              public command
+```
+
+The operation requires exact installed DevMesh v2 identity, the accepted
+legacy runtime/launcher/shim hashes, the closed runtime inventory, runtime data
+descriptor, and managed-task contract. It snapshots the old launcher, shim,
+and task plus a bounded manifest under
+`E:\Data\LibreHardwareMonitor\release-recovery\runtime-root-relocation`, copies
+and verifies the runtime in a same-parent staging directory, stops only the
+exact old process, rebinds the launcher/shim/task, and requires one exact new
+process plus HTTP health. Pre-activation failure restores the task and shim,
+removes the new target, and restarts the old runtime. Only accepted activation
+permits deletion of the two old leaves and their now-empty compatibility
+parents.
+
+The non-live suite covers a complete move and an injected post-binding failure
+with byte-for-byte task/shim rollback. `Plan` is report-only, `Apply` is the
+guarded transition, and `Validate` proves the final path/task/process contract.
 
 ## Package decision
 

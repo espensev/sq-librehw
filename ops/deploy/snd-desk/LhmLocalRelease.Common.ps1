@@ -6,7 +6,8 @@ $script:LhmRuntimeConfigName = 'librehw.runtime.json'
 $script:LhmSettingsFileName = 'LibreHardwareMonitor.Windows.Forms.config'
 $script:LhmReleaseSchema = 'sq.librehw.local-release.v1'
 $script:LhmRuntimeSchema = 'sq.librehw.runtime.v1'
-$script:LhmProductionInstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'
+$script:LhmProductionInstallRoot = 'E:\Monitoring\LibreHW\Runtime'
+$script:LhmLegacyProductionInstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'
 $script:LhmPreviousProductionDataRoot =
     'E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor'
 $script:LhmProductionDataRoot = 'E:\Data\LibreHardwareMonitor'
@@ -23,10 +24,16 @@ $script:LhmIdentityVerifierPath = [System.IO.Path]::Combine(
     'common_dev\v2\Test-LocalMachineIdentity.ps1')
 $script:LhmProcessName = 'LibreHardwareMonitor.Windows.Forms'
 $script:LhmLauncherTargetPath =
+    'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+$script:LhmLegacyLauncherTargetPath =
     'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'
-$script:LhmPublicShimPath = 'E:\SQ_HQ\u-programs\bin\librehw.cmd'
+$script:LhmPublicShimPath = 'E:\Bin\librehw.cmd'
 $script:LhmPublicShimSha256 =
+    'e56afd988c84de2324db626d5ed7ddf2bcea5a2e223c14d4b24d8802aa70f351'
+$script:LhmLegacyPublicShimSha256 =
     'fe319aabd007a3a639cd618c748d480f7881dd18864db6f9c94bac537bd10d73'
+$script:LhmLegacyLauncherSha256 =
+    '8c71d3167f8dc212e9bf282f086f848ce0c80bc6bfdcfcda3f15448ee7061096'
 $script:LhmPreRelocationLauncherSha256 =
     '74148efe09a18cb00047d3c6915153717071c9a5e3c1198193caeb0f0dac63c0'
 $script:LhmPreStableLauncherSha256 =

@@ -10,6 +10,7 @@ $commonScript = Join-Path $opsRoot 'LhmLocalRelease.Common.ps1'
 $installScript = Join-Path $opsRoot 'Install-LibreHardwareMonitorRelease.ps1'
 $rollbackScript = Join-Path $opsRoot 'Restore-LibreHardwareMonitorRelease.ps1'
 $relocationScript = Join-Path $opsRoot 'Relocate-LibreHardwareMonitorDataRoot.ps1'
+$runtimeMigrationScript = Join-Path $opsRoot 'Move-LibreHardwareMonitorRuntimeRoot.ps1'
 $finalizeScript = Join-Path $opsRoot 'Finalize-LibreHardwareMonitorCutover.ps1'
 $legacyRecoveryScript = Join-Path $opsRoot 'Restore-LegacyLibreHardwareMonitorStartup.ps1'
 $preStableRecoveryScript =
@@ -1278,6 +1279,9 @@ function Invoke-LhmIdentityContractPreflight {
     Assert-LhmLiveIdentityGate `
         -ScriptAst (Get-LhmScriptAst -Path $relocationScript) `
         -Label 'Relocate-LibreHardwareMonitorDataRoot.ps1'
+    Assert-LhmLiveIdentityGate `
+        -ScriptAst (Get-LhmScriptAst -Path $runtimeMigrationScript) `
+        -Label 'Move-LibreHardwareMonitorRuntimeRoot.ps1'
     Assert-LhmFinalizeIdentityGate `
         -ScriptAst (Get-LhmScriptAst -Path $finalizeScript) `
         -Label 'Finalize-LibreHardwareMonitorCutover.ps1'
@@ -2384,6 +2388,78 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$launcherTarget" %*
     }
 }
 
+function New-RuntimeRootMigrationFixture {
+    param(
+        [Parameter(Mandatory)][string] $Root,
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $CandidateDirectory
+    )
+
+    $fixtureRoot = Join-Path $Root "runtime-migration-$Name"
+    $legacyInstallRoot = Join-Path $fixtureRoot 'legacy\LibreHW'
+    $installRoot = Join-Path $fixtureRoot 'Monitoring\LibreHW\Runtime'
+    $dataRoot = Join-Path $fixtureRoot 'Data\LibreHardwareMonitor'
+    $legacyLauncherPath = Join-Path `
+        $fixtureRoot `
+        'UserProfile\script-data\Start-LibreHardwareMonitor.ps1'
+    $launcherTargetPath = Join-Path `
+        $fixtureRoot `
+        'Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+    $publicShimPath = Join-Path $fixtureRoot 'Bin\librehw.cmd'
+    $taskStatePath = Join-Path $fixtureRoot 'task\managed-task.json'
+
+    foreach ($directory in @(
+        $legacyInstallRoot,
+        $dataRoot,
+        (Split-Path -Parent $legacyLauncherPath),
+        (Split-Path -Parent $publicShimPath),
+        (Split-Path -Parent $taskStatePath)
+    )) {
+        [System.IO.Directory]::CreateDirectory($directory) | Out-Null
+    }
+    $null = Copy-LhmPayloadPair `
+        -SourceDirectory $CandidateDirectory `
+        -DestinationDirectory $legacyInstallRoot `
+        -DestinationMayContainOtherEntries
+    [System.IO.Directory]::CreateDirectory(
+        (Join-Path $legacyInstallRoot 'rollback')) | Out-Null
+    [ordered]@{
+        schema = $script:LhmRuntimeSchema
+        dataRoot = $dataRoot
+        managedStartupTaskPath = $script:LhmManagedTaskPath
+    } | ConvertTo-Json | Set-Content `
+        -LiteralPath (Join-Path $legacyInstallRoot $script:LhmRuntimeConfigName) `
+        -Encoding UTF8
+    '# legacy launcher' | Set-Content `
+        -LiteralPath $legacyLauncherPath `
+        -Encoding UTF8
+    "@echo off`r`nrem legacy shim`r`n" | Set-Content `
+        -LiteralPath $publicShimPath `
+        -Encoding Ascii `
+        -NoNewline
+    [ordered]@{
+        execute = Join-Path $legacyInstallRoot $script:LhmExecutableName
+        workingDirectory = $legacyInstallRoot
+        enabled = $true
+    } | ConvertTo-Json | Set-Content `
+        -LiteralPath $taskStatePath `
+        -Encoding UTF8
+
+    return [pscustomobject]@{
+        Root = $fixtureRoot
+        LegacyInstallRoot = $legacyInstallRoot
+        InstallRoot = $installRoot
+        DataRoot = $dataRoot
+        LegacyLauncherPath = $legacyLauncherPath
+        LauncherTargetPath = $launcherTargetPath
+        PublicShimPath = $publicShimPath
+        TaskStatePath = $taskStatePath
+        RecoveryRoot = Join-Path `
+            $dataRoot `
+            'release-recovery\runtime-root-relocation'
+    }
+}
+
 function Assert-NoTransactionDebris {
     param([Parameter(Mandatory)][string] $InstallRoot)
     $debris = @(Get-ChildItem -LiteralPath $InstallRoot -Force -ErrorAction SilentlyContinue |
@@ -2509,7 +2585,8 @@ try {
         -Root $testRoot -Name 'two' -Version '1.0.2' -ShortCommit 'abcde02'
 
     Assert-True (
-        $script:LhmProductionInstallRoot -ceq 'E:\SQ_HQ\Monitoring\LibreHW' -and
+        $script:LhmProductionInstallRoot -ceq 'E:\Monitoring\LibreHW\Runtime' -and
+        $script:LhmLegacyProductionInstallRoot -ceq 'E:\SQ_HQ\Monitoring\LibreHW' -and
         $script:LhmPreviousProductionDataRoot -ceq
             'E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor' -and
         $script:LhmProductionDataRoot -ceq 'E:\Data\LibreHardwareMonitor' -and
@@ -2523,31 +2600,143 @@ try {
         $script:LhmManagedTaskPrincipalUserId -ceq 'Sev' -and
         $script:LhmManagedTaskLogonUserId -ceq 'SND-Desk\Sev' -and
         $script:LhmLauncherTargetPath -ceq
-            'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'
-    ) 'Production compatibility-island roots do not match the reviewed relocation contract.'
+            'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1' -and
+        $script:LhmLegacyLauncherTargetPath -ceq
+            'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1' -and
+        $script:LhmPublicShimPath -ceq 'E:\Bin\librehw.cmd'
+    ) 'Production roots do not match the reviewed runtime-migration contract.'
     foreach ($releaseScript in @($installScript, $rollbackScript, $relocationScript)) {
         $releaseText = Get-Content -LiteralPath $releaseScript -Raw
         Assert-True (
             $releaseText -match [regex]::Escape(
-                "[string] `$InstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'") -and
+                "[string] `$InstallRoot = 'E:\Monitoring\LibreHW\Runtime'") -and
             $releaseText -match [regex]::Escape(
                 "[string] `$DataRoot = 'E:\Data\LibreHardwareMonitor'") -and
             $releaseText -match [regex]::Escape(
-                "'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'")
+                "'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'") -and
+            $releaseText -match [regex]::Escape("'E:\Bin\librehw.cmd'")
         ) "Production defaults drifted in '$releaseScript'."
     }
     $launcherText = Get-Content -LiteralPath $canonicalLauncher -Raw
     Assert-True (
         $launcherText -match [regex]::Escape(
-            "`$InstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'") -and
+            "`$InstallRoot = 'E:\Monitoring\LibreHW\Runtime'") -and
         $launcherText -match [regex]::Escape(
             "`$DataRoot = 'E:\Data\LibreHardwareMonitor'")
-    ) 'Canonical launcher does not preserve the old install root with the new data root.'
+    ) 'Canonical launcher does not target the stable runtime and data roots.'
     $finalizerText = Get-Content -LiteralPath $finalizeScript -Raw
     Assert-True (
         $finalizerText -match [regex]::Escape(
-            '-File "E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1"')
-    ) 'Finalizer no longer requires the compatibility public-shim launcher path.'
+            '-File "E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1"')
+    ) 'Finalizer no longer requires the app-owned public-shim launcher path.'
+
+    $runtimeMigrationText = Get-Content -LiteralPath $runtimeMigrationScript -Raw
+    foreach ($expectedLiteral in @(
+        "[string] `$LegacyInstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'",
+        "[string] `$InstallRoot = 'E:\Monitoring\LibreHW\Runtime'",
+        "'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'",
+        "'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'",
+        "[string] `$PublicShimPath = 'E:\Bin\librehw.cmd'"
+    )) {
+        Assert-True ($runtimeMigrationText -match [regex]::Escape($expectedLiteral)) `
+            "Runtime migration default is missing '$expectedLiteral'."
+    }
+
+    $runtimeMigration = New-RuntimeRootMigrationFixture `
+        -Root $testRoot `
+        -Name 'success' `
+        -CandidateDirectory $candidate1
+    $runtimeMigrationPlan = & $runtimeMigrationScript `
+        -Mode Plan `
+        -LegacyInstallRoot $runtimeMigration.LegacyInstallRoot `
+        -InstallRoot $runtimeMigration.InstallRoot `
+        -DataRoot $runtimeMigration.DataRoot `
+        -LegacyLauncherPath $runtimeMigration.LegacyLauncherPath `
+        -LauncherTargetPath $runtimeMigration.LauncherTargetPath `
+        -PublicShimPath $runtimeMigration.PublicShimPath `
+        -TestExternalTaskStatePath $runtimeMigration.TaskStatePath `
+        -NonLiveTestMode
+    Assert-True (
+        $runtimeMigrationPlan.Result -ceq 'PASS' -and
+        $runtimeMigrationPlan.LegacyRuntimePresent -and
+        -not $runtimeMigrationPlan.MigratedRuntimePresent -and
+        -not $runtimeMigrationPlan.MutationPerformed
+    ) 'Runtime migration plan did not report the legacy fixture accurately.'
+
+    $runtimeMigrationResult = & $runtimeMigrationScript `
+        -Mode Apply `
+        -LegacyInstallRoot $runtimeMigration.LegacyInstallRoot `
+        -InstallRoot $runtimeMigration.InstallRoot `
+        -DataRoot $runtimeMigration.DataRoot `
+        -LegacyLauncherPath $runtimeMigration.LegacyLauncherPath `
+        -LauncherTargetPath $runtimeMigration.LauncherTargetPath `
+        -PublicShimPath $runtimeMigration.PublicShimPath `
+        -TestExternalTaskStatePath $runtimeMigration.TaskStatePath `
+        -NonLiveTestMode `
+        -Confirm:$false
+    Assert-True (
+        $runtimeMigrationResult.Result -ceq 'PASS' -and
+        $runtimeMigrationResult.MutationPerformed -and
+        (Test-Path -LiteralPath $runtimeMigration.InstallRoot -PathType Container) -and
+        -not (Test-Path -LiteralPath $runtimeMigration.LegacyInstallRoot) -and
+        (Test-Path -LiteralPath $runtimeMigration.LauncherTargetPath -PathType Leaf) -and
+        -not (Test-Path -LiteralPath $runtimeMigration.LegacyLauncherPath) -and
+        (Test-Path -LiteralPath $runtimeMigration.RecoveryRoot -PathType Container)
+    ) 'Runtime migration did not converge the success fixture.'
+    $runtimeMigrationTask = Get-Content `
+        -LiteralPath $runtimeMigration.TaskStatePath `
+        -Raw | ConvertFrom-Json
+    Assert-True (
+        (Test-LhmPathEqual `
+            -Left ([string]$runtimeMigrationTask.execute) `
+            -Right (Join-Path `
+                $runtimeMigration.InstallRoot `
+                $script:LhmExecutableName)) -and
+        (Test-LhmPathEqual `
+            -Left ([string]$runtimeMigrationTask.workingDirectory) `
+            -Right $runtimeMigration.InstallRoot)
+    ) 'Runtime migration did not rebind the managed task fixture.'
+    $null = & $runtimeMigrationScript `
+        -Mode Validate `
+        -LegacyInstallRoot $runtimeMigration.LegacyInstallRoot `
+        -InstallRoot $runtimeMigration.InstallRoot `
+        -DataRoot $runtimeMigration.DataRoot `
+        -LegacyLauncherPath $runtimeMigration.LegacyLauncherPath `
+        -LauncherTargetPath $runtimeMigration.LauncherTargetPath `
+        -PublicShimPath $runtimeMigration.PublicShimPath `
+        -TestExternalTaskStatePath $runtimeMigration.TaskStatePath `
+        -NonLiveTestMode
+
+    $failedRuntimeMigration = New-RuntimeRootMigrationFixture `
+        -Root $testRoot `
+        -Name 'rollback' `
+        -CandidateDirectory $candidate1
+    $failedShimHash = Get-LhmFileSha256 -Path $failedRuntimeMigration.PublicShimPath
+    $failedTaskHash = Get-LhmFileSha256 -Path $failedRuntimeMigration.TaskStatePath
+    Assert-Throws -MessagePattern 'AfterBindings' -Action {
+        $null = & $runtimeMigrationScript `
+            -Mode Apply `
+            -LegacyInstallRoot $failedRuntimeMigration.LegacyInstallRoot `
+            -InstallRoot $failedRuntimeMigration.InstallRoot `
+            -DataRoot $failedRuntimeMigration.DataRoot `
+            -LegacyLauncherPath $failedRuntimeMigration.LegacyLauncherPath `
+            -LauncherTargetPath $failedRuntimeMigration.LauncherTargetPath `
+            -PublicShimPath $failedRuntimeMigration.PublicShimPath `
+            -TestExternalTaskStatePath $failedRuntimeMigration.TaskStatePath `
+            -NonLiveTestMode `
+            -TestFailurePoint AfterBindings `
+            -Confirm:$false
+    }
+    Assert-True (
+        (Test-Path -LiteralPath $failedRuntimeMigration.LegacyInstallRoot -PathType Container) -and
+        -not (Test-Path -LiteralPath $failedRuntimeMigration.InstallRoot) -and
+        (Test-Path -LiteralPath $failedRuntimeMigration.LegacyLauncherPath -PathType Leaf) -and
+        -not (Test-Path -LiteralPath $failedRuntimeMigration.LauncherTargetPath) -and
+        (Get-LhmFileSha256 -Path $failedRuntimeMigration.PublicShimPath) -ceq
+            $failedShimHash -and
+        (Get-LhmFileSha256 -Path $failedRuntimeMigration.TaskStatePath) -ceq
+            $failedTaskHash
+    ) 'Runtime migration did not roll back the injected binding failure.'
 
     $relocation = New-DataRootRelocationFixture `
         -Root $testRoot `
@@ -4715,6 +4904,7 @@ function Get-Process {
         HostileRecoveryManifestCases = 16
         HostileReparseCases = 12
         DataRootRelocationCases = 6
+        RuntimeRootMigrationCases = 2
         ProductionTaskContractNegativeCases = 3
         ProductionHealthUriNegativeCases = 1
         InstallationIdentityNegativeCases = 2

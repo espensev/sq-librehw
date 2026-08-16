@@ -55,7 +55,7 @@ if ((Get-LhmFileSha256 -Path $publicShimPath) -cne $script:LhmPublicShimSha256) 
 }
 $shimText = Get-Content -LiteralPath $publicShimPath -Raw
 if ($shimText -notmatch [regex]::Escape(
-    '-File "E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1"')) {
+    '-File "E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1"')) {
     throw 'Public librehw.cmd does not delegate to the exact canonical launcher target.'
 }
 if (-not (Test-Path -LiteralPath $launcherTargetPath -PathType Leaf) -or

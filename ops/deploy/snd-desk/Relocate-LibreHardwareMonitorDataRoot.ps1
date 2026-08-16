@@ -1,6 +1,6 @@
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
-    [string] $InstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW',
+    [string] $InstallRoot = 'E:\Monitoring\LibreHW\Runtime',
 
     [string] $SourceDataRoot = 'E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor',
 
@@ -9,9 +9,9 @@ param(
     [string] $ManagedStartupTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC',
 
     [string] $LauncherTargetPath =
-        'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1',
+        'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1',
 
-    [string] $PublicShimPath = 'E:\SQ_HQ\u-programs\bin\librehw.cmd',
+    [string] $PublicShimPath = 'E:\Bin\librehw.cmd',
 
     [uri] $HealthUri = 'http://localhost:8085/data.json',
 

@@ -9,7 +9,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$InstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'
+$InstallRoot = 'E:\Monitoring\LibreHW\Runtime'
 $DataRoot = 'E:\Data\LibreHardwareMonitor'
 $ExecutablePath =
     [System.IO.Path]::Combine($InstallRoot, 'LibreHardwareMonitor.Windows.Forms.exe')
