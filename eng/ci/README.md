@@ -80,7 +80,14 @@ that is split:
   asserting current-source promotability would be permanently red for a reason
   that is not a defect.
 - **`test` is included.** `Test-LhmReleaseSystem.ps1` is a fixture and creates
-  nothing outside its own temporary state.
+  nothing outside its own temporary state. It launches isolated fixture
+  executables to prove candidate ZIP-smoke behavior; it does not launch a
+  repository-built product EXE or create a real candidate.
+
+The ordinary .NET suites run under `testhost` and load source-built assemblies.
+They do not prove that any copied `LibreHardwareMonitor.Windows.Forms.exe` is a
+candidate or the live executable. That identity is established separately by
+candidate ZIP extraction/smoke and `Show-LhmExecutableIdentity.ps1`.
 
 ### `ci-gates` is self-referential
 
@@ -146,6 +153,11 @@ directory. To return to the baseline's zero-generated-directories state:
 .\eng\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
 .\eng\Clear-LhmRepositoryBuildOutputs.ps1
 ```
+
+The cleanup allow-list is root `bin` plus `bin` and `obj` beside every tracked
+`.csproj`. `Test-NoStaleReferences.ps1` compares that project-derived set with
+the explicit destructive allow-list, so adding or retiring a project requires a
+reviewed cleanup-contract edit.
 
 Do not use `git clean -fdX`. It would delete `data/tasks.json` and
 `data/analysis-cache.json`, the local execution ledger and analysis cache.

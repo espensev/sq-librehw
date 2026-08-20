@@ -159,8 +159,6 @@ $relativeOutputRoots = @(
     'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Attended\obj',
     'LibreHardwareMonitor.Windows.Forms\bin',
     'LibreHardwareMonitor.Windows.Forms\obj',
-    'LibreHardwareMonitor\bin',
-    'LibreHardwareMonitor\obj',
     'LibreHardwareMonitorLib\bin',
     'LibreHardwareMonitorLib\obj'
 )

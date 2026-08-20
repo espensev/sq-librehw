@@ -192,13 +192,22 @@ function ConvertTo-LhmSafeRepositoryIdentifier {
 }
 
 function Get-LhmReleaseVerificationCommands {
-    return [string[]]@(
+    param([ValidateSet(1, 2)][int]$ManifestVersion = 2)
+
+    $commands = [System.Collections.Generic.List[string]]::new()
+    foreach ($command in [string[]]@(
         'git diff --check',
         'node --check console.js',
         'node --check workspace.js',
         'node webtests/selftest.node.js',
         'node --test console.tests.js workspace.tests.js',
-        'dotnet test LibreHardwareMonitor.Tests.slnf (x64)')
+        'dotnet test LibreHardwareMonitor.Tests.slnf (x64)')) {
+        $commands.Add($command)
+    }
+    if ($ManifestVersion -ge 2) {
+        $commands.Add('execute both ZIP-extracted entry points (--release-smoke)')
+    }
+    return [string[]]$commands.ToArray()
 }
 
 function ConvertFrom-LhmReleaseJson {
@@ -687,6 +696,164 @@ function New-LhmReleaseZip {
     return $entries
 }
 
+function Invoke-LhmReleasePackageSmoke {
+    param(
+        [Parameter(Mandatory)][string]$ArchivePath,
+        [Parameter(Mandatory)][string]$EntryPoint,
+        [Parameter(Mandatory)][ValidateSet('net10.0-windows', 'net472')]
+        [string]$TargetFramework,
+        [Parameter(Mandatory)][string]$ExpectedFileVersion,
+        [Parameter(Mandatory)][string]$ExpectedProductVersion,
+        [Parameter(Mandatory)][string]$SmokeRoot,
+        [ValidateRange(1, 120)][int]$TimeoutSeconds = 30
+    )
+
+    Add-Type -AssemblyName System.IO.Compression -ErrorAction SilentlyContinue
+    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+
+    Assert-LhmSafeManifestPath -Path $EntryPoint
+    $archivePathResolved = Resolve-LhmReleaseFullPath -Path $ArchivePath
+    $smokePath = Resolve-LhmReleaseFullPath -Path $SmokeRoot
+    $smokeParent = Resolve-LhmReleaseFullPath -Path (
+        [System.IO.Path]::GetDirectoryName($smokePath))
+    if (-not [System.IO.File]::Exists($archivePathResolved)) {
+        throw "Release-smoke archive does not exist: $archivePathResolved"
+    }
+    if ([System.IO.Directory]::Exists($smokePath) -or
+        [System.IO.File]::Exists($smokePath)) {
+        throw "Release-smoke root already exists: $smokePath"
+    }
+    Assert-LhmReleasePathHasNoReparseAncestor -Path $archivePathResolved
+    Assert-LhmReleasePathHasNoReparseAncestor -Path $smokeParent
+
+    $payloadRoot = Join-Path $smokePath 'payload'
+    $receiptPath = Join-Path $smokePath 'receipt.json'
+    $process = $null
+    $archive = $null
+    try {
+        [System.IO.Directory]::CreateDirectory($payloadRoot) | Out-Null
+        Assert-LhmReleasePathHasNoReparseAncestor -Path $payloadRoot
+
+        $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePathResolved)
+        if ($archive.Entries.Count -lt 1 -or $archive.Entries.Count -gt 4096) {
+            throw "Release-smoke archive entry count is outside the 1-4096 limit: $archivePathResolved"
+        }
+        $seen = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($entry in $archive.Entries) {
+            if ([string]::IsNullOrEmpty($entry.Name)) {
+                throw "Release-smoke archive contains a directory entry: $($entry.FullName)"
+            }
+            $relative = $entry.FullName.Replace('\', '/')
+            Assert-LhmSafeManifestPath -Path $relative
+            if (-not $seen.Add($relative)) {
+                throw "Release-smoke archive contains a duplicate or case-colliding path: $relative"
+            }
+
+            $destination = Resolve-LhmReleaseFullPath -Path (
+                Join-Path $payloadRoot ($relative.Replace('/', '\')))
+            if (-not (Test-LhmReleasePathWithin -Path $destination -Parent $payloadRoot)) {
+                throw "Release-smoke extraction escaped its payload root: $relative"
+            }
+            [System.IO.Directory]::CreateDirectory(
+                [System.IO.Path]::GetDirectoryName($destination)) | Out-Null
+            $sourceStream = $entry.Open()
+            $destinationStream = [System.IO.File]::Open(
+                $destination,
+                [System.IO.FileMode]::CreateNew,
+                [System.IO.FileAccess]::Write,
+                [System.IO.FileShare]::None)
+            try {
+                $sourceStream.CopyTo($destinationStream)
+            }
+            finally {
+                $destinationStream.Dispose()
+                $sourceStream.Dispose()
+            }
+        }
+        $archive.Dispose()
+        $archive = $null
+
+        $executablePath = Resolve-LhmReleaseFullPath -Path (
+            Join-Path $payloadRoot ($EntryPoint.Replace('/', '\')))
+        if (-not [System.IO.File]::Exists($executablePath)) {
+            throw "Release-smoke entry point is missing after extraction: $EntryPoint"
+        }
+
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $executablePath
+        $startInfo.Arguments = '--release-smoke'
+        $startInfo.WorkingDirectory = [System.IO.Path]::GetDirectoryName($executablePath)
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.EnvironmentVariables['LHM_RELEASE_SMOKE_RECEIPT'] = $receiptPath
+        Write-Host "==> Extracted entry-point smoke $TargetFramework"
+        $process = [System.Diagnostics.Process]::Start($startInfo)
+        if ($null -eq $process) {
+            throw "Release-smoke process did not start for $TargetFramework."
+        }
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            try { $process.Kill() } catch { }
+            [void]$process.WaitForExit(5000)
+            throw "Release-smoke process timed out for $TargetFramework."
+        }
+        if ($process.ExitCode -ne 0) {
+            throw "Release-smoke process failed for $TargetFramework with exit code $($process.ExitCode)."
+        }
+        if (-not [System.IO.File]::Exists($receiptPath)) {
+            throw "Release-smoke process wrote no receipt for $TargetFramework."
+        }
+        $receiptItem = Get-Item -LiteralPath $receiptPath -Force
+        if ($receiptItem.Length -lt 1 -or $receiptItem.Length -gt 64KB) {
+            throw "Release-smoke receipt size is invalid for $TargetFramework."
+        }
+        $receipt = ConvertFrom-LhmReleaseJson -Json (
+            Get-Content -Raw -LiteralPath $receiptPath)
+        foreach ($property in @(
+            'schema',
+            'version',
+            'targetFramework',
+            'executablePath',
+            'fileVersion',
+            'productVersion')) {
+            Assert-LhmReleaseObjectProperty -Object $receipt -Name $property
+        }
+        if ([string]$receipt.schema -cne 'sq.lhm-release-smoke' -or
+            -not (Test-LhmReleaseJsonInteger -Value $receipt.version) -or
+            [int64]$receipt.version -ne 1 -or
+            [string]$receipt.targetFramework -cne $TargetFramework -or
+            -not (Resolve-LhmReleaseFullPath -Path ([string]$receipt.executablePath)).Equals(
+                $executablePath,
+                [System.StringComparison]::OrdinalIgnoreCase) -or
+            [string]$receipt.fileVersion -cne $ExpectedFileVersion -or
+            [string]$receipt.productVersion -cne $ExpectedProductVersion) {
+            throw "Release-smoke receipt does not match the extracted $TargetFramework entry point."
+        }
+
+        return [ordered]@{
+            completed = $true
+            targetFramework = $TargetFramework
+            fileVersion = $ExpectedFileVersion
+            productVersion = $ExpectedProductVersion
+        }
+    }
+    finally {
+        if ($null -ne $archive) {
+            $archive.Dispose()
+        }
+        if ($null -ne $process) {
+            if (-not $process.HasExited) {
+                try { $process.Kill() } catch { }
+                [void]$process.WaitForExit(5000)
+            }
+            $process.Dispose()
+        }
+        if ([System.IO.Directory]::Exists($smokePath)) {
+            Remove-LhmOwnedReleaseDirectory -Path $smokePath -Parent $smokeParent
+        }
+    }
+}
+
 function Write-LhmReleaseJsonAtomically {
     param(
         [Parameter(Mandatory)]$Value,
@@ -941,9 +1108,11 @@ function Test-LhmReleaseCandidate {
     }
     Assert-LhmReleaseJsonString -Value $manifest.schema -Name 'schema'
     if (-not (Test-LhmReleaseJsonInteger -Value $manifest.version) -or
-        $manifest.schema -cne 'sq.lhm-release' -or [int64]$manifest.version -ne 1) {
+        $manifest.schema -cne 'sq.lhm-release' -or
+        [int64]$manifest.version -notin @(1, 2)) {
         throw "Unsupported release manifest schema/version: $($manifest.schema) v$($manifest.version)"
     }
+    $manifestVersion = [int]$manifest.version
     Assert-LhmReleaseJsonString -Value $manifest.releaseId -Name 'releaseId'
     Assert-LhmSafeReleaseId -ReleaseId ([string]$manifest.releaseId)
     if ([System.IO.Path]::GetFileName($candidate.TrimEnd('\', '/')) -cne [string]$manifest.releaseId) {
@@ -1050,7 +1219,8 @@ function Test-LhmReleaseCandidate {
         }
     }
     if ([bool]$manifest.verification.completed) {
-        $requiredCommands = @(Get-LhmReleaseVerificationCommands)
+        $requiredCommands = @(
+            Get-LhmReleaseVerificationCommands -ManifestVersion $manifestVersion)
         if ($verificationCommandSet.Count -ne $requiredCommands.Count -or
             @($requiredCommands | Where-Object {
                 -not $verificationCommandSet.Contains($_)
@@ -1091,7 +1261,7 @@ function Test-LhmReleaseCandidate {
     $productVersions = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::Ordinal)
     foreach ($package in $packages) {
-        foreach ($property in @(
+        $packageProperties = @(
             'targetFramework',
             'platform',
             'runtimeIdentifier',
@@ -1102,7 +1272,11 @@ function Test-LhmReleaseCandidate {
             'archive',
             'length',
             'sha256',
-            'files')) {
+            'files')
+        if ($manifestVersion -ge 2) {
+            $packageProperties += 'smoke'
+        }
+        foreach ($property in $packageProperties) {
             Assert-LhmReleaseObjectProperty -Object $package -Name $property
         }
         foreach ($stringProperty in @(
@@ -1153,6 +1327,30 @@ function Test-LhmReleaseCandidate {
         }
         [void]$fileVersions.Add([string]$package.fileVersion)
         [void]$productVersions.Add([string]$package.productVersion)
+
+        if ($manifestVersion -ge 2) {
+            foreach ($property in @(
+                'completed',
+                'targetFramework',
+                'fileVersion',
+                'productVersion')) {
+                Assert-LhmReleaseObjectProperty -Object $package.smoke -Name $property
+            }
+            Assert-LhmReleaseJsonBoolean `
+                -Value $package.smoke.completed `
+                -Name 'packages[].smoke.completed'
+            foreach ($property in @('targetFramework', 'fileVersion', 'productVersion')) {
+                Assert-LhmReleaseJsonString `
+                    -Value $package.smoke.$property `
+                    -Name "packages[].smoke.$property"
+            }
+            if (-not [bool]$package.smoke.completed -or
+                [string]$package.smoke.targetFramework -cne [string]$package.targetFramework -or
+                [string]$package.smoke.fileVersion -cne [string]$package.fileVersion -or
+                [string]$package.smoke.productVersion -cne [string]$package.productVersion) {
+                throw "Release package smoke evidence does not match $($package.targetFramework)."
+            }
+        }
 
         $archiveRelative = [string]$package.archive
         Assert-LhmSafeManifestPath -Path $archiveRelative

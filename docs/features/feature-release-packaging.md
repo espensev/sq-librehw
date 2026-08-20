@@ -1,7 +1,7 @@
 # External Release Candidate Packaging
 
 **Status:** implemented; candidate creation remains non-deploying
-**Updated:** 2026-08-05
+**Updated:** 2026-08-20
 
 ## Problem
 
@@ -23,6 +23,11 @@ safe to substitute for the running LibreHardwareMonitor instance.
   disjoint from the repository.
 - Bind every payload file to its candidate with relative paths, lengths, and
   SHA-256 hashes in a versioned manifest.
+- Execute the exact entry point extracted from each completed ZIP through a
+  bounded pre-UI smoke path and bind its framework/version receipt to the
+  manifest.
+- Identify any application executable by path, SHA-256, embedded source stamp,
+  candidate manifest, live manifest, and running process without changing it.
 - Refuse partial, ambiguous, stale, or colliding output.
 - Leave every discovered repository/project `bin` and `obj` output root absent
   after a successful or failed release attempt.
@@ -45,11 +50,31 @@ safe to substitute for the running LibreHardwareMonitor instance.
 - `ops/candidate/New-LhmRelease.ps1` creates and verifies a new candidate.
 - `ops/candidate/Test-LhmReleaseCandidate.ps1` independently validates an existing
   candidate without changing it.
+- `ops/candidate/Show-LhmExecutableIdentity.ps1` classifies one exact executable
+  as test, development, valid/invalid candidate, live, rollback, or unknown
+  evidence.
 - `ops/candidate/Test-LhmReleaseSystem.ps1` exercises path, cleanup, build,
-  collision, failure, manifest, and tamper behavior with isolated fixtures.
+  extracted-entry-point smoke, identity, collision, failure, manifest, and
+  tamper behavior with isolated fixtures.
 
 These scripts package source output only. A separate, explicitly approved
 identity-verified workflow must own any later runtime promotion.
+
+## Executable and testing roles
+
+| Role | What actually runs | Authority |
+|---|---|---|
+| Automated source tests | `testhost` loads test and product assemblies from test output; the product EXE is not the test runner | Test result only |
+| Development build | An ignored checkout `bin` output, normally root `bin\Release\<framework>` | Git checkout plus embedded source stamp; never release authority |
+| Candidate | The exact EXE extracted from a candidate ZIP and smoke-run before publication | Valid `release-manifest.json` plus matching SHA-256 |
+| Live | `deployments\current\LibreHardwareMonitor.Windows.Forms.exe` | Exact path, SHA-256, and product version in `manifests\channels\live.json` |
+| Rollback | An executable inside a sealed rollback payload | Rollback packet; not live unless separately promoted |
+
+Use `Show-LhmExecutableIdentity.ps1` instead of inferring a role from a filename
+or a nearby directory. Equal names and versions do not establish equal content;
+the SHA-256 and manifest match do. A hash reference inside a candidate that
+fails whole-candidate validation is explicitly `candidate-payload-invalid`, not
+candidate authority.
 
 ## Runtime-data compatibility gate
 
@@ -152,8 +177,9 @@ changes.
 ## Clean build and repository cleanup boundary
 
 Release verification and both framework builds use fresh output and
-intermediate locations owned by the external staging run. `global.json` pins
-SDK `10.0.302`, and the project `UseArtifactsOutput` conditions let SDK artifact
+intermediate locations owned by the external staging run. `global.json` selects
+exact SDK `10.0.302` with roll-forward disabled, matching the creator's exact
+stable-SDK gate, and the project `UseArtifactsOutput` conditions let SDK artifact
 routing supersede their normal source-tree `OutputPath` values. Packaging reads
 only the external artifact tree; it never copies from repository `bin` or `obj`.
 
@@ -199,6 +225,15 @@ staging payload directories are not published. A non-zero verification or build
 exit code, missing application entry point, source-tree output, or
 framework/version mismatch aborts the complete candidate.
 
+Immediately after each ZIP is written, candidate creation extracts that ZIP to
+an owned short-lived directory and starts that exact extracted entry point with
+`--release-smoke`. The smoke path exits before runtime-data initialization,
+WinForms startup, or hardware access and creates a new bounded JSON receipt with
+its compile-time target framework, executable path, file version, and product
+version. Missing, mismatched, timed-out, or non-zero smoke evidence aborts the
+whole candidate. This proves executable identity and pre-UI startup; it is not a
+GUI, dependency-completeness, hardware, or live-runtime health test.
+
 The complete RID-specific framework output is preserved. The validator rejects
 any residual `runtimes/` subtree: a `win-x64` build must let the SDK select and
 flatten the applicable native assets instead of carrying Android, Linux, macOS,
@@ -208,7 +243,9 @@ package requires .NET Framework 4.7.2.
 
 ## Manifest and validation
 
-`release-manifest.json` uses schema `sq.lhm-release`, version `1`. It records:
+New `release-manifest.json` files use schema `sq.lhm-release`, version `2`.
+The validator continues to accept immutable historical version `1` candidates;
+only version `2` carries package-smoke evidence. The manifest records:
 
 - release ID and UTC creation time;
 - base version and the pinned/observed SDK version;
@@ -220,6 +257,8 @@ package requires .NET Framework 4.7.2.
 - the two target frameworks, application entry points, file/product versions,
   `runtimeIdentifier: win-x64`, `selfContained: false`, and
   `packages/...zip` archive paths; and
+- for each version 2 package, successful extracted-entry-point smoke evidence
+  whose framework, file version, and product version equal the package; and
 - each archive's byte length and lowercase SHA-256 digest, plus the relative
   path, length, and digest of every file inside that ZIP.
 
@@ -279,8 +318,12 @@ rollback reference to a previously accepted package.
   is unambiguously labelled in its ID and manifest.
 - [x] Every declared relative path, byte length, and SHA-256 digest validates;
   a one-byte payload change is detected.
+- [x] Candidate creation starts both exact ZIP-extracted entry points through
+  the pre-UI smoke path and binds matching framework/file/product version
+  receipts into a version 2 manifest.
 - [x] A failed verification/build, missing entry point, source-output leak, or
-  destination collision publishes no new or partial candidate.
+  extracted-entry-point smoke, or destination collision publishes no new or
+  partial candidate.
 - [x] A release run cleans only its own external staging directory and guarded,
   discovered repository/project `bin` and `obj` roots; unrelated ignored,
   candidate, and external files remain.
@@ -304,6 +347,7 @@ pwsh -NoProfile -File ops\candidate\Test-LhmReleaseSystem.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\New-LhmRelease.ps1 -ReleaseRoot <external-release-root>
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseCandidate.ps1 -Latest -ReleaseRoot <external-release-root>
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource -ReleaseRoot <external-release-root>
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Show-LhmExecutableIdentity.ps1 -Path <exact-exe> -StackRoot E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack -Json
 
 if (Get-ChildItem -Recurse -Directory -Force | Where-Object Name -in @('bin', 'obj')) { throw 'Repository output was repopulated.' }
 git diff --check
@@ -315,7 +359,8 @@ verifying the cleanup contract.
 
 ## Latest verification
 
-- 2026-08-05: PowerShell 7 and Windows PowerShell 5.1 fixture runs covered
-  invalid Git checkout rejection, process-loaded cleanup refusal, failed
-  process inventory, tracked-project cache invalidation, reparse rejection, and
-  candidate content tampering. No candidate or deployment was created.
+- 2026-08-20: Windows PowerShell 5.1 and PowerShell 7 each passed all 158
+  release-system assertions. A disposable external dirty-source candidate built
+  and smoke-ran both real ZIP-extracted entry points under SDK `10.0.302`, then
+  independently validated as manifest version 2 and `candidate-payload`; its
+  proof root was removed and no deployment was attempted.

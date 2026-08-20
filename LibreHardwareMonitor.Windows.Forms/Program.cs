@@ -15,8 +15,18 @@ namespace LibreHardwareMonitor.Windows.Forms;
 public static class Program
 {
     [STAThread]
-    public static void Main()
+    public static void Main(string[] args)
     {
+        if (ReleaseSmoke.TryRun(
+            args,
+            Application.ExecutablePath,
+            Environment.GetEnvironmentVariable,
+            out int releaseSmokeExitCode))
+        {
+            Environment.ExitCode = releaseSmokeExitCode;
+            return;
+        }
+
 #if !NETCOREAPP
         if (!AllRequiredFilesAvailable())
             Environment.Exit(0);

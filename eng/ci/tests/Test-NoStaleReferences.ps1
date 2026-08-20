@@ -182,9 +182,52 @@ foreach ($f in $wideScannable) {
 }
 Assert-Ok "no non-exempt tracked file references the retired flat test project layout" { $oldTestHits.Count -eq 0 }
 
+# 7. Destructive cleanup remains an explicit allow-list, but that allow-list must
+#    equal root bin plus bin/obj beside every tracked project. This keeps new
+#    projects fail-closed until the cleanup contract is deliberately reviewed,
+#    while making retired project roots a permanent gate failure.
+$trackedProjects = @(git -C $repositoryRoot ls-files -- '*.csproj')
+if ($LASTEXITCODE -ne 0) {
+    throw 'Unable to enumerate tracked project files for the cleanup contract.'
+}
+$expectedCleanupRoots = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+[void]$expectedCleanupRoots.Add('bin')
+foreach ($project in $trackedProjects) {
+    $projectDirectory = [System.IO.Path]::GetDirectoryName(
+        ([string]$project).Replace('/', '\'))
+    if ([string]::IsNullOrWhiteSpace($projectDirectory)) {
+        throw "Tracked project must not be repository-rooted: '$project'."
+    }
+    [void]$expectedCleanupRoots.Add((Join-Path $projectDirectory 'bin'))
+    [void]$expectedCleanupRoots.Add((Join-Path $projectDirectory 'obj'))
+}
+$cleanupInventory = @(
+    & (Join-Path $repositoryRoot 'eng\Clear-LhmRepositoryBuildOutputs.ps1') `
+        -RepositoryRoot $repositoryRoot `
+        -WhatIf
+)
+$actualCleanupRoots = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+foreach ($entry in $cleanupInventory) {
+    [void]$actualCleanupRoots.Add([string]$entry.Path)
+}
+$missingCleanupRoots = @(
+    $expectedCleanupRoots | Where-Object { -not $actualCleanupRoots.Contains($_) } | Sort-Object)
+$extraCleanupRoots = @(
+    $actualCleanupRoots | Where-Object { -not $expectedCleanupRoots.Contains($_) } | Sort-Object)
+Assert-Ok "cleanup allow-list exactly covers root bin plus tracked-project bin/obj roots" {
+    $cleanupInventory.Count -eq $expectedCleanupRoots.Count -and
+    $actualCleanupRoots.Count -eq $expectedCleanupRoots.Count -and
+    $missingCleanupRoots.Count -eq 0 -and
+    $extraCleanupRoots.Count -eq 0
+}
+
 Write-Output "-> " + $(if ($failures.Count -eq 0) { 'ok' } else { "FAILED ($($failures.Count) failures)" })
 if ($scriptHits.Count -gt 0)  { Write-Output ("  old-script refs: " + ($scriptHits -join '; ')) }
 if ($slnxHits.Count -gt 0)    { Write-Output ("  old-slnx refs: " + ($slnxHits -join '; ')) }
 if ($oldTestHits.Count -gt 0) { Write-Output ("  retired-test-layout refs: " + ($oldTestHits -join '; ')) }
+if ($missingCleanupRoots.Count -gt 0) { Write-Output ("  missing cleanup roots: " + ($missingCleanupRoots -join '; ')) }
+if ($extraCleanupRoots.Count -gt 0)   { Write-Output ("  retired cleanup roots: " + ($extraCleanupRoots -join '; ')) }
 if ($failures.Count -gt 0) { exit 1 }
 exit 0

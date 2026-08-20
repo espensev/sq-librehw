@@ -320,7 +320,8 @@ try {
     foreach ($scriptName in @(
         'LhmRelease.Common.ps1',
         'New-LhmRelease.ps1',
-        'Test-LhmReleaseCandidate.ps1')) {
+        'Test-LhmReleaseCandidate.ps1',
+        'Show-LhmExecutableIdentity.ps1')) {
         Copy-Item `
             -LiteralPath (Join-Path $PSScriptRoot $scriptName) `
             -Destination (Join-Path $orchestrationScripts $scriptName)
@@ -347,6 +348,98 @@ try {
         throw 'Unable to derive one fixture base version from where.exe metadata.'
     }
     $fixtureBaseVersion = $whereFileVersionMatch.Groups['base'].Value
+    $smokeFixtureTemplate = @'
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Text;
+
+[assembly: AssemblyVersion("__BASE_VERSION__.0")]
+[assembly: AssemblyFileVersion("__BASE_VERSION__.1")]
+[assembly: AssemblyInformationalVersion("__BASE_VERSION__+fixture")]
+
+namespace __NAMESPACE__
+{
+    internal static class Program
+    {
+        private const string Framework = "__FRAMEWORK__";
+
+        private static string Escape(string value)
+        {
+            return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        }
+
+        private static int Main(string[] args)
+        {
+            if (args.Length != 1 || args[0] != "--release-smoke")
+                return 19;
+            if (Environment.GetEnvironmentVariable("FAKE_LHM_SMOKE_FAIL_FRAMEWORK") == Framework)
+                return 23;
+
+            string receiptPath = Environment.GetEnvironmentVariable("LHM_RELEASE_SMOKE_RECEIPT");
+            if (String.IsNullOrWhiteSpace(receiptPath) || !Path.IsPathRooted(receiptPath))
+                return 20;
+
+            string executablePath = Process.GetCurrentProcess().MainModule.FileName;
+            FileVersionInfo version = FileVersionInfo.GetVersionInfo(executablePath);
+            string json =
+                "{\"schema\":\"sq.lhm-release-smoke\",\"version\":1," +
+                "\"targetFramework\":\"" + Framework + "\"," +
+                "\"executablePath\":\"" + Escape(Path.GetFullPath(executablePath)) + "\"," +
+                "\"fileVersion\":\"" + Escape(version.FileVersion) + "\"," +
+                "\"productVersion\":\"" + Escape(version.ProductVersion) + "\"}";
+            using (StreamWriter writer = new StreamWriter(
+                new FileStream(receiptPath, FileMode.CreateNew, FileAccess.Write, FileShare.None),
+                new UTF8Encoding(false)))
+            {
+                writer.Write(json);
+            }
+
+            string logPath = Environment.GetEnvironmentVariable("FAKE_LHM_SMOKE_LOG");
+            if (!String.IsNullOrWhiteSpace(logPath))
+                File.AppendAllText(logPath, Framework + "\t" + executablePath + Environment.NewLine);
+            return 0;
+        }
+    }
+}
+'@
+    $cscPath = @(
+        (Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'),
+        (Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe')
+    ) | Where-Object { [System.IO.File]::Exists($_) } | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace([string]$cscPath)) {
+        throw 'Release-smoke fixture requires the Windows .NET Framework C# compiler.'
+    }
+    foreach ($smokeFramework in @('net10.0-windows', 'net472')) {
+        $fixturePath = Join-Path $orchestrationRepository (
+            'fixture-smoke-' + $smokeFramework + '.exe')
+        $fixtureSourcePath = Join-Path $testRoot (
+            'fixture-smoke-' + $smokeFramework + '.cs')
+        $fixtureNamespace = 'LhmSmokeFixture' + (
+            $smokeFramework -replace '[^A-Za-z0-9]', '')
+        $fixtureSource = $smokeFixtureTemplate.
+            Replace('__BASE_VERSION__', $fixtureBaseVersion).
+            Replace('__NAMESPACE__', $fixtureNamespace).
+            Replace('__FRAMEWORK__', $smokeFramework)
+        [System.IO.File]::WriteAllText(
+            $fixtureSourcePath,
+            $fixtureSource,
+            [System.Text.UTF8Encoding]::new($false))
+        $compilerOutput = @(
+            & $cscPath `
+                '/nologo' `
+                '/target:exe' `
+                '/optimize+' `
+                ("/out:$fixturePath") `
+                $fixtureSourcePath
+        )
+        if ($LASTEXITCODE -ne 0 -or -not [System.IO.File]::Exists($fixturePath)) {
+            throw (
+                "Unable to compile $smokeFramework release-smoke fixture: " +
+                ($compilerOutput -join "`n"))
+        }
+    }
     [System.IO.File]::WriteAllText(
         (Join-Path $orchestrationRepository 'Directory.Build.props'),
         "<Project><PropertyGroup><Version>$fixtureBaseVersion</Version></PropertyGroup></Project>")
@@ -356,7 +449,7 @@ try {
 {
   "sdk": {
     "version": "10.0.302",
-    "rollForward": "latestPatch",
+    "rollForward": "disable",
     "allowPrerelease": false
   }
 }
@@ -411,8 +504,9 @@ if ($env:FAKE_LHM_FAIL_FRAMEWORK -eq $framework) {
 }
 $output = Join-Path $artifacts "bin\LibreHardwareMonitor.Windows.Forms\release_$framework"
 [System.IO.Directory]::CreateDirectory($output) | Out-Null
+$fixtureExecutable = Join-Path $PSScriptRoot ("fixture-smoke-" + $framework + ".exe")
 [System.IO.File]::Copy(
-    (Join-Path $env:WINDIR 'System32\where.exe'),
+    $fixtureExecutable,
     (Join-Path $output 'LibreHardwareMonitor.Windows.Forms.exe'))
 [System.IO.File]::WriteAllText(
     (Join-Path $output 'LibreHardwareMonitorLib.dll'),
@@ -473,8 +567,10 @@ exit 0
     ) 'rejected candidate-root junction must not mutate its target'
 
     $fakeDotnetInvocationLog = Join-Path $testRoot 'fake-dotnet-invocations.log'
+    $fakeSmokeInvocationLog = Join-Path $testRoot 'fake-smoke-invocations.log'
     try {
         $env:FAKE_LHM_INVOCATION_LOG = $fakeDotnetInvocationLog
+        $env:FAKE_LHM_SMOKE_LOG = $fakeSmokeInvocationLog
         $fixtureSuccess = @(
             & $fixtureCreator `
                 -ReleaseRoot $orchestrationReleaseRoot `
@@ -485,6 +581,7 @@ exit 0
     }
     finally {
         Remove-Item Env:\FAKE_LHM_INVOCATION_LOG -ErrorAction SilentlyContinue
+        Remove-Item Env:\FAKE_LHM_SMOKE_LOG -ErrorAction SilentlyContinue
     }
     Assert-LhmReleaseTest ($fixtureSuccess.Status -contains 'VERIFIED') 'fake end-to-end release should publish a verified candidate'
     Assert-LhmReleaseTest (-not ($fixtureSuccess.Promotable -contains $true)) 'skipped-verification fixture must be non-promotable'
@@ -523,6 +620,25 @@ exit 0
     $fixtureManifestJson = Get-Content -Raw -LiteralPath $fixtureManifestPath
     $fixtureManifest = $fixtureManifestJson | ConvertFrom-Json
     Assert-LhmReleaseTest (
+        $fixtureManifest.version -eq 2
+    ) 'new release candidates should use manifest version 2 for package-smoke evidence'
+    Assert-LhmReleaseTest (
+        @($fixtureManifest.packages | Where-Object {
+            $null -eq $_.smoke -or
+            $_.smoke.completed -ne $true -or
+            $_.smoke.targetFramework -cne $_.targetFramework -or
+            $_.smoke.fileVersion -cne $_.fileVersion -or
+            $_.smoke.productVersion -cne $_.productVersion
+        }).Count -eq 0
+    ) 'every package should bind a successful extracted-entry-point smoke receipt to its versions'
+    $smokeInvocations = @(Get-Content -LiteralPath $fakeSmokeInvocationLog)
+    Assert-LhmReleaseTest (
+        $smokeInvocations.Count -eq 2 -and
+        @($smokeInvocations | Where-Object {
+            $_ -notmatch '^(net10\.0-windows|net472)\t.+LibreHardwareMonitor\.Windows\.Forms\.exe$'
+        }).Count -eq 0
+    ) 'candidate creation should execute both exact ZIP-extracted framework entry points'
+    Assert-LhmReleaseTest (
         $fixtureManifest.sdkVersion -ceq '10.0.302'
     ) 'fake release manifest should record the pinned SDK selected from global.json'
     Assert-LhmReleaseTest (
@@ -535,7 +651,132 @@ exit 0
         $fixtureManifestJson -notmatch 'fixture-user|fixture-secret|token=not-safe|://'
     ) 'release manifest must not retain origin credentials, query strings, or URL schemes'
 
+    $identityProbeRoot = Join-Path $testRoot 'identity-probe'
+    [System.IO.Compression.ZipFile]::ExtractToDirectory(
+        (Join-Path $fixtureCandidate ($fixtureManifest.packages[0].archive.Replace('/', '\'))),
+        $identityProbeRoot)
+    $identityProbePath = Join-Path $identityProbeRoot $fixtureManifest.packages[0].entryPoint
+    $identityScript = Join-Path $orchestrationScripts 'Show-LhmExecutableIdentity.ps1'
+    $candidateIdentityBefore = Get-LhmCandidateContentIdentity -CandidatePath $fixtureCandidate
+    $candidateIdentityJson = @(
+        & $identityScript `
+            -Path $identityProbePath `
+            -ReleaseRoot $orchestrationReleaseRoot `
+            -Json
+    ) -join "`n"
+    $candidateIdentity = ConvertFrom-LhmReleaseJson -Json $candidateIdentityJson
+    Assert-LhmReleaseTest (
+        $candidateIdentity.role -ceq 'candidate-payload'
+    ) 'identity command should classify an extracted manifest-matching entry point as candidate payload'
+    Assert-LhmReleaseTest (
+        $candidateIdentity.sha256 -ceq (Get-LhmReleaseFileSha256 -Path $identityProbePath)
+    ) 'identity command should report the exact executable SHA-256'
+    Assert-LhmReleaseTest (
+        @($candidateIdentity.candidateMatches).Count -eq 1 -and
+        @($candidateIdentity.candidateMatches | Where-Object {
+            $_.releaseId -cne 'fixture-success' -or
+            $_.targetFramework -cne $fixtureManifest.packages[0].targetFramework -or
+            $_.validationStatus -cne 'VERIFIED'
+        }).Count -eq 0
+    ) ("identity command should name and validate the exact matching framework payload in the immutable candidate: " +
+        (($candidateIdentity.candidateMatches | ConvertTo-Json -Depth 8 -Compress) -join ''))
+    Assert-LhmCandidateContentUnchanged `
+        -CandidatePath $fixtureCandidate `
+        -Expected $candidateIdentityBefore
+
+    $invalidIdentityReleaseRoot = Join-Path $testRoot 'identity-invalid-release'
+    $invalidIdentityCandidate = Join-Path (
+        [System.IO.Directory]::CreateDirectory(
+            (Join-Path $invalidIdentityReleaseRoot 'candidates')).FullName
+    ) 'fixture-invalid'
+    Copy-Item `
+        -LiteralPath $fixtureCandidate `
+        -Destination $invalidIdentityCandidate `
+        -Recurse
+    $invalidCandidateIdentityJson = @(
+        & $identityScript `
+            -Path $identityProbePath `
+            -ReleaseRoot $invalidIdentityReleaseRoot `
+            -Json
+    ) -join "`n"
+    $invalidCandidateIdentity = ConvertFrom-LhmReleaseJson -Json $invalidCandidateIdentityJson
+    Assert-LhmReleaseTest (
+        $invalidCandidateIdentity.role -ceq 'candidate-payload-invalid' -and
+        $invalidCandidateIdentity.authority -ceq 'candidate-manifest-invalid' -and
+        @($invalidCandidateIdentity.candidateMatches).Count -eq 1 -and
+        $invalidCandidateIdentity.candidateMatches[0].validationStatus -ceq 'INVALID'
+    ) 'identity command must not grant candidate authority from a manifest whose candidate fails validation'
+
+    $developmentProbePath = Join-Path $orchestrationRepository 'bin\Release\net10.0-windows\LibreHardwareMonitor.Windows.Forms.exe'
+    [System.IO.Directory]::CreateDirectory(
+        [System.IO.Path]::GetDirectoryName($developmentProbePath)) | Out-Null
+    [System.IO.File]::Copy($whereExecutable, $developmentProbePath, $false)
+    $developmentIdentityJson = @(
+        & $identityScript -Path $developmentProbePath -Json
+    ) -join "`n"
+    $developmentIdentity = ConvertFrom-LhmReleaseJson -Json $developmentIdentityJson
+    Assert-LhmReleaseTest (
+        $developmentIdentity.role -ceq 'development-build' -and
+        $developmentIdentity.checkout.root -ceq $orchestrationRepository
+    ) 'identity command should classify repo-root bin output against its enclosing checkout'
+
+    $stackRoot = Join-Path $testRoot 'identity-stack'
+    $liveRoot = Join-Path $stackRoot 'deployments\current'
+    $liveManifestRoot = Join-Path $stackRoot 'manifests\channels'
+    [System.IO.Directory]::CreateDirectory($liveRoot) | Out-Null
+    [System.IO.Directory]::CreateDirectory($liveManifestRoot) | Out-Null
+    $livePath = Join-Path $liveRoot 'LibreHardwareMonitor.Windows.Forms.exe'
+    [System.IO.File]::Copy($identityProbePath, $livePath, $false)
+    [System.IO.File]::WriteAllText(
+        (Join-Path $liveManifestRoot 'live.json'),
+        ([ordered]@{
+            schema = 'sq.librehw-live-channel'
+            version = 1
+            machineId = 'fixture-host'
+            deploymentRoot = $liveRoot
+            entryPoint = 'LibreHardwareMonitor.Windows.Forms.exe'
+            productVersion = [string]$fixtureManifest.packages[0].productVersion
+            sha256 = Get-LhmReleaseFileSha256 -Path $livePath
+            sourceCandidate = 'fixture-success'
+        } | ConvertTo-Json -Depth 8),
+        [System.Text.UTF8Encoding]::new($false))
+    $liveIdentityJson = @(
+        & $identityScript `
+            -Path $livePath `
+            -StackRoot $stackRoot `
+            -ReleaseRoot $orchestrationReleaseRoot `
+            -Json
+    ) -join "`n"
+    $liveIdentity = ConvertFrom-LhmReleaseJson -Json $liveIdentityJson
+    Assert-LhmReleaseTest (
+        $liveIdentity.role -ceq 'live' -and
+        $liveIdentity.liveManifestMatch -eq $true -and
+        $liveIdentity.sourceCandidate -ceq 'fixture-success'
+    ) 'identity command should give an exact stack-manifest match precedence over candidate-payload classification'
+
     $fixtureVerifier = Join-Path $orchestrationScripts 'Test-LhmReleaseCandidate.ps1'
+    $invalidSmokeManifest = $fixtureManifestJson | ConvertFrom-Json
+    $invalidSmokeManifest.packages[0].smoke.completed = $false
+    try {
+        [System.IO.File]::WriteAllText(
+            $fixtureManifestPath,
+            ($invalidSmokeManifest | ConvertTo-Json -Depth 16),
+            [System.Text.UTF8Encoding]::new($false))
+        Assert-LhmReleaseThrows {
+            & $fixtureVerifier `
+                -CandidatePath $fixtureCandidate `
+                -ReleaseRoot $orchestrationReleaseRoot | Out-Null
+        } 'validator must reject tampered version 2 package-smoke evidence' '*smoke evidence*'
+    }
+    finally {
+        [System.IO.File]::WriteAllText(
+            $fixtureManifestPath,
+            $fixtureManifestJson,
+            [System.Text.UTF8Encoding]::new($false))
+    }
+    Assert-LhmCandidateContentUnchanged `
+        -CandidatePath $fixtureCandidate `
+        -Expected $candidateIdentityBefore
     Assert-LhmReleaseThrows {
         & $fixtureVerifier `
             -Latest `
@@ -626,6 +867,24 @@ exit 0
         -not [System.IO.Directory]::Exists(
             (Join-Path $orchestrationReleaseRoot 'candidates\fixture-second-build-failure'))
     ) 'second framework failure must publish no partial candidate'
+
+    try {
+        $env:FAKE_LHM_SMOKE_FAIL_FRAMEWORK = 'net472'
+        Assert-LhmReleaseThrows {
+            & $fixtureCreator `
+                -ReleaseRoot $orchestrationReleaseRoot `
+                -ReleaseId 'fixture-second-smoke-failure' `
+                -SkipVerification `
+                -DotnetPath $fakeDotnet | Out-Null
+        } 'second framework extracted-entry-point smoke failure must abort the whole candidate' '*smoke*net472*exit code 23*'
+    }
+    finally {
+        Remove-Item Env:\FAKE_LHM_SMOKE_FAIL_FRAMEWORK -ErrorAction SilentlyContinue
+    }
+    Assert-LhmReleaseTest (
+        -not [System.IO.Directory]::Exists(
+            (Join-Path $orchestrationReleaseRoot 'candidates\fixture-second-smoke-failure'))
+    ) 'second framework smoke failure must publish no partial candidate'
 
     try {
         $env:FAKE_LHM_ROGUE_REPOSITORY = $orchestrationRepository
@@ -730,7 +989,7 @@ exit 0
         }
         verification = [ordered]@{
             completed = $true
-            commands = @(Get-LhmReleaseVerificationCommands)
+            commands = @(Get-LhmReleaseVerificationCommands -ManifestVersion 1)
         }
         promotable = $true
         packages = $packageRecords
@@ -1076,7 +1335,7 @@ exit 0
 
     $globalJson = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'global.json') | ConvertFrom-Json
     Assert-LhmReleaseTest ($globalJson.sdk.version -eq '10.0.302') 'release SDK should be pinned to installed stable 10.0.302'
-    Assert-LhmReleaseTest ($globalJson.sdk.rollForward -ceq 'latestPatch') 'release SDK roll-forward policy should stay within the pinned feature band'
+    Assert-LhmReleaseTest ($globalJson.sdk.rollForward -ceq 'disable') 'release SDK selection must match the exact version enforced by candidate creation'
     Assert-LhmReleaseTest (-not [bool]$globalJson.sdk.allowPrerelease) 'release SDK must reject prerelease selection'
 
     $projectConfig = Get-Content -Raw -LiteralPath (

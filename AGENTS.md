@@ -2,7 +2,7 @@
 
 **Project:** LibreHardwareMonitor Sev IQ local fork  
 **Status:** Active implementation fork  
-**Updated:** 2026-07-31
+**Updated:** 2026-08-20
 **Purpose:** keep feature work spec-first without blocking normal review, build, launch, and bugfix work.
 
 **Current SND-HOST workspace:** primary checkout at
@@ -45,6 +45,9 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
   campaign-history acceptance transition contract.
 - `eng/ci/README.md`: the non-deploying gate runner, its gate classification,
   the excluded deploying keys, and the deny-list.
+- `docs/features/feature-release-packaging.md`: source-test, development-build,
+  immutable candidate, executable-identity, and non-deploying package-smoke
+  boundaries for SND-HOST.
 - `docs/features/feature-memory-ui-reliability.md`: shipped memory, ownership, efficiency, and UI-reliability contract, verification, and open follow-ups.
 - `docs/features/feature-web-dashboard-studio-view.md`: shipped Studio dashboard behavior and verification record.
 - `docs/features/feature-sensor-workspace.md`: deployed Workspace view with named profiles, ordered panels, and bounded import/export.
