@@ -200,7 +200,7 @@ reason.
 `.github/workflows/non-deploying-gates.yml` delegates to this runner and
 duplicates no gate command.
 
-`origin` is deliberately unpushed on SND-HOST. The workflow has therefore never
-run on a hosted runner: it is verified by YAML parse and structural inspection
-only. That is a current limitation of the evidence, not a plan to change the
-push policy.
+A branch existing on `origin` is not hosted-run evidence. This workflow runs
+only for pushes to `main` and pull requests targeting `main`; query GitHub for
+the current checks on the exact commit or pull request. YAML parse and
+structural inspection prove the workflow shape locally, not hosted execution.
