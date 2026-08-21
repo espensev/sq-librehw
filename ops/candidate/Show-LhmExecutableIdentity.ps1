@@ -190,11 +190,14 @@ function Get-LhmIdentityRollbackEvidence {
         throw "Rollback packet machineId '$($manifest.MachineId)' does not match stack machineId '$ExpectedMachineId'."
     }
 
+    Assert-LhmDirectoryTreeHasNoReparsePoints -Path $packetRoot
     $fileRecords = @($manifest.Files)
     if ([int]$manifest.FileCount -ne $fileRecords.Count) {
         throw "Rollback packet FileCount '$($manifest.FileCount)' does not match its $($fileRecords.Count) file record(s)."
     }
 
+    $recordPaths = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
     $targetRecords = [System.Collections.Generic.List[object]]::new()
     foreach ($record in $fileRecords) {
         $recordRelativePath = [string]$record.RelativePath
@@ -208,6 +211,9 @@ function Get-LhmIdentityRollbackEvidence {
         if (-not (Test-LhmIdentityPathWithin -Candidate $recordPath -Parent $packetRoot) -or
             $recordPath.Equals($packetRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
             throw "Rollback packet record escapes its packet root: '$recordRelativePath'."
+        }
+        if (-not $recordPaths.Add($recordPath)) {
+            throw "Rollback packet contains a duplicate or case-colliding file record: '$recordRelativePath'."
         }
         if (-not [System.IO.File]::Exists($recordPath)) {
             throw "Rollback packet file does not exist: $recordPath"
@@ -223,6 +229,30 @@ function Get-LhmIdentityRollbackEvidence {
         if ($recordPath.Equals($ExecutablePath, [System.StringComparison]::OrdinalIgnoreCase)) {
             $targetRecords.Add($record)
         }
+    }
+
+    $manifestFullPath = Resolve-LhmReleaseFullPath -Path $manifestPath
+    $actualPayloadFiles = @(
+        Get-ChildItem -LiteralPath $packetRoot -File -Recurse -Force |
+            Where-Object {
+                -not (Resolve-LhmReleaseFullPath -Path $_.FullName).Equals(
+                    $manifestFullPath,
+                    [System.StringComparison]::OrdinalIgnoreCase)
+            }
+    )
+    foreach ($actualFile in $actualPayloadFiles) {
+        $actualPath = Resolve-LhmReleaseFullPath -Path $actualFile.FullName
+        if (-not $recordPaths.Contains($actualPath)) {
+            $actualRelativePath = $actualPath.Substring(
+                (Get-LhmReleasePathPrefix -Path $packetRoot).Length)
+            throw "Rollback packet contains an undeclared file: '$actualRelativePath'."
+        }
+    }
+    if ($actualPayloadFiles.Count -ne $recordPaths.Count) {
+        throw (
+            "Rollback packet manifest declares $($recordPaths.Count) unique file(s), " +
+            "but the packet contains $($actualPayloadFiles.Count) payload file(s)."
+        )
     }
 
     if ($targetRecords.Count -ne 1) {

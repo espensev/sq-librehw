@@ -71,12 +71,9 @@ foreach ($outputPath in @($outputPaths | Where-Object { [System.IO.Directory]::E
 $cleanupParameters = @{
     RepositoryRoot = $repositoryPath
     WhatIf = [bool]$WhatIfPreference
-    Confirm = if ($PSBoundParameters.ContainsKey('Confirm')) {
-        [bool]$PSBoundParameters['Confirm']
-    }
-    else {
-        $false
-    }
+}
+if ($PSBoundParameters.ContainsKey('Confirm')) {
+    $cleanupParameters.Confirm = [bool]$PSBoundParameters['Confirm']
 }
 $summaries = @(Clear-LhmRepositoryBuildOutput @cleanupParameters)
 $summaryByPath = @{}

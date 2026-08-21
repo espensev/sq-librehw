@@ -369,84 +369,132 @@ try {
         throw 'Unable to derive one fixture base version from where.exe metadata.'
     }
     $fixtureBaseVersion = $whereFileVersionMatch.Groups['base'].Value
-    $smokeFixtureTemplate = @'
+    $smokeFixtureSource = @'
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Reflection;
 using System.Text;
 
-[assembly: AssemblyVersion("__BASE_VERSION__.0")]
-[assembly: AssemblyFileVersion("__BASE_VERSION__.1")]
-[assembly: AssemblyInformationalVersion("__BASE_VERSION__+fixture")]
-[assembly: AssemblyDescription("__BUILD_ID__")]
-
-namespace __NAMESPACE__
+internal static class Program
 {
-    internal static class Program
+    private static string Escape(string value)
     {
-        private const string Framework = "__FRAMEWORK__";
+        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    }
 
-        private static string Escape(string value)
+    private static int Main(string[] args)
+    {
+        if (args.Length != 1 || args[0] != "--release-smoke")
+            return 19;
+
+        string executablePath = Environment.ProcessPath;
+        if (String.IsNullOrWhiteSpace(executablePath))
+            return 24;
+        executablePath = Path.GetFullPath(executablePath);
+        string frameworkPath = Path.Combine(
+            Path.GetDirectoryName(executablePath),
+            "fixture-framework.txt");
+        if (!File.Exists(frameworkPath))
+            return 25;
+        string framework = File.ReadAllText(frameworkPath).Trim();
+        if (Environment.GetEnvironmentVariable("FAKE_LHM_SMOKE_FAIL_FRAMEWORK") == framework)
+            return 23;
+
+        string receiptPath = Environment.GetEnvironmentVariable("LHM_RELEASE_SMOKE_RECEIPT");
+        if (String.IsNullOrWhiteSpace(receiptPath) || !Path.IsPathRooted(receiptPath))
+            return 20;
+
+        FileVersionInfo version = FileVersionInfo.GetVersionInfo(executablePath);
+        string json =
+            "{\"schema\":\"sq.lhm-release-smoke\",\"version\":1," +
+            "\"targetFramework\":\"" + Escape(framework) + "\"," +
+            "\"executablePath\":\"" + Escape(executablePath) + "\"," +
+            "\"fileVersion\":\"" + Escape(version.FileVersion) + "\"," +
+            "\"productVersion\":\"" + Escape(version.ProductVersion) + "\"}";
+        using (StreamWriter writer = new StreamWriter(
+            new FileStream(receiptPath, FileMode.CreateNew, FileAccess.Write, FileShare.None),
+            new UTF8Encoding(false)))
         {
-            return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            writer.Write(json);
         }
 
-        private static int Main(string[] args)
-        {
-            if (args.Length != 1 || args[0] != "--release-smoke")
-                return 19;
-            if (Environment.GetEnvironmentVariable("FAKE_LHM_SMOKE_FAIL_FRAMEWORK") == Framework)
-                return 23;
-
-            string receiptPath = Environment.GetEnvironmentVariable("LHM_RELEASE_SMOKE_RECEIPT");
-            if (String.IsNullOrWhiteSpace(receiptPath) || !Path.IsPathRooted(receiptPath))
-                return 20;
-
-            string executablePath = Assembly.GetExecutingAssembly().Location;
-            FileVersionInfo version = FileVersionInfo.GetVersionInfo(executablePath);
-            string json =
-                "{\"schema\":\"sq.lhm-release-smoke\",\"version\":1," +
-                "\"targetFramework\":\"" + Framework + "\"," +
-                "\"executablePath\":\"" + Escape(Path.GetFullPath(executablePath)) + "\"," +
-                "\"fileVersion\":\"" + Escape(version.FileVersion) + "\"," +
-                "\"productVersion\":\"" + Escape(version.ProductVersion) + "\"}";
-            using (StreamWriter writer = new StreamWriter(
-                new FileStream(receiptPath, FileMode.CreateNew, FileAccess.Write, FileShare.None),
-                new UTF8Encoding(false)))
-            {
-                writer.Write(json);
-            }
-
-            string logPath = Environment.GetEnvironmentVariable("FAKE_LHM_SMOKE_LOG");
-            if (!String.IsNullOrWhiteSpace(logPath))
-                File.AppendAllText(logPath, Framework + "\t" + executablePath + Environment.NewLine);
-            return 0;
-        }
+        string logPath = Environment.GetEnvironmentVariable("FAKE_LHM_SMOKE_LOG");
+        if (!String.IsNullOrWhiteSpace(logPath))
+            File.AppendAllText(logPath, framework + "\t" + executablePath + Environment.NewLine);
+        return 0;
     }
 }
 '@
-    $cscPath = @(
-        (Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'),
-        (Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe')
-    ) | Where-Object { [System.IO.File]::Exists($_) } | Select-Object -First 1
-    if ([string]::IsNullOrWhiteSpace([string]$cscPath)) {
-        throw 'Release-smoke fixture requires the Windows .NET Framework C# compiler.'
+    $smokeFixtureProjectRoot = Join-Path $testRoot 'smoke-fixture-project'
+    $smokeFixtureArtifacts = Join-Path $testRoot 'smoke-fixture-artifacts'
+    $smokeFixtureTemplateRoot = Join-Path $testRoot 'smoke-fixture-templates'
+    [System.IO.Directory]::CreateDirectory($smokeFixtureProjectRoot) | Out-Null
+    [System.IO.File]::WriteAllText(
+        (Join-Path $smokeFixtureProjectRoot 'Program.cs'),
+        $smokeFixtureSource,
+        [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText(
+        (Join-Path $smokeFixtureProjectRoot 'ReleaseSmokeFixture.csproj'),
+        @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AssemblyName>LibreHardwareMonitor.Windows.Forms</AssemblyName>
+    <Version>$fixtureBaseVersion</Version>
+    <AssemblyVersion>$($fixtureBaseVersion).0</AssemblyVersion>
+    <FileVersion>$($fixtureBaseVersion).1</FileVersion>
+    <InformationalVersion>$($fixtureBaseVersion)+fixture</InformationalVersion>
+  </PropertyGroup>
+</Project>
+"@,
+        [System.Text.UTF8Encoding]::new($false))
+    $realDotnet = (Get-Command dotnet -ErrorAction Stop).Source
+    $smokeFrameworkRevisions = [ordered]@{
+        'net10.0-windows' = 1
+        'net472' = 2
     }
-    foreach ($smokeFramework in @('net10.0-windows', 'net472')) {
-        $fixtureSourcePath = Join-Path $orchestrationRepository (
-            'fixture-smoke-' + $smokeFramework + '.cs')
-        $fixtureNamespace = 'LhmSmokeFixture' + (
+    foreach ($smokeFramework in $smokeFrameworkRevisions.Keys) {
+        $revision = [int]$smokeFrameworkRevisions[$smokeFramework]
+        $frameworkArtifacts = Join-Path $smokeFixtureArtifacts (
             $smokeFramework -replace '[^A-Za-z0-9]', '')
-        $fixtureSource = $smokeFixtureTemplate.
-            Replace('__BASE_VERSION__', $fixtureBaseVersion).
-            Replace('__NAMESPACE__', $fixtureNamespace).
-            Replace('__FRAMEWORK__', $smokeFramework)
-        [System.IO.File]::WriteAllText(
-            $fixtureSourcePath,
-            $fixtureSource,
-            [System.Text.UTF8Encoding]::new($false))
+        $smokeFixtureBuildOutput = @(
+            & $realDotnet build `
+                (Join-Path $smokeFixtureProjectRoot 'ReleaseSmokeFixture.csproj') `
+                -c Release `
+                -r win-x64 `
+                --self-contained false `
+                --artifacts-path $frameworkArtifacts `
+                "-p:AssemblyTitle=LibreHardwareMonitor fixture $revision" `
+                --nologo
+        )
+        if ($LASTEXITCODE -ne 0) {
+            throw (
+                "SDK smoke fixture build failed for $smokeFramework`: " +
+                ([string[]]$smokeFixtureBuildOutput -join "`n"))
+        }
+        $smokeFixtureExecutables = @(
+            Get-ChildItem -LiteralPath $frameworkArtifacts `
+                -Filter 'LibreHardwareMonitor.Windows.Forms.exe' `
+                -File `
+                -Recurse |
+                Where-Object { $_.FullName -match '[\\/]bin[\\/]' }
+        )
+        if ($smokeFixtureExecutables.Count -ne 1) {
+            throw (
+                "Expected one SDK-built $smokeFramework smoke fixture executable; " +
+                "found $($smokeFixtureExecutables.Count).")
+        }
+        $templatePath = Join-Path $smokeFixtureTemplateRoot (
+            $smokeFramework -replace '[^A-Za-z0-9]', '')
+        [System.IO.Directory]::CreateDirectory($templatePath) | Out-Null
+        foreach ($fixtureEntry in @(Get-ChildItem -LiteralPath $smokeFixtureExecutables[0].DirectoryName -Force)) {
+            Copy-Item -LiteralPath $fixtureEntry.FullName -Destination $templatePath -Recurse -Force
+        }
     }
+    $env:FAKE_LHM_SMOKE_PAYLOAD_TEMPLATE_ROOT = $smokeFixtureTemplateRoot
     [System.IO.File]::WriteAllText(
         (Join-Path $orchestrationRepository 'Directory.Build.props'),
         "<Project><PropertyGroup><Version>$fixtureBaseVersion</Version></PropertyGroup></Project>")
@@ -511,46 +559,22 @@ if ($env:FAKE_LHM_FAIL_FRAMEWORK -eq $framework) {
 }
 $output = Join-Path $artifacts "bin\LibreHardwareMonitor.Windows.Forms\release_$framework"
 [System.IO.Directory]::CreateDirectory($output) | Out-Null
-$fixtureSourceTemplate = Join-Path $PSScriptRoot ("fixture-smoke-" + $framework + ".cs")
-$buildIdentity = [guid]::NewGuid().ToString('N')
-$fixtureSource = [System.IO.File]::ReadAllText($fixtureSourceTemplate).
-    Replace('__BUILD_ID__', $buildIdentity)
-$fixtureExecutable = Join-Path $output 'LibreHardwareMonitor.Windows.Forms.exe'
-$compilerRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('sq-lhm-compile-' + $buildIdentity)
-$compiledSource = Join-Path $compilerRoot 'fixture.cs'
-$compiledExecutable = Join-Path $compilerRoot 'fixture.exe'
-$cscPath = @(
-    (Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'),
-    (Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe')
-) | Where-Object { [System.IO.File]::Exists($_) } | Select-Object -First 1
-if ([string]::IsNullOrWhiteSpace([string]$cscPath)) {
+$fixturePayloadTemplateRoot = $env:FAKE_LHM_SMOKE_PAYLOAD_TEMPLATE_ROOT
+if ([string]::IsNullOrWhiteSpace($fixturePayloadTemplateRoot)) {
     exit 94
 }
-try {
-    [System.IO.Directory]::CreateDirectory($compilerRoot) | Out-Null
-    [System.IO.File]::WriteAllText(
-        $compiledSource,
-        $fixtureSource,
-        [System.Text.UTF8Encoding]::new($false))
-    $compilerOutput = @(
-        & $cscPath `
-            '/nologo' `
-            '/target:exe' `
-            '/optimize+' `
-            ("/out:$compiledExecutable") `
-            $compiledSource
-    )
-    if ($LASTEXITCODE -ne 0 -or -not [System.IO.File]::Exists($compiledExecutable)) {
-        throw ("Fixture compiler failed for $framework (exit $LASTEXITCODE): " +
-            ([string[]]$compilerOutput -join "`n"))
-    }
-    [System.IO.File]::Copy($compiledExecutable, $fixtureExecutable)
+$fixturePayloadTemplate = Join-Path $fixturePayloadTemplateRoot (
+    $framework -replace '[^A-Za-z0-9]', '')
+if (-not [System.IO.Directory]::Exists($fixturePayloadTemplate)) {
+    exit 94
 }
-finally {
-    if ([System.IO.Directory]::Exists($compilerRoot)) {
-        Remove-Item -LiteralPath $compilerRoot -Recurse -Force
-    }
+foreach ($fixtureEntry in @(Get-ChildItem -LiteralPath $fixturePayloadTemplate -Force)) {
+    Copy-Item -LiteralPath $fixtureEntry.FullName -Destination $output -Recurse -Force
 }
+[System.IO.File]::WriteAllText(
+    (Join-Path $output 'fixture-framework.txt'),
+    $framework,
+    [System.Text.UTF8Encoding]::new($false))
 [System.IO.File]::WriteAllText(
     (Join-Path $output 'LibreHardwareMonitorLib.dll'),
     "fixture-$framework")
@@ -973,6 +997,83 @@ exit 0
         $rollbackIdentity.authority -ceq 'rollback-packet' -and
         $rollbackIdentity.rollbackEvidence.status -ceq 'verified'
     ) 'an exact executable record in a valid machine-bound rollback packet should receive rollback authority'
+
+    $undeclaredRollbackFile = Join-Path $rollbackPacketRoot 'undeclared.txt'
+    [System.IO.File]::WriteAllText($undeclaredRollbackFile, 'not sealed by the manifest')
+    try {
+        $extraFileRollbackIdentityJson = @(
+            & $identityScript -Path $rollbackPath -StackRoot $stackRoot -Json
+        ) -join "`n"
+        $extraFileRollbackIdentity = ConvertFrom-LhmReleaseJson -Json $extraFileRollbackIdentityJson
+        Assert-LhmReleaseTest (
+            $extraFileRollbackIdentity.role -ceq 'rollback-payload-invalid' -and
+            $extraFileRollbackIdentity.authority -ceq 'none' -and
+            $extraFileRollbackIdentity.rollbackEvidence.status -ceq 'invalid' -and
+            $extraFileRollbackIdentity.rollbackEvidence.error -like '*undeclared*'
+        ) 'rollback authority must reject packet files that are not sealed by the manifest'
+    }
+    finally {
+        Remove-Item -LiteralPath $undeclaredRollbackFile -Force
+    }
+
+    $validRollbackRecord = $rollbackPacketManifest.Files[0]
+    $rollbackPacketManifest.Files = @(
+        $validRollbackRecord,
+        [ordered]@{
+            RelativePath = 'runtime\LibreHardwareMonitor.Windows.Forms.exe'
+            Length = $validRollbackRecord.Length
+            Sha256 = $validRollbackRecord.Sha256
+        }
+    )
+    $rollbackPacketManifest.FileCount = 2
+    [System.IO.File]::WriteAllText(
+        $rollbackManifestPath,
+        ($rollbackPacketManifest | ConvertTo-Json -Depth 8),
+        [System.Text.UTF8Encoding]::new($false))
+    $duplicateRollbackIdentityJson = @(
+        & $identityScript -Path $rollbackPath -StackRoot $stackRoot -Json
+    ) -join "`n"
+    $duplicateRollbackIdentity = ConvertFrom-LhmReleaseJson -Json $duplicateRollbackIdentityJson
+    Assert-LhmReleaseTest (
+        $duplicateRollbackIdentity.role -ceq 'rollback-payload-invalid' -and
+        $duplicateRollbackIdentity.authority -ceq 'none' -and
+        $duplicateRollbackIdentity.rollbackEvidence.status -ceq 'invalid' -and
+        $duplicateRollbackIdentity.rollbackEvidence.error -like '*duplicate*'
+    ) 'rollback authority must reject duplicate or case-colliding manifest records'
+    $rollbackPacketManifest.Files = @($validRollbackRecord)
+    $rollbackPacketManifest.FileCount = 1
+    [System.IO.File]::WriteAllText(
+        $rollbackManifestPath,
+        ($rollbackPacketManifest | ConvertTo-Json -Depth 8),
+        [System.Text.UTF8Encoding]::new($false))
+
+    $rollbackJunctionTarget = Join-Path $testRoot 'rollback-packet-junction-target'
+    $rollbackJunction = Join-Path $rollbackPacketRoot 'linked-content'
+    [System.IO.Directory]::CreateDirectory($rollbackJunctionTarget) | Out-Null
+    [System.IO.File]::WriteAllText(
+        (Join-Path $rollbackJunctionTarget 'outside.txt'),
+        'outside rollback packet')
+    try {
+        New-Item `
+            -ItemType Junction `
+            -Path $rollbackJunction `
+            -Target $rollbackJunctionTarget | Out-Null
+        $reparseRollbackIdentityJson = @(
+            & $identityScript -Path $rollbackPath -StackRoot $stackRoot -Json
+        ) -join "`n"
+        $reparseRollbackIdentity = ConvertFrom-LhmReleaseJson -Json $reparseRollbackIdentityJson
+        Assert-LhmReleaseTest (
+            $reparseRollbackIdentity.role -ceq 'rollback-payload-invalid' -and
+            $reparseRollbackIdentity.authority -ceq 'none' -and
+            $reparseRollbackIdentity.rollbackEvidence.status -ceq 'invalid' -and
+            $reparseRollbackIdentity.rollbackEvidence.error -like '*reparse*'
+        ) 'rollback authority must reject descendant reparse points in the packet tree'
+    }
+    finally {
+        if ([System.IO.Directory]::Exists($rollbackJunction)) {
+            [System.IO.Directory]::Delete($rollbackJunction)
+        }
+    }
 
     $rollbackPacketManifest.Files[0].Sha256 = '00' * 32
     [System.IO.File]::WriteAllText(
@@ -1629,6 +1730,7 @@ exit 0
     Write-Output "PASS: release-system path, cleanup, immutable ZIP, manifest, tamper, routing, and SDK checks ($script:assertionCount assertions)"
 }
 finally {
+    Remove-Item Env:\FAKE_LHM_SMOKE_PAYLOAD_TEMPLATE_ROOT -ErrorAction SilentlyContinue
     if ([System.IO.Directory]::Exists($testRoot)) {
         $resolvedCleanup = Resolve-LhmReleaseFullPath -Path $testRoot
         if (-not $resolvedCleanup.StartsWith($tempPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {

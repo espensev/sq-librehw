@@ -182,10 +182,9 @@ foreach ($f in $wideScannable) {
 }
 Assert-Ok "no non-exempt tracked file references the retired flat test project layout" { $oldTestHits.Count -eq 0 }
 
-# 7. Destructive cleanup remains an explicit allow-list, but that allow-list must
-#    equal root bin plus bin/obj beside every tracked project. This keeps new
-#    projects fail-closed until the cleanup contract is deliberately reviewed,
-#    while making retired project roots a permanent gate failure.
+# 7. Destructive cleanup discovery must equal root bin plus bin/obj beside every
+#    tracked project. The implementation and this gate derive that set
+#    independently so new and retired projects are reflected automatically.
 $trackedProjects = @(git -C $repositoryRoot ls-files -- '*.csproj')
 if ($LASTEXITCODE -ne 0) {
     throw 'Unable to enumerate tracked project files for the cleanup contract.'
@@ -216,7 +215,7 @@ $missingCleanupRoots = @(
     $expectedCleanupRoots | Where-Object { -not $actualCleanupRoots.Contains($_) } | Sort-Object)
 $extraCleanupRoots = @(
     $actualCleanupRoots | Where-Object { -not $expectedCleanupRoots.Contains($_) } | Sort-Object)
-Assert-Ok "cleanup allow-list exactly covers root bin plus tracked-project bin/obj roots" {
+Assert-Ok "cleanup discovery exactly covers root bin plus tracked-project bin/obj roots" {
     $cleanupInventory.Count -eq $expectedCleanupRoots.Count -and
     $actualCleanupRoots.Count -eq $expectedCleanupRoots.Count -and
     $missingCleanupRoots.Count -eq 0 -and
