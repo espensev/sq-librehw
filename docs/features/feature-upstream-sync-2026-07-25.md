@@ -1,0 +1,212 @@
+# Audited upstream sync — 2026-07-25
+
+**Status:** source verified; attended hardware smoke pending
+
+**Upstream range:** `abfc4f5..81e8f83` (17 commits)
+
+**Target:** merge `upstream/master` into the Sev IQ `master` branch
+
+**Historical scope:** this is the SND-DESK/upstream integration record imported
+through fetch-only `upstream/master`. Its `master` branch name and Dependabot
+acceptance describe that peer repository as of 2026-07-25. The SND-HOST fork
+develops on `main`, tracks `origin/main`, keeps upstream fetch-only, and
+intentionally leaves `.github/dependabot.yml` absent. Current fork policy and
+paths are in `docs/README.md`.
+
+## Problem and motivation
+
+The fork is 17 commits behind LibreHardwareMonitor upstream. Those commits add
+motherboard sensors, safer NCT6687DR fan writes, a DiskInfoToolkit update and
+S.M.A.R.T. polling control, plus auth, resource, packaging, and maintenance
+fixes. A blind merge is unsafe because the fork has newer central package
+versions and stricter HTTP, persistence, PawnIO, and UI-lifetime contracts.
+
+## Goals
+
+- Preserve the complete upstream ancestry through `81e8f83`.
+- Import upstream hardware support and the DiskInfoToolkit 2.1.2 S.M.A.R.T.
+  update-cycle behavior.
+- Keep the fork's central package management, async PawnIO initialization,
+  bounded HTTP implementation, and `data.json` non-finite-value contract.
+- Keep failed NCT6687DR default-fan restoration retryable until a later
+  explicit reset or close succeeds.
+- Refresh Dependabot so every package-consuming project is scanned.
+
+## Non-goals
+
+- No runtime deployment, scheduled-task change, firewall change, or remote-host
+  mutation is part of this source integration.
+- No change to `AssemblyVersion` 0.9.6, dashboard routes, sensor IDs/order, CSV,
+  Prometheus, or hardware ownership.
+- No claim of live validation for newly supported motherboards or EC fan
+  control without matching hardware.
+
+## User-visible behavior
+
+`Options > Update Interval > Throttle Disk S.M.A.R.T. Updates` replaces the old
+ATA throttle toggle with these persisted choices:
+
+- Follow Update Interval
+- Every 10 Cycles
+- Every 25 Cycles
+- Every 50 Cycles
+- Every 100 Cycles
+
+Disk performance data continues to update on each normal application cycle.
+The more expensive S.M.A.R.T. refresh runs only on the selected cycle. Sleeping
+disk and force-wakeup behavior remains unchanged.
+
+If `smartUpdateCycle` is absent and the legacy
+`throttleAtaUpdateMenuItem=true` setting exists, selection starts at Every 25
+Cycles. This approximates the old 30-second throttle at the default one-second
+update interval. An explicit `smartUpdateCycle` always wins.
+
+For NCT6687DR fan controls, manual-mode and PWM changes remain a single EC
+configuration transaction. If restoring the firmware defaults times out or the
+EC rejects all three attempts, the saved defaults and retry-required flag must
+remain intact so a later reset or close can retry.
+
+## Integration decisions
+
+- Keep versionless `PackageReference` entries. Root
+  `Directory.Packages.props` already matches or supersedes every upstream
+  package bump.
+- Keep the fork's `HttpServer` conflict side. Upstream's named floating-point
+  serializer would turn non-finite sensor values into strings; this fork's
+  external `data.json` contract requires `null`.
+- Keep the fork's async and assembly-name-neutral PawnIO/resource loading.
+- Apply the upstream S.M.A.R.T. menu and storage cadence atomically, with the
+  legacy-setting fallback above.
+- Accept the upstream board/sensor mappings, solution cleanup, nightly-link
+  correction, and NuGet publish guard.
+- Adapt upstream Dependabot directories to include the fork-only test project.
+
+For the later SND-HOST fork integration, the source and package decisions above
+remain applicable, but the Dependabot file stays deleted to preserve the
+fork-specific GitHub configuration boundary.
+
+## Compatibility and risks
+
+- Both `net472` and `net10.0-windows` application targets must compile for x64.
+- NuGet restore must remain compatible with central package management; inline
+  package versions are forbidden.
+- `data.json` golden-master output must not change.
+- The new DiskInfoToolkit call shape and UI must land together.
+- Board mappings and NCT6687DR register transactions cannot be fully validated
+  without exact hardware. Compile/tests and upstream review are necessary but
+  do not replace an attended hardware smoke.
+
+## Acceptance criteria
+
+- Git history contains upstream `81e8f83` and no upstream-only commits remain.
+- No merge markers or inline package versions remain.
+- All five S.M.A.R.T. choices map to cycle counts `1, 10, 25, 50, 100`.
+- Legacy true, legacy false/absent, and explicit-new-setting precedence have
+  regression coverage.
+- Storage cadence regression coverage proves the selected cycle is respected.
+- Failed NCT6687DR restore transactions keep retry state; success clears it.
+- In the historical upstream repository, Dependabot scans Windows Forms,
+  library, Aga.Controls, and tests projects. This is not an acceptance criterion
+  for `celine-anime/librehw-host`.
+- Web/HTTP contract tests, full .NET tests, Node suites, log-management checks,
+  and both x64 Release application targets pass.
+
+## Verification plan
+
+```powershell
+git diff --cached --no-ext-diff | rg -n '^\+(<<<<<<< |=======|>>>>>>> )'
+rg -n '<PackageReference\b[^>]*\bVersion\s*=' -g '*.csproj'
+node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js
+node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\workspace.js
+node webtests\selftest.node.js
+node --test webtests\console.tests.js webtests\workspace.tests.js
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-LhmLogManagement.ps1
+dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf -p:Platform=x64
+dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
+dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
+git diff --cached --check
+```
+
+## Verification record
+
+Source integration was verified on `snd-desk` on 2026-07-25:
+
+- merge `3a805fa` preserves official upstream ancestry through `81e8f83`;
+  `git merge-base --is-ancestor upstream/master HEAD` passed and the
+  upstream-only commit count is zero;
+- official `upstream/master` resolved to `81e8f83`; its Dependabot and build
+  checks were successful;
+- all staged conflict resolutions passed three independent cross-lane reviews,
+  including a second review of the NCT6687DR acknowledgment and retry-state
+  correction;
+- the focused NCT6687DR regression suite passed 9/9, and the full .NET suite
+  passed 194 with one intentional opt-in skip and no failures;
+- isolated x64 Release builds for `net10.0-windows` and `net472` both completed
+  with zero warnings and zero errors;
+- library Release builds passed for x64, x86, and ARM64 across their supported
+  target frameworks; the reference build completed with no errors and its 30
+  known AnyCPU `PInvoke005` warnings;
+- NuGet packing completed successfully;
+- web syntax checks passed, the dashboard self-test passed 315/315, the Node
+  suites passed 18/18, and log-management checks passed;
+- staged whitespace, conflict-marker, inline-package-version, secret, and
+  debug/temp scans were clean.
+
+An attended smoke of the newly mapped motherboards/NCT6687DR hardware and a
+manual check of the S.M.A.R.T. menu remain pending because matching hardware
+was not available in this source-only integration. No runtime payload, task,
+service, or deployed copy was changed.
+
+## SND-HOST fork integration — 2026-07-30
+
+`main` imported fetch-only `upstream/master` through `9b1eb52` while preserving
+the fork's ordered hardware-operation coordinator, lifetime fixes, external
+dual-framework candidate system, `origin/main` policy, SND-HOST path map, and
+intentional absence of `.github/dependabot.yml`.
+
+The integrated runtime-path policy was made host-safe: runtime configuration
+and `LIBREHARDWAREMONITOR_DATA_ROOT` remain explicit authorities, ambient
+`sqdata` is ignored, and executable-adjacent mutable state remains the portable
+fallback. The PawnIO extraction lease grants only the current identity,
+BUILTIN Administrators, and SYSTEM while retaining protected ACLs, unique
+directories, fully qualified trusted-root and ancestry validation, identity
+locking, no-reparse validation, exact rights/inheritance checks, and disposal
+cleanup.
+
+Dashboard self-test 315/315, focused Node tests 18/18, .NET tests 258 passed
+with one intentional skip, both x64 Release targets built with zero
+warnings/errors, log-management checks 26/26, release-system checks 114/114
+under both PowerShell engines, and the peer-scoped local-release fixture
+passed. Temporary fixture state was removed; no external/promotable candidate
+was published and no live SND-HOST runtime, task, configuration, or log was
+changed.
+
+## SND-HOST official sync — 2026-08-09
+
+`main` merged official `LibreHardwareMonitor/LibreHardwareMonitor` master at
+`d6cb260` (six commits since the `81e8f83` merge base) from the fetch-only
+`vanilla` reference clone:
+
+- `d6cb260` RAMSPDToolkit 1.6.0 and PawnIO modules refreshed to the 0.2.10
+  release, adding `Nvidia.bin`;
+- `6ec8f4e` / `b6439da` EC sensor tables for ROG STRIX B850-E and X870E-E
+  GAMING WIFI (the `Model` enum entries already existed at the merge base);
+- `3f2b4ba` AMD GFX-temperature fallback when the edge sensor is unavailable;
+- `6bdf1cc` NVMe Available Spare / Spare Threshold / Percentage Used level
+  sensors;
+- `404b551` Dependabot 10.0.10 bumps, already pinned centrally.
+
+Integration decisions: kept versionless `PackageReference` entries in all
+three conflicted `.csproj` files (every upstream change there was an inline
+version bump) and ported the single real change — RAMSPDToolkit-NDD
+1.5.0 → 1.6.0 — into `Directory.Packages.props`. Upstream ships `Nvidia.bin`
+without an `EmbeddedResource` entry or code reference; the fork matches
+upstream exactly and does not wire it locally.
+
+Verification on `snd-host`: staged conflict-marker, inline-package-version,
+and whitespace scans clean; `net10.0-windows` and `net472` x64 Release builds
+zero warnings/errors; .NET tests 370 passed with the one intentional skip
+(Contracts 99 including the data.json golden masters, Library 93, Application
+178); dashboard self-test 315/315; focused Node tests 18/18; log-management
+checks passed. Source-only integration: no candidate was published and no
+live SND-HOST runtime, task, configuration, or log was changed.

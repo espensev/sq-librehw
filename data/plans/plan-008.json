@@ -1,0 +1,3216 @@
+{
+  "id": "plan-008",
+  "schema_version": 1,
+  "artifact_version": 1,
+  "created_at": "2026-08-01T13:17:56+00:00",
+  "status": "executed",
+  "description": "Immutable sensor snapshot and data.json projection",
+  "slug": "immutable-sensor-snapshot-and",
+  "planner_kind": "planner-refactor",
+  "source_discovery_docs": [],
+  "source_roadmap": "docs/architecture/refactor-roadmap.md",
+  "phase": "Phase 4 - Application and adapter seams",
+  "behavioral_invariants": [
+    "The external data.json payload retains its exact property names, insertion order, preorder numeric IDs, stable SensorId and HardwareId values, formatting, escaping, image URLs, and golden-master bytes.",
+    "The snapshot is detached and immutable after capture while preserving the current Node tree order and hidden-node inclusion; it does not claim atomic raw/display sampling beyond current behavior.",
+    "MainForm remains the composition root and WinForms remains the sole hardware, HTTP, settings, task, and release owner; no new host, project, package, listener, polling, or hardware ownership is introduced.",
+    "Node.SyncRoot is held only while copying the mutable tree; projection, serialization, compression, and network I/O occur after the lock is released.",
+    "Both WinForms x64 Release targets, the deterministic test population, the Avalonia spike isolation gate, and all non-deploying CI gates remain green.",
+    "The live SND-HOST deployment, scheduled task, configuration, logs, candidate and rollback stores, and operations tree remain untouched."
+  ],
+  "rollback_strategy": "Revert the Plan-008 source, test, configuration, and documentation commits and remove only the campaign-owned Git worktrees and branches; no runtime rollback is required because the campaign does not create a candidate, deploy, promote, or mutate live state.",
+  "legacy_status": "",
+  "next_letter": "aj",
+  "agents": [
+    {
+      "letter": "ag",
+      "name": "immutable-snapshot-capture",
+      "scope": "Add internal net472-compatible immutable sensor snapshot contracts and a WinForms Node-tree capture adapter that preserves producer order, hidden nodes, opaque identities, exact display/raw values, and legacy image URLs without retaining mutable source references; add exactly five focused Application facts.",
+      "deps": [],
+      "files": [
+        "LibreHardwareMonitor.Windows.Forms/Application/Snapshots/SensorSnapshot.cs",
+        "LibreHardwareMonitor.Windows.Forms/Adapters/WinFormsNodeSensorSnapshotSource.cs",
+        "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/SensorSnapshotTests.cs"
+      ],
+      "group": 0,
+      "complexity": "high"
+    },
+    {
+      "letter": "ah",
+      "name": "data-json-projection",
+      "scope": "Add a pure ordered data.json projector, rewire only HttpServer.BuildDataJsonObject to capture then project outside Node.SyncRoot, remove the superseded recursive data.json walk and icon helpers, preserve all other HTTP paths, and add exactly three focused Contracts facts while keeping the golden source and bytes unchanged.",
+      "deps": [
+        "ag"
+      ],
+      "files": [
+        "LibreHardwareMonitor.Windows.Forms/Utilities/DataJsonProjection.cs",
+        "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs",
+        "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonProjectionTests.cs"
+      ],
+      "group": 1,
+      "complexity": "high"
+    },
+    {
+      "letter": "ai",
+      "name": "verify-document-close",
+      "scope": "Independently verify the integrated Plan-008 source and exact external contract, both framework targets, spike isolation, full non-deploying CI, repository ownership, and read-only live separation; then update only the authoritative campaign/configuration/documentation surfaces, mark Phase 4 in progress, advance the backlog to Plan-009, and record implemented rather than accepted evidence.",
+      "deps": [
+        "ag",
+        "ah"
+      ],
+      "files": [
+        ".codex/skills/project.toml",
+        "AGENTS.md",
+        "data/plans/plan-008.json",
+        "docs/campaign-plan-008-immutable-sensor-snapshot-and.md",
+        "docs/README.md",
+        "docs/architecture/refactor-roadmap.md",
+        "docs/campaign-backlog.md",
+        "docs/campaign-history.md",
+        "live-tracker.md"
+      ],
+      "group": 2,
+      "complexity": "high"
+    }
+  ],
+  "groups": {
+    "0": [
+      "ag"
+    ],
+    "1": [
+      "ah"
+    ],
+    "2": [
+      "ai"
+    ]
+  },
+  "conflicts": [],
+  "integration_steps": [],
+  "plan_doc": "docs/campaign-plan-008-immutable-sensor-snapshot-and.md",
+  "plan_file": "data/plans/plan-008.json",
+  "plan_elements": {
+    "campaign_title": "Immutable sensor snapshot and data.json projection",
+    "goal_statement": "Extract the first Phase-4 seam by copying the existing WinForms Node hierarchy into a detached immutable sensor snapshot and projecting that snapshot through a pure data.json adapter, so downstream consumers no longer depend on a live mutable tree during serialization while every established payload and runtime behavior remains unchanged.",
+    "exit_criteria": [
+      "Outside campaign/configuration documentation, the integrated diff is limited to six exclusively owned files: two new internal snapshot/capture sources, one new Application test file, one new pure projection source, HttpServer.cs, and one new Contracts test file; no MainForm, library, project, package, solution, golden, spike, web, operations, release, or live-runtime file changes.",
+      "AG adds ordinary sealed net472-compatible snapshot/value/node types whose children are defensively copied and read-only and whose retained values contain no Node, HardwareNode, SensorNode, IHardware, ISensor, mutable collection, or Avalonia type reference.",
+      "AG captures the tree recursively under Node.SyncRoot in existing producer order, includes hidden nodes, preserves opaque case-sensitive identifiers, exact formatted/raw triples, kinds and legacy image URLs, releases the lock before returning, documents that capture is detached rather than an atomic all-sensor sample, and adds exactly five passing Application facts.",
+      "AH adds a pure projector that assigns envelope id zero and consecutive depth-first preorder node ids, recreates the exact existing root and node property insertion order and optional-field presence, preserves display strings and finite boxed float values, maps non-finite raw readings to null, is deterministic without mutating the snapshot, and adds exactly three passing Contracts facts.",
+      "HttpServer.BuildDataJsonObject and WriteDataJson retain their signatures; only the data.json tree-walk is replaced by capture then projection, while Sensor and Prometheus traversal, listener dispatch, headers, buffer gate, pooled copy, gzip, cancellation, response closure, and MainForm construction remain unchanged and serialization/I/O occur outside Node.SyncRoot.",
+      "DataJsonGoldenTests.cs and data.golden.json remain byte-for-byte unchanged; both existing golden facts pass and the golden file retains Git blob 05113704acc6fefeb4128004b3f523d876fbcec4 and SHA-256 BEBDE807A7F0037827E16CFBC1F41707701F2BEE7232385C3D2EAEBD2261D2F3.",
+      "The deterministic solution discovers exactly 287 cases with 286 passed and exactly the existing SettingsPersistenceTests.LiveConfigCopy_LoadsAndCompactsWithinMemoryBudgets opt-in skip; all eight new facts pass and no baseline fact is lost, duplicated, or newly skipped.",
+      "The focused snapshot/projection/data.json tests, complete deterministic solution, both WinForms x64 Release framework builds, 75-test isolated Avalonia spike gate, web tests, and all eight included non-deploying CI gates pass with no new warnings or errors.",
+      "Exclusive worktree ownership is preserved, implementation commits are integrated dependency-first with explicit file and patch checks, protected/unrelated dirty state is neither merged nor removed, and final campaign worktrees/branches and reproducible build outputs are guard-cleaned only after integration proof.",
+      "Read-only SND-HOST proof confirms the live deployment remains separate and healthy; campaign truth records criterion-specific implemented evidence without automatic acceptance, Phase 4 item 1 is complete and Phase 4 is in progress, the backlog advances to Plan-009 and agent aj, stale data.json/roadmap guidance is corrected, and A1 remains open and person-only."
+    ],
+    "impact_assessment": [
+      {
+        "file": "LibreHardwareMonitor.Windows.Forms/Application/Snapshots/SensorSnapshot.cs",
+        "lines": "new",
+        "change_type": "create",
+        "risk": "medium"
+      },
+      {
+        "file": "LibreHardwareMonitor.Windows.Forms/Adapters/WinFormsNodeSensorSnapshotSource.cs",
+        "lines": "new",
+        "change_type": "create",
+        "risk": "high"
+      },
+      {
+        "file": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/SensorSnapshotTests.cs",
+        "lines": "new",
+        "change_type": "create",
+        "risk": "low"
+      },
+      {
+        "file": "LibreHardwareMonitor.Windows.Forms/Utilities/DataJsonProjection.cs",
+        "lines": "new",
+        "change_type": "create",
+        "risk": "high"
+      },
+      {
+        "file": "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs",
+        "lines": "",
+        "change_type": "modify",
+        "risk": "high"
+      },
+      {
+        "file": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonProjectionTests.cs",
+        "lines": "new",
+        "change_type": "create",
+        "risk": "low"
+      },
+      {
+        "file": ".codex/skills/project.toml",
+        "lines": "",
+        "change_type": "modify",
+        "risk": "high"
+      },
+      {
+        "file": "AGENTS.md",
+        "lines": "",
+        "change_type": "modify",
+        "risk": "high"
+      },
+      {
+        "file": "data/plans/plan-008.json",
+        "lines": "",
+        "change_type": "modify",
+        "risk": "high"
+      },
+      {
+        "file": "docs/campaign-plan-008-immutable-sensor-snapshot-and.md",
+        "lines": "",
+        "change_type": "modify",
+        "risk": "high"
+      },
+      {
+        "file": "docs/README.md",
+        "lines": "",
+        "change_type": "modify",
+        "risk": "high"
+      },
+      {
+        "file": "docs/architecture/refactor-roadmap.md",
+        "lines": "",
+        "change_type": "modify",
+        "risk": "high"
+      },
+      {
+        "file": "docs/campaign-backlog.md",
+        "lines": "",
+        "change_type": "modify",
+        "risk": "high"
+      },
+      {
+        "file": "docs/campaign-history.md",
+        "lines": "",
+        "change_type": "modify",
+        "risk": "high"
+      },
+      {
+        "file": "live-tracker.md",
+        "lines": "",
+        "change_type": "modify",
+        "risk": "high"
+      }
+    ],
+    "agent_roster": [
+      {
+        "letter": "ag",
+        "name": "immutable-snapshot-capture",
+        "scope": "Add internal net472-compatible immutable sensor snapshot contracts and a WinForms Node-tree capture adapter that preserves producer order, hidden nodes, opaque identities, exact display/raw values, and legacy image URLs without retaining mutable source references; add exactly five focused Application facts.",
+        "deps": [],
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/Application/Snapshots/SensorSnapshot.cs",
+          "LibreHardwareMonitor.Windows.Forms/Adapters/WinFormsNodeSensorSnapshotSource.cs",
+          "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/SensorSnapshotTests.cs"
+        ],
+        "group": 0,
+        "complexity": "high"
+      },
+      {
+        "letter": "ah",
+        "name": "data-json-projection",
+        "scope": "Add a pure ordered data.json projector, rewire only HttpServer.BuildDataJsonObject to capture then project outside Node.SyncRoot, remove the superseded recursive data.json walk and icon helpers, preserve all other HTTP paths, and add exactly three focused Contracts facts while keeping the golden source and bytes unchanged.",
+        "deps": [
+          "ag"
+        ],
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/Utilities/DataJsonProjection.cs",
+          "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs",
+          "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonProjectionTests.cs"
+        ],
+        "group": 1,
+        "complexity": "high"
+      },
+      {
+        "letter": "ai",
+        "name": "verify-document-close",
+        "scope": "Independently verify the integrated Plan-008 source and exact external contract, both framework targets, spike isolation, full non-deploying CI, repository ownership, and read-only live separation; then update only the authoritative campaign/configuration/documentation surfaces, mark Phase 4 in progress, advance the backlog to Plan-009, and record implemented rather than accepted evidence.",
+        "deps": [
+          "ag",
+          "ah"
+        ],
+        "files": [
+          ".codex/skills/project.toml",
+          "AGENTS.md",
+          "data/plans/plan-008.json",
+          "docs/campaign-plan-008-immutable-sensor-snapshot-and.md",
+          "docs/README.md",
+          "docs/architecture/refactor-roadmap.md",
+          "docs/campaign-backlog.md",
+          "docs/campaign-history.md",
+          "live-tracker.md"
+        ],
+        "group": 2,
+        "complexity": "high"
+      }
+    ],
+    "dependency_graph": [
+      {
+        "group": 0,
+        "agents": [
+          "ag"
+        ]
+      },
+      {
+        "group": 1,
+        "agents": [
+          "ah"
+        ]
+      },
+      {
+        "group": 2,
+        "agents": [
+          "ai"
+        ]
+      }
+    ],
+    "file_ownership_map": [
+      {
+        "file": "LibreHardwareMonitor.Windows.Forms/Application/Snapshots/SensorSnapshot.cs",
+        "owner": "ag"
+      },
+      {
+        "file": "LibreHardwareMonitor.Windows.Forms/Adapters/WinFormsNodeSensorSnapshotSource.cs",
+        "owner": "ag"
+      },
+      {
+        "file": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/SensorSnapshotTests.cs",
+        "owner": "ag"
+      },
+      {
+        "file": "LibreHardwareMonitor.Windows.Forms/Utilities/DataJsonProjection.cs",
+        "owner": "ah"
+      },
+      {
+        "file": "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs",
+        "owner": "ah"
+      },
+      {
+        "file": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonProjectionTests.cs",
+        "owner": "ah"
+      },
+      {
+        "file": ".codex/skills/project.toml",
+        "owner": "ai"
+      },
+      {
+        "file": "AGENTS.md",
+        "owner": "ai"
+      },
+      {
+        "file": "data/plans/plan-008.json",
+        "owner": "ai"
+      },
+      {
+        "file": "docs/campaign-plan-008-immutable-sensor-snapshot-and.md",
+        "owner": "ai"
+      },
+      {
+        "file": "docs/README.md",
+        "owner": "ai"
+      },
+      {
+        "file": "docs/architecture/refactor-roadmap.md",
+        "owner": "ai"
+      },
+      {
+        "file": "docs/campaign-backlog.md",
+        "owner": "ai"
+      },
+      {
+        "file": "docs/campaign-history.md",
+        "owner": "ai"
+      },
+      {
+        "file": "live-tracker.md",
+        "owner": "ai"
+      }
+    ],
+    "conflict_zone_analysis": [
+      {
+        "conflict_zone": "Sensor snapshot capture, data.json projection, HttpServer.BuildDataJsonObject, and the protected golden master",
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/Application/Snapshots/SensorSnapshot.cs",
+          "LibreHardwareMonitor.Windows.Forms/Adapters/WinFormsNodeSensorSnapshotSource.cs",
+          "LibreHardwareMonitor.Windows.Forms/Utilities/DataJsonProjection.cs",
+          "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs",
+          "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonGoldenTests.cs",
+          "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/data.golden.json"
+        ],
+        "affected": "Yes",
+        "mitigation": "AG exclusively owns snapshot and capture, AH depends on AG and exclusively owns projection plus HttpServer, and the existing golden test source and blob are protected read-only evidence."
+      },
+      {
+        "conflict_zone": "MainForm composition and hardware lifetime",
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs",
+          "LibreHardwareMonitorLib/Hardware/Computer.cs"
+        ],
+        "affected": "No",
+        "mitigation": "Both files are prohibited; HttpServer retains its constructor and mutable root for the later HTTP and hardware routes."
+      },
+      {
+        "conflict_zone": "Shipping project, package, solution, and Avalonia spike graph",
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "Directory.Packages.props",
+          "LibreHardwareMonitor.sln",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx"
+        ],
+        "affected": "No",
+        "mitigation": "SDK source globbing includes the new internal files; project, package, solution, and spike inputs remain byte-identical."
+      },
+      {
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs",
+          "LibreHardwareMonitorLib/Hardware/Computer.cs"
+        ],
+        "reason": "hardware lifetime and ordered option/reset ownership"
+      },
+      {
+        "files": [
+          "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonGoldenTests.cs",
+          "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/data.golden.json",
+          "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs"
+        ],
+        "reason": "external data.json and HTTP mutation contract"
+      },
+      {
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/UI/StartupManager.cs",
+          "LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs",
+          "LibreHardwareMonitor.Windows.Forms/Utilities/RuntimePaths.cs"
+        ],
+        "reason": "settings, runtime paths, and startup ownership"
+      },
+      {
+        "files": [
+          "Directory.Packages.props",
+          "LibreHardwareMonitor.sln",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx"
+        ],
+        "reason": "central package and project graph"
+      },
+      {
+        "files": [
+          "data/plans/",
+          "docs/README.md",
+          "live-tracker.md"
+        ],
+        "reason": "current status and campaign truth"
+      },
+      {
+        "files": [
+          ".codex/skills/project.toml",
+          "eng/ci/Invoke-LhmGates.ps1"
+        ],
+        "reason": "gate definition drift between the runner and the configuration"
+      },
+      {
+        "files": [
+          "docs/architecture/campaign-control-plane.md",
+          "scripts/task_runtime/test_campaign_history.py"
+        ],
+        "reason": "campaign-runtime provenance record and its overlay files"
+      },
+      {
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs"
+        ],
+        "reason": "xaml-code-behind pair"
+      },
+      {
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+        ],
+        "reason": "xaml-code-behind pair"
+      },
+      {
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj"
+        ],
+        "reason": "desktop app startup surface"
+      },
+      {
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+        ],
+        "reason": "desktop shell surface"
+      },
+      {
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest"
+        ],
+        "reason": "desktop process manifest"
+      },
+      {
+        "conflict_zone": "LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest",
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "LibreHardwareMonitor.Windows.Forms/Resources/app.manifest",
+          "LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest"
+        ],
+        "affected": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+        "mitigation": "Keep one owner for this desktop process manifest surface.",
+        "reason": "desktop process manifest surface"
+      },
+      {
+        "conflict_zone": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+        ],
+        "affected": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj (startup)",
+        "mitigation": "Keep one owner for this desktop shell surface.",
+        "reason": "desktop shell surface"
+      },
+      {
+        "conflict_zone": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj"
+        ],
+        "affected": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj (startup)",
+        "mitigation": "Keep one owner for this desktop startup surface.",
+        "reason": "desktop startup surface"
+      },
+      {
+        "conflict_zone": "LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs, LibreHardwareMonitorLib/Hardware/Computer.cs",
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs",
+          "LibreHardwareMonitorLib/Hardware/Computer.cs"
+        ],
+        "affected": "conflict-zone",
+        "mitigation": "Keep one owner for this hardware lifetime and ordered option/reset ownership.",
+        "reason": "hardware lifetime and ordered option/reset ownership"
+      },
+      {
+        "conflict_zone": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonGoldenTests.cs, LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/data.golden.json, LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs",
+        "files": [
+          "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonGoldenTests.cs",
+          "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/data.golden.json",
+          "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs"
+        ],
+        "affected": "conflict-zone",
+        "mitigation": "Keep one owner for this external data.json and HTTP mutation contract.",
+        "reason": "external data.json and HTTP mutation contract"
+      },
+      {
+        "conflict_zone": "LibreHardwareMonitor.Windows.Forms/UI/StartupManager.cs, LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs, LibreHardwareMonitor.Windows.Forms/Utilities/RuntimePaths.cs",
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/UI/StartupManager.cs",
+          "LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs",
+          "LibreHardwareMonitor.Windows.Forms/Utilities/RuntimePaths.cs"
+        ],
+        "affected": "conflict-zone",
+        "mitigation": "Keep one owner for this settings, runtime paths, and startup ownership.",
+        "reason": "settings, runtime paths, and startup ownership"
+      },
+      {
+        "conflict_zone": "Directory.Packages.props, LibreHardwareMonitor.sln, experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx",
+        "files": [
+          "Directory.Packages.props",
+          "LibreHardwareMonitor.sln",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx"
+        ],
+        "affected": "conflict-zone",
+        "mitigation": "Keep one owner for this central package and project graph.",
+        "reason": "central package and project graph"
+      },
+      {
+        "conflict_zone": "data/plans/, docs/README.md, live-tracker.md",
+        "files": [
+          "data/plans/",
+          "docs/README.md",
+          "live-tracker.md"
+        ],
+        "affected": "conflict-zone",
+        "mitigation": "Keep one owner for this current status and campaign truth.",
+        "reason": "current status and campaign truth"
+      },
+      {
+        "conflict_zone": ".codex/skills/project.toml, eng/ci/Invoke-LhmGates.ps1",
+        "files": [
+          ".codex/skills/project.toml",
+          "eng/ci/Invoke-LhmGates.ps1"
+        ],
+        "affected": "conflict-zone",
+        "mitigation": "Keep one owner for this gate definition drift between the runner and the configuration.",
+        "reason": "gate definition drift between the runner and the configuration"
+      },
+      {
+        "conflict_zone": "docs/architecture/campaign-control-plane.md, scripts/task_runtime/test_campaign_history.py",
+        "files": [
+          "docs/architecture/campaign-control-plane.md",
+          "scripts/task_runtime/test_campaign_history.py"
+        ],
+        "affected": "conflict-zone",
+        "mitigation": "Keep one owner for this campaign-runtime provenance record and its overlay files.",
+        "reason": "campaign-runtime provenance record and its overlay files"
+      },
+      {
+        "conflict_zone": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml, experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs",
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs"
+        ],
+        "affected": "conflict-zone",
+        "mitigation": "Keep one owner for this xaml-code-behind pair.",
+        "reason": "xaml-code-behind pair"
+      },
+      {
+        "conflict_zone": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml, experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs",
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+        ],
+        "affected": "conflict-zone",
+        "mitigation": "Keep one owner for this xaml-code-behind pair.",
+        "reason": "xaml-code-behind pair"
+      },
+      {
+        "conflict_zone": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml, experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs, experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj"
+        ],
+        "affected": "conflict-zone",
+        "mitigation": "Keep one owner for this desktop app startup surface.",
+        "reason": "desktop app startup surface"
+      },
+      {
+        "conflict_zone": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj, experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml, experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs",
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+        ],
+        "affected": "conflict-zone",
+        "mitigation": "Keep one owner for this desktop shell surface.",
+        "reason": "desktop shell surface"
+      },
+      {
+        "conflict_zone": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj, LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest",
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest"
+        ],
+        "affected": "conflict-zone",
+        "mitigation": "Keep one owner for this desktop process manifest.",
+        "reason": "desktop process manifest"
+      }
+    ],
+    "integration_points": [
+      "AG freezes the internal SensorSnapshot, SensorNodeSnapshot, SensorValueSnapshot, node-kind, and WinFormsNodeSensorSnapshotSource capture API; AH consumes that exact committed API.",
+      "AH converts the detached snapshot into ordered Dictionary/List payloads and rewires HttpServer.BuildDataJsonObject without changing its signature; the existing golden tests are the integration oracle.",
+      "AI starts only after AG and AH are integrated, independently reproduces the complete gate, then writes the single-owner campaign/configuration/documentation truth.",
+      "The coordinator integrates AG before AH, validates exact owned-file sets and patch equivalence, then launches AI from that integrated commit; no task_manager merge is used for inline state.",
+      "The analyzer's unrelated unassigned inventory is explicitly outside Plan-008; only the fifteen mapped implementation and closure paths are authorized."
+    ],
+    "schema_changes": [
+      "No database, settings, HTTP route, wire-schema, project-graph, package, or persisted-file schema change is authorized; data.json is an exact compatibility-preserving projection of the new internal snapshot."
+    ],
+    "risk_assessment": [
+      {
+        "risk": "The extracted projector changes data.json property order, optional fields, numeric IDs, formatting, image URLs, or float serialization.",
+        "likelihood": "medium",
+        "impact": "high",
+        "mitigation": "Keep Dictionary insertion explicit, retain float?, run focused projection assertions, and require the unchanged golden blob and SHA-256."
+      },
+      {
+        "risk": "The snapshot leaks mutable Node, hardware, sensor, array, or list references and changes after capture.",
+        "likelihood": "medium",
+        "impact": "high",
+        "mitigation": "Use sealed plain classes, private defensive copies and ReadOnlyCollection exposure, plus mutation-after-capture and cast-based immutability tests."
+      },
+      {
+        "risk": "Capture is described or implemented as an atomic all-sensor sample although existing formatted and raw reads can interleave with hardware updates.",
+        "likelihood": "medium",
+        "impact": "high",
+        "mitigation": "Preserve the existing read order and structural lock semantics, explicitly document detached-after-capture behavior, and make no stronger sampling guarantee."
+      },
+      {
+        "risk": "Node.SyncRoot is held during projection, JSON serialization, compression, or network I/O.",
+        "likelihood": "low",
+        "impact": "high",
+        "mitigation": "The capture adapter owns the only lock; HttpServer invokes the pure projector only after Capture returns, and tests/review inspect the call boundary."
+      },
+      {
+        "risk": "Moving icon or non-finite normalization logic breaks the separate Sensor API or hidden-node behavior.",
+        "likelihood": "medium",
+        "impact": "high",
+        "mitigation": "Keep HttpServer.SanitizeFloat for Sensor API, pin legacy mappings and hidden inclusion in AG/AH facts, and run all HttpServer contract and web tests."
+      },
+      {
+        "risk": "A premature shared/public contract expands LibreHardwareMonitorLib or links the net10-only Avalonia prototype into shipping.",
+        "likelihood": "low",
+        "impact": "high",
+        "mitigation": "Keep ordinary internal types in the existing WinForms assembly; prohibit library, project, package, solution, and spike changes."
+      },
+      {
+        "risk": "Parallel or cleanup operations import or remove unrelated repository, ignored campaign-state, or live runtime data.",
+        "likelihood": "low",
+        "impact": "high",
+        "mitigation": "Use isolated exact-path worktrees, exclusive ownership, dependency-first cherry-picks, guarded cleanup previews, and preserve tasks.json plus analysis-cache.json."
+      }
+    ],
+    "verification_strategy": [
+      "Restore the deterministic solution filter, then run the AG SensorSnapshotTests filter and complete Application project with both LHM_LIVE_CONFIG variables unset.",
+      "Run the AH DataJsonProjectionTests filter, existing DataJsonGoldenTests filter, and complete Contracts project; compare data.golden.json with Git and verify blob 05113704acc6fefeb4128004b3f523d876fbcec4 plus SHA-256 BEBDE807A7F0037827E16CFBC1F41707701F2BEE7232385C3D2EAEBD2261D2F3.",
+      "Run dotnet test LibreHardwareMonitor.Tests\\\\LibreHardwareMonitor.Tests.slnf -p:Platform=x64 --no-restore --logger console;verbosity=minimal --tl:off and prove exactly 287 discovered, 286 passed, and the one established opt-in skip.",
+      "dotnet build LibreHardwareMonitor.Windows.Forms\\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64; require zero errors and no new warnings.",
+      "dotnet build LibreHardwareMonitor.Windows.Forms\\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64; require zero errors and no new warnings.",
+      "Run powershell.exe -NoProfile -ExecutionPolicy Bypass -File experiments\\\\avalonia-fixture-explorer\\\\Test-AvaloniaSpike.ps1 and prove 75/75 while shipping project/solution references contain no Avalonia or spike dependency.",
+      "Run node webtests\\\\selftest.node.js and node --test webtests\\\\console.tests.js webtests\\\\workspace.tests.js, including dashboard consumption of the preserved data.json contract.",
+      "Run powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\\\\ci\\\\Invoke-LhmGates.ps1 -All and require all eight included gates to pass, with ci-gates excluded only as the documented self-reference.",
+      "Run plan validate, plan preflight, task-manager analyze, git diff --check, tracked/ignored inventory, ownership checks, and exact commit/file comparisons for every integrated lane.",
+      "Perform the standard read-only SND-HOST five-point separation sample: verified identity, exact live process, task action/working directory, proxy-bypassed HTTP 200 for / /data.json /metrics, and current-day CSV growth."
+    ],
+    "documentation_updates": [
+      "data/plans/plan-008.json and its rendered docs/campaign-plan-008-immutable-sensor-snapshot-and.md: retain the full executable plan, exact counts, per-criterion evidence, and rollback boundary.",
+      "AGENTS.md and .codex/skills/project.toml: replace the removed GenerateJsonForNode guidance and widen the data.json conflict zone to cover the new snapshot/capture/projection seam without changing gate commands.",
+      "docs/README.md: replace the stale Phase-1/Plan-003 roadmap position with the current Phase-4/Plan-009 position while keeping A1 and live boundaries explicit.",
+      "docs/architecture/refactor-roadmap.md and docs/campaign-backlog.md: mark Phase-4 item 1 complete, Phase 4 in progress, remove Plan-008 from the active table, and advance to Plan-009 and agent aj.",
+      "docs/campaign-history.md and live-tracker.md: add criterion-specific Plan-008 implemented evidence and one row per AG, AH, and AI lane; never auto-accept the campaign."
+    ],
+    "cost_estimate": {
+      "tiered_usd": 2.7,
+      "max_usd": 2.7,
+      "savings_usd": 0.0,
+      "savings_pct": 0.0
+    }
+  },
+  "analysis_summary": {
+    "total_files": 530,
+    "total_lines": 144079,
+    "conflict_zones": [
+      {
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs",
+          "LibreHardwareMonitorLib/Hardware/Computer.cs"
+        ],
+        "reason": "hardware lifetime and ordered option/reset ownership"
+      },
+      {
+        "files": [
+          "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonGoldenTests.cs",
+          "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/data.golden.json",
+          "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs"
+        ],
+        "reason": "external data.json and HTTP mutation contract"
+      },
+      {
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/UI/StartupManager.cs",
+          "LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs",
+          "LibreHardwareMonitor.Windows.Forms/Utilities/RuntimePaths.cs"
+        ],
+        "reason": "settings, runtime paths, and startup ownership"
+      },
+      {
+        "files": [
+          "Directory.Packages.props",
+          "LibreHardwareMonitor.sln",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx"
+        ],
+        "reason": "central package and project graph"
+      },
+      {
+        "files": [
+          "data/plans/",
+          "docs/README.md",
+          "live-tracker.md"
+        ],
+        "reason": "current status and campaign truth"
+      },
+      {
+        "files": [
+          ".codex/skills/project.toml",
+          "eng/ci/Invoke-LhmGates.ps1"
+        ],
+        "reason": "gate definition drift between the runner and the configuration"
+      },
+      {
+        "files": [
+          "docs/architecture/campaign-control-plane.md",
+          "scripts/task_runtime/test_campaign_history.py"
+        ],
+        "reason": "campaign-runtime provenance record and its overlay files"
+      },
+      {
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs"
+        ],
+        "reason": "xaml-code-behind pair"
+      },
+      {
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+        ],
+        "reason": "xaml-code-behind pair"
+      },
+      {
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj"
+        ],
+        "reason": "desktop app startup surface"
+      },
+      {
+        "files": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+        ],
+        "reason": "desktop shell surface"
+      },
+      {
+        "files": [
+          "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest"
+        ],
+        "reason": "desktop process manifest"
+      }
+    ],
+    "modules": {
+      "controls": 10461,
+      "avalonia-app": 923,
+      "avalonia-core": 1120,
+      "avalonia-tests": 3261,
+      "dotnet-tests": 8537,
+      "winforms": 22728,
+      "hardware": 42428,
+      "other": 1181,
+      "web-contracts": 1539,
+      "ci": 1680,
+      "candidate-ops": 2679,
+      "snd-desk-deploy-ops": 5812,
+      "log-ops": 664,
+      "campaign-control": 34685,
+      "docs": 6381
+    },
+    "detected_stacks": [
+      "avalonia",
+      "dotnet",
+      "xaml-ui"
+    ],
+    "project_graph": {
+      "nodes": [
+        {
+          "id": "Aga.Controls/Aga.Controls.csproj",
+          "kind": "project",
+          "name": "Aga.Controls",
+          "path": "Aga.Controls/Aga.Controls.csproj",
+          "project_kind": "msbuild",
+          "target_frameworks": [
+            "net10.0-windows",
+            "net472"
+          ],
+          "output_type": "Library",
+          "package_references": [
+            {
+              "name": "System.Resources.Extensions"
+            }
+          ]
+        },
+        {
+          "id": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "kind": "project",
+          "name": "LibreHardwareMonitor.Avalonia.Spike",
+          "path": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "project_kind": "msbuild",
+          "desktop_targets": [
+            "avalonia"
+          ],
+          "target_frameworks": [
+            "net10.0"
+          ],
+          "output_type": "WinExe",
+          "app_xaml": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+          "package_references": [
+            {
+              "name": "Avalonia"
+            },
+            {
+              "name": "Avalonia.Desktop"
+            },
+            {
+              "name": "Avalonia.Themes.Fluent"
+            }
+          ],
+          "app_code_behind": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs",
+          "startup": true
+        },
+        {
+          "id": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj",
+          "kind": "project",
+          "name": "LibreHardwareMonitor.Avalonia.Spike.Core",
+          "path": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj",
+          "project_kind": "msbuild",
+          "target_frameworks": [
+            "net10.0"
+          ],
+          "output_type": "Library"
+        },
+        {
+          "id": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+          "kind": "project",
+          "name": "LibreHardwareMonitor.Avalonia.Spike.Tests",
+          "path": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+          "project_kind": "msbuild",
+          "desktop_targets": [
+            "avalonia"
+          ],
+          "target_frameworks": [
+            "net10.0"
+          ],
+          "output_type": "Exe",
+          "package_references": [
+            {
+              "name": "Avalonia.Headless.XUnit"
+            },
+            {
+              "name": "xunit.v3"
+            }
+          ]
+        },
+        {
+          "id": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+          "kind": "project",
+          "name": "LibreHardwareMonitor.Tests.Application",
+          "path": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+          "project_kind": "msbuild",
+          "target_frameworks": [
+            "net10.0-windows"
+          ],
+          "output_type": "Exe",
+          "package_references": [
+            {
+              "name": "Microsoft.NET.Test.Sdk"
+            },
+            {
+              "name": "xunit"
+            },
+            {
+              "name": "xunit.runner.visualstudio"
+            }
+          ]
+        },
+        {
+          "id": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+          "kind": "project",
+          "name": "LibreHardwareMonitor.Tests.Attended",
+          "path": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+          "project_kind": "msbuild",
+          "target_frameworks": [
+            "net10.0-windows"
+          ],
+          "output_type": "Library",
+          "package_references": [
+            {
+              "name": "Microsoft.NET.Test.Sdk"
+            },
+            {
+              "name": "xunit"
+            },
+            {
+              "name": "xunit.runner.visualstudio"
+            }
+          ]
+        },
+        {
+          "id": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+          "kind": "project",
+          "name": "LibreHardwareMonitor.Tests.Contracts",
+          "path": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+          "project_kind": "msbuild",
+          "target_frameworks": [
+            "net10.0-windows"
+          ],
+          "output_type": "Exe",
+          "package_references": [
+            {
+              "name": "Microsoft.NET.Test.Sdk"
+            },
+            {
+              "name": "xunit"
+            },
+            {
+              "name": "xunit.runner.visualstudio"
+            }
+          ]
+        },
+        {
+          "id": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+          "kind": "project",
+          "name": "LibreHardwareMonitor.Tests.Library",
+          "path": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+          "project_kind": "msbuild",
+          "target_frameworks": [
+            "net10.0-windows"
+          ],
+          "output_type": "Exe",
+          "package_references": [
+            {
+              "name": "Microsoft.NET.Test.Sdk"
+            },
+            {
+              "name": "xunit"
+            },
+            {
+              "name": "xunit.runner.visualstudio"
+            }
+          ]
+        },
+        {
+          "id": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "kind": "project",
+          "name": "LibreHardwareMonitor.Windows.Forms",
+          "path": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "project_kind": "msbuild",
+          "target_frameworks": [
+            "net10.0-windows",
+            "net472"
+          ],
+          "output_type": "WinExe",
+          "package_references": [
+            {
+              "name": "OxyPlot.Core"
+            },
+            {
+              "name": "OxyPlot.WindowsForms"
+            },
+            {
+              "name": "System.IO.FileSystem.AccessControl"
+            },
+            {
+              "name": "System.Management"
+            },
+            {
+              "name": "System.Resources.Extensions"
+            },
+            {
+              "name": "System.Text.Json"
+            },
+            {
+              "name": "TaskScheduler"
+            }
+          ],
+          "application_manifest_path": "LibreHardwareMonitor.Windows.Forms/Resources/app.manifest"
+        },
+        {
+          "id": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "kind": "project",
+          "name": "LibreHardwareMonitorLib",
+          "path": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "project_kind": "msbuild",
+          "target_frameworks": [
+            "net10.0",
+            "net472",
+            "net8.0",
+            "net9.0",
+            "netstandard2.0"
+          ],
+          "output_type": "Library",
+          "package_references": [
+            {
+              "name": "Microsoft.Win32.Registry"
+            },
+            {
+              "name": "Mono.Posix.NETStandard"
+            },
+            {
+              "name": "System.IO.FileSystem.AccessControl"
+            },
+            {
+              "name": "System.IO.Ports"
+            },
+            {
+              "name": "DiskInfoToolkit"
+            },
+            {
+              "name": "HidSharp"
+            },
+            {
+              "name": "Microsoft.Windows.CsWin32",
+              "private_assets": "all",
+              "include_assets": "runtime; build; native; contentfiles; analyzers; buildtransitive"
+            },
+            {
+              "name": "RAMSPDToolkit-NDD"
+            },
+            {
+              "name": "System.Management"
+            },
+            {
+              "name": "System.Threading.AccessControl"
+            }
+          ]
+        },
+        {
+          "id": "Aga.Controls/Aga.Controls.sln",
+          "kind": "solution",
+          "name": "Aga.Controls",
+          "path": "Aga.Controls/Aga.Controls.sln",
+          "project_count": 1
+        },
+        {
+          "id": "LibreHardwareMonitor.sln",
+          "kind": "solution",
+          "name": "LibreHardwareMonitor",
+          "path": "LibreHardwareMonitor.sln",
+          "project_count": 7,
+          "startup_candidates": [
+            "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+            "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+            "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+            "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj"
+          ]
+        },
+        {
+          "id": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx",
+          "kind": "solution",
+          "name": "LibreHardwareMonitor.Avalonia.Spike",
+          "path": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx",
+          "project_count": 3,
+          "startup_project": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "startup_inference": "output_type=WinExe, desktop=avalonia, app-xaml"
+        },
+        {
+          "id": "nuget:System.Resources.Extensions",
+          "kind": "package",
+          "name": "System.Resources.Extensions"
+        },
+        {
+          "id": "nuget:Microsoft.NET.Test.Sdk",
+          "kind": "package",
+          "name": "Microsoft.NET.Test.Sdk"
+        },
+        {
+          "id": "nuget:xunit",
+          "kind": "package",
+          "name": "xunit"
+        },
+        {
+          "id": "nuget:xunit.runner.visualstudio",
+          "kind": "package",
+          "name": "xunit.runner.visualstudio"
+        },
+        {
+          "id": "nuget:OxyPlot.Core",
+          "kind": "package",
+          "name": "OxyPlot.Core"
+        },
+        {
+          "id": "nuget:OxyPlot.WindowsForms",
+          "kind": "package",
+          "name": "OxyPlot.WindowsForms"
+        },
+        {
+          "id": "nuget:System.IO.FileSystem.AccessControl",
+          "kind": "package",
+          "name": "System.IO.FileSystem.AccessControl"
+        },
+        {
+          "id": "nuget:System.Management",
+          "kind": "package",
+          "name": "System.Management"
+        },
+        {
+          "id": "nuget:System.Text.Json",
+          "kind": "package",
+          "name": "System.Text.Json"
+        },
+        {
+          "id": "nuget:TaskScheduler",
+          "kind": "package",
+          "name": "TaskScheduler"
+        },
+        {
+          "id": "nuget:Microsoft.Win32.Registry",
+          "kind": "package",
+          "name": "Microsoft.Win32.Registry"
+        },
+        {
+          "id": "nuget:Mono.Posix.NETStandard",
+          "kind": "package",
+          "name": "Mono.Posix.NETStandard"
+        },
+        {
+          "id": "nuget:System.IO.Ports",
+          "kind": "package",
+          "name": "System.IO.Ports"
+        },
+        {
+          "id": "nuget:DiskInfoToolkit",
+          "kind": "package",
+          "name": "DiskInfoToolkit"
+        },
+        {
+          "id": "nuget:HidSharp",
+          "kind": "package",
+          "name": "HidSharp"
+        },
+        {
+          "id": "nuget:Microsoft.Windows.CsWin32",
+          "kind": "package",
+          "name": "Microsoft.Windows.CsWin32"
+        },
+        {
+          "id": "nuget:RAMSPDToolkit-NDD",
+          "kind": "package",
+          "name": "RAMSPDToolkit-NDD"
+        },
+        {
+          "id": "nuget:System.Threading.AccessControl",
+          "kind": "package",
+          "name": "System.Threading.AccessControl"
+        },
+        {
+          "id": "nuget:Avalonia.Headless.XUnit",
+          "kind": "package",
+          "name": "Avalonia.Headless.XUnit"
+        },
+        {
+          "id": "nuget:xunit.v3",
+          "kind": "package",
+          "name": "xunit.v3"
+        },
+        {
+          "id": "nuget:Avalonia",
+          "kind": "package",
+          "name": "Avalonia"
+        },
+        {
+          "id": "nuget:Avalonia.Desktop",
+          "kind": "package",
+          "name": "Avalonia.Desktop"
+        },
+        {
+          "id": "nuget:Avalonia.Themes.Fluent",
+          "kind": "package",
+          "name": "Avalonia.Themes.Fluent"
+        }
+      ],
+      "edges": [
+        {
+          "from": "Aga.Controls/Aga.Controls.sln",
+          "to": "Aga.Controls/Aga.Controls.csproj",
+          "kind": "solution-project"
+        },
+        {
+          "from": "LibreHardwareMonitor.sln",
+          "to": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "kind": "solution-project"
+        },
+        {
+          "from": "LibreHardwareMonitor.sln",
+          "to": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "kind": "solution-project"
+        },
+        {
+          "from": "LibreHardwareMonitor.sln",
+          "to": "Aga.Controls/Aga.Controls.csproj",
+          "kind": "solution-project"
+        },
+        {
+          "from": "LibreHardwareMonitor.sln",
+          "to": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+          "kind": "solution-project"
+        },
+        {
+          "from": "LibreHardwareMonitor.sln",
+          "to": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+          "kind": "solution-project"
+        },
+        {
+          "from": "LibreHardwareMonitor.sln",
+          "to": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+          "kind": "solution-project"
+        },
+        {
+          "from": "LibreHardwareMonitor.sln",
+          "to": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+          "kind": "solution-project"
+        },
+        {
+          "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx",
+          "to": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj",
+          "kind": "solution-project"
+        },
+        {
+          "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx",
+          "to": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "kind": "solution-project"
+        },
+        {
+          "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx",
+          "to": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+          "kind": "solution-project"
+        },
+        {
+          "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "to": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj",
+          "kind": "project-reference"
+        },
+        {
+          "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+          "to": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj",
+          "kind": "project-reference"
+        },
+        {
+          "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+          "to": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "kind": "project-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+          "to": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "kind": "project-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+          "to": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "kind": "project-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+          "to": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "kind": "project-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+          "to": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "kind": "project-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "to": "Aga.Controls/Aga.Controls.csproj",
+          "kind": "project-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "to": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "kind": "project-reference"
+        },
+        {
+          "from": "Aga.Controls/Aga.Controls.csproj",
+          "to": "nuget:System.Resources.Extensions",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+          "to": "nuget:Microsoft.NET.Test.Sdk",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+          "to": "nuget:xunit",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+          "to": "nuget:xunit.runner.visualstudio",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+          "to": "nuget:Microsoft.NET.Test.Sdk",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+          "to": "nuget:xunit",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+          "to": "nuget:xunit.runner.visualstudio",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+          "to": "nuget:Microsoft.NET.Test.Sdk",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+          "to": "nuget:xunit",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+          "to": "nuget:xunit.runner.visualstudio",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+          "to": "nuget:Microsoft.NET.Test.Sdk",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+          "to": "nuget:xunit",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+          "to": "nuget:xunit.runner.visualstudio",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "to": "nuget:OxyPlot.Core",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "to": "nuget:OxyPlot.WindowsForms",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "to": "nuget:System.IO.FileSystem.AccessControl",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "to": "nuget:System.Management",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "to": "nuget:System.Resources.Extensions",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "to": "nuget:System.Text.Json",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "to": "nuget:TaskScheduler",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "to": "nuget:Microsoft.Win32.Registry",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "to": "nuget:Mono.Posix.NETStandard",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "to": "nuget:System.IO.FileSystem.AccessControl",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "to": "nuget:System.IO.Ports",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "to": "nuget:DiskInfoToolkit",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "to": "nuget:HidSharp",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "to": "nuget:Microsoft.Windows.CsWin32",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "to": "nuget:RAMSPDToolkit-NDD",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "to": "nuget:System.Management",
+          "kind": "package-reference"
+        },
+        {
+          "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+          "to": "nuget:System.Threading.AccessControl",
+          "kind": "package-reference"
+        },
+        {
+          "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+          "to": "nuget:Avalonia.Headless.XUnit",
+          "kind": "package-reference"
+        },
+        {
+          "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+          "to": "nuget:xunit.v3",
+          "kind": "package-reference"
+        },
+        {
+          "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "to": "nuget:Avalonia",
+          "kind": "package-reference"
+        },
+        {
+          "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "to": "nuget:Avalonia.Desktop",
+          "kind": "package-reference"
+        },
+        {
+          "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "to": "nuget:Avalonia.Themes.Fluent",
+          "kind": "package-reference"
+        }
+      ]
+    },
+    "analysis_schema_version": 3,
+    "analysis_providers": [
+      "basic",
+      "dotnet-cli"
+    ],
+    "analysis_health": {
+      "mode": "auto",
+      "requested_providers": [
+        "basic",
+        "dotnet-cli"
+      ],
+      "applied_providers": [
+        "basic",
+        "dotnet-cli"
+      ],
+      "skipped_providers": [],
+      "partial_analysis": false,
+      "fallback_only": false,
+      "heuristic_only": false,
+      "confidence": "high",
+      "warnings": [
+        "Unassigned files remain in the analysis inventory."
+      ]
+    },
+    "planning_context": {
+      "analysis_health": {
+        "mode": "auto",
+        "requested_providers": [
+          "basic",
+          "dotnet-cli"
+        ],
+        "applied_providers": [
+          "basic",
+          "dotnet-cli"
+        ],
+        "skipped_providers": [],
+        "partial_analysis": false,
+        "fallback_only": false,
+        "heuristic_only": false,
+        "confidence": "high",
+        "warnings": [
+          "Unassigned files remain in the analysis inventory."
+        ]
+      },
+      "detected_stacks": [
+        "avalonia",
+        "dotnet",
+        "xaml-ui"
+      ],
+      "project_graph": {
+        "nodes": [
+          {
+            "id": "Aga.Controls/Aga.Controls.csproj",
+            "kind": "project",
+            "name": "Aga.Controls",
+            "path": "Aga.Controls/Aga.Controls.csproj",
+            "project_kind": "msbuild",
+            "target_frameworks": [
+              "net10.0-windows",
+              "net472"
+            ],
+            "output_type": "Library",
+            "package_references": [
+              {
+                "name": "System.Resources.Extensions"
+              }
+            ]
+          },
+          {
+            "id": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "kind": "project",
+            "name": "LibreHardwareMonitor.Avalonia.Spike",
+            "path": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "project_kind": "msbuild",
+            "desktop_targets": [
+              "avalonia"
+            ],
+            "target_frameworks": [
+              "net10.0"
+            ],
+            "output_type": "WinExe",
+            "app_xaml": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+            "package_references": [
+              {
+                "name": "Avalonia"
+              },
+              {
+                "name": "Avalonia.Desktop"
+              },
+              {
+                "name": "Avalonia.Themes.Fluent"
+              }
+            ],
+            "app_code_behind": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs",
+            "startup": true
+          },
+          {
+            "id": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj",
+            "kind": "project",
+            "name": "LibreHardwareMonitor.Avalonia.Spike.Core",
+            "path": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj",
+            "project_kind": "msbuild",
+            "target_frameworks": [
+              "net10.0"
+            ],
+            "output_type": "Library"
+          },
+          {
+            "id": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+            "kind": "project",
+            "name": "LibreHardwareMonitor.Avalonia.Spike.Tests",
+            "path": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+            "project_kind": "msbuild",
+            "desktop_targets": [
+              "avalonia"
+            ],
+            "target_frameworks": [
+              "net10.0"
+            ],
+            "output_type": "Exe",
+            "package_references": [
+              {
+                "name": "Avalonia.Headless.XUnit"
+              },
+              {
+                "name": "xunit.v3"
+              }
+            ]
+          },
+          {
+            "id": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+            "kind": "project",
+            "name": "LibreHardwareMonitor.Tests.Application",
+            "path": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+            "project_kind": "msbuild",
+            "target_frameworks": [
+              "net10.0-windows"
+            ],
+            "output_type": "Exe",
+            "package_references": [
+              {
+                "name": "Microsoft.NET.Test.Sdk"
+              },
+              {
+                "name": "xunit"
+              },
+              {
+                "name": "xunit.runner.visualstudio"
+              }
+            ]
+          },
+          {
+            "id": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+            "kind": "project",
+            "name": "LibreHardwareMonitor.Tests.Attended",
+            "path": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+            "project_kind": "msbuild",
+            "target_frameworks": [
+              "net10.0-windows"
+            ],
+            "output_type": "Library",
+            "package_references": [
+              {
+                "name": "Microsoft.NET.Test.Sdk"
+              },
+              {
+                "name": "xunit"
+              },
+              {
+                "name": "xunit.runner.visualstudio"
+              }
+            ]
+          },
+          {
+            "id": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+            "kind": "project",
+            "name": "LibreHardwareMonitor.Tests.Contracts",
+            "path": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+            "project_kind": "msbuild",
+            "target_frameworks": [
+              "net10.0-windows"
+            ],
+            "output_type": "Exe",
+            "package_references": [
+              {
+                "name": "Microsoft.NET.Test.Sdk"
+              },
+              {
+                "name": "xunit"
+              },
+              {
+                "name": "xunit.runner.visualstudio"
+              }
+            ]
+          },
+          {
+            "id": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+            "kind": "project",
+            "name": "LibreHardwareMonitor.Tests.Library",
+            "path": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+            "project_kind": "msbuild",
+            "target_frameworks": [
+              "net10.0-windows"
+            ],
+            "output_type": "Exe",
+            "package_references": [
+              {
+                "name": "Microsoft.NET.Test.Sdk"
+              },
+              {
+                "name": "xunit"
+              },
+              {
+                "name": "xunit.runner.visualstudio"
+              }
+            ]
+          },
+          {
+            "id": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "kind": "project",
+            "name": "LibreHardwareMonitor.Windows.Forms",
+            "path": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "project_kind": "msbuild",
+            "target_frameworks": [
+              "net10.0-windows",
+              "net472"
+            ],
+            "output_type": "WinExe",
+            "package_references": [
+              {
+                "name": "OxyPlot.Core"
+              },
+              {
+                "name": "OxyPlot.WindowsForms"
+              },
+              {
+                "name": "System.IO.FileSystem.AccessControl"
+              },
+              {
+                "name": "System.Management"
+              },
+              {
+                "name": "System.Resources.Extensions"
+              },
+              {
+                "name": "System.Text.Json"
+              },
+              {
+                "name": "TaskScheduler"
+              }
+            ],
+            "application_manifest_path": "LibreHardwareMonitor.Windows.Forms/Resources/app.manifest"
+          },
+          {
+            "id": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "kind": "project",
+            "name": "LibreHardwareMonitorLib",
+            "path": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "project_kind": "msbuild",
+            "target_frameworks": [
+              "net10.0",
+              "net472",
+              "net8.0",
+              "net9.0",
+              "netstandard2.0"
+            ],
+            "output_type": "Library",
+            "package_references": [
+              {
+                "name": "Microsoft.Win32.Registry"
+              },
+              {
+                "name": "Mono.Posix.NETStandard"
+              },
+              {
+                "name": "System.IO.FileSystem.AccessControl"
+              },
+              {
+                "name": "System.IO.Ports"
+              },
+              {
+                "name": "DiskInfoToolkit"
+              },
+              {
+                "name": "HidSharp"
+              },
+              {
+                "name": "Microsoft.Windows.CsWin32",
+                "private_assets": "all",
+                "include_assets": "runtime; build; native; contentfiles; analyzers; buildtransitive"
+              },
+              {
+                "name": "RAMSPDToolkit-NDD"
+              },
+              {
+                "name": "System.Management"
+              },
+              {
+                "name": "System.Threading.AccessControl"
+              }
+            ]
+          },
+          {
+            "id": "Aga.Controls/Aga.Controls.sln",
+            "kind": "solution",
+            "name": "Aga.Controls",
+            "path": "Aga.Controls/Aga.Controls.sln",
+            "project_count": 1
+          },
+          {
+            "id": "LibreHardwareMonitor.sln",
+            "kind": "solution",
+            "name": "LibreHardwareMonitor",
+            "path": "LibreHardwareMonitor.sln",
+            "project_count": 7,
+            "startup_candidates": [
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+              "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj"
+            ]
+          },
+          {
+            "id": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx",
+            "kind": "solution",
+            "name": "LibreHardwareMonitor.Avalonia.Spike",
+            "path": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx",
+            "project_count": 3,
+            "startup_project": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "startup_inference": "output_type=WinExe, desktop=avalonia, app-xaml"
+          },
+          {
+            "id": "nuget:System.Resources.Extensions",
+            "kind": "package",
+            "name": "System.Resources.Extensions"
+          },
+          {
+            "id": "nuget:Microsoft.NET.Test.Sdk",
+            "kind": "package",
+            "name": "Microsoft.NET.Test.Sdk"
+          },
+          {
+            "id": "nuget:xunit",
+            "kind": "package",
+            "name": "xunit"
+          },
+          {
+            "id": "nuget:xunit.runner.visualstudio",
+            "kind": "package",
+            "name": "xunit.runner.visualstudio"
+          },
+          {
+            "id": "nuget:OxyPlot.Core",
+            "kind": "package",
+            "name": "OxyPlot.Core"
+          },
+          {
+            "id": "nuget:OxyPlot.WindowsForms",
+            "kind": "package",
+            "name": "OxyPlot.WindowsForms"
+          },
+          {
+            "id": "nuget:System.IO.FileSystem.AccessControl",
+            "kind": "package",
+            "name": "System.IO.FileSystem.AccessControl"
+          },
+          {
+            "id": "nuget:System.Management",
+            "kind": "package",
+            "name": "System.Management"
+          },
+          {
+            "id": "nuget:System.Text.Json",
+            "kind": "package",
+            "name": "System.Text.Json"
+          },
+          {
+            "id": "nuget:TaskScheduler",
+            "kind": "package",
+            "name": "TaskScheduler"
+          },
+          {
+            "id": "nuget:Microsoft.Win32.Registry",
+            "kind": "package",
+            "name": "Microsoft.Win32.Registry"
+          },
+          {
+            "id": "nuget:Mono.Posix.NETStandard",
+            "kind": "package",
+            "name": "Mono.Posix.NETStandard"
+          },
+          {
+            "id": "nuget:System.IO.Ports",
+            "kind": "package",
+            "name": "System.IO.Ports"
+          },
+          {
+            "id": "nuget:DiskInfoToolkit",
+            "kind": "package",
+            "name": "DiskInfoToolkit"
+          },
+          {
+            "id": "nuget:HidSharp",
+            "kind": "package",
+            "name": "HidSharp"
+          },
+          {
+            "id": "nuget:Microsoft.Windows.CsWin32",
+            "kind": "package",
+            "name": "Microsoft.Windows.CsWin32"
+          },
+          {
+            "id": "nuget:RAMSPDToolkit-NDD",
+            "kind": "package",
+            "name": "RAMSPDToolkit-NDD"
+          },
+          {
+            "id": "nuget:System.Threading.AccessControl",
+            "kind": "package",
+            "name": "System.Threading.AccessControl"
+          },
+          {
+            "id": "nuget:Avalonia.Headless.XUnit",
+            "kind": "package",
+            "name": "Avalonia.Headless.XUnit"
+          },
+          {
+            "id": "nuget:xunit.v3",
+            "kind": "package",
+            "name": "xunit.v3"
+          },
+          {
+            "id": "nuget:Avalonia",
+            "kind": "package",
+            "name": "Avalonia"
+          },
+          {
+            "id": "nuget:Avalonia.Desktop",
+            "kind": "package",
+            "name": "Avalonia.Desktop"
+          },
+          {
+            "id": "nuget:Avalonia.Themes.Fluent",
+            "kind": "package",
+            "name": "Avalonia.Themes.Fluent"
+          }
+        ],
+        "edges": [
+          {
+            "from": "Aga.Controls/Aga.Controls.sln",
+            "to": "Aga.Controls/Aga.Controls.csproj",
+            "kind": "solution-project"
+          },
+          {
+            "from": "LibreHardwareMonitor.sln",
+            "to": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "kind": "solution-project"
+          },
+          {
+            "from": "LibreHardwareMonitor.sln",
+            "to": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "kind": "solution-project"
+          },
+          {
+            "from": "LibreHardwareMonitor.sln",
+            "to": "Aga.Controls/Aga.Controls.csproj",
+            "kind": "solution-project"
+          },
+          {
+            "from": "LibreHardwareMonitor.sln",
+            "to": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+            "kind": "solution-project"
+          },
+          {
+            "from": "LibreHardwareMonitor.sln",
+            "to": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+            "kind": "solution-project"
+          },
+          {
+            "from": "LibreHardwareMonitor.sln",
+            "to": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+            "kind": "solution-project"
+          },
+          {
+            "from": "LibreHardwareMonitor.sln",
+            "to": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+            "kind": "solution-project"
+          },
+          {
+            "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx",
+            "to": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj",
+            "kind": "solution-project"
+          },
+          {
+            "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx",
+            "to": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "kind": "solution-project"
+          },
+          {
+            "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx",
+            "to": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+            "kind": "solution-project"
+          },
+          {
+            "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "to": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj",
+            "kind": "project-reference"
+          },
+          {
+            "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+            "to": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj",
+            "kind": "project-reference"
+          },
+          {
+            "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+            "to": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "kind": "project-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+            "to": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "kind": "project-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+            "to": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "kind": "project-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+            "to": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "kind": "project-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+            "to": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "kind": "project-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "to": "Aga.Controls/Aga.Controls.csproj",
+            "kind": "project-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "to": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "kind": "project-reference"
+          },
+          {
+            "from": "Aga.Controls/Aga.Controls.csproj",
+            "to": "nuget:System.Resources.Extensions",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+            "to": "nuget:Microsoft.NET.Test.Sdk",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+            "to": "nuget:xunit",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+            "to": "nuget:xunit.runner.visualstudio",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+            "to": "nuget:Microsoft.NET.Test.Sdk",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+            "to": "nuget:xunit",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+            "to": "nuget:xunit.runner.visualstudio",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+            "to": "nuget:Microsoft.NET.Test.Sdk",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+            "to": "nuget:xunit",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+            "to": "nuget:xunit.runner.visualstudio",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+            "to": "nuget:Microsoft.NET.Test.Sdk",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+            "to": "nuget:xunit",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+            "to": "nuget:xunit.runner.visualstudio",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "to": "nuget:OxyPlot.Core",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "to": "nuget:OxyPlot.WindowsForms",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "to": "nuget:System.IO.FileSystem.AccessControl",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "to": "nuget:System.Management",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "to": "nuget:System.Resources.Extensions",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "to": "nuget:System.Text.Json",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "to": "nuget:TaskScheduler",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "to": "nuget:Microsoft.Win32.Registry",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "to": "nuget:Mono.Posix.NETStandard",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "to": "nuget:System.IO.FileSystem.AccessControl",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "to": "nuget:System.IO.Ports",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "to": "nuget:DiskInfoToolkit",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "to": "nuget:HidSharp",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "to": "nuget:Microsoft.Windows.CsWin32",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "to": "nuget:RAMSPDToolkit-NDD",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "to": "nuget:System.Management",
+            "kind": "package-reference"
+          },
+          {
+            "from": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "to": "nuget:System.Threading.AccessControl",
+            "kind": "package-reference"
+          },
+          {
+            "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+            "to": "nuget:Avalonia.Headless.XUnit",
+            "kind": "package-reference"
+          },
+          {
+            "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+            "to": "nuget:xunit.v3",
+            "kind": "package-reference"
+          },
+          {
+            "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "to": "nuget:Avalonia",
+            "kind": "package-reference"
+          },
+          {
+            "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "to": "nuget:Avalonia.Desktop",
+            "kind": "package-reference"
+          },
+          {
+            "from": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "to": "nuget:Avalonia.Themes.Fluent",
+            "kind": "package-reference"
+          }
+        ]
+      },
+      "conflict_zones": [
+        {
+          "files": [
+            "LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs",
+            "LibreHardwareMonitorLib/Hardware/Computer.cs"
+          ],
+          "reason": "hardware lifetime and ordered option/reset ownership"
+        },
+        {
+          "files": [
+            "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonGoldenTests.cs",
+            "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/data.golden.json",
+            "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs"
+          ],
+          "reason": "external data.json and HTTP mutation contract"
+        },
+        {
+          "files": [
+            "LibreHardwareMonitor.Windows.Forms/UI/StartupManager.cs",
+            "LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs",
+            "LibreHardwareMonitor.Windows.Forms/Utilities/RuntimePaths.cs"
+          ],
+          "reason": "settings, runtime paths, and startup ownership"
+        },
+        {
+          "files": [
+            "Directory.Packages.props",
+            "LibreHardwareMonitor.sln",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx"
+          ],
+          "reason": "central package and project graph"
+        },
+        {
+          "files": [
+            "data/plans/",
+            "docs/README.md",
+            "live-tracker.md"
+          ],
+          "reason": "current status and campaign truth"
+        },
+        {
+          "files": [
+            ".codex/skills/project.toml",
+            "eng/ci/Invoke-LhmGates.ps1"
+          ],
+          "reason": "gate definition drift between the runner and the configuration"
+        },
+        {
+          "files": [
+            "docs/architecture/campaign-control-plane.md",
+            "scripts/task_runtime/test_campaign_history.py"
+          ],
+          "reason": "campaign-runtime provenance record and its overlay files"
+        },
+        {
+          "files": [
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs"
+          ],
+          "reason": "xaml-code-behind pair"
+        },
+        {
+          "files": [
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+          ],
+          "reason": "xaml-code-behind pair"
+        },
+        {
+          "files": [
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj"
+          ],
+          "reason": "desktop app startup surface"
+        },
+        {
+          "files": [
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+          ],
+          "reason": "desktop shell surface"
+        },
+        {
+          "files": [
+            "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest"
+          ],
+          "reason": "desktop process manifest"
+        }
+      ],
+      "ui_surfaces": [
+        {
+          "kind": "process-manifest",
+          "project": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "project_name": "LibreHardwareMonitor.Windows.Forms",
+          "entry": "LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest",
+          "files": [
+            "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "LibreHardwareMonitor.Windows.Forms/Resources/app.manifest",
+            "LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest"
+          ],
+          "startup": false
+        },
+        {
+          "kind": "shell",
+          "project": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "project_name": "LibreHardwareMonitor.Avalonia.Spike",
+          "entry": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+          "files": [
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+          ],
+          "startup": true
+        },
+        {
+          "kind": "startup",
+          "project": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "project_name": "LibreHardwareMonitor.Avalonia.Spike",
+          "entry": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+          "files": [
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj"
+          ],
+          "startup": true
+        }
+      ],
+      "ownership_summary": {
+        "project_count": 10,
+        "assigned_file_count": 393,
+        "assigned_line_count": 89791,
+        "unassigned_file_count": 137,
+        "unassigned_paths": [
+          ".codex/skills/planning-contract.md",
+          ".codex/skills/project.toml",
+          "AGENTS.md",
+          "LibreHardwareMonitor.sln",
+          "README.md",
+          "agents/agent-a-bootstrap-spike-contracts.md",
+          "agents/agent-aa-verify-suite-boundaries.md",
+          "agents/agent-ab-docs-and-close.md",
+          "agents/agent-ac-hardware-lifetime-characterization.md",
+          "agents/agent-ad-option-reset-shutdown-characterization.md",
+          "agents/agent-ae-settings-projection-characterization.md",
+          "agents/agent-af-verify-document-close.md",
+          "agents/agent-b-implement-bounded-parser.md",
+          "agents/agent-c-build-fixture-explorer-shell.md",
+          "agents/agent-d-integrate-verify-document.md",
+          "agents/agent-e-ci-gate-runner.md",
+          "agents/agent-f-ci-gate-runner-tests.md",
+          "agents/agent-g-ci-workflow-delegation.md",
+          "agents/agent-h-campaign-history-contract.md",
+          "agents/agent-i-control-plane-wiring.md",
+          "agents/agent-j-move-spike-projects.md",
+          "agents/agent-k-rewire-spike-config.md",
+          "agents/agent-l-stale-reference-gate.md",
+          "agents/agent-m-spike-move-docs.md",
+          "agents/agent-n-spike-move-close.md",
+          "agents/agent-o-move-candidate-ops.md",
+          "agents/agent-p-dissolve-local-release.md",
+          "agents/agent-r-rewire-config-and-gates.md",
+          "agents/agent-s-verify-fail-closed.md",
+          "agents/agent-t-ops-move-docs.md",
+          "agents/agent-u-ops-move-close.md",
+          "agents/agent-v-reorganize-docs.md",
+          "agents/agent-w-rewire-doc-references.md",
+          "agents/agent-x-docs-move-close.md",
+          "agents/agent-y-suite-split.md",
+          "agents/agent-z-rewire-config-and-gates.md",
+          "data/plans/plan-001.json",
+          "data/plans/plan-002.json",
+          "data/plans/plan-003.json",
+          "data/plans/plan-004.json",
+          "data/plans/plan-005.json",
+          "data/plans/plan-006.json",
+          "data/plans/plan-007.json",
+          "docs/README.md",
+          "docs/architecture/campaign-control-plane.md",
+          "docs/architecture/refactor-roadmap.md",
+          "docs/architecture/repository-build-output-cleanup.md",
+          "docs/campaign-backlog.md",
+          "docs/campaign-history.md",
+          "docs/campaign-plan-001-fixture-only-avalonia-sensor.md",
+          "docs/campaign-plan-002-non-deploying-ci-gates.md",
+          "docs/campaign-plan-003-move-the-avalonia-fixture.md",
+          "docs/campaign-plan-004-separate-candidate-creation-from.md",
+          "docs/campaign-plan-005-documentation-and-engineering-taxonomy.md",
+          "docs/campaign-plan-006-verification-suite-boundaries.md",
+          "docs/campaign-plan-007-characterization-tests-before-extraction.md",
+          "docs/campaign-playbook.md",
+          "docs/features/feature-avalonia-fixture-sensor-explorer.md",
+          "docs/features/feature-host-log-management.md",
+          "docs/features/feature-host-operator-utilities.md",
+          "docs/features/feature-independent-text-scaling.md",
+          "docs/features/feature-local-release-system.md",
+          "docs/features/feature-memory-ui-reliability.md",
+          "docs/features/feature-native-ui-modernization.md",
+          "docs/features/feature-release-packaging.md",
+          "docs/features/feature-sensor-workspace.md",
+          "docs/features/feature-standard-context-layouts.md",
+          "docs/features/feature-thermal-trends.md",
+          "docs/features/feature-upstream-sync-2026-07-25.md",
+          "docs/features/feature-web-dashboard-studio-view.md",
+          "eng/Clear-LhmRepositoryBuildOutputs.ps1",
+          "eng/ci/Invoke-LhmGates.ps1",
+          "eng/ci/README.md",
+          "eng/ci/Test-LhmCiGates.ps1",
+          "eng/ci/tests/Test-GateRunner.ps1",
+          "eng/ci/tests/Test-NoStaleReferences.ps1",
+          "eng/ci/tests/Test-SuiteBoundaries.ps1",
+          "eng/ci/tests/Test-Workflow.ps1",
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx",
+          "experiments/avalonia-fixture-explorer/Test-AvaloniaSpike.ps1",
+          "global.json",
+          "live-tracker.md",
+          "ops/candidate/LhmRelease.Common.ps1",
+          "ops/candidate/New-LhmRelease.ps1",
+          "ops/candidate/Test-LhmReleaseCandidate.ps1",
+          "ops/candidate/Test-LhmReleaseSystem.ps1",
+          "ops/deploy/snd-desk/Finalize-LibreHardwareMonitorCutover.ps1",
+          "ops/deploy/snd-desk/Install-LibreHardwareMonitorRelease.ps1",
+          "ops/deploy/snd-desk/LhmLocalRelease.Common.ps1",
+          "ops/deploy/snd-desk/Publish-LibreHardwareMonitor.ps1",
+          "ops/deploy/snd-desk/Restore-LegacyLibreHardwareMonitorStartup.ps1",
+          "ops/deploy/snd-desk/Restore-LibreHardwareMonitorRelease.ps1",
+          "ops/deploy/snd-desk/Restore-PreStableLibreHardwareMonitorStartup.ps1",
+          "ops/deploy/snd-desk/Start-LibreHardwareMonitor.ps1",
+          "ops/deploy/snd-desk/Test-LhmLocalRelease.ps1",
+          "ops/log-management/Archive-LhmLogs.ps1",
+          "ops/log-management/Clean-LhmLogArchives.ps1",
+          "ops/log-management/Install-LhmLogManagementTask.ps1",
+          "ops/log-management/Invoke-LhmLogManagement.ps1",
+          "ops/log-management/LhmLogManagement.Common.ps1",
+          "ops/log-management/README.md",
+          "ops/log-management/Test-LhmLogManagement.ps1",
+          "scripts/analysis/__init__.py",
+          "scripts/analysis/basic_provider.py",
+          "scripts/analysis/derived.py",
+          "scripts/analysis/dotnet_cli_provider.py",
+          "scripts/analysis/engine.py",
+          "scripts/analysis/inventory.py",
+          "scripts/analysis/models.py",
+          "scripts/analysis/planning_context.py",
+          "scripts/analysis/project_graph.py",
+          "scripts/analysis/relations.py",
+          "scripts/analysis/signals.py",
+          "scripts/task_manager.py",
+          "scripts/task_runtime/__init__.py",
+          "scripts/task_runtime/artifacts.py",
+          "scripts/task_runtime/bootstrap.py",
+          "scripts/task_runtime/commands.py",
+          "scripts/task_runtime/config.py",
+          "scripts/task_runtime/execution.py",
+          "scripts/task_runtime/merge.py",
+          "scripts/task_runtime/orchestration.py",
+          "scripts/task_runtime/plans.py",
+          "scripts/task_runtime/result.py",
+          "scripts/task_runtime/specs.py",
+          "scripts/task_runtime/state.py",
+          "scripts/task_runtime/telemetry.py",
+          "scripts/task_runtime/test_campaign_history.py",
+          "scripts/task_runtime/test_execution.py",
+          "scripts/task_runtime/test_project_config.py",
+          "scripts/task_runtime/test_verify.py",
+          "scripts/task_runtime/validation.py",
+          "scripts/task_runtime/verify.py",
+          "webtests/console.tests.js",
+          "webtests/fixture.data.json",
+          "webtests/selftest.node.js",
+          "webtests/workspace.tests.js"
+        ],
+        "projects": [
+          {
+            "project": "Aga.Controls/Aga.Controls.csproj",
+            "name": "Aga.Controls",
+            "startup": false,
+            "file_count": 82,
+            "line_count": 10650,
+            "xaml_file_count": 0,
+            "resource_file_count": 0,
+            "code_behind_file_count": 0,
+            "package_reference_count": 1,
+            "ui_surface_count": 0,
+            "files": [
+              "Aga.Controls/Aga.Controls.csproj",
+              "Aga.Controls/Aga.Controls.sln",
+              "Aga.Controls/BitmapHelper.cs",
+              "Aga.Controls/GifDecoder.cs",
+              "Aga.Controls/NumericTextBox.cs",
+              "Aga.Controls/PerformanceAnalyzer.cs",
+              "Aga.Controls/Properties/Resources.Designer.cs",
+              "Aga.Controls/ResourceHelper.cs",
+              "Aga.Controls/StringCollectionEditor.cs",
+              "Aga.Controls/TextHelper.cs",
+              "Aga.Controls/Threading/AbortableThreadPool.cs",
+              "Aga.Controls/Threading/WorkItem.cs",
+              "Aga.Controls/Threading/WorkItemStatus.cs",
+              "Aga.Controls/TimeCounter.cs",
+              "Aga.Controls/Tree/AutoRowHeightLayout.cs",
+              "Aga.Controls/Tree/ClassDiagram.cd",
+              "Aga.Controls/Tree/ColumnCollection.cs",
+              "Aga.Controls/Tree/DrawContext.cs",
+              "Aga.Controls/Tree/DropNodeValidatingEventArgs.cs",
+              "Aga.Controls/Tree/DropPosition.cs",
+              "Aga.Controls/Tree/EditorContext.cs",
+              "Aga.Controls/Tree/Enums.cs",
+              "Aga.Controls/Tree/FixedRowHeightLayout.cs",
+              "Aga.Controls/Tree/IRowLayout.cs",
+              "Aga.Controls/Tree/IToolTipProvider.cs",
+              "Aga.Controls/Tree/ITreeModel.cs",
+              "Aga.Controls/Tree/IncrementalSearch.cs",
+              "Aga.Controls/Tree/Input/ClickColumnState.cs",
+              "Aga.Controls/Tree/Input/ColumnState.cs",
+              "Aga.Controls/Tree/Input/InputState.cs",
+              "Aga.Controls/Tree/Input/InputWithControl.cs",
+              "Aga.Controls/Tree/Input/InputWithShift.cs",
+              "Aga.Controls/Tree/Input/NormalInputState.cs",
+              "Aga.Controls/Tree/Input/ReorderColumnState.cs",
+              "Aga.Controls/Tree/Input/ResizeColumnState.cs",
+              "Aga.Controls/Tree/ListModel.cs",
+              "Aga.Controls/Tree/NativeMethods.cs",
+              "Aga.Controls/Tree/Node.cs",
+              "Aga.Controls/Tree/NodeControlInfo.cs",
+              "Aga.Controls/Tree/NodeControls/BaseTextControl.cs",
+              "Aga.Controls/Tree/NodeControls/BindableControl.cs",
+              "Aga.Controls/Tree/NodeControls/ClassDiagram.cd",
+              "Aga.Controls/Tree/NodeControls/DrawEventArgs.cs",
+              "Aga.Controls/Tree/NodeControls/EditEventArgs.cs",
+              "Aga.Controls/Tree/NodeControls/EditableControl.cs",
+              "Aga.Controls/Tree/NodeControls/ExpandingIcon.cs",
+              "Aga.Controls/Tree/NodeControls/InteractiveControl.cs",
+              "Aga.Controls/Tree/NodeControls/LabelEventArgs.cs",
+              "Aga.Controls/Tree/NodeControls/NodeCheckBox.cs",
+              "Aga.Controls/Tree/NodeControls/NodeComboBox.cs",
+              "Aga.Controls/Tree/NodeControls/NodeControl.cs",
+              "Aga.Controls/Tree/NodeControls/NodeControlValueEventArgs.cs",
+              "Aga.Controls/Tree/NodeControls/NodeControlsCollection.cs",
+              "Aga.Controls/Tree/NodeControls/NodeDecimalTextBox.cs",
+              "Aga.Controls/Tree/NodeControls/NodeEventArgs.cs",
+              "Aga.Controls/Tree/NodeControls/NodeIcon.cs",
+              "Aga.Controls/Tree/NodeControls/NodeIntegerTextBox.cs",
+              "Aga.Controls/Tree/NodeControls/NodeNumericUpDown.cs",
+              "Aga.Controls/Tree/NodeControls/NodePlusMinus.cs",
+              "Aga.Controls/Tree/NodeControls/NodeStateIcon.cs",
+              "Aga.Controls/Tree/NodeControls/NodeTextBox.cs",
+              "Aga.Controls/Tree/SortedTreeModel.cs",
+              "Aga.Controls/Tree/TreeColumn.cs",
+              "Aga.Controls/Tree/TreeColumnCollection.cs",
+              "Aga.Controls/Tree/TreeColumnEventArgs.cs",
+              "Aga.Controls/Tree/TreeListAdapter.cs",
+              "Aga.Controls/Tree/TreeModel.cs",
+              "Aga.Controls/Tree/TreeModelBase.cs",
+              "Aga.Controls/Tree/TreeModelEventArgs.cs",
+              "Aga.Controls/Tree/TreeNodeAdv.cs",
+              "Aga.Controls/Tree/TreeNodeAdvMouseEventArgs.cs",
+              "Aga.Controls/Tree/TreePath.cs",
+              "Aga.Controls/Tree/TreePathEventArgs.cs",
+              "Aga.Controls/Tree/TreeViewAdv.Designer.cs",
+              "Aga.Controls/Tree/TreeViewAdv.Draw.cs",
+              "Aga.Controls/Tree/TreeViewAdv.Editor.cs",
+              "Aga.Controls/Tree/TreeViewAdv.Input.cs",
+              "Aga.Controls/Tree/TreeViewAdv.Properties.cs",
+              "Aga.Controls/Tree/TreeViewAdv.cs",
+              "Aga.Controls/Tree/TreeViewAdvCancelEventArgs.cs",
+              "Aga.Controls/Tree/TreeViewAdvEventArgs.cs",
+              "Aga.Controls/Tree/TreeViewRowDrawEventArgs.cs"
+            ]
+          },
+          {
+            "project": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+            "name": "LibreHardwareMonitor.Tests.Application",
+            "startup": false,
+            "file_count": 15,
+            "line_count": 3945,
+            "xaml_file_count": 0,
+            "resource_file_count": 0,
+            "code_behind_file_count": 0,
+            "package_reference_count": 3,
+            "ui_surface_count": 0,
+            "files": [
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/HardwareOperationCoordinatorTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/LibreHardwareMonitor.Tests.Application.csproj",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/PlotPanelHistoryTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/PlotPanelTextScaleTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/RuntimePathsTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/SettingsPersistenceTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/SettingsProjectionTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/SmartUpdateCyclePolicyTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/StartupManagerTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/TemperatureRateSensorTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/TextScaleSliderMenuTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/UiScaleTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/UiShutdownCoordinatorTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/UiTextScaleCommitGateTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/WinFormsUiLifetimeTests.cs"
+            ]
+          },
+          {
+            "project": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+            "name": "LibreHardwareMonitor.Tests.Attended",
+            "startup": false,
+            "file_count": 2,
+            "line_count": 31,
+            "xaml_file_count": 0,
+            "resource_file_count": 0,
+            "code_behind_file_count": 0,
+            "package_reference_count": 3,
+            "ui_surface_count": 0,
+            "files": [
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/LibreHardwareMonitor.Tests.Attended.csproj",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Attended/README.md"
+            ]
+          },
+          {
+            "project": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+            "name": "LibreHardwareMonitor.Tests.Contracts",
+            "startup": false,
+            "file_count": 9,
+            "line_count": 1350,
+            "xaml_file_count": 0,
+            "resource_file_count": 0,
+            "code_behind_file_count": 0,
+            "package_reference_count": 3,
+            "ui_surface_count": 0,
+            "files": [
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/CsvTimestampContractTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonGoldenTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/HttpServerAuthenticationTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/HttpServerLifetimeTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/HttpServerPrometheusTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/HttpServerSensorApiTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/LibreHardwareMonitor.Tests.Contracts.csproj",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/WebDashboardRetirementTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/data.golden.json"
+            ]
+          },
+          {
+            "project": "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+            "name": "LibreHardwareMonitor.Tests.Library",
+            "startup": false,
+            "file_count": 9,
+            "line_count": 3211,
+            "xaml_file_count": 0,
+            "resource_file_count": 0,
+            "code_behind_file_count": 0,
+            "package_reference_count": 3,
+            "ui_surface_count": 0,
+            "files": [
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/ComputerOpenLifetimeTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/HardwareGroupLifetimeCharacterizationTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/LibreHardwareMonitor.Tests.Library.csproj",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/MotherboardModelCompatibilityTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/Nct677XFanConfigTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/NvidiaGroupSnapshotTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/SensorHistoryTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/StorageGroupLifetimeTests.cs",
+              "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/StorageSmartUpdateCycleTests.cs"
+            ]
+          },
+          {
+            "project": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "name": "LibreHardwareMonitor.Windows.Forms",
+            "startup": false,
+            "file_count": 68,
+            "line_count": 23333,
+            "xaml_file_count": 0,
+            "resource_file_count": 0,
+            "code_behind_file_count": 0,
+            "package_reference_count": 7,
+            "ui_surface_count": 1,
+            "files": [
+              "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+              "LibreHardwareMonitor.Windows.Forms/Program.cs",
+              "LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js",
+              "LibreHardwareMonitor.Windows.Forms/Resources/Web/workspace.js",
+              "LibreHardwareMonitor.Windows.Forms/Resources/app.manifest",
+              "LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest",
+              "LibreHardwareMonitor.Windows.Forms/Resources/icon.ico",
+              "LibreHardwareMonitor.Windows.Forms/TestScripts/LiquidCool.py",
+              "LibreHardwareMonitor.Windows.Forms/TestScripts/basicrest.py",
+              "LibreHardwareMonitor.Windows.Forms/TestScripts/basicwmi.py",
+              "LibreHardwareMonitor.Windows.Forms/UI/AboutBox.Designer.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/AboutBox.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/AuthForm.Designer.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/AuthForm.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/Gadget.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/GadgetWindow.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/GraphInputsForm.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/HardwareNode.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/HardwareOperationCoordinator.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/HardwareTypeImage.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/IExpandPersistNode.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/InterfacePortForm.Designer.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/InterfacePortForm.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/MainForm.Designer.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/Node.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/NodeToolTipProvider.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/NotifyIconAdv.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/ParameterForm.Designer.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/ParameterForm.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/PlotPanel.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/ScaledPlotModel.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/SensorGadget.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/SensorNode.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/SensorNotifyIcon.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/ShowDesktop.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/SmartUpdateCyclePolicy.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/SplitContainerAdv.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/StartupManager.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/SystemTray.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/TextScaleSliderMenu.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/Theme.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/Themes/BlackTheme.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/Themes/DarkTheme.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/Themes/LightTheme.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/Themes/ScrollIndicatorAutomationProvider.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/Themes/ScrollIndicatorGeometry.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/Themes/ThemedHScrollIndicator.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/Themes/ThemedToolStripRenderer.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/Themes/ThemedVScrollIndicator.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/ToolStripRadioButtonMenuItem.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/TreeModel.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/TypeNode.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/UiScale.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/UiShutdownCoordinator.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/UiTextScaleCommitGate.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/UnitManager.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/UpdateVisitor.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/UserOption.cs",
+              "LibreHardwareMonitor.Windows.Forms/UI/UserRadioGroup.cs",
+              "LibreHardwareMonitor.Windows.Forms/Utilities/EmbeddedResources.cs",
+              "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs",
+              "LibreHardwareMonitor.Windows.Forms/Utilities/IconFactory.cs",
+              "LibreHardwareMonitor.Windows.Forms/Utilities/Logger.cs",
+              "LibreHardwareMonitor.Windows.Forms/Utilities/LoggerFileRotation.cs",
+              "LibreHardwareMonitor.Windows.Forms/Utilities/PawnIoInstallerLease.cs",
+              "LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs",
+              "LibreHardwareMonitor.Windows.Forms/Utilities/RuntimePaths.cs"
+            ]
+          },
+          {
+            "project": "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+            "name": "LibreHardwareMonitorLib",
+            "startup": false,
+            "file_count": 172,
+            "line_count": 42448,
+            "xaml_file_count": 0,
+            "resource_file_count": 0,
+            "code_behind_file_count": 0,
+            "package_reference_count": 10,
+            "ui_surface_count": 0,
+            "files": [
+              "LibreHardwareMonitorLib/Hardware/Battery/Battery.cs",
+              "LibreHardwareMonitorLib/Hardware/Battery/BatteryChemistry.cs",
+              "LibreHardwareMonitorLib/Hardware/Battery/BatteryGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/CompositeSensor.cs",
+              "LibreHardwareMonitorLib/Hardware/Computer.cs",
+              "LibreHardwareMonitorLib/Hardware/Control.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/AeroCool/AeroCoolGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/AeroCool/P7-H1.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/AquaComputer/AquaComputerGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/AquaComputer/AquastreamUltimate.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/AquaComputer/AquastreamXT.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/AquaComputer/D5Next.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/AquaComputer/Farbwerk.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/AquaComputer/Farbwerk360.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/AquaComputer/HighFlowNext.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/AquaComputer/MPS.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/AquaComputer/Octo.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/AquaComputer/Quadro.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/Arctic/ArcticFanController.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/Arctic/ArcticGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/Arctic/README.MD",
+              "LibreHardwareMonitorLib/Hardware/Controller/Heatmaster/Heatmaster.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/Heatmaster/HeatmasterGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/MSI/MsiConstants.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/MSI/MsiCoreLiquidController.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/MSI/MsiDevice.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/MSI/MsiFan.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/MSI/MsiFanControl.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/MSI/MsiFanMode.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/MSI/MsiGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/MSI/MsiSensor.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/Nzxt/GridV3.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/Nzxt/KrakenV2.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/Nzxt/KrakenV3.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/Nzxt/NzxtGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/Razer/RazerFanController.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/Razer/RazerGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/TBalancer/TBalancer.cs",
+              "LibreHardwareMonitorLib/Hardware/Controller/TBalancer/TBalancerGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/CoreType.cs",
+              "LibreHardwareMonitorLib/Hardware/Cpu/Amd0FCpu.cs",
+              "LibreHardwareMonitorLib/Hardware/Cpu/Amd10Cpu.cs",
+              "LibreHardwareMonitorLib/Hardware/Cpu/Amd17Cpu.cs",
+              "LibreHardwareMonitorLib/Hardware/Cpu/AmdCpu.cs",
+              "LibreHardwareMonitorLib/Hardware/Cpu/CpuGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Cpu/CpuId.cs",
+              "LibreHardwareMonitorLib/Hardware/Cpu/CpuLoad.cs",
+              "LibreHardwareMonitorLib/Hardware/Cpu/GenericCpu.cs",
+              "LibreHardwareMonitorLib/Hardware/Cpu/IntelCpu.cs",
+              "LibreHardwareMonitorLib/Hardware/D3DDisplayDevice.cs",
+              "LibreHardwareMonitorLib/Hardware/FirmwareTable.cs",
+              "LibreHardwareMonitorLib/Hardware/Gpu/AmdGpu.cs",
+              "LibreHardwareMonitorLib/Hardware/Gpu/AmdGpuGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Gpu/GenericGpu.cs",
+              "LibreHardwareMonitorLib/Hardware/Gpu/IntelDiscreteGpu.cs",
+              "LibreHardwareMonitorLib/Hardware/Gpu/IntelGpuGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Gpu/IntelIntegratedGpu.cs",
+              "LibreHardwareMonitorLib/Hardware/Gpu/NvidiaGpu.cs",
+              "LibreHardwareMonitorLib/Hardware/Gpu/NvidiaGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/GroupAffinity.cs",
+              "LibreHardwareMonitorLib/Hardware/Hardware.cs",
+              "LibreHardwareMonitorLib/Hardware/HardwareType.cs",
+              "LibreHardwareMonitorLib/Hardware/IComputer.cs",
+              "LibreHardwareMonitorLib/Hardware/IControl.cs",
+              "LibreHardwareMonitorLib/Hardware/IElement.cs",
+              "LibreHardwareMonitorLib/Hardware/IGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/IHardware.cs",
+              "LibreHardwareMonitorLib/Hardware/IHardwareChanged.cs",
+              "LibreHardwareMonitorLib/Hardware/IParameter.cs",
+              "LibreHardwareMonitorLib/Hardware/ISensor.cs",
+              "LibreHardwareMonitorLib/Hardware/ISensorHistoryReader.cs",
+              "LibreHardwareMonitorLib/Hardware/ISensorLimits.cs",
+              "LibreHardwareMonitorLib/Hardware/ISettings.cs",
+              "LibreHardwareMonitorLib/Hardware/IVisitor.cs",
+              "LibreHardwareMonitorLib/Hardware/Identifier.cs",
+              "LibreHardwareMonitorLib/Hardware/Memory/DimmMemory.cs",
+              "LibreHardwareMonitorLib/Hardware/Memory/MemoryGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Memory/MemoryLinux.cs",
+              "LibreHardwareMonitorLib/Hardware/Memory/MemoryWindows.cs",
+              "LibreHardwareMonitorLib/Hardware/Memory/Sensors/SpdThermalSensor.cs",
+              "LibreHardwareMonitorLib/Hardware/Memory/TotalMemory.cs",
+              "LibreHardwareMonitorLib/Hardware/Memory/VirtualMemory.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Control.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Fan.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Identification.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/Chip.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/EC/ChromeOSEmbeddedController.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/EC/ChromeOSEmbeddedControllerIO.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/EC/EmbeddedController.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/EC/EmbeddedControllerReader.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/EC/EmbeddedControllerSource.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/EC/IEmbeddedControllerIO.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/EC/WindowsEmbeddedController.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/EC/WindowsEmbeddedControllerIO.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/EcioPortGigabyteController.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/F718XX.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/IGigabyteController.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/ISuperIO.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/IT879xEcioPort.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/IT87XX.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/Ipmi.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/IsaBridgeGigabyteController.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/LMSensors.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/LpcIO.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/LpcPort.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/Nct677X.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/W836XX.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Manufacturer.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Model.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Motherboard.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/MotherboardGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/SuperIOHardware.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Temperature.cs",
+              "LibreHardwareMonitorLib/Hardware/Motherboard/Voltage.cs",
+              "LibreHardwareMonitorLib/Hardware/Mutexes.cs",
+              "LibreHardwareMonitorLib/Hardware/Network/Network.cs",
+              "LibreHardwareMonitorLib/Hardware/Network/NetworkGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/OpCode.cs",
+              "LibreHardwareMonitorLib/Hardware/Parameter.cs",
+              "LibreHardwareMonitorLib/Hardware/ParameterDescription.cs",
+              "LibreHardwareMonitorLib/Hardware/PowerMonitor/IPowerMonitor.cs",
+              "LibreHardwareMonitorLib/Hardware/PowerMonitor/PowerMonitorGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/PowerMonitor/SharedSerialPort.cs",
+              "LibreHardwareMonitorLib/Hardware/PowerMonitor/WireViewPro2.cs",
+              "LibreHardwareMonitorLib/Hardware/PowerMonitor/WireViewPro2Sensor.cs",
+              "LibreHardwareMonitorLib/Hardware/Psu/Corsair/CorsairPsu.cs",
+              "LibreHardwareMonitorLib/Hardware/Psu/Corsair/CorsairPsuGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Psu/Corsair/UsbApi.cs",
+              "LibreHardwareMonitorLib/Hardware/Psu/Msi/MsiPsu.cs",
+              "LibreHardwareMonitorLib/Hardware/Psu/Msi/MsiPsuGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/Psu/Msi/UsbApi.cs",
+              "LibreHardwareMonitorLib/Hardware/Psu/ProtocolError.cs",
+              "LibreHardwareMonitorLib/Hardware/RyzenSMU.cs",
+              "LibreHardwareMonitorLib/Hardware/SMBios.cs",
+              "LibreHardwareMonitorLib/Hardware/Sensor.cs",
+              "LibreHardwareMonitorLib/Hardware/SensorHistorySlice.cs",
+              "LibreHardwareMonitorLib/Hardware/SensorVisitor.cs",
+              "LibreHardwareMonitorLib/Hardware/Storage/ISmart.cs",
+              "LibreHardwareMonitorLib/Hardware/Storage/SmartAttribute.cs",
+              "LibreHardwareMonitorLib/Hardware/Storage/StorageDevice.cs",
+              "LibreHardwareMonitorLib/Hardware/Storage/StorageDeviceSensor.cs",
+              "LibreHardwareMonitorLib/Hardware/Storage/StorageGroup.cs",
+              "LibreHardwareMonitorLib/Hardware/TemperatureRateSensor.cs",
+              "LibreHardwareMonitorLib/Hardware/ThreadAffinity.cs",
+              "LibreHardwareMonitorLib/Interop/AtiAdlxx.cs",
+              "LibreHardwareMonitorLib/Interop/ByteExtensions.cs",
+              "LibreHardwareMonitorLib/Interop/Ftd2xx.cs",
+              "LibreHardwareMonitorLib/Interop/IntelGcl.cs",
+              "LibreHardwareMonitorLib/Interop/Ipmi.cs",
+              "LibreHardwareMonitorLib/Interop/LibC.cs",
+              "LibreHardwareMonitorLib/Interop/NvApi.cs",
+              "LibreHardwareMonitorLib/Interop/NvidiaML.cs",
+              "LibreHardwareMonitorLib/Interop/PowerMonitor/DeviceData.cs",
+              "LibreHardwareMonitorLib/Interop/PowerMonitor/Stm32PortFinder.cs",
+              "LibreHardwareMonitorLib/Interop/PowerMonitor/StructureConversion.cs",
+              "LibreHardwareMonitorLib/Interop/PowerMonitor/WireViewPro2Constants.cs",
+              "LibreHardwareMonitorLib/Interop/PowerMonitor/WireViewPro2Enums.cs",
+              "LibreHardwareMonitorLib/Interop/PowerMonitor/WireViewPro2Structures.cs",
+              "LibreHardwareMonitorLib/LibreHardwareMonitorLib.csproj",
+              "LibreHardwareMonitorLib/PawnIo/AmdFamily0F.cs",
+              "LibreHardwareMonitorLib/PawnIo/AmdFamily10.cs",
+              "LibreHardwareMonitorLib/PawnIo/AmdFamily17.cs",
+              "LibreHardwareMonitorLib/PawnIo/IntelMsr.cs",
+              "LibreHardwareMonitorLib/PawnIo/IsaBridgeEc.cs",
+              "LibreHardwareMonitorLib/PawnIo/LpcACPIEC.cs",
+              "LibreHardwareMonitorLib/PawnIo/LpcCrOS.cs",
+              "LibreHardwareMonitorLib/PawnIo/LpcIO.cs",
+              "LibreHardwareMonitorLib/PawnIo/PawnIo.cs",
+              "LibreHardwareMonitorLib/PawnIo/RyzenSmu.cs",
+              "LibreHardwareMonitorLib/RAMSPDToolkitDriver.cs",
+              "LibreHardwareMonitorLib/Resources/packageicon.png",
+              "LibreHardwareMonitorLib/Software/OperatingSystem.cs"
+            ]
+          },
+          {
+            "project": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj",
+            "name": "LibreHardwareMonitor.Avalonia.Spike.Core",
+            "startup": false,
+            "file_count": 10,
+            "line_count": 1120,
+            "xaml_file_count": 0,
+            "resource_file_count": 0,
+            "code_behind_file_count": 0,
+            "package_reference_count": 0,
+            "ui_surface_count": 0,
+            "files": [
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/Contracts/ISensorFixtureLoader.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/Contracts/SensorLoadError.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/Contracts/SensorLoadLimits.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/Contracts/SensorLoadResult.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/Contracts/SensorNodeSnapshot.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/Contracts/SensorSnapshot.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/LibreHardwareMonitor.Avalonia.Spike.Core.csproj",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/Parsing/BoundedDataJsonFixtureLoader.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/Parsing/DataJsonProjection.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/Parsing/SensorValueProjection.cs"
+            ]
+          },
+          {
+            "project": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+            "name": "LibreHardwareMonitor.Avalonia.Spike.Tests",
+            "startup": false,
+            "file_count": 15,
+            "line_count": 2780,
+            "xaml_file_count": 0,
+            "resource_file_count": 0,
+            "code_behind_file_count": 0,
+            "package_reference_count": 2,
+            "ui_surface_count": 0,
+            "files": [
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/Fixtures/hotplug-after.json",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/Fixtures/hotplug-before.json",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/Fixtures/malformed.json",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/Fixtures/normal.json",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/Fixtures/oversized-string.json",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/Fixtures/unavailable.json",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/Integration/FixtureExplorerIntegrationTests.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/LibreHardwareMonitor.Avalonia.Spike.Tests.csproj",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/Parsing/BoundedDataJsonFixtureLoaderTests.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/Parsing/FixtureReplacementTests.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/Parsing/GeneratedLimitCases.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/UI/MainWindowHeadlessTests.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/UI/MainWindowViewModelTests.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/UI/TestAppBuilder.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/UI/TestApplication.cs"
+            ]
+          },
+          {
+            "project": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "name": "LibreHardwareMonitor.Avalonia.Spike",
+            "startup": true,
+            "file_count": 11,
+            "line_count": 923,
+            "xaml_file_count": 2,
+            "resource_file_count": 0,
+            "code_behind_file_count": 2,
+            "package_reference_count": 3,
+            "ui_surface_count": 2,
+            "files": [
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Program.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Services/FilePickerFixtureSource.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/ViewModels/FixtureChoice.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/ViewModels/MainWindowViewModel.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/ViewModels/SensorNodeViewModel.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/ViewModels/ViewModelBase.cs",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+              "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+            ]
+          }
+        ]
+      },
+      "priority_projects": {
+        "startup": [
+          "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj"
+        ],
+        "packaging": []
+      },
+      "coordination_hotspots": [
+        {
+          "kind": "process-manifest",
+          "project": "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+          "entry": "LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest",
+          "files": [
+            "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "LibreHardwareMonitor.Windows.Forms/Resources/app.manifest",
+            "LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest"
+          ],
+          "reason": "desktop process manifest surface",
+          "startup": false
+        },
+        {
+          "kind": "shell",
+          "project": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "entry": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+          "files": [
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+          ],
+          "reason": "desktop shell surface",
+          "startup": true
+        },
+        {
+          "kind": "startup",
+          "project": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+          "entry": "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+          "files": [
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj"
+          ],
+          "reason": "desktop startup surface",
+          "startup": true
+        },
+        {
+          "kind": "conflict-zone",
+          "project": "",
+          "entry": "",
+          "files": [
+            "LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs",
+            "LibreHardwareMonitorLib/Hardware/Computer.cs"
+          ],
+          "reason": "hardware lifetime and ordered option/reset ownership",
+          "startup": false
+        },
+        {
+          "kind": "conflict-zone",
+          "project": "",
+          "entry": "",
+          "files": [
+            "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/DataJsonGoldenTests.cs",
+            "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/data.golden.json",
+            "LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs"
+          ],
+          "reason": "external data.json and HTTP mutation contract",
+          "startup": false
+        },
+        {
+          "kind": "conflict-zone",
+          "project": "",
+          "entry": "",
+          "files": [
+            "LibreHardwareMonitor.Windows.Forms/UI/StartupManager.cs",
+            "LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs",
+            "LibreHardwareMonitor.Windows.Forms/Utilities/RuntimePaths.cs"
+          ],
+          "reason": "settings, runtime paths, and startup ownership",
+          "startup": false
+        },
+        {
+          "kind": "conflict-zone",
+          "project": "",
+          "entry": "",
+          "files": [
+            "Directory.Packages.props",
+            "LibreHardwareMonitor.sln",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx"
+          ],
+          "reason": "central package and project graph",
+          "startup": false
+        },
+        {
+          "kind": "conflict-zone",
+          "project": "",
+          "entry": "",
+          "files": [
+            "data/plans/",
+            "docs/README.md",
+            "live-tracker.md"
+          ],
+          "reason": "current status and campaign truth",
+          "startup": false
+        },
+        {
+          "kind": "conflict-zone",
+          "project": "",
+          "entry": "",
+          "files": [
+            ".codex/skills/project.toml",
+            "eng/ci/Invoke-LhmGates.ps1"
+          ],
+          "reason": "gate definition drift between the runner and the configuration",
+          "startup": false
+        },
+        {
+          "kind": "conflict-zone",
+          "project": "",
+          "entry": "",
+          "files": [
+            "docs/architecture/campaign-control-plane.md",
+            "scripts/task_runtime/test_campaign_history.py"
+          ],
+          "reason": "campaign-runtime provenance record and its overlay files",
+          "startup": false
+        },
+        {
+          "kind": "conflict-zone",
+          "project": "",
+          "entry": "",
+          "files": [
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs"
+          ],
+          "reason": "xaml-code-behind pair",
+          "startup": false
+        },
+        {
+          "kind": "conflict-zone",
+          "project": "",
+          "entry": "",
+          "files": [
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+          ],
+          "reason": "xaml-code-behind pair",
+          "startup": false
+        },
+        {
+          "kind": "conflict-zone",
+          "project": "",
+          "entry": "",
+          "files": [
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/App.axaml.cs",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj"
+          ],
+          "reason": "desktop app startup surface",
+          "startup": false
+        },
+        {
+          "kind": "conflict-zone",
+          "project": "",
+          "entry": "",
+          "files": [
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/LibreHardwareMonitor.Avalonia.Spike.csproj",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml",
+            "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/Views/MainWindow.axaml.cs"
+          ],
+          "reason": "desktop shell surface",
+          "startup": false
+        },
+        {
+          "kind": "conflict-zone",
+          "project": "",
+          "entry": "",
+          "files": [
+            "LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj",
+            "LibreHardwareMonitor.Windows.Forms/Resources/app.net472.manifest"
+          ],
+          "reason": "desktop process manifest",
+          "startup": false
+        }
+      ]
+    }
+  },
+  "backfill_reasons": [
+    "Coordinator integration evidence 2026-08-01: product baseline 779d9044ef63b3cb91f547d9306dc543e2eb4ae6; corrected planning/metadata baseline 59a0c37968c9837b43b8baa17cad4ca5762dde80 replaced the colliding Application.Snapshots namespace with ApplicationModel.Snapshots after 17 CS0234 errors. AG source dbc7e5dd20b49ceba1f5827d4e2cb3e31158a856 integrated as cbd1013c431cb745c6f30420755491963197c843 with stable patch-id 9b8bb96abbaffabc9fb75940c91f7deff9029345; AH source 215190f93a7494331a5d534e66fbff2b516f120d integrated as 3a31eb59039a4ce51be642534d8ac9458e9441fd with stable patch-id a00a0babf9417a688fe5483d6fba0c644bdd5d24. All six source/integrated owned-file blob pairs match, AG precedes AH, and git diff --name-status 59a0c37968c9837b43b8baa17cad4ca5762dde80..3a31eb59039a4ce51be642534d8ac9458e9441fd contains exactly the six authorized AG/AH files.",
+    "AI independent verification 2026-08-01: restore passed; SensorSnapshotTests 5/5; DataJsonProjectionTests 3/3; DataJsonGoldenTests 2/2; HttpServer Sensor plus Prometheus 47/47 (the prescribed combined filter was 49/49); Library 68/68, Contracts 67/67, and Application 152 discovered/151 passed/one established SettingsPersistenceTests.LiveConfigCopy_LoadsAndCompactsWithinMemoryBudgets opt-in skip, totaling exactly 287 discovered/286 passed/one skipped. WinForms x64 Release net10.0-windows and net472 each built with zero warnings and zero errors; the isolated Avalonia gate passed 75/75 with only established AVLN3001; web checks passed 315/315 and 18/18; all eight included non-deploying CI gates passed with ci-gates excluded only as self-referential. The unchanged golden retained Git blob 05113704acc6fefeb4128004b3f523d876fbcec4 and SHA-256 BEBDE807A7F0037827E16CFBC1F41707701F2BEE7232385C3D2EAEBD2261D2F3, the product-baseline golden diff exited zero, and the shipping WinForms/solution scan found no Avalonia or Spike.Core reference. The clean pre-edit preflight was ready with zero errors and warnings; the final documentation-complete preflight was ready with zero errors and only the expected dirty-tree warning. Analyze exited zero, and Git whitespace/scope checks passed. The exact plan validate command exited zero but reported No plans because the isolated worktree intentionally had no ignored data/tasks.json; direct strict validation of the tracked plan returned zero errors and only the two established unassigned-analysis warnings, and no local execution ledger was created.",
+    "AI read-only SND-HOST separation evidence 2026-08-01: the supplied 14:01:29+01:00 sample was PID 14876 and CSV 109948658 bytes. AI sample 1 at 15:24:44+01:00 and sample 2 at 15:30:34+01:00 retained exactly one PID 14876 at E:\\SQ_HQ\\Monitoring\\LibreHardwareMonitorStack\\deployments\\current\\LibreHardwareMonitor.Windows.Forms.exe; root task \\\\LibreHardwareMonitor remained Running with result 267009 and exact action/working directory; 192.168.2.5:8080 returned HTTP 200 for /, /data.json, and /metrics; and the current-day CSV grew from 118509168 to 119129453 bytes, up 620285 bytes between AI samples and 9180795 bytes above the supplied sample. No runtime, task, setting, listener, candidate, deployment, rollback, manifest, log, archive, or operations file was mutated. Plan lifecycle remains executed and ledger state is implemented, never accepted; Phase 4 item 1 is complete, Phase 4 is in progress, Plan-009/agent-aj is next, and A1 remains open and person-only."
+  ],
+  "approved_at": "2026-08-01T13:25:12+00:00",
+  "executed_at": "2026-08-01T13:25:13+00:00",
+  "updated_at": "2026-08-01T14:45:28+00:00"
+}

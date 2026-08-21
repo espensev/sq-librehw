@@ -1,0 +1,54 @@
+# Campaign Skills — Project Configuration Template
+#
+# `python scripts/task_manager.py init --force` renders this file into
+# `.codex/skills/project.toml` using local project detection.
+# Keep this template generic and portable.
+
+[project]
+name = {{PROJECT_NAME}}
+conventions = {{CONVENTIONS_PATH}}
+
+[paths]
+state = "data/tasks.json"
+plans = "data/plans"
+specs = "agents/"
+tracker = "live-tracker.md"
+
+[commands]
+{{TEST_LINE}}
+{{TEST_FAST_LINE}}
+{{TEST_FULL_LINE}}
+{{COMPILE_LINE}}
+{{BUILD_LINE}}
+
+[models]
+# Abstract launch tiers. Keep these portable and map them to provider-specific
+# models at launch time.
+# On Codex, `mini` commonly maps to `GPT-5.3-Codex-Spark` for bounded
+# background subagents when available.
+low = "mini"
+medium = "standard"
+high = "max"
+
+# [modules]
+# core = ["src/main.py"]
+# tests = ["tests/"]
+
+# [conflict-zones]
+# zones = ["file1.py, file2.py | reason they conflict"]
+
+# [analysis]
+# mode = "auto"
+# providers = ["dotnet-cli"]
+# include-globs = ["*.cs", "*.xaml", "*.cpp", "*.h", "CMakeLists.txt"]
+# exclude-globs = ["generated/**", "packages/**"]
+
+# Optional: only for `$qa smoke` in repos that expose an HTTP app or API.
+# [smoke-test]
+# start = "<dev-server command>"
+# base-url = "http://127.0.0.1:8000"
+# endpoints = ["/health"]
+
+# [ship]
+# exclude-extra = []
+# warn = []

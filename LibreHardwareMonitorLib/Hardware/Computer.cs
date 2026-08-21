@@ -35,20 +35,28 @@ namespace LibreHardwareMonitor.Hardware;
 /// </summary>
 public class Computer : IComputer
 {
-    private readonly List<IGroup> _groups = new();
-    private readonly object _lock = new();
+    internal const int MaxConfigurationBuildAttempts = 4;
+
+    private readonly HardwareGroupRegistry _registry;
+    private readonly List<IGroup> _groups;
+    private readonly object _lock;
+    private readonly OpenDependencies _openDependencies;
     private readonly ISettings _settings;
 
     private bool _batteryEnabled;
+    private bool _closing;
     private bool _controllerEnabled;
     private bool _cpuEnabled;
+    private int _enabledChangeVersion;
     private bool _gpuEnabled;
     private bool _powerMonitorEnabled;
     private bool _memoryEnabled;
     private bool _motherboardEnabled;
     private bool _networkEnabled;
     private bool _open;
+    private bool _opening;
     private bool _psuEnabled;
+    private bool _resetting;
     private SMBios _smbios;
     private bool _storageEnabled;
 
@@ -56,8 +64,8 @@ public class Computer : IComputer
     /// Creates a new <see cref="IComputer" /> instance with basic initial <see cref="Settings" />.
     /// </summary>
     public Computer()
+        : this(null, OpenDependencies.Default)
     {
-        _settings = new Settings();
     }
 
     /// <summary>
@@ -65,8 +73,17 @@ public class Computer : IComputer
     /// </summary>
     /// <param name="settings">Computer settings that will be transferred to each <see cref="IHardware" />.</param>
     public Computer(ISettings settings)
+        : this(settings, OpenDependencies.Default)
+    {
+    }
+
+    internal Computer(ISettings settings, OpenDependencies openDependencies)
     {
         _settings = settings ?? new Settings();
+        _openDependencies = openDependencies ?? throw new ArgumentNullException(nameof(openDependencies));
+        _registry = new HardwareGroupRegistry(() => HardwareAdded, () => HardwareRemoved);
+        _groups = _registry.Groups;
+        _lock = _registry.SyncRoot;
     }
 
     /// <inheritdoc />
@@ -98,19 +115,19 @@ public class Computer : IComputer
         get { return _batteryEnabled; }
         set
         {
-            if (_open && value != _batteryEnabled)
+            if (!ShouldApplyEnabledChange(value, ref _batteryEnabled))
+                return;
+
+            if (value)
             {
-                if (value)
-                {
-                    Add(new BatteryGroup(_settings));
-                }
-                else
-                {
-                    RemoveType<BatteryGroup>();
-                }
+                _registry.Add(new BatteryGroup(_settings));
+            }
+            else
+            {
+                _registry.RemoveType<BatteryGroup>();
             }
 
-            _batteryEnabled = value;
+            CommitEnabledChange(value, ref _batteryEnabled);
         }
     }
 
@@ -120,33 +137,33 @@ public class Computer : IComputer
         get { return _controllerEnabled; }
         set
         {
-            if (_open && value != _controllerEnabled)
+            if (!ShouldApplyEnabledChange(value, ref _controllerEnabled))
+                return;
+
+            if (value)
             {
-                if (value)
-                {
-                    Add(new TBalancerGroup(_settings));
-                    Add(new HeatmasterGroup(_settings));
-                    Add(new AquaComputerGroup(_settings));
-                    Add(new AeroCoolGroup(_settings));
-                    Add(new NzxtGroup(_settings));
-                    Add(new RazerGroup(_settings));
-                    Add(new ArcticGroup(_settings));
-                    Add(new MsiGroup(_settings));
-                }
-                else
-                {
-                    RemoveType<TBalancerGroup>();
-                    RemoveType<HeatmasterGroup>();
-                    RemoveType<AquaComputerGroup>();
-                    RemoveType<AeroCoolGroup>();
-                    RemoveType<NzxtGroup>();
-                    RemoveType<RazerGroup>();
-                    RemoveType<ArcticGroup>();
-                    RemoveType<MsiGroup>();
-                }
+                _registry.Add(new TBalancerGroup(_settings));
+                _registry.Add(new HeatmasterGroup(_settings));
+                _registry.Add(new AquaComputerGroup(_settings));
+                _registry.Add(new AeroCoolGroup(_settings));
+                _registry.Add(new NzxtGroup(_settings));
+                _registry.Add(new RazerGroup(_settings));
+                _registry.Add(new ArcticGroup(_settings));
+                _registry.Add(new MsiGroup(_settings));
+            }
+            else
+            {
+                _registry.RemoveType<TBalancerGroup>();
+                _registry.RemoveType<HeatmasterGroup>();
+                _registry.RemoveType<AquaComputerGroup>();
+                _registry.RemoveType<AeroCoolGroup>();
+                _registry.RemoveType<NzxtGroup>();
+                _registry.RemoveType<RazerGroup>();
+                _registry.RemoveType<ArcticGroup>();
+                _registry.RemoveType<MsiGroup>();
             }
 
-            _controllerEnabled = value;
+            CommitEnabledChange(value, ref _controllerEnabled);
         }
     }
 
@@ -156,15 +173,15 @@ public class Computer : IComputer
         get { return _cpuEnabled; }
         set
         {
-            if (_open && value != _cpuEnabled)
-            {
-                if (value)
-                    Add(new CpuGroup(_settings));
-                else
-                    RemoveType<CpuGroup>();
-            }
+            if (!ShouldApplyEnabledChange(value, ref _cpuEnabled))
+                return;
 
-            _cpuEnabled = value;
+            if (value)
+                _registry.Add(new CpuGroup(_settings));
+            else
+                _registry.RemoveType<CpuGroup>();
+
+            CommitEnabledChange(value, ref _cpuEnabled);
         }
     }
 
@@ -174,25 +191,25 @@ public class Computer : IComputer
         get { return _gpuEnabled; }
         set
         {
-            if (_open && value != _gpuEnabled)
-            {
-                if (value)
-                {
-                    Add(new AmdGpuGroup(_settings));
-                    Add(new NvidiaGroup(_settings));
+            if (!ShouldApplyEnabledChange(value, ref _gpuEnabled))
+                return;
 
-                    if (_cpuEnabled)
-                        Add(new IntelGpuGroup(GetIntelCpus(), _settings));
-                }
-                else
-                {
-                    RemoveType<AmdGpuGroup>();
-                    RemoveType<NvidiaGroup>();
-                    RemoveType<IntelGpuGroup>();
-                }
+            if (value)
+            {
+                _registry.Add(new AmdGpuGroup(_settings));
+                _registry.Add(new NvidiaGroup(_settings));
+
+                if (_cpuEnabled)
+                    _registry.Add(new IntelGpuGroup(GetIntelCpus(), _settings));
+            }
+            else
+            {
+                _registry.RemoveType<AmdGpuGroup>();
+                _registry.RemoveType<NvidiaGroup>();
+                _registry.RemoveType<IntelGpuGroup>();
             }
 
-            _gpuEnabled = value;
+            CommitEnabledChange(value, ref _gpuEnabled);
         }
     }
 
@@ -202,15 +219,15 @@ public class Computer : IComputer
         get { return _powerMonitorEnabled; }
         set
         {
-            if (_open && value != _powerMonitorEnabled)
-            {
-                if (value)
-                    Add(new PowerMonitorGroup(_settings));
-                else
-                    RemoveType<PowerMonitorGroup>();
-            }
+            if (!ShouldApplyEnabledChange(value, ref _powerMonitorEnabled))
+                return;
 
-            _powerMonitorEnabled = value;
+            if (value)
+                _registry.Add(new PowerMonitorGroup(_settings));
+            else
+                _registry.RemoveType<PowerMonitorGroup>();
+
+            CommitEnabledChange(value, ref _powerMonitorEnabled);
         }
     }
 
@@ -220,15 +237,15 @@ public class Computer : IComputer
         get { return _memoryEnabled; }
         set
         {
-            if (_open && value != _memoryEnabled)
-            {
-                if (value)
-                    Add(new MemoryGroup(_settings));
-                else
-                    RemoveType<MemoryGroup>();
-            }
+            if (!ShouldApplyEnabledChange(value, ref _memoryEnabled))
+                return;
 
-            _memoryEnabled = value;
+            if (value)
+                _registry.Add(new MemoryGroup(_settings));
+            else
+                _registry.RemoveType<MemoryGroup>();
+
+            CommitEnabledChange(value, ref _memoryEnabled);
         }
     }
 
@@ -238,15 +255,15 @@ public class Computer : IComputer
         get { return _motherboardEnabled; }
         set
         {
-            if (_open && value != _motherboardEnabled)
-            {
-                if (value)
-                    Add(new MotherboardGroup(_smbios, _settings));
-                else
-                    RemoveType<MotherboardGroup>();
-            }
+            if (!ShouldApplyEnabledChange(value, ref _motherboardEnabled))
+                return;
 
-            _motherboardEnabled = value;
+            if (value)
+                _registry.Add(new MotherboardGroup(_smbios, _settings));
+            else
+                _registry.RemoveType<MotherboardGroup>();
+
+            CommitEnabledChange(value, ref _motherboardEnabled);
         }
     }
 
@@ -256,15 +273,15 @@ public class Computer : IComputer
         get { return _networkEnabled; }
         set
         {
-            if (_open && value != _networkEnabled)
-            {
-                if (value)
-                    Add(new NetworkGroup(_settings));
-                else
-                    RemoveType<NetworkGroup>();
-            }
+            if (!ShouldApplyEnabledChange(value, ref _networkEnabled))
+                return;
 
-            _networkEnabled = value;
+            if (value)
+                _registry.Add(new NetworkGroup(_settings));
+            else
+                _registry.RemoveType<NetworkGroup>();
+
+            CommitEnabledChange(value, ref _networkEnabled);
         }
     }
 
@@ -274,21 +291,21 @@ public class Computer : IComputer
         get { return _psuEnabled; }
         set
         {
-            if (_open && value != _psuEnabled)
+            if (!ShouldApplyEnabledChange(value, ref _psuEnabled))
+                return;
+
+            if (value)
             {
-                if (value)
-                {
-                    Add(new CorsairPsuGroup(_settings));
-                    Add(new MsiPsuGroup(_settings));
-                }
-                else
-                {
-                    RemoveType<CorsairPsuGroup>();
-                    RemoveType<MsiPsuGroup>();
-                }
+                _registry.Add(new CorsairPsuGroup(_settings));
+                _registry.Add(new MsiPsuGroup(_settings));
+            }
+            else
+            {
+                _registry.RemoveType<CorsairPsuGroup>();
+                _registry.RemoveType<MsiPsuGroup>();
             }
 
-            _psuEnabled = value;
+            CommitEnabledChange(value, ref _psuEnabled);
         }
     }
 
@@ -298,15 +315,54 @@ public class Computer : IComputer
         get { return _storageEnabled; }
         set
         {
-            if (_open && value != _storageEnabled)
+            if (!ShouldApplyEnabledChange(value, ref _storageEnabled))
+                return;
+
+            if (value)
+                _registry.Add(new StorageGroup(_settings));
+            else
+                _registry.RemoveType<StorageGroup>();
+
+            CommitEnabledChange(value, ref _storageEnabled);
+        }
+    }
+
+    private bool ShouldApplyEnabledChange(bool value, ref bool enabled)
+    {
+        lock (_lock)
+        {
+            if (value == enabled)
+                return false;
+
+            if (!_open || _opening || _closing || _resetting)
             {
-                if (value)
-                    Add(new StorageGroup(_settings));
-                else
-                    RemoveType<StorageGroup>();
+                // Lifecycle callbacks may request the next configuration, but
+                // they must not mutate the group set being opened or drained.
+                enabled = value;
+                unchecked
+                {
+                    _enabledChangeVersion++;
+                }
+
+                return false;
             }
 
-            _storageEnabled = value;
+            return true;
+        }
+    }
+
+    private void CommitEnabledChange(bool value, ref bool enabled)
+    {
+        lock (_lock)
+        {
+            if (value == enabled)
+                return;
+
+            enabled = value;
+            unchecked
+            {
+                _enabledChangeVersion++;
+            }
         }
     }
 
@@ -355,9 +411,13 @@ public class Computer : IComputer
             w.WriteLine("Sensors");
             w.WriteLine();
 
+            var hardwareSnapshots = new Dictionary<IGroup, IReadOnlyList<IHardware>>(_groups.Count);
+            foreach (IGroup group in _groups)
+                hardwareSnapshots.Add(group, group.Hardware);
+
             foreach (IGroup group in _groups)
             {
-                foreach (IHardware hardware in group.Hardware)
+                foreach (IHardware hardware in hardwareSnapshots[group])
                     ReportHardwareSensorTree(hardware, w, string.Empty);
             }
 
@@ -369,7 +429,7 @@ public class Computer : IComputer
 
             foreach (IGroup group in _groups)
             {
-                foreach (IHardware hardware in group.Hardware)
+                foreach (IHardware hardware in hardwareSnapshots[group])
                     ReportHardwareParameterTree(hardware, w, string.Empty);
             }
 
@@ -384,7 +444,7 @@ public class Computer : IComputer
                     w.Write(report);
                 }
 
-                foreach (IHardware hardware in group.Hardware)
+                foreach (IHardware hardware in hardwareSnapshots[group])
                     ReportHardware(hardware, w);
             }
 
@@ -416,89 +476,12 @@ public class Computer : IComputer
             for (int i = 0; i < _groups.Count; i++)
             {
                 IGroup group = _groups[i];
+                IReadOnlyList<IHardware> hardware = group.Hardware;
 
-                for (int j = 0; j < group.Hardware.Count; j++)
-                    group.Hardware[j].Accept(visitor);
+                for (int j = 0; j < hardware.Count; j++)
+                    hardware[j].Accept(visitor);
             }
         }
-    }
-
-    private void HardwareAddedEvent(IHardware hardware)
-    {
-        HardwareAdded?.Invoke(hardware);
-    }
-
-    private void HardwareRemovedEvent(IHardware hardware)
-    {
-        HardwareRemoved?.Invoke(hardware);
-    }
-
-    private void Add(IGroup group)
-    {
-        if (group == null)
-            return;
-
-        lock (_lock)
-        {
-            if (_groups.Contains(group))
-                return;
-
-            _groups.Add(group);
-
-            if (group is IHardwareChanged hardwareChanged)
-            {
-                hardwareChanged.HardwareAdded += HardwareAddedEvent;
-                hardwareChanged.HardwareRemoved += HardwareRemovedEvent;
-            }
-        }
-
-        if (HardwareAdded != null)
-        {
-            foreach (IHardware hardware in group.Hardware)
-                HardwareAdded(hardware);
-        }
-    }
-
-    private void Remove(IGroup group)
-    {
-        lock (_lock)
-        {
-            if (!_groups.Contains(group))
-                return;
-
-            _groups.Remove(group);
-
-            if (group is IHardwareChanged hardwareChanged)
-            {
-                hardwareChanged.HardwareAdded -= HardwareAddedEvent;
-                hardwareChanged.HardwareRemoved -= HardwareRemovedEvent;
-            }
-        }
-
-        if (HardwareRemoved != null)
-        {
-            foreach (IHardware hardware in group.Hardware)
-                HardwareRemoved(hardware);
-        }
-
-        group.Close();
-    }
-
-    private void RemoveType<T>() where T : IGroup
-    {
-        List<T> list = [];
-
-        lock (_lock)
-        {
-            foreach (IGroup group in _groups)
-            {
-                if (group is T t)
-                    list.Add(t);
-            }
-        }
-
-        foreach (T group in list)
-            Remove(group);
     }
 
     /// <summary>
@@ -507,70 +490,246 @@ public class Computer : IComputer
     /// </summary>
     public void Open()
     {
-        if (_open)
+        lock (_lock)
+        {
+            if (_open || _opening || _closing)
+                return;
+
+            _opening = true;
+        }
+
+        bool mutexesOpenAttempted = false;
+        bool opCodeOpenAttempted = false;
+
+        try
+        {
+            _smbios = _openDependencies.CreateSmbios();
+
+            mutexesOpenAttempted = true;
+            _openDependencies.OpenMutexes();
+
+            opCodeOpenAttempted = true;
+            _openDependencies.OpenOpCode();
+
+            for (int attempt = 0; attempt < MaxConfigurationBuildAttempts; attempt++)
+            {
+                int enabledChangeVersion;
+                lock (_lock)
+                    enabledChangeVersion = _enabledChangeVersion;
+
+                AddGroups();
+
+                lock (_lock)
+                {
+                    if (enabledChangeVersion == _enabledChangeVersion)
+                    {
+                        // Publish the completed generation and leave the
+                        // lifecycle guard in one transition. A later setter
+                        // must take the normal live-mutation path.
+                        _open = true;
+                        _opening = false;
+                        return;
+                    }
+                }
+
+                if (attempt + 1 < MaxConfigurationBuildAttempts)
+                    _registry.RemoveGroups();
+            }
+
+            throw new InvalidOperationException(
+                $"Hardware configuration did not stabilize after {MaxConfigurationBuildAttempts} build attempts.");
+        }
+        catch
+        {
+            // Rollback is deliberately best-effort so a cleanup failure cannot
+            // replace the exception that made Open fail.
+            try
+            {
+                RollbackOpen(opCodeOpenAttempted, mutexesOpenAttempted);
+            }
+            catch
+            {
+                // Preserve the original exception.
+            }
+
+            throw;
+        }
+        finally
+        {
+            lock (_lock)
+                _opening = false;
+        }
+    }
+
+    private void RollbackOpen(bool closeOpCode, bool closeMutexes)
+    {
+        List<IGroup> groups;
+
+        lock (_lock)
+        {
+            groups = new List<IGroup>(_groups);
+            _groups.Clear();
+            _open = false;
+            _smbios = null;
+
+            foreach (IGroup group in groups)
+                _registry.Detach(group);
+        }
+
+        for (int i = groups.Count - 1; i >= 0; i--)
+        {
+            IGroup group = groups[i];
+
+            NotifyHardwareRemovedDuringRollback(group);
+
+            try
+            {
+                group.Close();
+            }
+            catch
+            {
+                // Keep rolling back the remaining owners.
+            }
+        }
+
+        if (closeOpCode)
+        {
+            try
+            {
+                _openDependencies.CloseOpCode();
+            }
+            catch
+            {
+                // Keep rolling back the remaining owners.
+            }
+        }
+
+        if (closeMutexes)
+        {
+            try
+            {
+                _openDependencies.CloseMutexes();
+            }
+            catch
+            {
+                // The original Open exception remains authoritative.
+            }
+        }
+    }
+
+    private void NotifyHardwareRemovedDuringRollback(IGroup group)
+    {
+        IReadOnlyList<IHardware> hardware;
+
+        try
+        {
+            hardware = group.Hardware;
+        }
+        catch
+        {
+            return;
+        }
+
+        if (hardware == null)
             return;
 
-        _smbios = new SMBios();
+        int count;
 
-        if (Software.OperatingSystem.IsWindows8OrGreater)
-            Mutexes.Open();
+        try
+        {
+            count = hardware.Count;
+        }
+        catch
+        {
+            return;
+        }
 
-        OpCode.Open();
+        for (int i = 0; i < count; i++)
+        {
+            IHardware item;
 
-        AddGroups();
+            try
+            {
+                item = hardware[i];
+            }
+            catch
+            {
+                continue;
+            }
 
-        _open = true;
+            HardwareEventHandler handlers = HardwareRemoved;
+            if (handlers == null)
+                continue;
+
+            foreach (HardwareEventHandler handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(item);
+                }
+                catch
+                {
+                    // A consumer must not prevent remaining cleanup.
+                }
+            }
+        }
     }
 
     private void AddGroups()
     {
+        if (_openDependencies.AddGroups != null)
+        {
+            _openDependencies.AddGroups(_registry.Add);
+            return;
+        }
+
         if (_motherboardEnabled)
-            Add(new MotherboardGroup(_smbios, _settings));
+            _registry.Add(new MotherboardGroup(_smbios, _settings));
 
         if (_cpuEnabled)
-            Add(new CpuGroup(_settings));
+            _registry.Add(new CpuGroup(_settings));
 
         if (_memoryEnabled)
-            Add(new MemoryGroup(_settings));
+            _registry.Add(new MemoryGroup(_settings));
 
         if (_gpuEnabled)
         {
-            Add(new AmdGpuGroup(_settings));
-            Add(new NvidiaGroup(_settings));
+            _registry.Add(new AmdGpuGroup(_settings));
+            _registry.Add(new NvidiaGroup(_settings));
 
             if (_cpuEnabled)
-                Add(new IntelGpuGroup(GetIntelCpus(), _settings));
+                _registry.Add(new IntelGpuGroup(GetIntelCpus(), _settings));
         }
 
         if (_powerMonitorEnabled)
-            Add(new PowerMonitorGroup(_settings));
+            _registry.Add(new PowerMonitorGroup(_settings));
 
         if (_controllerEnabled)
         {
-            Add(new TBalancerGroup(_settings));
-            Add(new HeatmasterGroup(_settings));
-            Add(new AquaComputerGroup(_settings));
-            Add(new AeroCoolGroup(_settings));
-            Add(new NzxtGroup(_settings));
-            Add(new RazerGroup(_settings));
-            Add(new ArcticGroup(_settings));
-            Add(new MsiGroup(_settings));
+            _registry.Add(new TBalancerGroup(_settings));
+            _registry.Add(new HeatmasterGroup(_settings));
+            _registry.Add(new AquaComputerGroup(_settings));
+            _registry.Add(new AeroCoolGroup(_settings));
+            _registry.Add(new NzxtGroup(_settings));
+            _registry.Add(new RazerGroup(_settings));
+            _registry.Add(new ArcticGroup(_settings));
+            _registry.Add(new MsiGroup(_settings));
         }
 
         if (_storageEnabled)
-            Add(new StorageGroup(_settings));
+            _registry.Add(new StorageGroup(_settings));
 
         if (_networkEnabled)
-            Add(new NetworkGroup(_settings));
+            _registry.Add(new NetworkGroup(_settings));
 
         if (_psuEnabled)
         {
-            Add(new CorsairPsuGroup(_settings));
-            Add(new MsiPsuGroup(_settings));
+            _registry.Add(new CorsairPsuGroup(_settings));
+            _registry.Add(new MsiPsuGroup(_settings));
         }
 
         if (_batteryEnabled)
-            Add(new BatteryGroup(_settings));
+            _registry.Add(new BatteryGroup(_settings));
     }
 
     private static void NewSection(TextWriter writer)
@@ -652,23 +811,32 @@ public class Computer : IComputer
     /// </summary>
     public void Close()
     {
-        if (!_open)
-            return;
-
         lock (_lock)
         {
-            while (_groups.Count > 0)
+            if (!_open || _closing || _resetting)
+                return;
+
+            _closing = true;
+        }
+
+        Exception firstFailure = null;
+        try
+        {
+            HardwareGroupRegistry.CaptureFailure(_registry.RemoveGroups, ref firstFailure);
+            HardwareGroupRegistry.CaptureFailure(_openDependencies.CloseOpCode, ref firstFailure);
+            HardwareGroupRegistry.CaptureFailure(_openDependencies.CloseMutexes, ref firstFailure);
+        }
+        finally
+        {
+            lock (_lock)
             {
-                IGroup group = _groups[_groups.Count - 1];
-                Remove(group);
+                _smbios = null;
+                _open = false;
+                _closing = false;
             }
         }
 
-        OpCode.Close();
-        Mutexes.Close();
-
-        _smbios = null;
-        _open = false;
+        HardwareGroupRegistry.ThrowIfFailed(firstFailure);
     }
 
     /// <summary>
@@ -676,21 +844,71 @@ public class Computer : IComputer
     /// </summary>
     public void Reset()
     {
-        if (!_open)
-            return;
-
-        RemoveGroups();
-        AddGroups();
-    }
-
-    private void RemoveGroups()
-    {
-        lock (_lock)
+        bool resetStarted = false;
+        try
         {
-            while (_groups.Count > 0)
+            lock (_lock)
             {
-                IGroup group = _groups[_groups.Count - 1];
-                Remove(group);
+                if (!_open || _closing || _resetting)
+                    return;
+
+                _resetting = true;
+                resetStarted = true;
+            }
+
+            _registry.RemoveGroups();
+            try
+            {
+                for (int attempt = 0; attempt < MaxConfigurationBuildAttempts; attempt++)
+                {
+                    int enabledChangeVersion;
+                    lock (_lock)
+                        enabledChangeVersion = _enabledChangeVersion;
+
+                    AddGroups();
+
+                    lock (_lock)
+                    {
+                        if (enabledChangeVersion == _enabledChangeVersion)
+                        {
+                            // Let subsequent setters mutate the stable group
+                            // generation normally. The local flag prevents this
+                            // Reset from clearing a newer reentrant Reset.
+                            _resetting = false;
+                            resetStarted = false;
+                            return;
+                        }
+                    }
+
+                    if (attempt + 1 < MaxConfigurationBuildAttempts)
+                        _registry.RemoveGroups();
+                }
+
+                throw new InvalidOperationException(
+                    $"Hardware configuration did not stabilize after {MaxConfigurationBuildAttempts} build attempts.");
+            }
+            catch
+            {
+                // A reset cannot restore already-closed groups, but it must not
+                // leave a partial replacement set behind.
+                try
+                {
+                    _registry.RemoveGroups();
+                }
+                catch
+                {
+                    // Preserve the replacement failure.
+                }
+
+                throw;
+            }
+        }
+        finally
+        {
+            if (resetStarted)
+            {
+                lock (_lock)
+                    _resetting = false;
             }
         }
     }
@@ -725,5 +943,109 @@ public class Computer : IComputer
 
         public void Remove(string name)
         { }
+    }
+
+    internal sealed class OpenDependencies
+    {
+        private static readonly SharedOwner MutexOwner = new(
+            () =>
+            {
+                if (Software.OperatingSystem.IsWindows8OrGreater)
+                    Mutexes.Open();
+            },
+            Mutexes.Close);
+        private static readonly SharedOwner OpCodeOwner = new(OpCode.Open, OpCode.Close);
+
+        internal static readonly OpenDependencies Default = new(
+            () => new SMBios(),
+            MutexOwner.Open,
+            MutexOwner.Close,
+            OpCodeOwner.Open,
+            OpCodeOwner.Close,
+            null);
+
+        internal OpenDependencies(
+            Func<SMBios> createSmbios,
+            Action openMutexes,
+            Action closeMutexes,
+            Action openOpCode,
+            Action closeOpCode,
+            Action<Action<IGroup>> addGroups)
+        {
+            CreateSmbios = createSmbios ?? throw new ArgumentNullException(nameof(createSmbios));
+            OpenMutexes = openMutexes ?? throw new ArgumentNullException(nameof(openMutexes));
+            CloseMutexes = closeMutexes ?? throw new ArgumentNullException(nameof(closeMutexes));
+            OpenOpCode = openOpCode ?? throw new ArgumentNullException(nameof(openOpCode));
+            CloseOpCode = closeOpCode ?? throw new ArgumentNullException(nameof(closeOpCode));
+            AddGroups = addGroups;
+        }
+
+        internal Func<SMBios> CreateSmbios { get; }
+
+        internal Action OpenMutexes { get; }
+
+        internal Action CloseMutexes { get; }
+
+        internal Action OpenOpCode { get; }
+
+        internal Action CloseOpCode { get; }
+
+        internal Action<Action<IGroup>> AddGroups { get; }
+    }
+
+    internal sealed class SharedOwner
+    {
+        private readonly Action _close;
+        private readonly Action _open;
+        private readonly object _sync = new();
+        private int _leaseCount;
+
+        internal SharedOwner(Action open, Action close)
+        {
+            _open = open ?? throw new ArgumentNullException(nameof(open));
+            _close = close ?? throw new ArgumentNullException(nameof(close));
+        }
+
+        internal void Open()
+        {
+            lock (_sync)
+            {
+                if (_leaseCount == 0)
+                {
+                    try
+                    {
+                        _open();
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            _close();
+                        }
+                        catch
+                        {
+                            // Preserve the acquisition failure.
+                        }
+
+                        throw;
+                    }
+                }
+
+                _leaseCount++;
+            }
+        }
+
+        internal void Close()
+        {
+            lock (_sync)
+            {
+                if (_leaseCount == 0)
+                    return;
+
+                _leaseCount--;
+                if (_leaseCount == 0)
+                    _close();
+            }
+        }
     }
 }

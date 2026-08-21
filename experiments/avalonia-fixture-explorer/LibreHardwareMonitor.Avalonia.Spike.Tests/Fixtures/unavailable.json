@@ -1,0 +1,32 @@
+{
+  "Version": "0.9.6",
+  "FixtureKind": "unavailable and missing optional fields",
+  "Children": [
+    {
+      "Children": [
+        {
+          "Text": "",
+          "HardwareId": "/fixture/unavailable/0",
+          "ImageURL": "images_icon/cpu.png",
+          "Children": [
+            {
+              "Text": "Temperatures",
+              "Children": [
+                {
+                  "Min": "NaN °C",
+                  "Value": "Infinity °C",
+                  "Max": "-",
+                  "SensorId": "/fixture/unavailable/0/temperature/0",
+                  "RawMin": null,
+                  "RawMax": null,
+                  "ImageURL": "images/transparent.png",
+                  "Children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

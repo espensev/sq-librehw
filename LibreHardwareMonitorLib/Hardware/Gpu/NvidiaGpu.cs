@@ -351,7 +351,9 @@ internal sealed class NvidiaGpu : GenericGpu
             ActivateSensor(_coreVoltage);
         }
 
-        if (NvidiaML.IsAvailable || NvidiaML.Initialize())
+        // NvidiaGroup owns the process-wide NVML lease for every GPU in this
+        // group. A GPU must not acquire an untracked lease of its own.
+        if (NvidiaML.IsAvailable)
         {
             if (hasBusId)
                 _nvmlDevice = NvidiaML.NvmlDeviceGetHandleByPciBusId($" 0000:{busId:X2}:00.0") ?? NvidiaML.NvmlDeviceGetHandleByIndex(_adapterIndex);

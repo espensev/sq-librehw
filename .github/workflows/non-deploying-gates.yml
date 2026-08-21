@@ -1,0 +1,79 @@
+# Non-deploying gates
+#
+# This workflow runs verification only. It can build, test, and inspect. It
+# cannot deploy, publish, promote, install, or write to this repository.
+#
+# It defines no gate command. Every command comes from the [build-gate.*] tables
+# of .codex/skills/project.toml and reaches this workflow only through
+# eng/ci/Invoke-LhmGates.ps1, which classifies each gate and refuses any command
+# matching its deny-list before running it. Duplicating a gate command here
+# would defeat that, so the single run step below delegates and nothing else.
+#
+# origin is deliberately unpushed on SND-HOST. This workflow has therefore never
+# executed on a hosted runner: it is verified by YAML parse and by the
+# structural assertions in eng/ci/tests/Test-Workflow.ps1 only. That is a
+# current limitation of the evidence, not a plan to change the push policy.
+#
+# Actions are referenced by version tag rather than by commit SHA. A pinned SHA
+# could not be verified from this machine, and an unverifiable pin is worse than
+# an honest tag.
+#
+# The Node and Python versions match the SND-HOST development host (Node
+# v26.5.1, Python 3.13.14). Their availability on a hosted runner is unverified
+# for the same reason.
+#
+# This workflow must never gain a deploying, publishing, or host-mutating step.
+
+name: Non-deploying gates
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: Non-deploying gates
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Set up the pinned .NET SDK from global.json
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Set up Node 26.x, matching the development host
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26.x
+
+      - name: Set up Python 3.13, required by the gate runner's tomllib parse
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Run non-deploying gates
+        shell: powershell
+        run: >-
+          .\eng\ci\Invoke-LhmGates.ps1 -All -JsonSummary ci-gates-summary.json
+
+      - name: Upload the gate summary
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ci-gates-summary
+          path: ci-gates-summary.json
+          if-no-files-found: warn

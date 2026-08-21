@@ -1,0 +1,10 @@
+{
+  "solution": {
+    "path": "..\\LibreHardwareMonitor.sln",
+    "projects": [
+      "LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.Library\\LibreHardwareMonitor.Tests.Library.csproj",
+      "LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.Application\\LibreHardwareMonitor.Tests.Application.csproj",
+      "LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.Contracts\\LibreHardwareMonitor.Tests.Contracts.csproj"
+    ]
+  }
+}

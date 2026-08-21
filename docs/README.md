@@ -1,198 +1,137 @@
-# SQ LibreHardwareMonitor Docs
+# SQ LibreHardwareMonitor documentation
 
-**Status:** live map only
-**Updated:** 2026-07-28
+**Status:** current repository map
+**Updated:** 2026-08-05
 
-## Current
+Verify Git and runtime state before relying on dynamic facts in this file.
 
-- The product is the Windows app plus the read-only dashboard at `/`.
-- Studio and the memory/UI reliability baseline are deployed and verified.
-- Sensor Workspace, its four-profile Thermal extension, and the GPU hotspot
-  rate sensor are deployed on identity-verified SND-HOST. Live `/`,
-  `data.json`, Prometheus, RTX 3080 rate, CSV logging, and controller-to-host
-  access checks passed. The native scrollbar follow-up ships in the same build;
-  a separate visual/UI Automation host inspection was not part of this smoke.
-- Host-neutral log archival/retention tooling is source-controlled under
-  `ops/log-management` and installed on SND-HOST in a separate stable runtime
-  with a verified SYSTEM task. The first real prior-day rollover archive remains
-  to be inspected because the cleaned host had no completed CSV candidate.
-- `/dash/cardtruth[/]` is retired; `data.json` and CSV IDs are contracts.
-- Standard context layouts are merged and browser-fixture-verified; this packet
-  did not replace a live LibreHardwareMonitor runtime.
-- The shallow local release/runtime system is implemented and its first
-  identity-verified install is running from
-  `E:\SQ_HQ\Monitoring\LibreHW\LibreHardwareMonitor.Windows.Forms.exe`.
-  Mutable config/logs now use machine-local `sqdata`; the public
-  `librehw.cmd` is unchanged. Normal-user foreground restoration passed, both
-  shortcuts converge through that command, and the duplicate root task is
-  retired. The delegated launcher is now regression-tested through the same
-  Windows PowerShell 5.1 host used by the CMD shim, including its zero-process
-  StrictMode branch.
-- Every ignored repo-local `bin`/`obj` tree has been cleaned. All 32
-  non-authoritative output EXEs are gone; the 3,361 historical CSVs and three
-  old config files are preserved under the collision-isolated
-  `sqdata\LibreHardwareMonitor\historical` archive.
+## Authorities
+
+| Purpose | Path |
+|---|---|
+| Source checkout | `D:\DevHome\workspaces\librehw-host\checkouts\main` |
+| Agent worktrees | `D:\DevHome\workspaces\librehw-host\worktrees` |
+| Official comparison | `D:\DevHome\workspaces\librehw-host\references\official` |
+| Candidate store | `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\releases\candidates` |
+| Live runtime | `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\deployments\current` |
+| Rollback and history | `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\deployments\rollback` and `deployments\history` |
+| Installed log tooling | `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\operations\log-management` |
+| Log archive | `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\data\logs\archive` |
+
+Source, candidates, live runtime, rollback, history, and logs are separate
+physical domains. Candidate validation does not authorize deployment. Before
+an operational write, follow the stack-local `AGENTS.md`, manifests, and
+`docs\OPERATIONS.md`.
+
+Repository remotes:
+
+| Remote | Fetch | Push |
+|---|---|---|
+| `origin` | `https://github.com/celine-anime/librehw-host.git` | same |
+| `upstream` | `https://github.com/espensev/sq-librehw.git` | `DISABLED` |
+| `vanilla` | local official comparison checkout | `DISABLED` |
+
+Development stays on local `main`. Do not push unless explicitly requested.
+Use live Git commands for branch, cleanliness, and ahead/behind state.
+
+## Current boundaries
+
+- `manifests\channels\live.json` currently records SND-HOST candidate
+  `0.9.6-20260805-054355164-5ad1047`, product version
+  `0.9.6+5ad1047.2026-08-05`, observed on 2026-08-05. Re-observe the host before
+  an operational decision.
+- CSV numeric compaction is implemented only in local source. It has no
+  exact-current-source candidate and is not live.
+- `ops\candidate` creates and validates external candidates; it does not
+  deploy them.
+- `ops\live-verification` is read-only and manifest-driven.
+- `ops\log-management` is the source package for installed host log tooling.
+- `ops\deploy\snd-desk` is target-gated to SND-DESK and is not SND-HOST
+  deployment authority.
+- The 2026-08-03 SND-DESK managed-task restoration and absent
+  `hardware-optimization` task are dated peer evidence in
+  `docs\features\feature-local-release-system.md`; they do not describe or
+  authorize SND-HOST runtime state.
 - Keep `AssemblyVersion` at `0.9.6`; build with `-p:Platform=x64`.
 
-## Handoff — 2026-07-25
+Open gates:
 
-- `master` is the only local and origin branch. Local source now includes the
-  audited official upstream history through `81e8f83` in merge `3a805fa`, with
-  the fork's central packages, `data.json` contract, async PawnIO path, and
-  retryable NCT6687DR default restoration preserved.
-- PR #29 source-shipped Standard contexts. PRs #26 and #28 landed five central
-  package patch updates without redundant app-level references.
-- Final source gates passed: web selftest 315/315, Node suites 18/18, .NET
-  194 passed / 1 skipped, log-management checks, both isolated x64 Release
-  target builds with 0 warnings/errors, the library platform matrix, NuGet
-  packing, and staged hygiene scans.
-- Official `upstream/master` is an ancestor of local `master`, with zero
-  upstream-only commits remaining. Three independent integration reviews found
-  no remaining blockers.
-- SND-DESK now runs the manifest-verified one-EXE local release from the shallow
-  stable path. One exact process, HTTP health, populated native controls, the
-  migrated Release config, managed task ownership, and a new `sqdata` CSV
-  passed. Attended finalization also passed: the normal-user command restored
-  the existing window, both Start Menu links target it, the exact legacy root
-  task is absent, and both recovery packets validated before cleanup. Those
-  pre-stable packets are now historical evidence only. The 3,361 old CSV files
-  were moved intact into the accepted historical archive before all repo-local
-  build outputs were removed.
+- Plan-001 attended Avalonia smoke is person-only.
+- Plan-012 criterion 10 remains open without a waiver; the implemented source
+  seam is not reopened.
+- Plan-014 remains gated by explicit maintainer authorization.
+- Push, candidate creation, candidate acceptance, and live promotion are
+  separate decisions.
 
-## Deployed patch notes
+## Documentation map
 
-- Added a third read-only `Workspace` view with adaptive `Main`, `Gaming`,
-  `Storage`, and `Thermal` profiles, editable/reorderable card, table, and honest
-  graph panels, exact sensor membership, and bounded portable JSON import/export.
-- Added an honest NVIDIA GPU hotspot rate sensor with bounded five-second
-  regression, unavailable warm-up/dropout states, and correct °C/s and °F/s
-  formatting across native, web, plot, CSV/data, and Prometheus consumers.
-- Ported the useful log-management intent into a parameterized, dry-run-capable
-  archive/retention/task-install package with SHA-256 ZIP verification, then
-  installed it behind a stable runtime and daily SYSTEM task on SND-HOST.
-- Made the native sensor-tree scrollbar substantially easier to see and grab:
-  a stable native-width gutter, high-contrast thumb, wider hover/drag states,
-  24 px minimum thumb, high-contrast-mode fallback, and real UI Automation
-  `ScrollBar`/`RangeValue` behavior at the painted hit target.
-- Kept `data.json`, CSV, routes, hardware-write policy, `AssemblyVersion`, and
-  current hardware ownership unchanged. SND-DESK's existing runtime stayed
-  online during packaging; SND-HOST received its own elevated interactive
-  `\LibreHardwareMonitor` task and scoped dashboard firewall rule.
+| Document | Purpose |
+|---|---|
+| `docs\architecture\refactor-roadmap.md` | Structural continuation and phase gates |
+| `docs\campaign-backlog.md` | Sequenced campaign queue |
+| `docs\campaign-playbook.md` | Campaign procedure |
+| `docs\campaign-history.md` | Per-criterion acceptance ledger |
+| `docs\architecture\campaign-control-plane.md` | Campaign authority and provenance |
+| `docs\features\feature-release-packaging.md` | Candidate packaging contract |
+| `docs\features\feature-csv-log-storage-efficiency.md` | Source-only CSV formatting contract |
+| `docs\features\feature-host-log-management.md` | Log archive and retention contract |
+| `docs\features\feature-live-state-verification.md` | Read-only host verification contract |
+| `docs\features\feature-local-release-system.md` | SND-DESK-only release contract and dated restoration evidence |
+| `eng\ci\README.md` | Non-deploying gate runner |
 
-## Roadmap
-
-1. The separate `hardware-optimization` health-feed task was found entirely
-   absent from Task Scheduler on 2026-08-03 (its stale legacy
-   `sq-librehw\bin\Release` log-root default is therefore moot). Its definition
-   lives outside this repository; the owning package must decide whether to
-   recreate it against the canonical `sqdata` log directory or retire it.
-2. Continue hands-on dashboard and native scrollbar/UI Automation inspection
-   through the verified runtime owner; deterministic coverage and the live
-   served-asset/telemetry smoke are already complete.
-3. Execute `docs/feature-native-ui-modernization.md` in bounded slices: define
-   the presentation model first, then ship tree search/Favorites/order, native
-   visual and graph polish, Gadget 2.0, and portable multi-gadget layouts.
-   Canonical node order and downstream contracts must not change.
-4. Iterate Sensor Workspace around flexibility: resizable/reflowing panels,
-   density and visual options, sensor search/grouping, bulk membership, and
-   richer graphs that never combine incompatible units dishonestly.
-5. After the native slices and web Workspace contract stabilize, execute Phase
-   5 of `docs/feature-native-ui-modernization.md`: extract the host-neutral,
-   read-only presentation contract and prototype Avalonia in parallel. WinForms
-   keeps hardware and task ownership until every migration gate passes.
-6. Inspect the first completed SND-HOST daily CSV rollover ZIP and its task
-   history; current-day retention and the installed task already passed live.
-7. Implement the host-neutral operator-utility plan: a portable read-only
-   thermal snapshot first, then a report-only log evidence analyzer. Keep any
-   lossy converter and profile alias behind their separate gates.
-8. Close the remaining bounded reliability follow-ups in
-   `docs/feature-memory-ui-reliability.md`; keep optional long-soak work separate
-   from normal patch promotion.
-
-## Rules
-
-- New features and meaningful behavior changes need a spec first.
-- Keep Standard behavior intact unless a spec explicitly changes it.
-- Dashboard code must not call `/Sensor?action=Set`.
-- Do not hard-code host sensor IDs, labels, limits, or missing values as zero.
-- Preserve raw LibreHardwareMonitor labels and `SensorId` when aliases exist.
-- Native sensor organization is presentation-only; canonical node order and
-  `data.json` IDs/order remain unchanged.
-- Check dark/light, desktop/narrow, failure, and empty states for UI work.
-
-## Runtime contracts
-
-- GET `/Sensor` failures return JSON; GET Set and ResetMinMax are rejected.
-- POST Set validates/clamps values. `ResetMinMax` and `/ResetAllMinMax` mutate
-  only on POST. Cross-origin browser POSTs are rejected before mutation;
-  header-less script clients remain allowed when they POST. Any external proxy
-  is deployment-only.
-- Sensor history, decompression, HTTP ownership, and dashboard state are bounded.
-- Settings writes are ordered, atomic, backup-aware, and compact stale history.
-- RTX 5090 hot spot and its rate remain unavailable until live telemetry proves
-  otherwise; warm-up/dropouts never become zero.
-- NVIDIA 12VHPWR pins use `/voltage/1..6`; core voltage keeps `/voltage/0`.
+Other feature documents contain their own status and acceptance criteria.
+`data\plans`, rendered campaign plans, `live-tracker.md`, and agent task files
+are campaign-runtime records; do not remove or hand-edit generated plans.
 
 ## Source map
 
-- `docs/feature-web-dashboard-studio-view.md` - shipped Studio contract.
-- `docs/feature-sensor-workspace.md` - active Workspace contract.
-- `docs/feature-thermal-trends.md` - additive hotspot-rate contract.
-- `docs/feature-host-log-management.md` - archive, retention, and deployment
-  safety contract.
-- `docs/feature-host-operator-utilities.md` - planned portable thermal snapshot
-  and evidence-gated log analysis.
-- `docs/feature-independent-text-scaling.md` - shipped independent sensor-pane,
-  tracker, and graph-axis text scaling contract.
-- `docs/feature-native-ui-modernization.md` - phased native tree organization,
-  graphics, graph, and Gadget 2.0 roadmap; implementation has not started.
-- `docs/feature-standard-context-layouts.md` - source-shipped,
-  browser-fixture-verified per-context Standard trims (Main/Gaming/Storage) over
-  a materialize-swap contexts key; live runtime promotion is not recorded.
-- `docs/feature-memory-ui-reliability.md` - shipped reliability contract,
-  deployment proof, and remaining follow-ups.
-- `docs/feature-upstream-sync-2026-07-25.md` - audited upstream integration
-  boundary, conflict decisions, compatibility requirements, and verification.
-- `docs/feature-local-release-system.md` - implemented shallow one-EXE local
-  runtime, `sqdata` separation, managed launch ownership, promotion, rollback,
-  and attended-finalization contract.
-- `docs/repository-build-output-cleanup.md` - completed repo-local `bin`/`obj`
-  cleanup, preserved historical archive, repeatable cleanup command, retired
-  pre-stable recovery boundary, and verified public launcher chain.
-- `LibreHardwareMonitorLib/Hardware/Sensor.cs` - history bounds/persistence.
-- `LibreHardwareMonitorLib/Hardware/TemperatureRateSensor.cs` - bounded direct
-  sample regression for temperature rate.
-- `LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs` -
-  streaming, cleanup, ordering, and atomic settings writes.
-- `LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs` - lifecycle/autosave.
-- `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs` - HTTP contracts.
-- `LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js` - dashboard.
-- `LibreHardwareMonitor.Windows.Forms/Resources/Web/workspace.js` - bounded
-  Workspace model, presets, profile operations, and import/export.
-- `ops/log-management/` - host-neutral log operations and task-install package.
-- `LibreHardwareMonitor.Windows.Forms/UI/Themes/ThemedVScrollIndicator.cs` and
-  `LibreHardwareMonitor.Windows.Forms/UI/Themes/ThemedHScrollIndicator.cs` -
-  visible native-sized sensor-tree hit targets.
-- `LibreHardwareMonitor.Windows.Forms/UI/Themes/ScrollIndicatorAutomationProvider.cs`
-  - UI Automation `RangeValue` bridge to the native scrollbars.
+| Area | Path |
+|---|---|
+| Hardware library | `LibreHardwareMonitorLib` |
+| Windows application | `LibreHardwareMonitor.Windows.Forms` |
+| Automated tests | `LibreHardwareMonitor.Tests` and `webtests` |
+| Candidate tooling | `ops\candidate` |
+| Live-state verifier | `ops\live-verification` |
+| Log tooling | `ops\log-management` |
+| CI gates | `eng\ci` |
+| Fixture-only Avalonia explorer | `experiments\avalonia-fixture-explorer` |
 
-## Verify
+## Verification
+
+The gate runner is non-deploying:
 
 ```powershell
-node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js
-node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\workspace.js
-node webtests\selftest.node.js
-node --test webtests\console.tests.js webtests\workspace.tests.js
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-LhmLogManagement.ps1
-.\scripts\local-release\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
-dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.csproj -p:Platform=x64
-dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
-dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
+$env:PYTHONDONTWRITEBYTECODE = '1'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Invoke-LhmGates.ps1 -List
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Invoke-LhmGates.ps1 -All
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Test-LhmCiGates.ps1
 ```
 
-## Docs policy
+Focused baseline commands:
 
-- Keep this README and current feature specs only.
-- Fold live findings and proof into the owning spec.
-- Delete completed discovery/review notes; Git history preserves the detail.
-- Verify live repo/runtime state before trusting old evidence.
+```powershell
+dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf -p:Platform=x64
+dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
+dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseSystem.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-LhmLogManagement.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\live-verification\Test-LhmLiveStateSystem.ps1
+```
+
+Builds create ignored `bin` and `obj` directories. Inspect and remove them only
+through the guarded cleanup tool:
+
+```powershell
+.\eng\Clear-LhmRepositoryBuildOutputs.ps1 -WhatIf
+.\eng\Clear-LhmRepositoryBuildOutputs.ps1
+```
+
+Never use `git clean -fdX` for this repository.
+
+## Documentation policy
+
+- Keep current contracts and links; place completed evidence in Git history.
+- Delete completed discovery or review notes after unresolved findings are
+  folded into an active contract.
+- Edit plan JSON through campaign tooling; do not hand-edit rendered plans.
+- Treat historical paths and counts as dated evidence, not current state.

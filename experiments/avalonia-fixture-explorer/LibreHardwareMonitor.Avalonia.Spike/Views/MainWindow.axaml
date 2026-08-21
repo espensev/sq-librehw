@@ -1,0 +1,236 @@
+<Window
+    x:Class="LibreHardwareMonitor.Avalonia.Spike.Views.MainWindow"
+    x:DataType="vm:MainWindowViewModel"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:LibreHardwareMonitor.Avalonia.Spike.ViewModels"
+    Title="LibreHardwareMonitor Avalonia Fixture Explorer"
+    Width="1200"
+    Height="720"
+    MinWidth="860"
+    MinHeight="520"
+    AutomationProperties.Name="LibreHardwareMonitor Avalonia fixture-only explorer">
+  <Grid Margin="16" RowDefinitions="Auto,Auto,Auto,Auto,*" RowSpacing="12">
+    <Border Padding="12" BorderThickness="1">
+      <StackPanel Spacing="4">
+        <TextBlock
+            x:Name="FixtureOnlyLabel"
+            Text="Fixture-only, non-shipping"
+            FontSize="18"
+            FontWeight="SemiBold"
+            AutomationProperties.Name="Fixture-only, non-shipping" />
+        <TextBlock
+            Text="Read-only recorded data.json snapshots. This spike does not open hardware, write settings, or control sensors."
+            TextWrapping="Wrap"
+            AutomationProperties.Name="Read-only fixture explorer description" />
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,320,Auto,Auto,*" ColumnSpacing="8">
+      <TextBlock
+          VerticalAlignment="Center"
+          Text="_Bundled fixture"
+          AutomationProperties.Name="Bundled fixture selector label" />
+      <ComboBox
+          x:Name="FixtureSelector"
+          Grid.Column="1"
+          ItemsSource="{Binding FixtureChoices}"
+          SelectedItem="{Binding SelectedFixtureChoice, Mode=TwoWay}"
+          TabIndex="0"
+          AutomationProperties.Name="Bundled fixture selector"
+          AutomationProperties.HelpText="Select one of the six recorded JSON fixtures.">
+        <ComboBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:FixtureChoice">
+            <TextBlock Text="{Binding DisplayName}" />
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+      <Button
+          x:Name="LoadFixtureButton"
+          Grid.Column="2"
+          Content="_Load fixture"
+          Click="LoadFixture_OnClick"
+          TabIndex="1"
+          AutomationProperties.Name="Load selected bundled fixture" />
+      <Button
+          x:Name="OpenDataJsonButton"
+          Grid.Column="3"
+          Content="_Open data.json"
+          Click="OpenDataJson_OnClick"
+          TabIndex="2"
+          AutomationProperties.Name="Open one local data.json file read-only" />
+    </Grid>
+
+    <Border
+        x:Name="StatusPanel"
+        Grid.Row="2"
+        Padding="12"
+        BorderThickness="1"
+        AutomationProperties.Name="Fixture load status"
+        AutomationProperties.HelpText="{Binding LoadStateStatus}">
+      <StackPanel Spacing="8">
+        <Grid ColumnDefinitions="2*,1.5*,Auto,Auto" ColumnSpacing="18">
+          <TextBlock
+              Text="{Binding SourceStatus}"
+              TextTrimming="CharacterEllipsis"
+              AutomationProperties.Name="{Binding SourceStatus}" />
+          <TextBlock
+              Grid.Column="1"
+              Text="{Binding VersionStatus}"
+              TextTrimming="CharacterEllipsis"
+              AutomationProperties.Name="{Binding VersionStatus}" />
+          <TextBlock
+              Grid.Column="2"
+              Text="{Binding NodeStatus}"
+              AutomationProperties.Name="{Binding NodeStatus}" />
+          <TextBlock
+              Grid.Column="3"
+              Text="{Binding SensorStatus}"
+              AutomationProperties.Name="{Binding SensorStatus}" />
+        </Grid>
+        <TextBlock
+            x:Name="LoadingStatus"
+            Text="{Binding LoadStateStatus}"
+            FontWeight="SemiBold"
+            AutomationProperties.Name="{Binding LoadStateStatus}" />
+        <Border
+            x:Name="RejectionBanner"
+            IsVisible="{Binding HasError}"
+            Padding="8"
+            BorderThickness="2"
+            AutomationProperties.Name="Fixture rejected">
+          <StackPanel Spacing="4">
+            <TextBlock
+                Text="Fixture rejected"
+                FontWeight="Bold"
+                AutomationProperties.Name="Fixture rejected" />
+            <TextBlock
+                Text="{Binding RejectionMessage}"
+                TextWrapping="Wrap"
+                AutomationProperties.Name="{Binding RejectionMessage}" />
+            <TextBlock
+                Text="The last accepted hierarchy remains visible."
+                IsVisible="{Binding HasRetainedSnapshotAfterError}"
+                AutomationProperties.Name="The last accepted hierarchy remains visible" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+
+    <Grid
+        Grid.Row="3"
+        ColumnDefinitions="3*,1.4*,1.4*,1.4*,1.4*,2.4*"
+        ColumnSpacing="10"
+        Margin="28,0,16,0">
+      <TextBlock
+          x:Name="NameHeader"
+          Text="Name"
+          FontWeight="Bold"
+          AutomationProperties.Name="Name column"
+          AutomationProperties.IsColumnHeader="True" />
+      <TextBlock
+          x:Name="TypeHeader"
+          Grid.Column="1"
+          Text="Type"
+          FontWeight="Bold"
+          AutomationProperties.Name="Type column"
+          AutomationProperties.IsColumnHeader="True" />
+      <TextBlock
+          x:Name="CurrentHeader"
+          Grid.Column="2"
+          Text="Current"
+          FontWeight="Bold"
+          AutomationProperties.Name="Current value column"
+          AutomationProperties.IsColumnHeader="True" />
+      <TextBlock
+          x:Name="MinimumHeader"
+          Grid.Column="3"
+          Text="Minimum"
+          FontWeight="Bold"
+          AutomationProperties.Name="Minimum value column"
+          AutomationProperties.IsColumnHeader="True" />
+      <TextBlock
+          x:Name="MaximumHeader"
+          Grid.Column="4"
+          Text="Maximum"
+          FontWeight="Bold"
+          AutomationProperties.Name="Maximum value column"
+          AutomationProperties.IsColumnHeader="True" />
+      <TextBlock
+          x:Name="StableIdHeader"
+          Grid.Column="5"
+          Text="Stable ID"
+          FontWeight="Bold"
+          AutomationProperties.Name="Stable ID column"
+          AutomationProperties.IsColumnHeader="True" />
+    </Grid>
+
+    <Grid Grid.Row="4">
+      <TextBlock
+          x:Name="InitialEmptyState"
+          Text="No fixture is loaded. Select a bundled fixture or open one local data.json file."
+          IsVisible="{Binding ShowInitialEmptyState}"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          TextWrapping="Wrap"
+          AutomationProperties.Name="No fixture is loaded" />
+      <TextBlock
+          x:Name="InitialErrorState"
+          Text="No hierarchy is available because the selected fixture was rejected."
+          IsVisible="{Binding ShowInitialErrorState}"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          TextWrapping="Wrap"
+          AutomationProperties.Name="No hierarchy is available because the fixture was rejected" />
+      <TreeView
+          x:Name="SensorTree"
+          ItemsSource="{Binding Roots}"
+          IsVisible="{Binding HasSnapshot}"
+          TabIndex="3"
+          AutomationProperties.Name="Read-only sensor hierarchy"
+          AutomationProperties.HelpText="Use the arrow keys to move through, expand, and collapse the hierarchy.">
+        <TreeView.ItemTemplate>
+          <TreeDataTemplate
+              x:DataType="vm:SensorNodeViewModel"
+              ItemsSource="{Binding Children}">
+            <Grid
+                ColumnDefinitions="3*,1.4*,1.4*,1.4*,1.4*,2.4*"
+                ColumnSpacing="10"
+                MinWidth="720"
+                AutomationProperties.Name="{Binding AccessibleSummary}">
+              <TextBlock
+                  Text="{Binding Name}"
+                  TextTrimming="CharacterEllipsis"
+                  AutomationProperties.Name="{Binding NameAutomationName}" />
+              <TextBlock
+                  Grid.Column="1"
+                  Text="{Binding SensorType}"
+                  TextTrimming="CharacterEllipsis"
+                  AutomationProperties.Name="{Binding TypeAutomationName}" />
+              <TextBlock
+                  Grid.Column="2"
+                  Text="{Binding Current}"
+                  TextTrimming="CharacterEllipsis"
+                  AutomationProperties.Name="{Binding CurrentAutomationName}" />
+              <TextBlock
+                  Grid.Column="3"
+                  Text="{Binding Minimum}"
+                  TextTrimming="CharacterEllipsis"
+                  AutomationProperties.Name="{Binding MinimumAutomationName}" />
+              <TextBlock
+                  Grid.Column="4"
+                  Text="{Binding Maximum}"
+                  TextTrimming="CharacterEllipsis"
+                  AutomationProperties.Name="{Binding MaximumAutomationName}" />
+              <TextBlock
+                  Grid.Column="5"
+                  Text="{Binding StableId}"
+                  TextTrimming="CharacterEllipsis"
+                  AutomationProperties.Name="{Binding StableIdAutomationName}" />
+            </Grid>
+          </TreeDataTemplate>
+        </TreeView.ItemTemplate>
+      </TreeView>
+    </Grid>
+  </Grid>
+</Window>

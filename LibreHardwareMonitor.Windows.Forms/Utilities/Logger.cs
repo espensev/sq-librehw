@@ -125,19 +125,92 @@ public class Logger
         return fileName;
     }
 
-    // Row timestamp format: the historical US-locale layout ("MM/dd/yyyy HH:mm:ss") with milliseconds
-    // (.fff) appended. The general "G" specifier has no fractional-seconds field, so it collapsed every
-    // sub-second sample onto a duplicate whole second (~25% of rows at faster-than-1 Hz logging),
-    // losing their ordering and true sub-second position (GH #9). Only the formatting dropped the
-    // resolution; DateTime.Now already carries it. The leading fields are byte-for-byte the legacy
-    // form, so a consumer reading second-resolution timestamps still parses unchanged; the downstream
-    // ThermalTrace parser also accepts this .fff form. Deliberate local-fork divergence from upstream's
-    // second-resolution "G".
+    // Preserve the historical timestamp layout and add milliseconds for sub-second ordering.
+    // This is a deliberate local-fork divergence from upstream's second-resolution "G" format.
     internal const string RowTimestampFormat = "MM/dd/yyyy HH:mm:ss.fff";
 
     internal static string FormatRowTimestamp(DateTime timestamp)
     {
         return timestamp.ToString(RowTimestampFormat, CultureInfo.InvariantCulture);
+    }
+
+    // CSV values use a unit-specific decimal minimum and retain at least four significant digits.
+    // Unknown sensor types remain on the lossless round-trip path.
+    private const int DefaultValueDecimals = 2;
+    private const int FineValueDecimals = 3;
+    private const int MinimumSignificantDigits = 4;
+    private const int MaximumValueDecimals = 15;
+
+    internal static int? GetMinimumValueDecimals(SensorType sensorType)
+    {
+        return sensorType switch
+        {
+            SensorType.Voltage or
+            SensorType.Current or
+            SensorType.Factor or
+            SensorType.Timing => FineValueDecimals,
+            SensorType.Power or
+            SensorType.Clock or
+            SensorType.Temperature or
+            SensorType.Load or
+            SensorType.Frequency or
+            SensorType.Fan or
+            SensorType.Flow or
+            SensorType.Control or
+            SensorType.Level or
+            SensorType.Data or
+            SensorType.SmallData or
+            SensorType.Throughput or
+            SensorType.TimeSpan or
+            SensorType.Energy or
+            SensorType.Noise or
+            SensorType.Conductivity or
+            SensorType.Humidity or
+            SensorType.TemperatureRate => DefaultValueDecimals,
+            // Preserve a future or unknown type until its precision contract is defined.
+            _ => null
+        };
+    }
+
+    internal static int? GetValueDecimals(float value, SensorType sensorType)
+    {
+        int? minimumDecimals = GetMinimumValueDecimals(sensorType);
+        if (!minimumDecimals.HasValue)
+            return null;
+
+        if (float.IsNaN(value) || float.IsInfinity(value) || value == 0f)
+            return minimumDecimals;
+
+        double magnitude = Math.Floor(Math.Log10(Math.Abs((double)value)));
+        double significantDecimals = MinimumSignificantDigits - 1 - magnitude;
+        if (significantDecimals <= minimumDecimals.Value)
+            return minimumDecimals;
+
+        // Math.Round accepts at most 15 decimal places; smaller values stay lossless.
+        return significantDecimals > MaximumValueDecimals
+            ? null
+            : (int)significantDecimals;
+    }
+
+    // Round through double for net472 compatibility, then use "R" for compact invariant output.
+    // Unknown types and values beyond Math.Round's decimal limit remain lossless.
+    internal static string FormatRowValue(float value, SensorType sensorType)
+    {
+        if (value == 0f)
+            return "0";
+
+        int? decimals = GetValueDecimals(value, sensorType);
+        if (!decimals.HasValue)
+            return value.ToString("R", CultureInfo.InvariantCulture);
+
+        float rounded = (float)Math.Round(
+            (double)value,
+            decimals.Value,
+            MidpointRounding.ToEven);
+        if (rounded == 0f && value != 0f)
+            return value.ToString("R", CultureInfo.InvariantCulture);
+
+        return rounded.ToString("R", CultureInfo.InvariantCulture);
     }
 
     private enum OpenLogResult
@@ -366,7 +439,7 @@ public class Logger
                     {
                         float? value = sensor.Value;
                         if (value.HasValue)
-                            row.Append(value.Value.ToString("R", CultureInfo.InvariantCulture));
+                            row.Append(FormatRowValue(value.Value, sensor.SensorType));
                     }
 
                     if (i < _sensors.Length - 1)

@@ -22,6 +22,7 @@ internal sealed class PawnIoInstallerLease : IDisposable
         new(WellKnownSidType.BuiltinAdministratorsSid, null);
     private static readonly SecurityIdentifier LocalSystem =
         new(WellKnownSidType.LocalSystemSid, null);
+    private static readonly SecurityIdentifier CurrentUser = GetCurrentUser();
 
     private FileStream _identityLock;
     private int _disposed;
@@ -41,11 +42,30 @@ internal sealed class PawnIoInstallerLease : IDisposable
     {
         if (source == null)
             throw new ArgumentNullException(nameof(source));
-        if (string.IsNullOrWhiteSpace(trustedTemporaryRoot) ||
-            !Path.IsPathRooted(trustedTemporaryRoot))
+        string pathRoot;
+        try
+        {
+            pathRoot = string.IsNullOrWhiteSpace(trustedTemporaryRoot)
+                ? null
+                : Path.GetPathRoot(trustedTemporaryRoot);
+        }
+        catch (Exception exception) when (exception is ArgumentException ||
+                                          exception is NotSupportedException ||
+                                          exception is PathTooLongException)
         {
             throw new ArgumentException(
-                "The trusted temporary root must be an absolute path.",
+                "The trusted temporary root must be a fully qualified drive or UNC path.",
+                nameof(trustedTemporaryRoot),
+                exception);
+        }
+
+        if (!RuntimePaths.IsSupportedAbsolutePath(
+                trustedTemporaryRoot,
+                pathRoot,
+                Environment.OSVersion.Platform))
+        {
+            throw new ArgumentException(
+                "The trusted temporary root must be a fully qualified drive or UNC path.",
                 nameof(trustedTemporaryRoot));
         }
 
@@ -56,6 +76,18 @@ internal sealed class PawnIoInstallerLease : IDisposable
             throw new DirectoryNotFoundException($"Trusted temporary root '{rootPath}' does not exist.");
         if ((root.Attributes & FileAttributes.ReparsePoint) != 0)
             throw new SecurityException($"Trusted temporary root '{rootPath}' cannot be a reparse point.");
+        try
+        {
+            RuntimePaths.EnsureSafeMutableDirectory(
+                rootPath,
+                "The PawnIO trusted temporary root");
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new SecurityException(
+                $"Trusted temporary root '{rootPath}' has unsafe path ancestry.",
+                exception);
+        }
 
         string directoryPath = CreateSecureDirectory(rootPath);
         string filePath = Path.Combine(directoryPath, "PawnIO_setup.exe");
@@ -81,7 +113,8 @@ internal sealed class PawnIoInstallerLease : IDisposable
                 throw new SecurityException("PawnIO temporary installer cannot be a reparse point.");
             ValidateSecurity(
                 installerFile.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access),
-                "PawnIO temporary installer");
+                "PawnIO temporary installer",
+                InheritanceFlags.None);
 
             // The protected directory makes the close/reopen transition safe. Keep this
             // read-only identity handle through process launch and exit. FileShare.Read lets
@@ -137,7 +170,8 @@ internal sealed class PawnIoInstallerLease : IDisposable
 
                 ValidateSecurity(
                     directory.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access),
-                    "PawnIO temporary directory");
+                    "PawnIO temporary directory",
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit);
                 return path;
             }
             catch
@@ -154,7 +188,12 @@ internal sealed class PawnIoInstallerLease : IDisposable
     {
         DirectorySecurity security = new();
         security.SetAccessRuleProtection(true, false);
-        security.SetOwner(Administrators);
+        security.AddAccessRule(new FileSystemAccessRule(
+            CurrentUser,
+            FileSystemRights.FullControl,
+            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+            PropagationFlags.None,
+            AccessControlType.Allow));
         security.AddAccessRule(new FileSystemAccessRule(
             Administrators,
             FileSystemRights.FullControl,
@@ -174,7 +213,10 @@ internal sealed class PawnIoInstallerLease : IDisposable
     {
         FileSecurity security = new();
         security.SetAccessRuleProtection(true, false);
-        security.SetOwner(Administrators);
+        security.AddAccessRule(new FileSystemAccessRule(
+            CurrentUser,
+            FileSystemRights.FullControl,
+            AccessControlType.Allow));
         security.AddAccessRule(new FileSystemAccessRule(
             Administrators,
             FileSystemRights.FullControl,
@@ -186,15 +228,22 @@ internal sealed class PawnIoInstallerLease : IDisposable
         return security;
     }
 
-    private static void ValidateSecurity(FileSystemSecurity security, string description)
+    private static void ValidateSecurity(
+        FileSystemSecurity security,
+        string description,
+        InheritanceFlags expectedInheritanceFlags)
     {
         SecurityIdentifier owner =
             (SecurityIdentifier)security.GetOwner(typeof(SecurityIdentifier));
-        if (!Administrators.Equals(owner))
-            throw new SecurityException($"{description} must be owned by BUILTIN\\Administrators.");
+        if (!CurrentUser.Equals(owner) && !Administrators.Equals(owner))
+        {
+            throw new SecurityException(
+                $"{description} must be owned by the current identity or BUILTIN\\Administrators.");
+        }
         if (!security.AreAccessRulesProtected)
             throw new SecurityException($"{description} must have inheritance disabled.");
 
+        bool currentUserAllowed = false;
         bool administratorsAllowed = false;
         bool localSystemAllowed = false;
         AuthorizationRuleCollection rules =
@@ -203,21 +252,53 @@ internal sealed class PawnIoInstallerLease : IDisposable
         {
             if (authorizationRule is not FileSystemAccessRule rule ||
                 rule.AccessControlType != AccessControlType.Allow ||
-                rule.IdentityReference is not SecurityIdentifier identity)
+                rule.IdentityReference is not SecurityIdentifier identity ||
+                rule.FileSystemRights != FileSystemRights.FullControl ||
+                rule.InheritanceFlags != expectedInheritanceFlags ||
+                rule.PropagationFlags != PropagationFlags.None)
             {
                 throw new SecurityException($"{description} contains an unexpected access rule.");
             }
 
+            bool allowedIdentity = false;
+            if (CurrentUser.Equals(identity))
+            {
+                currentUserAllowed = true;
+                allowedIdentity = true;
+            }
+
             if (Administrators.Equals(identity))
+            {
                 administratorsAllowed = true;
-            else if (LocalSystem.Equals(identity))
+                allowedIdentity = true;
+            }
+
+            if (LocalSystem.Equals(identity))
+            {
                 localSystemAllowed = true;
-            else
-                throw new SecurityException($"{description} grants access outside Administrators and SYSTEM.");
+                allowedIdentity = true;
+            }
+
+            if (!allowedIdentity)
+            {
+                throw new SecurityException(
+                    $"{description} grants access outside the current identity, Administrators, and SYSTEM.");
+            }
         }
 
-        if (!administratorsAllowed || !localSystemAllowed)
-            throw new SecurityException($"{description} must grant Administrators and SYSTEM access.");
+        if (!currentUserAllowed || !administratorsAllowed || !localSystemAllowed)
+        {
+            throw new SecurityException(
+                $"{description} must grant the current identity, Administrators, and SYSTEM access.");
+        }
+    }
+
+    private static SecurityIdentifier GetCurrentUser()
+    {
+        using WindowsIdentity identity = WindowsIdentity.GetCurrent();
+        return identity.User ??
+               throw new InvalidOperationException(
+                   "The current Windows identity has no security identifier.");
     }
 
     private static void TryDeleteFile(string path)

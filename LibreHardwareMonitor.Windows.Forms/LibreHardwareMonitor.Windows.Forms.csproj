@@ -14,7 +14,7 @@
     <StartupObject>LibreHardwareMonitor.Windows.Forms.Program</StartupObject>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationHighDpiMode Condition="'$(TargetFramework)' != 'net472'">SystemAware</ApplicationHighDpiMode>
-    <OutputPath>..\bin\$(Configuration)\</OutputPath>
+    <OutputPath Condition="'$(UseArtifactsOutput)' != 'true'">..\bin\$(Configuration)\</OutputPath>
 	  <LangVersion>latest</LangVersion>
     <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
     <NoWarn>$(NoWarn);WFO1000</NoWarn>
@@ -29,16 +29,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="DiskInfoToolkit" />
     <PackageReference Include="OxyPlot.Core" />
     <PackageReference Include="OxyPlot.WindowsForms" />
-    <PackageReference Include="RAMSPDToolkit-NDD" />
     <PackageReference Include="System.IO.FileSystem.AccessControl" />
-    <PackageReference Include="System.IO.Ports" />
     <PackageReference Include="System.Management" />
     <PackageReference Include="System.Resources.Extensions" />
     <PackageReference Include="System.Text.Json" />
-    <PackageReference Include="System.Threading.AccessControl" />
     <PackageReference Include="TaskScheduler" />
   </ItemGroup>
 
@@ -93,7 +89,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="LibreHardwareMonitor.Tests" />
+    <InternalsVisibleTo Include="LibreHardwareMonitor.Tests.Library" />
+    <InternalsVisibleTo Include="LibreHardwareMonitor.Tests.Application" />
+    <InternalsVisibleTo Include="LibreHardwareMonitor.Tests.Contracts" />
+    <InternalsVisibleTo Include="LibreHardwareMonitor.Tests.Attended" />
   </ItemGroup>
 
   <ItemGroup>

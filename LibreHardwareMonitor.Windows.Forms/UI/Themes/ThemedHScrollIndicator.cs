@@ -82,14 +82,7 @@ namespace LibreHardwareMonitor.Windows.Forms.UI.Themes
             }
 
             if (m.Msg == WmDestroy && _automationProvider != null)
-            {
-                AutomationInteropProvider.ReturnRawElementProvider(
-                    Handle,
-                    IntPtr.Zero,
-                    IntPtr.Zero,
-                    null);
                 _automationProvider = null;
-            }
 
             base.WndProc(ref m);
         }

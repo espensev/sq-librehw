@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Visual senior-developer handoff for LibreHardwareMonitor Plan-012 WinForms presentation surface adapters.">
+  <title>Plan-012 · WinForms Presentation Surface Adapters</title>
+  <style>
+    :root {
+      --ink: #eef4ff;
+      --muted: #aab7cc;
+      --canvas: #07101d;
+      --surface: rgba(14, 28, 48, .86);
+      --surface-strong: #122440;
+      --line: rgba(168, 194, 230, .18);
+      --cyan: #5ee7f7;
+      --blue: #6d8cff;
+      --violet: #b088ff;
+      --green: #68e6a2;
+      --amber: #ffd47b;
+      --red: #ff8f9d;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .34);
+      --radius: 22px;
+      --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      overflow-x: clip;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(94, 231, 247, .15), transparent 28rem),
+        radial-gradient(circle at 88% 18%, rgba(176, 136, 255, .14), transparent 30rem),
+        linear-gradient(155deg, #07101d 0%, #091426 45%, #07101d 100%);
+      font: 16px/1.6 var(--sans);
+      min-height: 100vh;
+    }
+
+    a { color: var(--cyan); text-underline-offset: 3px; }
+    a:hover { color: #c8f9ff; }
+    a:focus-visible, summary:focus-visible {
+      outline: 3px solid var(--amber);
+      outline-offset: 4px;
+      border-radius: 6px;
+    }
+
+    .skip-link {
+      position: fixed;
+      left: 1rem;
+      top: -5rem;
+      z-index: 20;
+      padding: .75rem 1rem;
+      color: #07101d;
+      background: var(--amber);
+      border-radius: 10px;
+      font-weight: 800;
+    }
+    .skip-link:focus { top: 1rem; }
+
+    .shell { width: min(1180px, calc(100% - 2rem)); margin: 0 auto; }
+    .metric, .card, .panel, .surface, .code-card, .lane, .gate, .boundary-item,
+    .section-head > *, .architecture > *, .code-grid > *, .gates > *,
+    .handoff > * { min-width: 0; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid var(--line);
+      background: rgba(7, 16, 29, .83);
+      backdrop-filter: blur(18px);
+    }
+    .topbar-inner {
+      min-height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .brand { display: flex; align-items: center; gap: .7rem; font-weight: 800; letter-spacing: -.02em; }
+    .mark {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      color: #06111e;
+      background: linear-gradient(135deg, var(--cyan), var(--violet));
+      border-radius: 9px;
+      box-shadow: 0 0 28px rgba(94, 231, 247, .28);
+      font: 900 13px/1 var(--mono);
+    }
+    nav { display: flex; flex-wrap: wrap; gap: .9rem; font-size: .88rem; }
+    nav a { color: var(--muted); text-decoration: none; }
+    nav a:hover { color: var(--ink); }
+
+    .hero { padding: 5.6rem 0 3rem; }
+    .eyebrow {
+      margin: 0 0 1rem;
+      color: var(--cyan);
+      font: 800 .78rem/1.2 var(--mono);
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 { line-height: 1.08; letter-spacing: -.035em; }
+    h1 { max-width: 900px; margin: 0; font-size: clamp(2.8rem, 7vw, 6.4rem); }
+    h1 span {
+      color: transparent;
+      background: linear-gradient(90deg, var(--cyan), #9ab2ff 52%, var(--violet));
+      background-clip: text;
+      -webkit-background-clip: text;
+    }
+    .lede { max-width: 780px; margin: 1.5rem 0 0; color: #c8d3e5; font-size: clamp(1.05rem, 2vw, 1.28rem); }
+
+    .status-row { display: flex; flex-wrap: wrap; gap: .65rem; margin-top: 2rem; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: .45rem;
+      padding: .5rem .8rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: #dce6f7;
+      background: rgba(13, 27, 47, .8);
+      font: 700 .8rem/1.2 var(--mono);
+    }
+    .dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--amber); box-shadow: 0 0 16px currentColor; }
+    .dot.green { background: var(--green); }
+    .dot.blue { background: var(--blue); }
+
+    .notice {
+      margin-top: 2rem;
+      padding: 1rem 1.15rem;
+      border: 1px solid rgba(255, 212, 123, .35);
+      border-left: 4px solid var(--amber);
+      border-radius: 12px;
+      background: rgba(255, 212, 123, .07);
+      color: #f7e5bd;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin: 2.4rem 0 0;
+    }
+    .metric, .card, .panel {
+      border: 1px solid var(--line);
+      background: linear-gradient(150deg, rgba(18, 36, 64, .92), rgba(10, 23, 41, .76));
+      box-shadow: var(--shadow);
+    }
+    .metric { min-height: 138px; padding: 1.25rem; border-radius: 18px; }
+    .metric strong { display: block; font-size: 2.1rem; letter-spacing: -.05em; }
+    .metric span { color: var(--muted); font-size: .88rem; }
+    .metric small { display: block; margin-top: .35rem; color: #7f91ac; }
+
+    section { padding: 4.2rem 0; scroll-margin-top: 70px; }
+    .section-head { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); gap: 2rem; align-items: end; margin-bottom: 2rem; }
+    .section-head h2 { margin: 0; font-size: clamp(2rem, 4.2vw, 3.6rem); }
+    .section-head p { margin: 0; color: var(--muted); }
+
+    .timeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+    .card { position: relative; overflow: hidden; padding: 1.35rem; border-radius: var(--radius); }
+    .card::before { content: ""; position: absolute; inset: 0 auto auto 0; width: 100%; height: 3px; background: linear-gradient(90deg, var(--cyan), var(--violet)); }
+    .card .index { color: var(--cyan); font: 800 .75rem/1 var(--mono); letter-spacing: .12em; }
+    .card h3 { margin: .75rem 0 .7rem; font-size: 1.25rem; }
+    .card p { margin: 0; color: var(--muted); font-size: .92rem; }
+    .card code, .code-tag { font: .78rem/1.4 var(--mono); color: #d5c7ff; }
+    .commit { display: inline-block; margin-top: 1rem; padding: .25rem .5rem; background: rgba(176, 136, 255, .1); border-radius: 6px; }
+
+    .architecture { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    .panel { padding: 1.4rem; border-radius: var(--radius); }
+    .panel-kicker { margin: 0 0 .5rem; color: var(--cyan); font: 800 .74rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    .panel h3 { margin: 0 0 1rem; font-size: 1.45rem; }
+    .panel > p { color: var(--muted); }
+    .diagram { width: 100%; height: auto; display: block; margin: 1rem 0; }
+
+    .matrix { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .surface { padding: 1.2rem; border: 1px solid var(--line); border-radius: 16px; background: rgba(6, 15, 28, .52); }
+    .surface-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .surface h3 { margin: 0; font-size: 1.18rem; }
+    .surface .scope { color: var(--green); font: 700 .72rem/1 var(--mono); text-transform: uppercase; }
+    .surface p { margin: .65rem 0 0; color: var(--muted); font-size: .9rem; }
+
+    .code-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .code-card { overflow: hidden; border: 1px solid var(--line); border-radius: 17px; background: #07101d; }
+    .code-head { display: flex; justify-content: space-between; gap: 1rem; padding: .8rem 1rem; color: var(--muted); background: #101f36; font: .76rem/1.2 var(--mono); }
+    .code-head > span { min-width: 0; overflow-wrap: anywhere; }
+    pre { margin: 0; padding: 1rem; overflow: auto; color: #dbe8fb; font: .82rem/1.65 var(--mono); tab-size: 4; }
+    .kw { color: #c4a7ff; }
+    .fn { color: #73e2f2; }
+    .cm { color: #7f91ac; }
+    .st { color: #9bebbd; }
+
+    .lanes { display: grid; grid-template-columns: repeat(4, 1fr); gap: .8rem; align-items: stretch; }
+    .lane { position: relative; padding: 1.15rem; border: 1px solid var(--line); border-radius: 16px; background: rgba(13, 26, 45, .88); }
+    .lane:not(:last-child)::after { content: "→"; position: absolute; z-index: 2; right: -.76rem; top: 50%; transform: translateY(-50%); color: var(--cyan); font-size: 1.3rem; }
+    .lane strong { display: block; color: var(--cyan); font: 900 1.1rem/1 var(--mono); }
+    .lane h3 { margin: .7rem 0 .45rem; font-size: 1rem; }
+    .lane p { margin: 0; color: var(--muted); font-size: .84rem; }
+
+    .gates { display: grid; grid-template-columns: 1.1fr .9fr; gap: 1rem; }
+    .gate-list { display: grid; gap: .65rem; }
+    .gate { display: grid; grid-template-columns: 28px 1fr auto; gap: .7rem; align-items: center; padding: .75rem .8rem; border: 1px solid var(--line); border-radius: 12px; background: rgba(7, 16, 29, .55); }
+    .check { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; color: #07101d; background: var(--green); font-weight: 900; }
+    .gate span { color: var(--muted); font-size: .84rem; }
+    .gate b { font: .76rem/1 var(--mono); color: var(--ink); }
+
+    .boundary { display: grid; grid-template-columns: repeat(4, 1fr); gap: .8rem; }
+    .boundary-item { padding: 1rem; border-radius: 14px; border: 1px solid var(--line); background: rgba(10, 22, 39, .75); }
+    .boundary-item.current { border-color: rgba(94, 231, 247, .55); }
+    .boundary-item h3 { margin: 0 0 .45rem; font-size: .94rem; }
+    .boundary-item p { margin: 0; color: var(--muted); font-size: .82rem; }
+    .boundary-item .state { display: inline-block; margin-top: .7rem; color: var(--amber); font: 800 .7rem/1 var(--mono); text-transform: uppercase; }
+    .boundary-item.current .state { color: var(--cyan); }
+
+    details { border: 1px solid var(--line); border-radius: 14px; background: rgba(9, 20, 36, .75); }
+    details + details { margin-top: .75rem; }
+    summary { cursor: pointer; padding: 1rem 1.1rem; font-weight: 750; }
+    details .detail-body { padding: 0 1.1rem 1.1rem; color: var(--muted); }
+    details ul { margin-bottom: 0; }
+
+    .handoff {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 1.25rem;
+      padding: 2rem;
+      border: 1px solid rgba(94, 231, 247, .32);
+      border-radius: 26px;
+      background: linear-gradient(135deg, rgba(22, 57, 82, .92), rgba(36, 25, 70, .88));
+      box-shadow: var(--shadow);
+    }
+    .handoff h2 { margin: 0 0 .8rem; font-size: clamp(2rem, 4vw, 3.2rem); }
+    .handoff p { color: #c7d4e8; }
+    .link-stack { display: grid; gap: .65rem; align-content: start; }
+    .action-link { display: flex; justify-content: space-between; gap: 1rem; padding: .85rem 1rem; color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 12px; background: rgba(7, 16, 29, .45); }
+    .action-link > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+    .action-link:hover { border-color: var(--cyan); background: rgba(7, 16, 29, .75); }
+
+    footer { padding: 2.5rem 0 4rem; color: #7f91ac; font-size: .82rem; }
+    footer .shell { display: flex; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--line); padding-top: 1.4rem; }
+
+    @media (max-width: 900px) {
+      nav { display: none; }
+      .metrics, .timeline { grid-template-columns: repeat(2, 1fr); }
+      .architecture, .code-grid, .gates, .handoff, .section-head { grid-template-columns: 1fr; }
+      .lanes { grid-template-columns: repeat(2, 1fr); }
+      .lane::after { display: none; }
+      .boundary { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 560px) {
+      .shell { width: calc(100% - 1.15rem); }
+      .hero { padding-top: 3.4rem; }
+      .metrics, .timeline, .matrix, .lanes, .boundary { grid-template-columns: 1fr; }
+      .metric { min-height: 0; }
+      .status-row { align-items: stretch; }
+      .pill { width: 100%; }
+      .gate { grid-template-columns: 28px 1fr; }
+      .gate b { grid-column: 2; }
+      .handoff { padding: 1.25rem; }
+      footer .shell { display: block; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+
+    @media print {
+      :root { --ink: #102038; --muted: #42516a; --canvas: #fff; --surface: #fff; --surface-strong: #f4f7fb; --line: #cfd8e6; }
+      body { background: #fff; color: var(--ink); }
+      .topbar { position: static; background: #fff; }
+      .card, .panel, .metric, .handoff { box-shadow: none; break-inside: avoid; }
+      nav, .skip-link { display: none; }
+      a { color: #145e78; }
+      .code-card, pre { background: #f4f7fb; color: #102038; }
+      section { padding: 2rem 0; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <div class="brand"><span class="mark" aria-hidden="true">12</span> LibreHardwareMonitor · Senior brief</div>
+      <nav aria-label="Brief sections">
+        <a href="#baseline">Baseline</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#code">Code</a>
+        <a href="#delivery">Delivery</a>
+        <a href="#handoff">Handoff</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="shell">
+        <p class="eyebrow">Phase 4 · Application and adapter seams</p>
+        <h1>Make the UI replaceable.<br><span>Keep the product identical.</span></h1>
+        <p class="lede">Plan‑012 inserts a small, testable presentation boundary between the 2,521‑line WinForms composition root and its tree, plot, tray, and gadget surfaces. It is a structural refactor—not a redesign, not a new renderer, and not a deployment.</p>
+
+        <div class="status-row" aria-label="Campaign status">
+          <span class="pill"><span class="dot green" aria-hidden="true"></span>Ledger state · implemented</span>
+          <span class="pill"><span class="dot blue" aria-hidden="true"></span>Criteria · 11 met / 1 open / 0 waived</span>
+          <span class="pill"><span class="dot green" aria-hidden="true"></span>Source integrated · verified</span>
+          <span class="pill"><span class="dot blue" aria-hidden="true"></span>Acceptance · person‑only, open</span>
+          <span class="pill">Baseline <code>9d4786c</code> → <code>36c7467</code> → <code>7d2600b</code> → <code>444dfd7</code></span>
+        </div>
+
+        <div class="notice"><strong>Presentation brief — not execution authority.</strong> Canonical authority remains the Plan‑012 JSON, generated campaign plan, roadmap/backlog, agent specs, and tracker. The ledger records <em>implemented</em>, never <em>accepted</em>: acceptance is a person‑only decision. <strong>No candidate was created and no deployment, promotion, or live cutover is authorized by this campaign.</strong></div>
+
+        <div class="metrics" aria-label="Verified Plan-012 results">
+          <article class="metric"><strong>5</strong><span>Phase‑4 seams landed</span><small>Plans 008–012 · Phase 4 complete</small></article>
+          <article class="metric"><strong>319 + 1</strong><span>deterministic .NET aggregate</span><small>passed + established opt‑in skip</small></article>
+          <article class="metric"><strong>8 / 8</strong><span>non‑deploying gates green</span><small>at Plan‑012 closure</small></article>
+          <article class="metric"><strong>0W / 0E</strong><span>both WinForms Release targets</span><small>net10.0‑windows + net472</small></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="baseline">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="eyebrow">What is already done</p><h2>A stable runway, not a greenfield rewrite.</h2></div>
+          <p>Each prior campaign extracted one ownership seam and preserved observable contracts. Plan‑012 starts from that proven checkpoint instead of reopening snapshot, HTTP, lifecycle, or persistence decisions.</p>
+        </div>
+
+        <div class="timeline">
+          <article class="card">
+            <span class="index">PLAN‑008</span>
+            <h3>Immutable sensor snapshot</h3>
+            <p>Detached capture and projection protect downstream data without transferring hardware ownership away from WinForms.</p>
+            <span class="commit code-tag">cbd1013 · 3a31eb5</span>
+          </article>
+          <article class="card">
+            <span class="index">PLAN‑009</span>
+            <h3>HTTP listener adapter</h3>
+            <p>Listener mechanics sit behind a service while the public <code>data.json</code> and authentication contract stays exact.</p>
+            <span class="commit code-tag">b510f47</span>
+          </article>
+          <article class="card">
+            <span class="index">PLAN‑010</span>
+            <h3>Lifecycle coordination</h3>
+            <p>Polling, options, reset, shutdown, and PawnIO startup now have deterministic barriers and drain semantics.</p>
+            <span class="commit code-tag">479c89b</span>
+          </article>
+          <article class="card">
+            <span class="index">PLAN‑011</span>
+            <h3>Settings persistence</h3>
+            <p>Projection/save sequencing is explicit; MainForm still owns concrete reads and PersistentSettings still owns atomic storage.</p>
+            <span class="commit code-tag">e58e38d · 8f68c09 · 9d4786c</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="eyebrow">Why Plan‑012</p><h2>Separate orchestration from rendering surfaces.</h2></div>
+          <p>Before Plan-012, MainForm knew every concrete presentation API. The integrated result adds typed forwarding and one ordered coordinator while keeping interaction policy where it already works.</p>
+        </div>
+
+        <div class="architecture">
+          <article class="panel">
+            <p class="panel-kicker">Before · verified baseline</p>
+            <h3>Direct concrete edges</h3>
+            <svg class="diagram" viewBox="0 0 620 360" role="img" aria-labelledby="before-title before-desc">
+              <title id="before-title">Pre-campaign MainForm direct presentation dependencies</title>
+              <desc id="before-desc">MainForm directly calls the tree view, plot panel, system tray, and sensor gadget.</desc>
+              <defs><linearGradient id="mainGrad" x1="0" x2="1"><stop stop-color="#5ee7f7"/><stop offset="1" stop-color="#6d8cff"/></linearGradient></defs>
+              <rect x="200" y="24" width="220" height="70" rx="18" fill="url(#mainGrad)" opacity=".95"/>
+              <text x="310" y="56" fill="#07101d" text-anchor="middle" font-size="20" font-weight="800">MainForm</text>
+              <text x="310" y="78" fill="#143044" text-anchor="middle" font-size="12">composition + policy + direct calls</text>
+              <g stroke="#8fa9cd" stroke-width="2" stroke-dasharray="7 7" opacity=".8">
+                <path d="M255 94 L105 176"/><path d="M285 94 L245 176"/><path d="M335 94 L385 176"/><path d="M365 94 L535 176"/>
+              </g>
+              <g fill="#122440" stroke="#6e85a8">
+                <rect x="32" y="176" width="145" height="78" rx="15"/><rect x="182" y="176" width="145" height="78" rx="15"/>
+                <rect x="332" y="176" width="145" height="78" rx="15"/><rect x="482" y="176" width="106" height="78" rx="15"/>
+              </g>
+              <g fill="#eef4ff" text-anchor="middle" font-size="16" font-weight="700">
+                <text x="104" y="208">TreeViewAdv</text><text x="254" y="208">PlotPanel</text><text x="404" y="208">SystemTray</text><text x="535" y="208">Gadget</text>
+              </g>
+              <g fill="#aab7cc" text-anchor="middle" font-size="11">
+                <text x="104" y="231">layout · input · redraw</text><text x="254" y="231">projection · docking</text><text x="404" y="231">membership · icons</text><text x="535" y="231">optional</text>
+              </g>
+              <rect x="84" y="292" width="452" height="42" rx="12" fill="#2a1e20" stroke="#ff8f9d" opacity=".9"/>
+              <text x="310" y="318" fill="#ffc6ce" text-anchor="middle" font-size="13">Surface calls and application policy are difficult to distinguish in review.</text>
+            </svg>
+            <p>No defect is claimed here. The issue is reviewability and substitution cost: operational calls are interleaved with behavior that must remain MainForm‑owned.</p>
+          </article>
+
+          <article class="panel">
+            <p class="panel-kicker">Plan‑012 result · implemented</p>
+            <h3>One coordinator, four narrow ports</h3>
+            <svg class="diagram" viewBox="0 0 620 360" role="img" aria-labelledby="after-title after-desc">
+              <title id="after-title">Integrated Plan-012 presentation adapter architecture</title>
+              <desc id="after-desc">MainForm calls a presentation coordinator, which forwards to narrow adapters over the existing tree, plot, tray, and gadget.</desc>
+              <rect x="195" y="18" width="230" height="58" rx="17" fill="#6d8cff"/>
+              <text x="310" y="53" fill="#07101d" text-anchor="middle" font-size="19" font-weight="800">MainForm</text>
+              <path d="M310 76 L310 111" stroke="#5ee7f7" stroke-width="3"/>
+              <rect x="145" y="111" width="330" height="66" rx="17" fill="#132d48" stroke="#5ee7f7" stroke-width="2"/>
+              <text x="310" y="139" fill="#eef4ff" text-anchor="middle" font-size="18" font-weight="800">PresentationSurfaceCoordinator</text>
+              <text x="310" y="160" fill="#aab7cc" text-anchor="middle" font-size="11">ordered refresh · forwarding · event relay · teardown</text>
+              <g stroke="#8fa9cd" stroke-width="2"><path d="M205 177 L96 223"/><path d="M275 177 L245 223"/><path d="M345 177 L395 223"/><path d="M415 177 L535 223"/></g>
+              <g fill="#172a45" stroke="#b088ff">
+                <rect x="32" y="223" width="128" height="68" rx="14"/><rect x="181" y="223" width="128" height="68" rx="14"/>
+                <rect x="330" y="223" width="128" height="68" rx="14"/><rect x="479" y="223" width="109" height="68" rx="14"/>
+              </g>
+              <g fill="#eef4ff" text-anchor="middle" font-size="14" font-weight="700">
+                <text x="96" y="251">Tree port</text><text x="245" y="251">Plot port</text><text x="394" y="251">Tray port</text><text x="533" y="251">Gadget port</text>
+              </g>
+              <g fill="#aab7cc" text-anchor="middle" font-size="10"><text x="96" y="272">redraw only</text><text x="245" y="272">projection + view</text><text x="394" y="272">membership</text><text x="533" y="272">optional</text></g>
+              <rect x="72" y="315" width="476" height="28" rx="10" fill="#17352d" stroke="#68e6a2"/>
+              <text x="310" y="334" fill="#baf6d4" text-anchor="middle" font-size="12">Existing concrete surfaces remain unchanged behind the adapters.</text>
+            </svg>
+            <p>The boundary is deliberately thin. It does not virtualize the whole tree, convert live sensors to a new DTO, or move policy into a second MainForm.</p>
+          </article>
+        </div>
+
+        <div class="matrix" style="margin-top:1rem">
+          <article class="surface"><div class="surface-head"><h3>Tree</h3><span class="scope">adapter owns</span></div><p>Redraw/invalidation only. MainForm retains model attachment, canonical order, columns, scaling, selection, keyboard/mouse handling, hit targets, scrollbars, and UI Automation.</p></article>
+          <article class="surface"><div class="surface-head"><h3>Plot</h3><span class="scope">adapter owns</span></div><p>Exact control identity, reset callback, settings projection, sensor/color/stroke forwarding, text scales, and redraw. MainForm retains show/location menu and control parenting.</p></article>
+          <article class="surface"><div class="surface-head"><h3>Tray</h3><span class="scope">adapter owns</span></div><p>Redraw, main icon, membership, balloon flag, command events, and disposal forwarding. SystemTray retains settings, hardware subscriptions, icons, and native resource ownership.</p></article>
+          <article class="surface"><div class="surface-head"><h3>Gadget</h3><span class="scope">adapter owns</span></div><p>Optional availability, visibility, redraw, membership, command event, and disposal forwarding. Windows-only construction and the legacy renderer remain unchanged.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="code">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="eyebrow">Code details</p><h2>The seam follows the calls that already exist.</h2></div>
+          <p>These excerpts show the pre-campaign coupling and the integrated Plan-012 result. The result excerpts are taken from the verified AS–AU source chain.</p>
+        </div>
+
+        <div class="code-grid">
+          <article class="code-card">
+            <div class="code-head"><span>Before · baseline 9d4786c, MainForm.cs:839</span><span>pre-campaign source</span></div>
+            <pre><code>treeView.<span class="fn">Invalidate</span>();
+_systemTray.<span class="fn">Redraw</span>();
+_gadget?.<span class="fn">Redraw</span>();
+
+<span class="kw">if</span> (_showPlot == <span class="kw">null</span> || _showPlot.Value)
+    _plotPanel.<span class="fn">InvalidatePlot</span>();</code></pre>
+          </article>
+
+          <article class="code-card">
+            <div class="code-head"><span>Result · MainForm.cs, coordinator call</span><span>implemented in <code>444dfd7</code></span></div>
+            <pre><code><span class="cm">// MainForm still decides when the plot is visible.</span>
+_presentation.<span class="fn">RefreshSurfaces</span>(
+    _showPlot == <span class="kw">null</span> || _showPlot.Value);
+
+<span class="cm">// Coordinator preserves tree → tray → gadget → plot.</span></code></pre>
+          </article>
+
+          <article class="code-card">
+            <div class="code-head"><span>Before · baseline 9d4786c, MainForm.cs:2063</span><span>pre-campaign membership policy</span></div>
+            <pre><code><span class="fn">AddBulkMembershipMenuItems</span>(
+    <span class="st">$"Show Selected in Tray ({count})"</span>,
+    <span class="st">$"Remove Selected from Tray ({count})"</span>,
+    selectedSensorNodes,
+    sensor =&gt; _systemTray.<span class="fn">Contains</span>(sensor),
+    sensor =&gt; _systemTray.<span class="fn">Add</span>(sensor, <span class="kw">false</span>),
+    sensor =&gt; _systemTray.<span class="fn">Remove</span>(sensor));</code></pre>
+          </article>
+
+          <article class="code-card">
+            <div class="code-head"><span>Result · exact forwarding</span><span>implemented in <code>444dfd7</code></span></div>
+            <pre><code><span class="cm">// Menu text, selection, and idempotence remain in MainForm.</span>
+sensor =&gt; _presentation.<span class="fn">TrayContains</span>(sensor),
+sensor =&gt; _presentation.<span class="fn">AddToTray</span>(sensor, balloonTip: <span class="kw">false</span>),
+sensor =&gt; _presentation.<span class="fn">RemoveFromTray</span>(sensor)
+
+<span class="cm">// No copied sensor list; no changed setting keys.</span></code></pre>
+          </article>
+        </div>
+
+        <details style="margin-top:1rem">
+          <summary>Concrete touchpoints preserved by the wiring</summary>
+          <div class="detail-body">
+            <ul>
+              <li>Construction: <code>PlotPanel</code> at MainForm line 162, <code>SystemTray</code> at 193, and Windows-only <code>SensorGadget</code> at 214.</li>
+              <li>Plot: reset callback, dock/tool-window parent identity, stroke/text scales, selection/colors, redraw, and current-settings projection.</li>
+              <li>Tray/gadget: command events, visibility/icon state, mixed and single sensor membership, and exact balloon behavior.</li>
+              <li>Shutdown: current gadget disposal at line 1827 immediately precedes tray disposal at 1828, after final settings save and node cleanup.</li>
+            </ul>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section id="delivery">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="eyebrow">Execution design</p><h2>Four owners. Zero overlapping files.</h2></div>
+          <p>The campaign is serial because each layer defines the next layer’s contract. That is intentional risk control around MainForm and native WinForms resources.</p>
+        </div>
+
+        <div class="lanes" aria-label="Agent dependency flow">
+          <article class="lane"><strong>AS</strong><h3>Contract + 12 facts</h3><p>Internal ports, coordinator, ordered refresh, exact forwarding, event relay, teardown.</p></article>
+          <article class="lane"><strong>AT</strong><h3>Concrete adapters</h3><p>Thin wrappers over the existing tree, plot, tray, and optional gadget instances.</p></article>
+          <article class="lane"><strong>AU</strong><h3>MainForm wiring</h3><p>One composition field; preserve UI policy, control behavior, and shutdown order.</p></article>
+          <article class="lane"><strong>AV</strong><h3>Independent close</h3><p>Full gates, evidence, docs/tracker truth, and final update of this visual brief.</p></article>
+        </div>
+
+        <div class="gates" style="margin-top:1.25rem">
+          <article class="panel">
+            <p class="panel-kicker">Verified acceptance evidence</p>
+            <h3>Automated source gates</h3>
+            <div class="gate-list">
+              <div class="gate"><span class="check">✓</span><div>Coordinator facts</div><b>12 / 12</b></div>
+              <div class="gate"><span class="check">✓</span><div>Application</div><b>178 + 1 / 179</b></div>
+              <div class="gate"><span class="check">✓</span><div>Contracts</div><b>73 / 73</b></div>
+              <div class="gate"><span class="check">✓</span><div>Deterministic .NET aggregate</div><b>319 + 1 / 320</b></div>
+              <div class="gate"><span class="check">✓</span><div>WinForms Release targets</div><b>0W / 0E × 2</b></div>
+              <div class="gate"><span class="check">✓</span><div>Avalonia fixture explorer</div><b>75 / 75</b></div>
+              <div class="gate"><span class="check">✓</span><div>Web suites</div><b>315 + 18</b></div>
+              <div class="gate"><span class="check">✓</span><div>Non-deploying CI gates</div><b>8 / 8</b></div>
+            </div>
+            <p style="font-size:.82rem;margin-bottom:0">Measured by AV on the integrated tree at <code>444dfd7</code>. Avalonia carries only the established AVLN3001 warning; the single skip is the established live‑config opt‑in test; <code>ci-gates</code> is skipped as self‑referential. Green gates are source evidence only — they authorize no candidate or deployment.</p>
+          </article>
+
+          <article class="panel">
+            <p class="panel-kicker">Protected invariants</p>
+            <h3>What blocks the merge</h3>
+            <ul style="color:var(--muted);padding-left:1.2rem">
+              <li>Any changed <code>data.json</code> golden byte or HTTP route.</li>
+              <li>Any altered canonical node order, scrollbar hit target, or UI Automation range/value bridge.</li>
+              <li>Any duplicate hardware, settings, timer, thread, or native resource owner.</li>
+              <li>Any plot history, docking identity, membership key, balloon, or disposal-order regression.</li>
+              <li>Any project/package/gate change used to make a failure disappear.</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="boundaries">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="eyebrow">Operational boundary</p><h2>This campaign stops at verified source.</h2></div>
+          <p>A source result is not a candidate, and a candidate is not a deployment. Plan‑012 authorizes only the development checkout and read‑only live separation proof.</p>
+        </div>
+        <div class="boundary">
+          <article class="boundary-item current"><h3>Source</h3><p><code>D:\DevHome\workspaces\librehw-host\checkouts\main</code></p><span class="state">In scope</span></article>
+          <article class="boundary-item"><h3>Candidate store</h3><p><code>releases\candidates</code><br>Immutable release artifacts.</p><span class="state">No write</span></article>
+          <article class="boundary-item"><h3>Live runtime</h3><p><code>deployments\current</code><br>Separate task/process/config/CSV owner.</p><span class="state">Observe only</span></article>
+          <article class="boundary-item"><h3>Rollback/history</h3><p><code>deployments\rollback</code><br>Immutable operational evidence.</p><span class="state">No write</span></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="risks">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="eyebrow">Senior review guide</p><h2>The sharp edges are explicit.</h2></div>
+          <p>The plan should be rejected if the adapter becomes a policy owner, if the tree is wholesale abstracted, or if the refactor requires a surface-class or external-contract change.</p>
+        </div>
+        <details open><summary>Risk: a second MainForm appears behind a “coordinator” name</summary><div class="detail-body">Mitigation: the coordinator exposes operations only. MainForm retains construction, UI thread, menus, layout/input, timers, lifecycle, settings, hardware, and all decisions about when an operation occurs.</div></details>
+        <details><summary>Risk: tree abstraction breaks high-value interaction behavior</summary><div class="detail-body">Mitigation: Plan‑012 does not proxy selection, columns, auto-fit, keyboard/mouse interaction, scrollbars, accessibility objects, or canonical Node/TreeModel order. The tree port is intentionally narrow.</div></details>
+        <details><summary>Risk: wrapper disposal duplicates native ownership</summary><div class="detail-body">Mitigation: adapters forward disposal to the existing tray/gadget owners exactly once, gadget before tray. WinForms retains normal control disposal for tree and plot.</div></details>
+        <details><summary>Risk: “executed” or a healthy live sample is read as deployed</summary><div class="detail-body">Mitigation: campaign status, source implementation, person acceptance, candidate creation, promotion, and live health are reported as separate facts everywhere—including this page.</div></details>
+      </div>
+    </section>
+
+    <section id="handoff">
+      <div class="shell">
+        <div class="handoff">
+          <div>
+            <p class="eyebrow">Handoff</p>
+            <h2>Start with the contract, not MainForm.</h2>
+            <p>For review, start with the canonical plan and AS contract, then inspect the AT adapter, AU wiring, and AV verification evidence. AS, AT, AU, and AV ran inline in dependency order rather than in isolated worktrees; that recorded deviation leaves criterion 10 open with no waiver. The rollback remains source-only: revert AU, then AT, then AS back to <code>9d4786c</code>. No operational rollback packet is involved.</p>
+            <p><strong>Remaining human gate:</strong> Plan‑001 A1 attended normal-user smoke remains separate and person-only. Plan‑012 itself also cannot be called accepted or deployed by automation.</p>
+          </div>
+          <div class="link-stack" aria-label="Canonical handoff links">
+            <a class="action-link" href="../data/plans/plan-012.json"><span>Canonical Plan‑012 JSON</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="campaign-plan-012-winforms-presentation-surface-adapters.md"><span>Generated campaign plan</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="../agents/agent-as-presentation-surface-contract.md"><span>Implemented contract · Agent AS</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="architecture/refactor-roadmap.md"><span>Continuation authority</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="campaign-backlog.md"><span>Sequenced backlog</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="features/feature-native-ui-modernization.md"><span>UI product contract</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="../LibreHardwareMonitor.Windows.Forms/UI/MainForm.cs"><span>Composition root</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="../LibreHardwareMonitor.Windows.Forms/UI/PresentationSurfaceCoordinator.cs"><span>Coordinator &amp; ports</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="../LibreHardwareMonitor.Windows.Forms/UI/WinFormsPresentationAdapters.cs"><span>Concrete adapters</span><span aria-hidden="true">↗</span></a>
+            <a class="action-link" href="../LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/PresentationSurfaceCoordinatorTests.cs"><span>Twelve facts</span><span aria-hidden="true">↗</span></a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell">
+      <span>Prepared 2026‑08‑02 · reviewed 2026‑08‑05 · SND‑HOST source campaign</span>
+      <span>Offline · no analytics · no external assets · no deployment authority</span>
+    </div>
+  </footer>
+</body>
+</html>

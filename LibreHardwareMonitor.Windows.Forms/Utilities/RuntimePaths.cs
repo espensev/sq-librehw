@@ -17,7 +17,6 @@ internal enum RuntimeDataRootSource
 {
     RuntimeConfiguration,
     ExplicitEnvironment,
-    SqDataEnvironment,
     ExecutableDirectory
 }
 
@@ -26,8 +25,6 @@ internal sealed class RuntimePaths
     internal const string RuntimeConfigurationFileName = "librehw.runtime.json";
     internal const string RuntimeConfigurationSchema = "sq.librehw.runtime.v1";
     internal const string DataRootEnvironmentVariable = "LIBREHARDWAREMONITOR_DATA_ROOT";
-    internal const string SqDataEnvironmentVariable = "sqdata";
-    internal const string ApplicationDataDirectoryName = "LibreHardwareMonitor";
     internal const string SettingsFileName = "LibreHardwareMonitor.Windows.Forms.config";
     internal const int MaxRuntimeConfigurationBytes = 64 * 1024;
 
@@ -105,7 +102,7 @@ internal sealed class RuntimePaths
         string managedStartupTaskPath = null;
         RuntimeDataRootSource source;
 
-        if (File.Exists(runtimeConfigurationPath))
+        if (RuntimeConfigurationIsPresent(runtimeConfigurationPath))
         {
             RuntimeConfiguration configuration = LoadRuntimeConfiguration(runtimeConfigurationPath);
             dataRoot = NormalizeAbsoluteFileSystemPath(
@@ -128,20 +125,8 @@ internal sealed class RuntimePaths
             }
             else
             {
-                string sqDataRoot = getEnvironmentVariable(SqDataEnvironmentVariable);
-                if (!string.IsNullOrWhiteSpace(sqDataRoot))
-                {
-                    string normalizedSqDataRoot = NormalizeAbsoluteFileSystemPath(
-                        sqDataRoot,
-                        $"Environment variable {SqDataEnvironmentVariable}");
-                    dataRoot = Path.Combine(normalizedSqDataRoot, ApplicationDataDirectoryName);
-                    source = RuntimeDataRootSource.SqDataEnvironment;
-                }
-                else
-                {
-                    dataRoot = executableDirectory;
-                    source = RuntimeDataRootSource.ExecutableDirectory;
-                }
+                dataRoot = executableDirectory;
+                source = RuntimeDataRootSource.ExecutableDirectory;
             }
         }
 
@@ -163,6 +148,46 @@ internal sealed class RuntimePaths
         if (source != RuntimeDataRootSource.ExecutableDirectory)
             EnsureNoReparseChildren(result.LogDirectory, "The runtime log directory");
         return result;
+    }
+
+    private static bool RuntimeConfigurationIsPresent(string path)
+    {
+        try
+        {
+            FileAttributes attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                throw new InvalidDataException(
+                    $"Runtime configuration '{path}' is a directory, not a file.");
+            }
+
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new InvalidDataException(
+                    $"Runtime configuration '{path}' cannot be a reparse point.");
+            }
+
+            return true;
+        }
+        catch (FileNotFoundException)
+        {
+            return false;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return false;
+        }
+        catch (InvalidDataException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException ||
+                                          exception is UnauthorizedAccessException)
+        {
+            throw new InvalidDataException(
+                $"Runtime configuration '{path}' could not be inspected: {exception.Message}",
+                exception);
+        }
     }
 
     internal static void EnsureSafeMutableDirectoryCreationPath(string path, string description)

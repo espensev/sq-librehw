@@ -1,0 +1,68 @@
+{
+  "schema": "sq.app.v1",
+  "machineId": "snd-desk",
+  "verifiedOn": "2026-08-16",
+  "id": "sq-librehw",
+  "kind": "git-source",
+  "root": "E:\\Monitoring\\sq-librehw",
+  "mutableState": [
+    {
+      "location": "filesystem",
+      "path": "E:\\Data\\LibreHardwareMonitor",
+      "role": "managed-data-root"
+    }
+  ],
+  "deployments": [
+    {
+      "kind": "managed-runtime",
+      "root": "E:\\Monitoring\\LibreHW\\Runtime",
+      "executable": "E:\\Monitoring\\LibreHW\\Runtime\\LibreHardwareMonitor.Windows.Forms.exe",
+      "releaseManifest": "E:\\Monitoring\\LibreHW\\Runtime\\release.json",
+      "runtimeConfig": "E:\\Monitoring\\LibreHW\\Runtime\\librehw.runtime.json",
+      "releaseId": "0.9.6_e977e57.2026-08-14-e977e577ea13-20260814T205711Z",
+      "commit": "e977e577ea133fa6e9486f40f29b2266dcc22d70"
+    }
+  ],
+  "consumers": [
+    {
+      "kind": "scheduledTask",
+      "name": "\\SevGrp\\AdminTask\\LibreHW-No-UAC",
+      "execute": "E:\\Monitoring\\LibreHW\\Runtime\\LibreHardwareMonitor.Windows.Forms.exe",
+      "arguments": "",
+      "workingDirectory": "E:\\Monitoring\\LibreHW\\Runtime"
+    },
+    {
+      "kind": "scriptLauncher",
+      "path": "E:\\Monitoring\\LibreHW\\Scripts\\Start-LibreHardwareMonitor.ps1"
+    },
+    {
+      "kind": "pathShim",
+      "path": "E:\\Bin\\librehw.cmd"
+    },
+    {
+      "kind": "solexEffectiveCatalog",
+      "name": "librehw-solex",
+      "authorityPath": "E:\\Data\\SoleX\\generated\\solex.effective.json"
+    }
+  ],
+  "source": {
+    "kind": "git",
+    "remote": "origin",
+    "uri": "https://github.com/espensev/sq-librehw.git",
+    "commit": "9de2314dbe1a770153f6d254f3c3b01a96d4533f"
+  },
+  "compatibility": {
+    "phase": 2,
+    "surfaces": [
+      "E:\\Monitoring\\LibreHW\\Runtime",
+      "E:\\Monitoring\\LibreHW\\Scripts\\Start-LibreHardwareMonitor.ps1",
+      "E:\\Bin\\librehw.cmd"
+    ],
+    "retiredRoots": [
+      "E:\\SQ_HQ",
+      "E:\\UserProfile"
+    ],
+    "recoveryRoot": "E:\\Data\\LibreHardwareMonitor\\release-recovery\\runtime-root-relocation",
+    "runtimeInventory": "closed-release-owned; do not add sq-app.json to the managed runtime root"
+  }
+}

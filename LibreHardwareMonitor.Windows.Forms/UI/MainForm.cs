@@ -30,7 +30,6 @@ public sealed partial class MainForm : Form
     private bool _closing;
     private readonly UserOption _autoStart;
     private readonly Computer _computer;
-    private readonly SensorGadget _gadget;
     private readonly Logger _logger;
     private readonly UserRadioGroup _loggingInterval;
     private readonly UserRadioGroup _smartUpdateCycle;
@@ -39,7 +38,7 @@ public sealed partial class MainForm : Form
     private readonly UserOption _forceDriveWakeup;
     private readonly UserOption _minimizeOnClose;
     private readonly UserOption _minimizeToTray;
-    private readonly PlotPanel _plotPanel;
+    private readonly PresentationSurfaceCoordinator _presentation;
     private readonly UserOption _readBatterySensors;
     private readonly UserOption _readCpuSensors;
     private readonly UserOption _readFanControllersSensors;
@@ -55,13 +54,13 @@ public sealed partial class MainForm : Form
     private readonly RuntimePaths _runtimePaths;
     private readonly UserRadioGroup _sensorValuesTimeWindow;
     private readonly PersistentSettings _settings;
+    private readonly SettingsPersistenceCoordinator _settingsPersistenceCoordinator;
     private readonly UserOption _showGadget;
     private readonly UserOption _showValue;
     private readonly UserOption _showMin;
     private readonly UserOption _showMax;
     private readonly UserOption _compactMode;
     private readonly StartupManager _startupManager = new();
-    private readonly SystemTray _systemTray;
     private readonly UnitManager _unitManager;
     private readonly UpdateVisitor _updateVisitor = new();
 
@@ -99,14 +98,15 @@ public sealed partial class MainForm : Form
     // Persist settings on this cadence so a crash, forced kill or power loss cannot revert
     // everything changed since launch; the app otherwise saves only on clean exit/log-off.
     private const int AutoSaveIntervalMilliseconds = 5 * 60 * 1000;
+    private readonly ApplicationLifecycleCoordinator _applicationLifecycle;
     private readonly System.Windows.Forms.Timer _autoSaveTimer;
     private readonly UiShutdownCoordinator _shutdownCoordinator;
     private readonly int _uiThreadId;
-    private readonly SemaphoreSlim _hardwareLifecycleGate = new(1, 1);
-    private readonly CancellationTokenSource _hardwareLifecycleCancellation = new();
-    private Task _hardwareInitializationTask;
 
-    private bool IsShutdownPending => _closing || (_shutdownCoordinator?.IsShutdownRequested ?? false);
+    private bool IsShutdownPending =>
+        _closing ||
+        (_shutdownCoordinator?.IsShutdownRequested ?? false) ||
+        (_applicationLifecycle?.IsStopping ?? false);
 
     public MainForm()
     {
@@ -116,6 +116,11 @@ public sealed partial class MainForm : Form
 
         _settings = new PersistentSettings();
         _settings.Load(_runtimePaths.SettingsFilePath);
+        _settingsPersistenceCoordinator = new SettingsPersistenceCoordinator(
+            _settings,
+            _runtimePaths.SettingsFilePath,
+            ProjectCurrentSettings,
+            ex => Debug.WriteLine("Autosave of settings failed: " + ex.Message));
         _uiTextScalePercent = UiScale.ClampPercent(_settings.GetValue("uiTextScale", UiScale.DefaultPercent));
         _plotTextScalePercent = UiScale.ClampPercent(_settings.GetValue("plotTextScale", UiScale.DefaultPercent));
 
@@ -152,7 +157,7 @@ public sealed partial class MainForm : Form
             Theme.SetAutoTheme();
         }
 
-        _plotPanel = new PlotPanel(_settings, _unitManager) { Font = SystemFonts.MessageBoxFont, Dock = DockStyle.Fill };
+        PlotPanel plotPanel = new PlotPanel(_settings, _unitManager) { Font = SystemFonts.MessageBoxFont, Dock = DockStyle.Fill };
 
         nodeCheckBox.IsVisibleValueNeeded += NodeCheckBox_IsVisibleValueNeeded;
         nodeTextBoxText.DrawText += NodeTextBoxText_DrawText;
@@ -174,10 +179,17 @@ public sealed partial class MainForm : Form
         treeView.Model = treeModel;
 
         _computer = new Computer(_settings);
+        _applicationLifecycle = new ApplicationLifecycleCoordinator(
+            OpenHardwareAsync,
+            SetHardwareOption,
+            _computer.Reset,
+            CloseHardwareAsync);
+        _applicationLifecycle.StateChanged += HardwareOperations_StateChanged;
+        _applicationLifecycle.OptionFailed += HardwareOperations_OptionFailed;
+        _applicationLifecycle.ResetFailed += HardwareOperations_ResetFailed;
 
-        _systemTray = new SystemTray(_computer, _settings, _unitManager, this);
-        _systemTray.HideShowCommand += HideShowClick;
-        _systemTray.ExitCommand += ExitClick;
+        SystemTray systemTray = new SystemTray(_computer, _settings, _unitManager, this);
+        SensorGadget gadget = null;
 
         if (Software.OperatingSystem.IsUnix)
         {
@@ -186,7 +198,7 @@ public sealed partial class MainForm : Form
             splitContainer.BorderStyle = BorderStyle.None;
             splitContainer.SplitterWidth = 4;
             treeView.BorderStyle = BorderStyle.Fixed3D;
-            _plotPanel.BorderStyle = BorderStyle.Fixed3D;
+            plotPanel.BorderStyle = BorderStyle.Fixed3D;
             gadgetMenuItem.Visible = false;
             minCloseMenuItem.Visible = false;
             minTrayMenuItem.Visible = false;
@@ -196,9 +208,19 @@ public sealed partial class MainForm : Form
         {
             // Windows
             treeView.RowHeight = Math.Max(treeView.Font.Height + 1, 18);
-            _gadget = new SensorGadget(_computer, _settings, _unitManager, this, _runtimePaths.DataRoot);
-            _gadget.HideShowCommand += HideShowClick;
+            gadget = new SensorGadget(_computer, _settings, _unitManager, this, _runtimePaths.DataRoot);
         }
+
+        // MainForm stays the composition root: it constructs the concrete surfaces above, then
+        // binds them to the presentation ports. Hide/show and exit relay through the coordinator,
+        // which preserves each surface's original sender and event arguments.
+        _presentation = new PresentationSurfaceCoordinator(
+            WinFormsPresentationAdapters.ForTree(treeView),
+            WinFormsPresentationAdapters.ForPlot(plotPanel),
+            WinFormsPresentationAdapters.ForTray(systemTray),
+            WinFormsPresentationAdapters.ForGadget(gadget));
+        _presentation.HideShowRequested += HideShowClick;
+        _presentation.ExitRequested += ExitClick;
 
         _standardRowHeight = treeView.RowHeight;
         _standardGridLineStyle = treeView.GridLineStyle;
@@ -264,7 +286,7 @@ public sealed partial class MainForm : Form
 
         _ = new UserOption("startMinMenuItem", false, startMinMenuItem, _settings);
         _minimizeToTray = new UserOption("minTrayMenuItem", true, minTrayMenuItem, _settings);
-        _minimizeToTray.Changed += delegate { _systemTray.IsMainIconEnabled = _minimizeToTray.Value; };
+        _minimizeToTray.Changed += delegate { UpdateHardwareOperationUi(); };
 
         _minimizeOnClose = new UserOption("minCloseMenuItem", false, minCloseMenuItem, _settings);
 
@@ -287,34 +309,34 @@ public sealed partial class MainForm : Form
         };
 
         _readMainboardSensors = new UserOption("mainboardMenuItem", true, mainboardMenuItem, _settings);
-        _readMainboardSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsMotherboardEnabled = _readMainboardSensors.Value); };
+        _readMainboardSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Motherboard, _readMainboardSensors.Value); };
 
         _readCpuSensors = new UserOption("cpuMenuItem", true, cpuMenuItem, _settings);
-        _readCpuSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsCpuEnabled = _readCpuSensors.Value); };
+        _readCpuSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Cpu, _readCpuSensors.Value); };
 
         _readRamSensors = new UserOption("ramMenuItem", true, ramMenuItem, _settings);
-        _readRamSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsMemoryEnabled = _readRamSensors.Value); };
+        _readRamSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Memory, _readRamSensors.Value); };
 
         _readGpuSensors = new UserOption("gpuMenuItem", true, gpuMenuItem, _settings);
-        _readGpuSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsGpuEnabled = _readGpuSensors.Value); };
+        _readGpuSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Gpu, _readGpuSensors.Value); };
 
         _readPowerMonitorSensors = new UserOption("powerMonitorMenuItem", true, powerMonitorMenuItem, _settings);
-        _readPowerMonitorSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsPowerMonitorEnabled = _readPowerMonitorSensors.Value); };
+        _readPowerMonitorSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.PowerMonitor, _readPowerMonitorSensors.Value); };
 
         _readFanControllersSensors = new UserOption("fanControllerMenuItem", true, fanControllerMenuItem, _settings);
-        _readFanControllersSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsControllerEnabled = _readFanControllersSensors.Value); };
+        _readFanControllersSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Controller, _readFanControllersSensors.Value); };
 
         _readHddSensors = new UserOption("hddMenuItem", true, hddMenuItem, _settings);
-        _readHddSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsStorageEnabled = _readHddSensors.Value); };
+        _readHddSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Storage, _readHddSensors.Value); };
 
         _readNicSensors = new UserOption("nicMenuItem", true, nicMenuItem, _settings);
-        _readNicSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsNetworkEnabled = _readNicSensors.Value); };
+        _readNicSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Network, _readNicSensors.Value); };
 
         _readPsuSensors = new UserOption("psuMenuItem", true, psuMenuItem, _settings);
-        _readPsuSensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsPsuEnabled = _readPsuSensors.Value); };
+        _readPsuSensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Psu, _readPsuSensors.Value); };
 
         _readBatterySensors = new UserOption("batteryMenuItem", true, batteryMenuItem, _settings);
-        _readBatterySensors.Changed += delegate { ApplyHardwareOption(() => _computer.IsBatteryEnabled = _readBatterySensors.Value); };
+        _readBatterySensors.Changed += delegate { ApplyHardwareOption(HardwareOptionKind.Battery, _readBatterySensors.Value); };
 
         _showGadget = new UserOption("gadgetMenuItem", false, gadgetMenuItem, _settings);
 
@@ -335,8 +357,7 @@ public sealed partial class MainForm : Form
 
         _showGadget.Changed += delegate
         {
-            if (_gadget != null)
-                _gadget.Visible = _showGadget.Value;
+            _presentation.TrySetGadgetVisible(_showGadget.Value);
         };
 
         celsiusMenuItem.Checked = _unitManager.TemperatureUnit == TemperatureUnit.Celsius;
@@ -577,7 +598,7 @@ public sealed partial class MainForm : Form
         }
 
         menuItemFileHardware.Enabled = false;
-        _hardwareInitializationTask = InitializeHardwareAsync();
+        _ = InitializeHardwareAsync();
     }
 
     private void StopFileHardwareMenuFromClosing(object sender, ToolStripDropDownClosingEventArgs e)
@@ -590,53 +611,14 @@ public sealed partial class MainForm : Form
 
     private async Task InitializeHardwareAsync()
     {
-        CancellationToken cancellationToken = _hardwareLifecycleCancellation.Token;
         try
         {
-            bool installPawnIo = false;
-            if (PawnIo.PawnIo.IsInstalled)
-            {
-                if (PawnIo.PawnIo.Version < new Version(2, 0, 0, 0))
-                {
-                    installPawnIo = MessageBox.Show(
-                        this,
-                        "PawnIO is outdated, do you want to update it?",
-                        nameof(LibreHardwareMonitor),
-                        MessageBoxButtons.OKCancel) == DialogResult.OK;
-                }
-            }
-            else
-            {
-                installPawnIo = MessageBox.Show(
-                    this,
-                    "PawnIO is not installed, do you want to install it?",
-                    nameof(LibreHardwareMonitor),
-                    MessageBoxButtons.OKCancel) == DialogResult.OK;
-            }
-
-            if (installPawnIo)
-                await Task.Run(InstallPawnIO).ConfigureAwait(true);
-
-            if (cancellationToken.IsCancellationRequested || IsShutdownPending || IsDisposed)
-                return;
-
-            // Hardware discovery can probe firmware, buses, storage and drivers for several
-            // seconds. Computer events are marshalled through the live form dispatcher.
-            await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(true);
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await Task.Run(() => _computer.Open()).ConfigureAwait(true);
-            }
-            finally
-            {
-                _hardwareLifecycleGate.Release();
-            }
+            await _applicationLifecycle.InitializeAsync().ConfigureAwait(true);
 
             if (!IsShutdownPending && !IsDisposed)
                 timer.Enabled = true;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (_applicationLifecycle.IsStopping)
         {
             // Normal close while installation/discovery is queued.
         }
@@ -656,107 +638,131 @@ public sealed partial class MainForm : Form
         finally
         {
             if (!IsShutdownPending && !IsDisposed)
+                UpdateHardwareOperationUi();
+        }
+    }
+
+    private async Task OpenHardwareAsync(CancellationToken cancellationToken)
+    {
+        bool installPawnIo = false;
+        if (PawnIo.PawnIo.IsInstalled)
+        {
+            if (PawnIo.PawnIo.Version < new Version(2, 0, 0, 0))
             {
-                _systemTray.IsMainIconEnabled = _minimizeToTray.Value;
-                menuItemFileHardware.Enabled = true;
+                installPawnIo = MessageBox.Show(
+                    this,
+                    "PawnIO is outdated, do you want to update it?",
+                    nameof(LibreHardwareMonitor),
+                    MessageBoxButtons.OKCancel) == DialogResult.OK;
             }
         }
+        else
+        {
+            installPawnIo = MessageBox.Show(
+                this,
+                "PawnIO is not installed, do you want to install it?",
+                nameof(LibreHardwareMonitor),
+                MessageBoxButtons.OKCancel) == DialogResult.OK;
+        }
+
+        if (installPawnIo)
+            await Task.Run(InstallPawnIO).ConfigureAwait(true);
+
+        if (cancellationToken.IsCancellationRequested || IsShutdownPending || IsDisposed)
+            return;
+
+        // Hardware discovery can probe firmware, buses, storage and drivers for several
+        // seconds. Computer events are marshalled through the live form dispatcher.
+        cancellationToken.ThrowIfCancellationRequested();
+        await Task.Run(() => _computer.Open()).ConfigureAwait(true);
     }
 
     private void BeginHardwareReset()
     {
-        if (IsShutdownPending || !menuItemFileHardware.Enabled)
+        if (IsShutdownPending)
             return;
 
-        menuItemFileHardware.Enabled = false;
-        _systemTray.IsMainIconEnabled = false;
-        _ = ResetHardwareAsync();
+        _applicationLifecycle.RequestReset();
     }
 
-    private void ApplyHardwareOption(Action change)
+    private void ApplyHardwareOption(HardwareOptionKind option, bool value)
     {
-        // UserOption invokes each handler once during construction. Before Open starts, applying
-        // the flags synchronously is cheap and lets Computer.Open discover the selected groups in
-        // one pass. Later toggles can construct/close drivers and therefore use the lifecycle gate.
-        if (_hardwareInitializationTask == null)
-        {
-            change();
-            return;
-        }
-
-        if (IsShutdownPending || !menuItemFileHardware.Enabled)
+        if (IsShutdownPending)
             return;
 
-        menuItemFileHardware.Enabled = false;
-        _ = ApplyHardwareOptionAsync(change);
+        // UserOption invokes each handler once during construction. The lifecycle coordinator
+        // applies those pre-initialization values synchronously and orders later runtime work.
+        _applicationLifecycle.RequestOption(option, value);
     }
 
-    private async Task ApplyHardwareOptionAsync(Action change)
+    private void HardwareOperations_OptionFailed(
+        HardwareOptionKind option,
+        bool value,
+        Exception exception)
     {
-        CancellationToken cancellationToken = _hardwareLifecycleCancellation.Token;
-        try
-        {
-            await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(true);
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await Task.Run(change).ConfigureAwait(true);
-            }
-            finally
-            {
-                _hardwareLifecycleGate.Release();
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // Shutdown owns the next lifecycle turn.
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine("Hardware option change failed: " + ex);
-        }
-        finally
-        {
-            if (!IsShutdownPending && !IsDisposed)
-                menuItemFileHardware.Enabled = true;
-        }
+        Debug.WriteLine($"Hardware option change failed ({option}={value}): {exception}");
     }
 
-    private async Task ResetHardwareAsync()
+    private void HardwareOperations_ResetFailed(Exception exception)
     {
-        CancellationToken cancellationToken = _hardwareLifecycleCancellation.Token;
-        try
+        Debug.WriteLine("Hardware reset failed: " + exception);
+    }
+
+    private void HardwareOperations_StateChanged()
+    {
+        RunOnUiThreadOrDrop(UpdateHardwareOperationUi);
+    }
+
+    private void SetHardwareOption(HardwareOptionKind option, bool value)
+    {
+        switch (option)
         {
-            await _hardwareLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(true);
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await Task.Run(() => _computer.Reset()).ConfigureAwait(true);
-            }
-            finally
-            {
-                _hardwareLifecycleGate.Release();
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // Shutdown owns the next lifecycle turn.
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine("Hardware reset failed: " + ex);
-        }
-        finally
-        {
-            if (!IsShutdownPending && !IsDisposed)
-            {
-                _systemTray.IsMainIconEnabled = _minimizeToTray.Value;
-                menuItemFileHardware.Enabled = true;
-            }
+            case HardwareOptionKind.Motherboard:
+                _computer.IsMotherboardEnabled = value;
+                break;
+            case HardwareOptionKind.Cpu:
+                _computer.IsCpuEnabled = value;
+                break;
+            case HardwareOptionKind.Memory:
+                _computer.IsMemoryEnabled = value;
+                break;
+            case HardwareOptionKind.Gpu:
+                _computer.IsGpuEnabled = value;
+                break;
+            case HardwareOptionKind.PowerMonitor:
+                _computer.IsPowerMonitorEnabled = value;
+                break;
+            case HardwareOptionKind.Controller:
+                _computer.IsControllerEnabled = value;
+                break;
+            case HardwareOptionKind.Storage:
+                _computer.IsStorageEnabled = value;
+                break;
+            case HardwareOptionKind.Network:
+                _computer.IsNetworkEnabled = value;
+                break;
+            case HardwareOptionKind.Psu:
+                _computer.IsPsuEnabled = value;
+                break;
+            case HardwareOptionKind.Battery:
+                _computer.IsBatteryEnabled = value;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(option), option, null);
         }
     }
 
-    private void InstallPawnIO()
+    private void UpdateHardwareOperationUi()
+    {
+        bool hasResetWork = _applicationLifecycle.HasResetWork;
+        bool isBusy = _applicationLifecycle.IsBusy;
+        menuItemFileHardware.Enabled = !_applicationLifecycle.IsInitializationInProgress && !isBusy;
+        _presentation.IsTrayMainIconEnabled =
+            !hasResetWork &&
+            _minimizeToTray.Value;
+    }
+
+    private static void InstallPawnIO()
     {
         using PawnIoInstallerLease installer = ExtractPawnIO();
         if (installer == null)
@@ -822,6 +828,8 @@ public sealed partial class MainForm : Form
 
     private void BackgroundUpdater_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
     {
+        _applicationLifecycle.CompletePoll();
+
         // Runs on the UI thread. All post-update redraws live here so they (a) never mutate
         // UI/OxyPlot state from the worker thread and (b) only run when a tick actually
         // produced fresh data, instead of unconditionally from Timer_Tick.
@@ -834,12 +842,7 @@ public sealed partial class MainForm : Form
         if (IsShutdownPending || IsDisposed)
             return;
 
-        treeView.Invalidate();
-        _systemTray.Redraw();
-        _gadget?.Redraw();
-
-        if (_showPlot == null || _showPlot.Value)
-            _plotPanel.InvalidatePlot();
+        _presentation.RefreshSurfaces(_showPlot == null || _showPlot.Value);
     }
 
     private void PowerModeChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs eventArgs)
@@ -936,7 +939,7 @@ public sealed partial class MainForm : Form
         resetPlotMenuItem.Text = "&Reset Graph View";
 
         // The graph-local options menu offers the same reset command as this menu item.
-        _plotPanel.ResetGraphView = () => resetPlotMenuItem_Click(this, EventArgs.Empty);
+        _presentation.PlotResetGraphView = () => resetPlotMenuItem_Click(this, EventArgs.Empty);
         sensorValuesTimeWindowMenuItem.Text = "&Time Window";
         plotLocationMenuItem.Text = "Graph &Location";
         strokeThicknessMenuItem.Text = "&Stroke Thickness";
@@ -1152,7 +1155,7 @@ public sealed partial class MainForm : Form
         ApplySensorTreeLayout();
 
         // Plot tracker text (single PlotPanel instance covers docked + separate-window modes).
-        _plotPanel?.SetTrackerTextScale(_uiTextScalePercent);
+        _presentation?.SetPlotTrackerTextScale(_uiTextScalePercent);
 
         _settings.SetValue("uiTextScale", _uiTextScalePercent);
     }
@@ -1160,7 +1163,7 @@ public sealed partial class MainForm : Form
     private void ApplyPlotTextScale(bool deferMenuRefresh = false)
     {
         _plotTextScalePercent = UiScale.ClampPercent(_plotTextScalePercent);
-        _plotPanel?.SetAxisTextScale(_plotTextScalePercent);
+        _presentation?.SetPlotAxisTextScale(_plotTextScalePercent);
 
         if (!deferMenuRefresh)
             _plotTextSlider?.RefreshMenuText(_plotTextScalePercent, mainMenu.Font);
@@ -1249,7 +1252,7 @@ public sealed partial class MainForm : Form
             // The per-tick refresh is gated on _showPlot, so the model froze while hidden;
             // bring points and the time window current immediately on re-show.
             if (_showPlot.Value)
-                _plotPanel.InvalidatePlot();
+                _presentation.RedrawPlot();
         };
 
         _strokeThickness = new UserRadioGroup("plotStroke", 1, new[] { strokeThickness1ptMenuItem, strokeThickness2ptMenuItem, strokeThickness3ptMenuItem, strokeThickness4ptMenuItem }, _settings);
@@ -1259,7 +1262,7 @@ public sealed partial class MainForm : Form
             _plotStrokeThickness = (_strokeThickness.Value >= 0 && _strokeThickness.Value <= 3)
                                                    ? _strokeThickness.Value + 1
                                                    : 4;
-            _plotPanel.UpdateStrokeThickness(_plotStrokeThickness);
+            _presentation.UpdatePlotStrokeThickness(_plotStrokeThickness);
         };
 
         _plotLocation.Changed += delegate
@@ -1269,7 +1272,7 @@ public sealed partial class MainForm : Form
                 case 0:
                     splitContainer.Panel2.Controls.Clear();
                     splitContainer.Panel2Collapsed = true;
-                    _plotForm.Controls.Add(_plotPanel);
+                    _plotForm.Controls.Add(_presentation.PlotControl);
                     if (_showPlot.Value && Visible)
                         _plotForm.Show();
                     break;
@@ -1277,14 +1280,14 @@ public sealed partial class MainForm : Form
                     _plotForm.Controls.Clear();
                     _plotForm.Hide();
                     splitContainer.Orientation = Orientation.Horizontal;
-                    splitContainer.Panel2.Controls.Add(_plotPanel);
+                    splitContainer.Panel2.Controls.Add(_presentation.PlotControl);
                     splitContainer.Panel2Collapsed = !_showPlot.Value;
                     break;
                 case 2:
                     _plotForm.Controls.Clear();
                     _plotForm.Hide();
                     splitContainer.Orientation = Orientation.Vertical;
-                    splitContainer.Panel2.Controls.Add(_plotPanel);
+                    splitContainer.Panel2.Controls.Add(_presentation.PlotControl);
                     splitContainer.Panel2Collapsed = !_showPlot.Value;
                     break;
             }
@@ -1601,7 +1604,7 @@ public sealed partial class MainForm : Form
         }
 
         _sensorPlotColors = colors;
-        _plotPanel.SetSensors(selected, colors, _plotStrokeThickness);
+        _presentation.SetPlotSensors(selected, colors, _plotStrokeThickness);
     }
 
     private void NodeTextBoxText_EditorShowing(object sender, CancelEventArgs e)
@@ -1621,8 +1624,18 @@ public sealed partial class MainForm : Form
 
     private void Timer_Tick(object sender, EventArgs e)
     {
-        if (!IsShutdownPending && !backgroundUpdater.IsBusy)
+        if (IsShutdownPending || backgroundUpdater.IsBusy || !_applicationLifecycle.TryBeginPoll())
+            return;
+
+        try
+        {
             backgroundUpdater.RunWorkerAsync();
+        }
+        catch
+        {
+            _applicationLifecycle.CompletePoll();
+            throw;
+        }
     }
 
     private void AutoSaveTimer_Tick(object sender, EventArgs e)
@@ -1635,10 +1648,40 @@ public sealed partial class MainForm : Form
 
     private void SaveConfiguration(bool autoSave = false)
     {
-        if (_plotPanel == null || _settings == null)
+        if (_presentation == null || _settings == null)
             return;
 
-        _plotPanel.SetCurrentSettings();
+        string fileName = _runtimePaths.SettingsFilePath;
+
+        try
+        {
+            _settingsPersistenceCoordinator.Save(autoSave);
+        }
+        catch (SettingsPersistenceException ex) when (ex.InnerException is UnauthorizedAccessException)
+        {
+            MessageBox.Show("Access to the path '" +
+                            fileName +
+                            "' is denied. " +
+                            "The current settings could not be saved.",
+                            "Error",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+        }
+        catch (SettingsPersistenceException ex) when (ex.InnerException is IOException)
+        {
+            MessageBox.Show("The path '" +
+                            fileName +
+                            "' is not writeable. " +
+                            "The current settings could not be saved.",
+                            "Error",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+        }
+    }
+
+    private void ProjectCurrentSettings()
+    {
+        _presentation.ApplyPlotCurrentSettings();
 
         foreach (TreeColumn column in treeView.Columns)
         {
@@ -1661,47 +1704,6 @@ public sealed partial class MainForm : Form
         _settings.SetValue("authenticationEnabled", Server.AuthEnabled);
         _settings.SetValue("authenticationUserName", Server.UserName);
         _settings.SetValue("authenticationPassword", Server.PasswordSHA256);
-
-        // Nothing changed since the last save; skip the periodic write to avoid needless disk
-        // churn while the app sits idle in the tray.
-        if (autoSave && !_settings.Modified)
-            return;
-
-        string fileName = _runtimePaths.SettingsFilePath;
-
-        try
-        {
-            RuntimePaths.EnsureSafeMutableFile(fileName, "The runtime settings file");
-            RuntimePaths.EnsureSafeMutableFile(fileName + ".backup", "The runtime settings backup");
-            RuntimePaths.EnsureSafeMutableFile(fileName + ".new", "The runtime settings staging file");
-            _settings.Save(fileName);
-        }
-        catch (Exception ex) when (autoSave && (ex is UnauthorizedAccessException || ex is IOException))
-        {
-            // A periodic save must never interrupt the user with a modal dialog every cycle. The
-            // atomic write preserved the previous file/backup, so just log and retry next tick.
-            Debug.WriteLine("Autosave of settings failed: " + ex.Message);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            MessageBox.Show("Access to the path '" +
-                            fileName +
-                            "' is denied. " +
-                            "The current settings could not be saved.",
-                            "Error",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Error);
-        }
-        catch (IOException)
-        {
-            MessageBox.Show("The path '" +
-                            fileName +
-                            "' is not writeable. " +
-                            "The current settings could not be saved.",
-                            "Error",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Error);
-        }
     }
 
     private void MainForm_Load(object sender, EventArgs e)
@@ -1776,34 +1778,13 @@ public sealed partial class MainForm : Form
         try
         {
             Visible = false;
-            _systemTray.IsMainIconEnabled = false;
+            _presentation.IsTrayMainIconEnabled = false;
             timer.Enabled = false;
             _autoSaveTimer.Stop();
 
-            _hardwareLifecycleCancellation.Cancel();
+            _applicationLifecycle.BeginStop();
             await Server.QuitAsync().ConfigureAwait(true);
-
-            if (_hardwareInitializationTask != null)
-                await _hardwareInitializationTask.ConfigureAwait(true);
-
-            await _hardwareLifecycleGate.WaitAsync().ConfigureAwait(true);
-            try
-            {
-                foreach (HardwareNode hardwareNode in _root.Nodes.OfType<HardwareNode>().ToList())
-                {
-                    hardwareNode.PlotSelectionChanged -= PlotSelectionChanged;
-                    hardwareNode.Dispose();
-                }
-
-                _root.Nodes.Clear();
-                _gadget?.Dispose();
-                _systemTray.Dispose();
-                await Task.Run(() => _computer.Close()).ConfigureAwait(true);
-            }
-            finally
-            {
-                _hardwareLifecycleGate.Release();
-            }
+            await _applicationLifecycle.StopAsync().ConfigureAwait(true);
 
             SaveConfiguration();
 
@@ -1812,8 +1793,10 @@ public sealed partial class MainForm : Form
             _textSizeSlider?.Dispose();
             _plotTextSlider?.Dispose();
             backgroundUpdater.Dispose();
-            _hardwareLifecycleCancellation.Dispose();
-            _hardwareLifecycleGate.Dispose();
+            _applicationLifecycle.StateChanged -= HardwareOperations_StateChanged;
+            _applicationLifecycle.OptionFailed -= HardwareOperations_OptionFailed;
+            _applicationLifecycle.ResetFailed -= HardwareOperations_ResetFailed;
+            _applicationLifecycle.Dispose();
 
             _scaledTreeFont?.Dispose();
             _scaledTreeFont = null;
@@ -1831,6 +1814,20 @@ public sealed partial class MainForm : Form
         {
             Application.Exit();
         }
+    }
+
+    private async Task CloseHardwareAsync()
+    {
+        foreach (HardwareNode hardwareNode in _root.Nodes.OfType<HardwareNode>().ToList())
+        {
+            hardwareNode.PlotSelectionChanged -= PlotSelectionChanged;
+            hardwareNode.Dispose();
+        }
+
+        _root.Nodes.Clear();
+        // Disposes the available gadget before the tray, matching the previous explicit order.
+        _presentation.Dispose();
+        await Task.Run(() => _computer.Close()).ConfigureAwait(true);
     }
 
     private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
@@ -2067,18 +2064,18 @@ public sealed partial class MainForm : Form
                 AddBulkMembershipMenuItems($"Show Selected in Tray ({count})",
                                            $"Remove Selected from Tray ({count})",
                                            selectedSensorNodes,
-                                           sensor => _systemTray.Contains(sensor),
-                                           sensor => _systemTray.Add(sensor, false),
-                                           sensor => _systemTray.Remove(sensor));
+                                           sensor => _presentation.TrayContains(sensor),
+                                           sensor => _presentation.AddToTray(sensor, false),
+                                           sensor => _presentation.RemoveFromTray(sensor));
 
-                if (_gadget != null)
+                if (_presentation.IsGadgetAvailable)
                 {
                     AddBulkMembershipMenuItems($"Show Selected in Gadget ({count})",
                                                $"Remove Selected from Gadget ({count})",
                                                selectedSensorNodes,
-                                               sensor => _gadget.Contains(sensor),
-                                               sensor => _gadget.Add(sensor),
-                                               sensor => _gadget.Remove(sensor));
+                                               sensor => _presentation.GadgetContains(sensor),
+                                               sensor => _presentation.AddToGadget(sensor),
+                                               sensor => _presentation.RemoveFromGadget(sensor));
                 }
 
                 treeContextMenu.Show(treeView, location);
@@ -2086,30 +2083,30 @@ public sealed partial class MainForm : Form
             }
 
             {
-                ToolStripMenuItem item = new("Show in Tray") { Checked = _systemTray.Contains(node.Sensor) };
+                ToolStripMenuItem item = new("Show in Tray") { Checked = _presentation.TrayContains(node.Sensor) };
                 item.Click += delegate
                 {
                     if (item.Checked)
-                        _systemTray.Remove(node.Sensor);
+                        _presentation.RemoveFromTray(node.Sensor);
                     else
-                        _systemTray.Add(node.Sensor, true);
+                        _presentation.AddToTray(node.Sensor, true);
                 };
 
                 treeContextMenu.Items.Add(item);
             }
 
-            if (_gadget != null)
+            if (_presentation.IsGadgetAvailable)
             {
-                ToolStripMenuItem item = new("Show in Gadget") { Checked = _gadget.Contains(node.Sensor) };
+                ToolStripMenuItem item = new("Show in Gadget") { Checked = _presentation.GadgetContains(node.Sensor) };
                 item.Click += delegate
                 {
                     if (item.Checked)
                     {
-                        _gadget.Remove(node.Sensor);
+                        _presentation.RemoveFromGadget(node.Sensor);
                     }
                     else
                     {
-                        _gadget.Add(node.Sensor);
+                        _presentation.AddToGadget(node.Sensor);
                     }
                 };
 

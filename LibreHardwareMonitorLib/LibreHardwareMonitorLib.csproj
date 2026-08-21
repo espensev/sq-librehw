@@ -41,11 +41,11 @@
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+  <PropertyGroup Condition="'$(Configuration)'=='Debug' AND '$(UseArtifactsOutput)' != 'true'">
     <OutputPath>..\bin\Debug\$(Platform)\</OutputPath>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+  <PropertyGroup Condition="'$(Configuration)'=='Release' AND '$(UseArtifactsOutput)' != 'true'">
     <OutputPath>..\bin\Release\$(Platform)\</OutputPath>
   </PropertyGroup>
 
@@ -100,7 +100,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="LibreHardwareMonitor.Tests" />
+    <InternalsVisibleTo Include="LibreHardwareMonitor.Tests.Library" />
+    <InternalsVisibleTo Include="LibreHardwareMonitor.Tests.Application" />
+    <InternalsVisibleTo Include="LibreHardwareMonitor.Tests.Contracts" />
+    <InternalsVisibleTo Include="LibreHardwareMonitor.Tests.Attended" />
   </ItemGroup>
 
   <Import Project="main.nuget.target" Condition="'$(PackMainNuget)' == 'true'" />
