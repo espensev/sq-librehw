@@ -2566,6 +2566,25 @@ function Get-Process {
                 -LiteralPath (Join-Path $cleanupFixtureRoot $marker) `
                 -Encoding UTF8
     }
+    [System.IO.Directory]::CreateDirectory(
+        (Join-Path $cleanupFixtureRoot 'Aga.Controls')) | Out-Null
+    '<Project />' |
+        Set-Content `
+            -LiteralPath (Join-Path $cleanupFixtureRoot 'Aga.Controls\Aga.Controls.csproj') `
+            -Encoding UTF8
+    "[Bb]in/`r`n[Oo]bj/`r`n" |
+        Set-Content `
+            -LiteralPath (Join-Path $cleanupFixtureRoot '.gitignore') `
+            -Encoding ASCII
+    & git -C $cleanupFixtureRoot init -q -b main
+    if ($LASTEXITCODE -ne 0) { throw 'Cleanup fixture Git initialization failed.' }
+    & git -C $cleanupFixtureRoot config user.name 'Cleanup Fixture'
+    & git -C $cleanupFixtureRoot config user.email 'cleanup-fixture@example.invalid'
+    & git -C $cleanupFixtureRoot config core.autocrlf false
+    & git -C $cleanupFixtureRoot add -- .
+    & git -C $cleanupFixtureRoot commit -q -m 'cleanup fixture'
+    if ($LASTEXITCODE -ne 0) { throw 'Cleanup fixture Git commit failed.' }
+    Remove-Item -LiteralPath (Join-Path $cleanupFixtureRoot 'Aga.Controls') -Recurse -Force
     'outside fixture' |
         Set-Content -LiteralPath $outsideSentinel -Encoding UTF8
     $null = New-Item `

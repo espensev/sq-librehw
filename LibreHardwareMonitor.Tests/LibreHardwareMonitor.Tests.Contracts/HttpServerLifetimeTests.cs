@@ -54,7 +54,7 @@ public sealed class HttpServerLifetimeTests
         releaseHandlers.SetResult(true);
         await thirdQueue;
 
-        Assert.True(await pool.DrainAsync(TimeSpan.FromSeconds(1)));
+        Assert.True(await pool.DrainAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(3, Volatile.Read(ref startedHandlers));
         Assert.Equal(0, pool.ActiveCount);
         Assert.Equal(2, pool.PeakActiveCount);

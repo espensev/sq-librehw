@@ -13,6 +13,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'LhmRelease.Common.ps1')
+. (Join-Path $PSScriptRoot '..\live-verification\LhmLiveManifest.Common.ps1')
 
 function Test-LhmIdentityPathWithin {
     param(
@@ -72,63 +73,173 @@ function Get-LhmIdentityCandidateMatches {
     )
 
     $matches = [System.Collections.Generic.List[object]]::new()
+    $diagnostics = [System.Collections.Generic.List[object]]::new()
     if ([string]::IsNullOrWhiteSpace($CandidateReleaseRoot)) {
-        return @()
+        return [pscustomobject][ordered]@{
+            matches = [object[]]@()
+            diagnostics = [object[]]@()
+        }
     }
 
     $root = Resolve-LhmReleaseFullPath -Path $CandidateReleaseRoot
     Assert-LhmReleasePathHasNoReparseAncestor -Path $root
     $candidateRoot = Join-Path $root 'candidates'
     if (-not [System.IO.Directory]::Exists($candidateRoot)) {
-        return @()
+        return [pscustomobject][ordered]@{
+            matches = [object[]]@()
+            diagnostics = [object[]]@()
+        }
     }
 
     foreach ($directory in @(Get-ChildItem -LiteralPath $candidateRoot -Directory -Force)) {
-        Assert-LhmReleasePathHasNoReparseAncestor -Path $directory.FullName
-        $manifestPath = Join-Path $directory.FullName 'release-manifest.json'
-        if (-not [System.IO.File]::Exists($manifestPath)) {
-            continue
-        }
-        $manifestItem = Get-Item -LiteralPath $manifestPath -Force
-        if ($manifestItem.Length -gt 4MB) {
-            continue
-        }
-
-        $manifest = ConvertFrom-LhmReleaseJson -Json (
-            Get-Content -Raw -LiteralPath $manifestPath)
-        foreach ($package in @($manifest.packages)) {
-            $entryPoint = [string]$package.entryPoint
-            $entryRecords = @($package.files | Where-Object {
-                [string]$_.path -ceq $entryPoint
-            })
-            if ($entryRecords.Count -ne 1 -or
-                ([string]$entryRecords[0].sha256).ToLowerInvariant() -cne $ExecutableSha256) {
+        try {
+            Assert-LhmReleasePathHasNoReparseAncestor -Path $directory.FullName
+            $manifestPath = Join-Path $directory.FullName 'release-manifest.json'
+            if (-not [System.IO.File]::Exists($manifestPath)) {
                 continue
             }
-
-            $validationStatus = 'INVALID'
-            $validationError = $null
-            try {
-                $validation = Test-LhmReleaseCandidate -CandidatePath $directory.FullName
-                $validationStatus = [string]$validation.Status
-            }
-            catch {
-                $validationError = $_.Exception.Message
+            $manifestItem = Get-Item -LiteralPath $manifestPath -Force
+            if ($manifestItem.Length -gt 4MB) {
+                throw "Candidate manifest exceeds the 4 MiB identity limit: $manifestPath"
             }
 
-            $matches.Add([ordered]@{
-                releaseId = [string]$manifest.releaseId
-                targetFramework = [string]$package.targetFramework
-                sourceCommit = [string]$manifest.source.commit
-                promotable = [bool]$manifest.promotable
-                archive = [string]$package.archive
-                validationStatus = $validationStatus
-                validationError = $validationError
+            $manifest = ConvertFrom-LhmReleaseJson -Json (
+                Get-Content -Raw -LiteralPath $manifestPath)
+            foreach ($package in @($manifest.packages)) {
+                $entryPoint = [string]$package.entryPoint
+                $entryRecords = @($package.files | Where-Object {
+                    [string]$_.path -ceq $entryPoint
+                })
+                if ($entryRecords.Count -ne 1 -or
+                    ([string]$entryRecords[0].sha256).ToLowerInvariant() -cne $ExecutableSha256) {
+                    continue
+                }
+
+                $validationStatus = 'INVALID'
+                $validationError = $null
+                try {
+                    $validation = Test-LhmReleaseCandidate -CandidatePath $directory.FullName
+                    $validationStatus = [string]$validation.Status
+                }
+                catch {
+                    $validationError = $_.Exception.Message
+                }
+
+                $matches.Add([ordered]@{
+                    releaseId = [string]$manifest.releaseId
+                    targetFramework = [string]$package.targetFramework
+                    sourceCommit = [string]$manifest.source.commit
+                    promotable = [bool]$manifest.promotable
+                    archive = [string]$package.archive
+                    validationStatus = $validationStatus
+                    validationError = $validationError
+                })
+            }
+        }
+        catch {
+            $diagnostics.Add([ordered]@{
+                candidatePath = Resolve-LhmReleaseFullPath -Path $directory.FullName
+                error = $_.Exception.Message
             })
         }
     }
 
-    return @($matches)
+    return [pscustomobject][ordered]@{
+        matches = [object[]]@($matches)
+        diagnostics = [object[]]@($diagnostics)
+    }
+}
+
+function Get-LhmIdentityRollbackEvidence {
+    param(
+        [Parameter(Mandatory)][string]$ExecutablePath,
+        [Parameter(Mandatory)][string]$ExecutableSha256,
+        [Parameter(Mandatory)][string]$ProductVersion,
+        [Parameter(Mandatory)][string]$RollbackRoot,
+        [Parameter(Mandatory)][string]$ExpectedMachineId
+    )
+
+    $rollbackPath = Resolve-LhmReleaseFullPath -Path $RollbackRoot
+    $relativePath = $ExecutablePath.Substring(
+        (Get-LhmReleasePathPrefix -Path $rollbackPath).Length)
+    $segments = @($relativePath -split '[\\/]')
+    if ($segments.Count -lt 2 -or [string]::IsNullOrWhiteSpace($segments[0])) {
+        throw "Rollback executable is not inside a packet directory: $ExecutablePath"
+    }
+
+    $packetRoot = Resolve-LhmReleaseFullPath -Path (Join-Path $rollbackPath $segments[0])
+    Assert-LhmReleasePathHasNoReparseAncestor -Path $packetRoot
+    $manifestPath = Join-Path $packetRoot 'packet-manifest.json'
+    if (-not [System.IO.File]::Exists($manifestPath)) {
+        throw "Rollback packet manifest does not exist: $manifestPath"
+    }
+    if ((Get-Item -LiteralPath $manifestPath -Force).Length -gt 4MB) {
+        throw "Rollback packet manifest exceeds the 4 MiB identity limit: $manifestPath"
+    }
+
+    $manifest = ConvertFrom-LhmReleaseJson -Json (
+        Get-Content -Raw -LiteralPath $manifestPath)
+    if ([string]$manifest.Schema -cne 'sq.librehw-rollback-packet') {
+        throw "Rollback packet schema is '$($manifest.Schema)'; expected 'sq.librehw-rollback-packet'."
+    }
+    if ([string]$manifest.Version -cne '1') {
+        throw "Rollback packet version is '$($manifest.Version)'; expected '1'."
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$manifest.MachineId) -or
+        [string]$manifest.MachineId -cne $ExpectedMachineId) {
+        throw "Rollback packet machineId '$($manifest.MachineId)' does not match stack machineId '$ExpectedMachineId'."
+    }
+
+    $fileRecords = @($manifest.Files)
+    if ([int]$manifest.FileCount -ne $fileRecords.Count) {
+        throw "Rollback packet FileCount '$($manifest.FileCount)' does not match its $($fileRecords.Count) file record(s)."
+    }
+
+    $targetRecords = [System.Collections.Generic.List[object]]::new()
+    foreach ($record in $fileRecords) {
+        $recordRelativePath = [string]$record.RelativePath
+        if ([string]::IsNullOrWhiteSpace($recordRelativePath) -or
+            [System.IO.Path]::IsPathRooted($recordRelativePath)) {
+            throw "Rollback packet contains an invalid relative path: '$recordRelativePath'."
+        }
+
+        $recordPath = Resolve-LhmReleaseFullPath -Path (
+            Join-Path $packetRoot ($recordRelativePath.Replace('/', '\')))
+        if (-not (Test-LhmIdentityPathWithin -Candidate $recordPath -Parent $packetRoot) -or
+            $recordPath.Equals($packetRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Rollback packet record escapes its packet root: '$recordRelativePath'."
+        }
+        if (-not [System.IO.File]::Exists($recordPath)) {
+            throw "Rollback packet file does not exist: $recordPath"
+        }
+        $recordItem = Get-Item -LiteralPath $recordPath -Force
+        if ([long]$record.Length -ne $recordItem.Length) {
+            throw "Rollback packet length mismatch for '$recordRelativePath'."
+        }
+        $recordSha256 = Get-LhmReleaseFileSha256 -Path $recordPath
+        if ($recordSha256 -cne ([string]$record.Sha256).ToLowerInvariant()) {
+            throw "Rollback packet SHA-256 mismatch for '$recordRelativePath'."
+        }
+        if ($recordPath.Equals($ExecutablePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $targetRecords.Add($record)
+        }
+    }
+
+    if ($targetRecords.Count -ne 1) {
+        throw "Rollback packet must contain exactly one record for executable '$ExecutablePath'; found $($targetRecords.Count)."
+    }
+    if ($ExecutableSha256 -cne ([string]$manifest.RestoresToEntryPointSha256).ToLowerInvariant()) {
+        throw 'Rollback packet RestoresToEntryPointSha256 does not match the executable SHA-256.'
+    }
+    if ($ProductVersion -cne [string]$manifest.RestoresToProductVersion) {
+        throw 'Rollback packet RestoresToProductVersion does not match the executable product version.'
+    }
+
+    return [pscustomobject][ordered]@{
+        packetRoot = $packetRoot
+        manifestPath = Resolve-LhmReleaseFullPath -Path $manifestPath
+        operationId = [string]$manifest.OperationId
+    }
 }
 
 $executablePath = Resolve-LhmReleaseFullPath -Path $Path
@@ -151,9 +262,11 @@ $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($executableP
 $fileVersion = [string]$versionInfo.FileVersion
 $productVersion = [string]$versionInfo.ProductVersion
 $checkout = Get-LhmIdentityCheckout -ExecutablePath $executablePath
-$candidateMatches = @(Get-LhmIdentityCandidateMatches `
+$candidateScanResult = Get-LhmIdentityCandidateMatches `
     -ExecutableSha256 $sha256 `
-    -CandidateReleaseRoot $ReleaseRoot)
+    -CandidateReleaseRoot $ReleaseRoot
+$candidateMatches = @($candidateScanResult.matches)
+$candidateDiagnostics = @($candidateScanResult.diagnostics)
 
 $buildCommit = $null
 $buildDirty = $null
@@ -185,7 +298,7 @@ if ($verifiedCandidateMatches.Count -gt 0) {
 }
 elseif ($candidateMatches.Count -gt 0) {
     $role = 'candidate-payload-invalid'
-    $authority = 'candidate-manifest-invalid'
+    $authority = 'none'
 }
 
 if ($null -ne $checkout) {
@@ -211,23 +324,61 @@ if ($null -ne $checkout) {
 
 $liveManifestMatch = $false
 $sourceCandidate = $null
+$liveEvidence = [ordered]@{
+    status = 'not-requested'
+    manifestPath = $null
+    error = $null
+}
+$rollbackEvidence = [ordered]@{
+    status = 'not-applicable'
+    packetRoot = $null
+    manifestPath = $null
+    operationId = $null
+    error = $null
+}
 if (-not [string]::IsNullOrWhiteSpace($StackRoot)) {
     $stack = Resolve-LhmReleaseFullPath -Path $StackRoot
     Assert-LhmReleasePathHasNoReparseAncestor -Path $stack
+    $expectedLivePath = Resolve-LhmReleaseFullPath -Path (
+        Join-Path $stack 'deployments\current\LibreHardwareMonitor.Windows.Forms.exe')
     $liveManifestPath = Join-Path $stack 'manifests\channels\live.json'
-    if ([System.IO.File]::Exists($liveManifestPath)) {
-        $live = ConvertFrom-LhmReleaseJson -Json (
-            Get-Content -Raw -LiteralPath $liveManifestPath)
-        $livePath = Resolve-LhmReleaseFullPath -Path (
-            Join-Path ([string]$live.deploymentRoot) ([string]$live.entryPoint))
+    $liveEvidence.manifestPath = Resolve-LhmReleaseFullPath -Path $liveManifestPath
+    $liveContract = $null
+    try {
+        $liveContract = Get-LhmLiveManifestContract `
+            -StackRoot $stack `
+            -RequireCurrentComputer
+        $liveEvidence.status = 'not-applicable'
         if ($executablePath.Equals(
-            $livePath,
+            $liveContract.EntryTarget,
             [System.StringComparison]::OrdinalIgnoreCase)) {
-            $sourceCandidate = [string]$live.sourceCandidate
-            $liveManifestMatch = $sha256 -ceq ([string]$live.sha256).ToLowerInvariant() -and
-                $productVersion -ceq [string]$live.productVersion
+            $sourceCandidate = [string]$liveContract.Live.sourceCandidate
+            $liveManifestMatch = $sha256 -ceq ([string]$liveContract.Live.sha256).ToLowerInvariant() -and
+                $productVersion -ceq [string]$liveContract.Live.productVersion
             $role = if ($liveManifestMatch) { 'live' } else { 'live-mismatch' }
-            $authority = 'live-manifest'
+            $authority = if ($liveManifestMatch) { 'live-manifest' } else { 'none' }
+            $liveEvidence.status = if ($liveManifestMatch) { 'verified' } else { 'mismatch' }
+            if (-not $liveManifestMatch) {
+                $liveEvidence.error = 'Executable SHA-256 or product version does not match the valid live manifest.'
+            }
+        }
+        elseif ($executablePath.Equals(
+            $expectedLivePath,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+            $role = 'live-mismatch'
+            $authority = 'none'
+            $liveEvidence.status = 'mismatch'
+            $liveEvidence.error = 'The canonical live executable path is not the entry target declared by the valid stack manifests.'
+        }
+    }
+    catch {
+        $liveEvidence.status = 'invalid'
+        $liveEvidence.error = $_.Exception.Message
+        if ($executablePath.Equals(
+            $expectedLivePath,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+            $role = 'live-mismatch'
+            $authority = 'none'
         }
     }
 
@@ -235,13 +386,38 @@ if (-not [string]::IsNullOrWhiteSpace($StackRoot)) {
         $rollbackRoot = Join-Path $stack 'deployments\rollback'
         if ([System.IO.Directory]::Exists($rollbackRoot) -and
             (Test-LhmIdentityPathWithin -Candidate $executablePath -Parent $rollbackRoot)) {
-            $role = 'rollback-payload'
-            $authority = 'rollback-packet'
+            $role = 'rollback-payload-invalid'
+            $authority = 'none'
+            try {
+                if ($null -eq $liveContract) {
+                    throw 'Rollback packet authority requires a valid machine-bound stack manifest contract.'
+                }
+                $verifiedRollback = Get-LhmIdentityRollbackEvidence `
+                    -ExecutablePath $executablePath `
+                    -ExecutableSha256 $sha256 `
+                    -ProductVersion $productVersion `
+                    -RollbackRoot $rollbackRoot `
+                    -ExpectedMachineId $liveContract.MachineId
+                $role = 'rollback-payload'
+                $authority = 'rollback-packet'
+                $rollbackEvidence.status = 'verified'
+                $rollbackEvidence.packetRoot = $verifiedRollback.packetRoot
+                $rollbackEvidence.manifestPath = $verifiedRollback.manifestPath
+                $rollbackEvidence.operationId = $verifiedRollback.operationId
+            }
+            catch {
+                $rollbackEvidence.status = 'invalid'
+                $rollbackEvidence.error = $_.Exception.Message
+            }
         }
     }
 }
 
 $processIds = @()
+$processQuery = [ordered]@{
+    status = 'complete'
+    error = $null
+}
 try {
     $processIds = @(
         Get-CimInstance Win32_Process -Property ProcessId, ExecutablePath -ErrorAction Stop |
@@ -256,12 +432,22 @@ try {
 }
 catch {
     $processIds = @()
+    $processQuery.status = 'failed'
+    $processQuery.error = $_.Exception.Message
+}
+
+$identityStatus = 'IDENTIFIED'
+if ($candidateDiagnostics.Count -gt 0 -or
+    $liveEvidence.status -ceq 'invalid' -or
+    $rollbackEvidence.status -ceq 'invalid' -or
+    $processQuery.status -ceq 'failed') {
+    $identityStatus = 'INCOMPLETE'
 }
 
 $result = [ordered]@{
     schema = 'sq.lhm-executable-identity'
-    version = 1
-    status = 'IDENTIFIED'
+    version = 2
+    status = $identityStatus
     path = $executablePath
     role = $role
     authority = $authority
@@ -273,8 +459,15 @@ $result = [ordered]@{
     checkout = $checkout
     matchesCheckoutCommit = $matchesCheckoutCommit
     candidateMatches = [object[]]@($candidateMatches)
+    candidateScan = [ordered]@{
+        status = if ($candidateDiagnostics.Count -eq 0) { 'complete' } else { 'incomplete' }
+        diagnostics = [object[]]@($candidateDiagnostics)
+    }
     liveManifestMatch = $liveManifestMatch
     sourceCandidate = $sourceCandidate
+    liveEvidence = $liveEvidence
+    rollbackEvidence = $rollbackEvidence
+    processQuery = $processQuery
     runningProcessIds = [int[]]@($processIds)
 }
 

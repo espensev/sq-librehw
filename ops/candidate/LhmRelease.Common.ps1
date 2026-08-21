@@ -43,7 +43,7 @@ function Assert-LhmReleasePathHasNoReparseAncestor {
         if ([System.IO.File]::Exists($current) -or [System.IO.Directory]::Exists($current)) {
             $item = Get-Item -LiteralPath $current -Force
             if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-                throw "Release paths cannot traverse reparse points: $current"
+                throw "Release path ancestry contains a reparse point: $current"
             }
         }
 
@@ -76,7 +76,7 @@ function Assert-LhmDirectoryTreeHasNoReparsePoints {
         # DirectoryInfo already provides the attributes needed for the reparse check.
         foreach ($entry in [System.IO.DirectoryInfo]::new($directory).EnumerateFileSystemInfos()) {
             if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-                throw "Release cleanup cannot traverse reparse points: $($entry.FullName)"
+                throw "Release cleanup target contains a reparse point: $($entry.FullName)"
             }
             if (($entry.Attributes -band [System.IO.FileAttributes]::Directory) -ne 0) {
                 $pending.Push($entry.FullName)
@@ -349,11 +349,12 @@ function Get-LhmDirectorySummary {
         Path = Resolve-LhmReleaseFullPath -Path $Path
         Files = $files.Count
         Bytes = $bytes
+        Exes = @($files | Where-Object Extension -ieq '.exe').Count
     }
 }
 
 function Clear-LhmRepositoryBuildOutput {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     param([Parameter(Mandatory)][string]$RepositoryRoot)
 
     $repositoryPath = Resolve-LhmReleaseFullPath -Path $RepositoryRoot
@@ -441,9 +442,11 @@ function Clear-LhmRepositoryBuildOutput {
     foreach ($target in $existingTargets) {
         $resolvedTarget = Assert-LhmRepositoryBuildOutputPath -RepositoryRoot $repositoryPath -Path $target
         Assert-LhmDirectoryTreeHasNoReparsePoints -Path $resolvedTarget
-        Remove-Item -LiteralPath $resolvedTarget -Recurse -Force
-        if ([System.IO.Directory]::Exists($resolvedTarget)) {
-            throw "Build-output cleanup did not remove: $resolvedTarget"
+        if ($PSCmdlet.ShouldProcess($resolvedTarget, 'Remove disposable repository build output')) {
+            Remove-Item -LiteralPath $resolvedTarget -Recurse -Force
+            if ([System.IO.Directory]::Exists($resolvedTarget)) {
+                throw "Build-output cleanup did not remove: $resolvedTarget"
+            }
         }
     }
 

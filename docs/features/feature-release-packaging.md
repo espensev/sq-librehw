@@ -1,7 +1,7 @@
 # External Release Candidate Packaging
 
 **Status:** implemented; candidate creation remains non-deploying
-**Updated:** 2026-08-20
+**Updated:** 2026-08-21
 
 ## Problem
 
@@ -27,7 +27,8 @@ safe to substitute for the running LibreHardwareMonitor instance.
   bounded pre-UI smoke path and bind its framework/version receipt to the
   manifest.
 - Identify any application executable by path, SHA-256, embedded source stamp,
-  candidate manifest, live manifest, and running process without changing it.
+  candidate manifest, the complete live manifest contract, sealed rollback
+  packet, and running process without changing it.
 - Refuse partial, ambiguous, stale, or colliding output.
 - Leave every discovered repository/project `bin` and `obj` output root absent
   after a successful or failed release attempt.
@@ -67,14 +68,18 @@ identity-verified workflow must own any later runtime promotion.
 | Automated source tests | `testhost` loads test and product assemblies from test output; the product EXE is not the test runner | Test result only |
 | Development build | An ignored checkout `bin` output, normally root `bin\Release\<framework>` | Git checkout plus embedded source stamp; never release authority |
 | Candidate | The exact EXE extracted from a candidate ZIP and smoke-run before publication | Valid `release-manifest.json` plus matching SHA-256 |
-| Live | `deployments\current\LibreHardwareMonitor.Windows.Forms.exe` | Exact path, SHA-256, and product version in `manifests\channels\live.json` |
-| Rollback | An executable inside a sealed rollback payload | Rollback packet; not live unless separately promoted |
+| Live | `deployments\current\LibreHardwareMonitor.Windows.Forms.exe` | Exact path, SHA-256, and product version under schema/version/machine/root/task-consumer validation of `layout.json`, `consumers.json`, and `channels\live.json` |
+| Rollback | An executable inside a sealed rollback payload | Exact machine-bound packet file record, length, SHA-256, restore hash, and product version; not live unless separately promoted |
 
 Use `Show-LhmExecutableIdentity.ps1` instead of inferring a role from a filename
 or a nearby directory. Equal names and versions do not establish equal content;
 the SHA-256 and manifest match do. A hash reference inside a candidate that
 fails whole-candidate validation is explicitly `candidate-payload-invalid`, not
-candidate authority.
+candidate authority. Invalid candidate, live, and rollback evidence always uses
+`authority: none`; the corresponding evidence object explains the source and
+failure. A malformed unrelated candidate or failed process inventory no longer
+aborts or disappears: the result is version 2, reports a bounded diagnostic,
+and uses overall status `INCOMPLETE`.
 
 ## Runtime-data compatibility gate
 
@@ -201,6 +206,12 @@ Any failed guard stops the release instead of risking unrelated state. The
 release also fails closed and publishes nothing if a build recreates a source
 output root; final cleanup restores the required absent state. It never runs
 broad commands such as `git clean -fdX`.
+
+The standalone `eng/Clear-LhmRepositoryBuildOutputs.ps1` command delegates to
+this same cleanup implementation, so its tracked-file, Git-ignore, reparse,
+loaded-process, and CIM-inventory refusal boundaries cannot drift from release
+cleanup. Its additional runtime CSV/config check remains a stricter operator
+guard.
 
 This cleanup deliberately includes project `obj` caches so a release cannot
 reuse stale intermediates. It does not touch any other ignored file, an

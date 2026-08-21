@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor documentation
 
 **Status:** current repository map
-**Updated:** 2026-08-20
+**Updated:** 2026-08-21
 
 This file records stable boundaries. Query Git and stack manifests for current
 commits, versions, hashes, processes, and candidate/live state.
@@ -40,8 +40,9 @@ Use live Git commands for branch, cleanliness, and ahead/behind state.
 - `ops\candidate` creates and validates external candidates; it does not
   deploy them.
 - `ops\candidate\Show-LhmExecutableIdentity.ps1` identifies an exact EXE from
-  its hash and the applicable Git/candidate/live evidence; use it instead of
-  trusting a path or version label.
+  its hash and the applicable Git/candidate/live/rollback evidence; only a
+  fully validated manifest contract can grant authority. Process or evidence
+  query failures are reported as `INCOMPLETE` instead of being hidden.
 - `ops\live-verification` is read-only and manifest-driven.
 - `ops\log-management` is the source package for installed host log tooling.
 - `ops\deploy\snd-desk` is target-gated to SND-DESK and is not SND-HOST
@@ -55,7 +56,8 @@ Use live Git commands for branch, cleanliness, and ahead/behind state.
 | Automated tests | `testhost` loads source-built assemblies; it does not make a copied product EXE a development or release authority. |
 | Development | Checkout `bin` output is disposable and identified against its enclosing Git checkout and embedded source stamp. |
 | Candidate | Candidate creation ZIPs each framework, extracts it, and smoke-runs that exact EXE before publishing a hash-bound manifest. |
-| Live | Only the exact `deployments\current` path/hash/product-version match in `manifests\channels\live.json` is live authority. |
+| Live | Only the exact `deployments\current` path/hash/product-version match under the valid, current-machine layout/consumer/live manifest contract is live authority. |
+| Rollback | Only an exact file record whose length and SHA-256 validate inside a machine-bound sealed packet is rollback authority; location alone is not. |
 
 Candidate smoke is pre-UI identity/startup proof, not hardware or live health.
 Promotion and live verification remain separate workflows.
@@ -134,6 +136,8 @@ through the guarded cleanup tool:
 ```
 
 Never use `git clean -fdX` for this repository.
+The standalone command and candidate workflow share the same tracked-file,
+Git-ignore, reparse, loaded-process, and fail-closed CIM inventory guards.
 
 ## Documentation policy
 

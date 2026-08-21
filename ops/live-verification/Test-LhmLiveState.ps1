@@ -9,6 +9,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'LhmLiveManifest.Common.ps1')
 
 $stackRootPath = [System.IO.Path]::GetFullPath($StackRoot)
 $checks = New-Object 'System.Collections.Generic.List[object]'
@@ -21,76 +22,6 @@ function Add-LhmLiveCheck {
     )
 
     $checks.Add([pscustomobject]@{ Check = $Name; Status = $Status; Detail = $Detail })
-}
-
-function Read-LhmJsonFile {
-    param([Parameter(Mandatory)][string]$Path)
-
-    if (-not [System.IO.File]::Exists($Path)) {
-        throw "Manifest does not exist: $Path"
-    }
-
-    return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json)
-}
-
-function Get-LhmManifestValue {
-    param(
-        [Parameter(Mandatory)]$Object,
-        [Parameter(Mandatory)][string[]]$PropertyPath
-    )
-
-    $current = $Object
-    foreach ($segment in $PropertyPath) {
-        $propertyInfo = $current.PSObject.Properties[$segment]
-        if ($null -eq $propertyInfo -or $null -eq $propertyInfo.Value) {
-            throw "Manifest value is missing: $($PropertyPath -join '.')"
-        }
-        $current = $propertyInfo.Value
-    }
-
-    return $current
-}
-
-function Get-LhmNormalizedPath {
-    param([Parameter(Mandatory)][string]$Path)
-
-    $fullPath = [System.IO.Path]::GetFullPath($Path)
-    $pathRoot = [System.IO.Path]::GetPathRoot($fullPath)
-    while ($fullPath.Length -gt $pathRoot.Length -and
-           ($fullPath.EndsWith([string][System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::Ordinal) -or
-            $fullPath.EndsWith([string][System.IO.Path]::AltDirectorySeparatorChar, [System.StringComparison]::Ordinal))) {
-        $fullPath = $fullPath.Substring(0, $fullPath.Length - 1)
-    }
-
-    return $fullPath
-}
-
-function Test-LhmPathEqual {
-    param(
-        [Parameter(Mandatory)][string]$Left,
-        [Parameter(Mandatory)][string]$Right
-    )
-
-    return [string]::Equals((Get-LhmNormalizedPath -Path $Left),
-                            (Get-LhmNormalizedPath -Path $Right),
-                            [System.StringComparison]::OrdinalIgnoreCase)
-}
-
-function Assert-LhmJsonContract {
-    param(
-        [Parameter(Mandatory)]$Object,
-        [Parameter(Mandatory)][string]$DocumentName,
-        [Parameter(Mandatory)][string]$ExpectedSchema
-    )
-
-    $schema = [string](Get-LhmManifestValue -Object $Object -PropertyPath @('schema'))
-    $version = Get-LhmManifestValue -Object $Object -PropertyPath @('version')
-    if ($schema -cne $ExpectedSchema) {
-        throw "$DocumentName schema is '$schema'; expected '$ExpectedSchema'."
-    }
-    if ([string]$version -cne '1') {
-        throw "$DocumentName version is '$version'; expected '1'."
-    }
 }
 
 function Get-LhmTaskArgumentPath {
@@ -156,58 +87,16 @@ $declaredLogManagementRootContract = $null
 $declaredLogTaskTargetContract = $null
 $declaredTaskBindingsContract = @()
 try {
-    $layout = Read-LhmJsonFile -Path (Join-Path $stackRootPath 'manifests\layout.json')
-    $consumers = Read-LhmJsonFile -Path (Join-Path $stackRootPath 'manifests\consumers.json')
-    $live = Read-LhmJsonFile -Path (Join-Path $stackRootPath 'manifests\channels\live.json')
-
-    Assert-LhmJsonContract -Object $layout -DocumentName 'layout.json' -ExpectedSchema 'sq.librehw-layout'
-    Assert-LhmJsonContract -Object $consumers -DocumentName 'consumers.json' -ExpectedSchema 'sq.librehw-consumers'
-    Assert-LhmJsonContract -Object $live -DocumentName 'channels\live.json' -ExpectedSchema 'sq.librehw-live-channel'
-
-    $layoutMachineId = [string](Get-LhmManifestValue -Object $layout -PropertyPath @('machineId'))
-    $consumerMachineId = [string](Get-LhmManifestValue -Object $consumers -PropertyPath @('machineId'))
-    $liveMachineId = [string](Get-LhmManifestValue -Object $live -PropertyPath @('machineId'))
-    if ([string]::IsNullOrWhiteSpace($layoutMachineId) -or
-        -not [string]::Equals($layoutMachineId, $consumerMachineId, [System.StringComparison]::Ordinal) -or
-        -not [string]::Equals($layoutMachineId, $liveMachineId, [System.StringComparison]::Ordinal)) {
-        throw "Manifest machineId values do not agree: layout='$layoutMachineId', consumers='$consumerMachineId', live='$liveMachineId'."
-    }
-
-    $declaredStackRoot = [string](Get-LhmManifestValue -Object $layout -PropertyPath @('operations', 'root'))
-    if (-not (Test-LhmPathEqual -Left $declaredStackRoot -Right $stackRootPath)) {
-        throw "layout.json operations.root '$declaredStackRoot' does not match StackRoot '$stackRootPath'."
-    }
-
-    $declaredLiveRootContract = [string](Get-LhmManifestValue -Object $layout -PropertyPath @('operations', 'live'))
-    $declaredDeploymentRoot = [string](Get-LhmManifestValue -Object $live -PropertyPath @('deploymentRoot'))
-    if (-not (Test-LhmPathEqual -Left $declaredDeploymentRoot -Right $declaredLiveRootContract)) {
-        throw "channels\live.json deploymentRoot '$declaredDeploymentRoot' does not match layout.json operations.live '$declaredLiveRootContract'."
-    }
-
-    $declaredEntryPointContract = [string](Get-LhmManifestValue -Object $live -PropertyPath @('entryPoint'))
-    $declaredEntryTargetContract = Get-LhmNormalizedPath -Path (Join-Path $declaredLiveRootContract $declaredEntryPointContract)
-    $declaredLogManagementRootContract = [string](Get-LhmManifestValue -Object $layout -PropertyPath @('operations', 'logManagement'))
-    $declaredLogTaskTargetContract = Get-LhmNormalizedPath -Path (Join-Path $declaredLogManagementRootContract 'Invoke-LhmLogManagement.ps1')
-    $declaredTaskBindingsContract = @((Get-LhmManifestValue -Object $consumers -PropertyPath @('bindings')) |
-        Where-Object { $_.kind -eq 'scheduledTask' })
-    $liveTargetCount = 0
-    $logTargetCount = 0
-    $observedTaskTargets = @()
-    foreach ($binding in $declaredTaskBindingsContract) {
-        $bindingTarget = Get-LhmNormalizedPath -Path ([string](Get-LhmManifestValue -Object $binding -PropertyPath @('target')))
-        $observedTaskTargets += $bindingTarget
-        if (Test-LhmPathEqual -Left $bindingTarget -Right $declaredEntryTargetContract) {
-            $liveTargetCount++
-        }
-        if (Test-LhmPathEqual -Left $bindingTarget -Right $declaredLogTaskTargetContract) {
-            $logTargetCount++
-        }
-    }
-    if ($declaredTaskBindingsContract.Count -ne 2 -or $liveTargetCount -ne 1 -or $logTargetCount -ne 1) {
-        throw ("consumers.json scheduledTask bindings must contain exactly the declared live target '$declaredEntryTargetContract' " +
-               "and log-management target '$declaredLogTaskTargetContract'; found $($declaredTaskBindingsContract.Count) binding(s): " +
-               ($observedTaskTargets -join ', '))
-    }
+    $manifestContract = Get-LhmLiveManifestContract -StackRoot $stackRootPath
+    $layout = $manifestContract.Layout
+    $consumers = $manifestContract.Consumers
+    $live = $manifestContract.Live
+    $declaredLiveRootContract = $manifestContract.LiveRoot
+    $declaredEntryPointContract = $manifestContract.EntryPoint
+    $declaredEntryTargetContract = $manifestContract.EntryTarget
+    $declaredLogManagementRootContract = $manifestContract.LogManagementRoot
+    $declaredLogTaskTargetContract = $manifestContract.LogTaskTarget
+    $declaredTaskBindingsContract = @($manifestContract.ScheduledTaskBindings)
 
     $manifestsValid = $true
     Add-LhmLiveCheck 'manifests' 'Pass' 'All three manifests parsed; schema, version, machineId, roots, and the two required scheduled-task target contracts agree.'

@@ -5,98 +5,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-function Resolve-LhmCleanupPath {
-    param(
-        [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
-        [string]$Path
-    )
-
-    if ($Path -notmatch '^(?:[A-Za-z]:\\|\\\\[^\\]+\\[^\\]+(?:\\|$))') {
-        throw "Cleanup paths must be absolute: '$Path'."
-    }
-
-    $fullPath = [System.IO.Path]::GetFullPath($Path)
-    $volumeRoot = [System.IO.Path]::GetPathRoot($fullPath)
-    if ([string]::Equals(
-        $fullPath,
-        $volumeRoot,
-        [System.StringComparison]::OrdinalIgnoreCase)) {
-        return $fullPath
-    }
-
-    return $fullPath.TrimEnd(
-        [System.IO.Path]::DirectorySeparatorChar,
-        [System.IO.Path]::AltDirectorySeparatorChar)
-}
-
-function Test-LhmCleanupChildPath {
-    param(
-        [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][string]$Parent
-    )
-
-    $prefix = $Parent + [System.IO.Path]::DirectorySeparatorChar
-    return $Path.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
-}
-
-function Assert-LhmCleanupNormalAncestry {
-    param(
-        [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][string]$Parent
-    )
-
-    $current = $Path
-    while (-not [string]::Equals(
-        $current,
-        $Parent,
-        [System.StringComparison]::OrdinalIgnoreCase)) {
-        if (-not (Test-LhmCleanupChildPath -Path $current -Parent $Parent)) {
-            throw "Cleanup ancestry escaped the repository: '$current'."
-        }
-
-        if (Test-Path -LiteralPath $current) {
-            $item = Get-Item -LiteralPath $current -Force
-            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-                throw "Cleanup ancestry contains a reparse point: '$current'."
-            }
-        }
-
-        $parentInfo = [System.IO.Directory]::GetParent($current)
-        if ($null -eq $parentInfo) {
-            throw "Unable to resolve cleanup ancestry for '$Path'."
-        }
-        $current = Resolve-LhmCleanupPath -Path $parentInfo.FullName
-    }
-}
-
-function Get-LhmCleanupNormalTreeFiles {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Root
-    )
-
-    $pending = [System.Collections.Generic.Queue[string]]::new()
-    $files = [System.Collections.Generic.List[object]]::new()
-    $pending.Enqueue($Root)
-    while ($pending.Count -gt 0) {
-        $directory = $pending.Dequeue()
-        foreach ($entry in @(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)) {
-            if ($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-                throw "Cleanup target contains a reparse point: '$($entry.FullName)'."
-            }
-            if ($entry.PSIsContainer) {
-                $pending.Enqueue($entry.FullName)
-            }
-            else {
-                $files.Add($entry)
-            }
-        }
-    }
-
-    return $files
-}
+. (Join-Path $PSScriptRoot '..\ops\candidate\LhmRelease.Common.ps1')
 
 if (-not $PSBoundParameters.ContainsKey('RepositoryRoot')) {
     $RepositoryRoot = Join-Path $PSScriptRoot '..'
@@ -105,7 +14,7 @@ elseif ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
     throw 'RepositoryRoot must not be empty.'
 }
 
-$repositoryPath = Resolve-LhmCleanupPath -Path $RepositoryRoot
+$repositoryPath = Resolve-LhmReleaseFullPath -Path $RepositoryRoot
 $volumeRoot = [System.IO.Path]::GetPathRoot($repositoryPath)
 if ([string]::Equals(
     $repositoryPath,
@@ -137,70 +46,14 @@ foreach ($marker in $repositoryMarkers) {
     }
 }
 
-# Deliberately explicit. New projects do not inherit destructive cleanup merely
-# because they happen to create a directory named bin or obj.
-$relativeOutputRoots = @(
-    'bin',
-    'Aga.Controls\bin',
-    'Aga.Controls\obj',
-    'experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike\bin',
-    'experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike\obj',
-    'experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.Core\bin',
-    'experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.Core\obj',
-    'experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.Tests\bin',
-    'experiments\avalonia-fixture-explorer\LibreHardwareMonitor.Avalonia.Spike.Tests\obj',
-    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Library\bin',
-    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Library\obj',
-    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Application\bin',
-    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Application\obj',
-    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Contracts\bin',
-    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Contracts\obj',
-    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Attended\bin',
-    'LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Attended\obj',
-    'LibreHardwareMonitor.Windows.Forms\bin',
-    'LibreHardwareMonitor.Windows.Forms\obj',
-    'LibreHardwareMonitorLib\bin',
-    'LibreHardwareMonitorLib\obj'
-)
-
-$inventory = [System.Collections.Generic.List[object]]::new()
-foreach ($relativePath in $relativeOutputRoots) {
-    $outputPath = Resolve-LhmCleanupPath -Path (Join-Path $repositoryPath $relativePath)
-    if (-not (Test-LhmCleanupChildPath -Path $outputPath -Parent $repositoryPath)) {
-        throw "Refusing output path outside the repository: '$outputPath'."
-    }
-    Assert-LhmCleanupNormalAncestry `
-        -Path $outputPath `
-        -Parent $repositoryPath
-
-    $leaf = Split-Path -Leaf $outputPath
-    if ($leaf -notin @('bin', 'obj')) {
-        throw "Cleanup target is not an exact bin/obj directory: '$outputPath'."
-    }
-
-    if (-not (Test-Path -LiteralPath $outputPath)) {
-        $inventory.Add([pscustomobject]@{
-            Path = $relativePath
-            Files = 0
-            Bytes = [long]0
-            Exes = 0
-            Status = 'Absent'
-        })
-        continue
-    }
-    if (-not (Test-Path -LiteralPath $outputPath -PathType Container)) {
-        throw "Cleanup target is not a directory: '$outputPath'."
-    }
-
-    $outputItem = Get-Item -LiteralPath $outputPath -Force
-    if ($outputItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-        throw "Cleanup target must not be a reparse point: '$outputPath'."
-    }
-
-    # Walk one directory at a time so Windows PowerShell 5.1 never follows a
-    # child junction before the reparse-point check can reject it.
-    $files = @(Get-LhmCleanupNormalTreeFiles -Root $outputPath)
-    $runtimeState = @($files | Where-Object {
+$outputPaths = @(Get-LhmRepositoryBuildOutputPaths -RepositoryRoot $repositoryPath)
+$repositoryPrefix = Get-LhmReleasePathPrefix -Path $repositoryPath
+foreach ($outputPath in @($outputPaths | Where-Object { [System.IO.Directory]::Exists($_) })) {
+    $resolvedOutput = Assert-LhmRepositoryBuildOutputPath `
+        -RepositoryRoot $repositoryPath `
+        -Path $outputPath
+    Assert-LhmDirectoryTreeHasNoReparsePoints -Path $resolvedOutput
+    $runtimeState = @(Get-ChildItem -LiteralPath $resolvedOutput -File -Recurse -Force | Where-Object {
         $_.Name -like 'LibreHardwareMonitorLog-*.csv' -or
         $_.Name -ieq 'LibreHardwareMonitor.Windows.Forms.config' -or
         $_.Name -ieq 'LibreHardwareMonitor.Windows.Forms.config.backup'
@@ -208,30 +61,50 @@ foreach ($relativePath in $relativeOutputRoots) {
     if ($runtimeState.Count -ne 0) {
         $examples = ($runtimeState | Select-Object -First 3 -ExpandProperty FullName) -join '; '
         throw (
-            "Refusing to remove '$outputPath': found $($runtimeState.Count) " +
+            "Refusing to remove '$resolvedOutput': found $($runtimeState.Count) " +
             "runtime-state file(s). Preserve them outside the repository first. " +
             "Examples: $examples"
         )
     }
+}
 
-    $fileBytes = [long](($files | Measure-Object -Property Length -Sum).Sum)
-    $exeCount = @($files | Where-Object Extension -ieq '.exe').Count
-    $status = 'Planned'
-    if ($PSCmdlet.ShouldProcess($outputPath, 'Remove disposable repository build output')) {
-        Remove-Item -LiteralPath $outputPath -Recurse -Force
-        if (Test-Path -LiteralPath $outputPath) {
-            throw "Cleanup target still exists after removal: '$outputPath'."
-        }
-        $status = 'Removed'
+$cleanupParameters = @{
+    RepositoryRoot = $repositoryPath
+    WhatIf = [bool]$WhatIfPreference
+    Confirm = if ($PSBoundParameters.ContainsKey('Confirm')) {
+        [bool]$PSBoundParameters['Confirm']
     }
+    else {
+        $false
+    }
+}
+$summaries = @(Clear-LhmRepositoryBuildOutput @cleanupParameters)
+$summaryByPath = @{}
+foreach ($summary in $summaries) {
+    $summaryByPath[[string]$summary.Path] = $summary
+}
 
-    $inventory.Add([pscustomobject]@{
-        Path = $relativePath
-        Files = $files.Count
-        Bytes = $fileBytes
-        Exes = $exeCount
-        Status = $status
-    })
+$inventory = foreach ($outputPath in $outputPaths) {
+    $relativePath = $outputPath.Substring($repositoryPrefix.Length)
+    if ($summaryByPath.ContainsKey($outputPath)) {
+        $summary = $summaryByPath[$outputPath]
+        [pscustomobject]@{
+            Path = $relativePath
+            Files = [int]$summary.Files
+            Bytes = [long]$summary.Bytes
+            Exes = [int]$summary.Exes
+            Status = if ($WhatIfPreference) { 'Planned' } else { 'Removed' }
+        }
+    }
+    else {
+        [pscustomobject]@{
+            Path = $relativePath
+            Files = 0
+            Bytes = [long]0
+            Exes = 0
+            Status = 'Absent'
+        }
+    }
 }
 
 $inventory
