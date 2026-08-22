@@ -56,6 +56,12 @@ const menuChecks = [
   ['root has Workspace density controls', [
     'workspaceDensity','workspaceDensityCompact','workspaceCompactBar','workspaceCompactProfile'
   ].every(id => indexHtml.includes(`id="${id}"`))],
+  ['root has accessible Workspace authoring disclosure', (() => {
+    const start = indexHtml.indexOf('id="workspaceAuthoringToggle"');
+    const block = start >= 0 ? indexHtml.slice(Math.max(0, start - 120), indexHtml.indexOf('</button>', start) + 9) : '';
+    return block.includes('<button') && block.includes('type="button"')
+      && block.includes('aria-expanded="false"') && block.includes('Edit layout');
+  })()],
   ['Workspace density options are stable', (() => {
     const check = (id) => {
       const start = indexHtml.indexOf(`id="${id}"`);
@@ -65,11 +71,12 @@ const menuChecks = [
     return check('workspaceDensity') && check('workspaceDensityCompact');
   })()],
   ['Workspace compact CSS hides editor chrome and densifies cards', [
-    '[data-workspace-density="compact"] .workspace-hero{display:none}',
-    '[data-workspace-density="compact"] .workspace-command-bar{display:none',
-    '[data-workspace-density="compact"] .workspace-add-panel{display:none',
+    '[data-workspace-density="compact"][data-workspace-authoring="closed"] .workspace-hero{display:none}',
+    '[data-workspace-density="compact"][data-workspace-authoring="closed"] .workspace-command-bar{display:none',
+    '[data-workspace-density="compact"][data-workspace-authoring="closed"] .workspace-add-panel{display:none',
+    '[data-workspace-density="compact"][data-workspace-authoring="closed"] .workspace-panels-heading{display:none',
     '[data-workspace-density="compact"] .workspace-compact-bar{display:flex',
-    '[data-workspace-density="compact"] .workspace-panel-actions{display:none',
+    '[data-workspace-density="compact"][data-workspace-authoring="closed"] .workspace-panel-actions{display:none',
     'minmax(min(100%,150px),1fr)'
   ].every(token => consoleCss.includes(token))],
   ['console wires workspace density', consoleJs.includes("setAttribute('data-workspace-density', cfg.workspaceDensity)")
@@ -77,6 +84,13 @@ const menuChecks = [
     && consoleJs.includes("$('#workspaceDensity').onchange")
     && consoleJs.includes("$('#workspaceDensityCompact').onchange")
     && consoleJs.includes("$('#workspaceCompactProfile').textContent")],
+  ['console wires transient Workspace authoring without storage',
+    consoleJs.includes('let workspaceAuthoringOpen = false')
+      && consoleJs.includes("setAttribute('data-workspace-authoring', authoring.state)")
+      && consoleJs.includes("setAttribute('aria-expanded', String(authoring.expanded))")
+      && consoleJs.includes("$('#workspaceAuthoringToggle').onclick")
+      && consoleJs.includes('workspaceAuthoringOpen = !workspaceAuthoringOpen')
+      && !consoleJs.includes('workspaceAuthoringOpen:')],
   ['Workspace poll rendering does not churn its live region',
     consoleJs.includes("status.textContent === message && status.className === 'is-' + nextTone")
       && consoleJs.includes('paintWorkspaceControls(false)')],

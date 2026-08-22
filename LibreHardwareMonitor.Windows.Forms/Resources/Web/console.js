@@ -1293,6 +1293,7 @@
     const dashboard0 = SQ.migrateLegacyState(storage, SQ.loadDashboardState(storage));
     SQ.saveDashboardState(storage, dashboard0);
     const workspace0 = Workspace ? Workspace.load(storage) : null;
+    let workspaceAuthoringOpen = false;
     const state = {
       paused: dashboard0.paused,
       rate: dashboard0.rate,
@@ -2518,9 +2519,14 @@
     }
     function paintWorkspacePreferences() {
       const cfg = state.dashboard;
+      const authoring = SQ.workspaceAuthoringPresentation(cfg.workspaceDensity, workspaceAuthoringOpen);
       document.documentElement.setAttribute('data-workspace-density', cfg.workspaceDensity);
+      document.documentElement.setAttribute('data-workspace-authoring', authoring.state);
       $('#workspaceDensity').value = cfg.workspaceDensity;
       $('#workspaceDensityCompact').value = cfg.workspaceDensity;
+      const authoringToggle = $('#workspaceAuthoringToggle');
+      authoringToggle.setAttribute('aria-expanded', String(authoring.expanded));
+      authoringToggle.textContent = authoring.label;
     }
     function paintViewTheme() {
       const view = $('#viewTheme');
@@ -2599,12 +2605,17 @@
       commitDashboard();
     };
     const setWorkspaceDensity = value => {
+      workspaceAuthoringOpen = false;
       state.dashboard.workspaceDensity = cleanWorkspaceDensity(value);
       paintWorkspacePreferences();
       commitDashboard();
     };
     $('#workspaceDensity').onchange = e => setWorkspaceDensity(e.target.value);
     $('#workspaceDensityCompact').onchange = e => setWorkspaceDensity(e.target.value);
+    $('#workspaceAuthoringToggle').onclick = () => {
+      workspaceAuthoringOpen = !workspaceAuthoringOpen;
+      paintWorkspacePreferences();
+    };
     $('#studioFocusLayout').onchange = e => {
       state.dashboard.studioFocusLayout = cleanStudioFocusLayout(e.target.value);
       paintStudioPreferences();
