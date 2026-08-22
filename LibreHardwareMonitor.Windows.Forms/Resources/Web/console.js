@@ -102,6 +102,10 @@
   function cleanWorkspaceDensity(value) {
     return value === 'compact' ? 'compact' : 'comfortable';
   }
+  SQ.workspaceAuthoringPresentation = function (density, requestedOpen) {
+    const expanded = cleanWorkspaceDensity(density) === 'compact' && requestedOpen === true;
+    return {state:expanded ? 'open' : 'closed', expanded, label:expanded ? 'Done editing' : 'Edit layout'};
+  };
   function cleanStudioFocusLayout(value) {
     return STUDIO_FOCUS_LAYOUTS.includes(value) ? value : 'spotlight';
   }

@@ -174,6 +174,15 @@
     eq('normalize accepts workspace densities', ['comfortable','compact'].map(workspaceDensity =>
       S.normalizeDashboardState({workspaceDensity}).workspaceDensity), ['comfortable','compact']);
     eq('normalize workspace density junk -> comfortable', S.normalizeDashboardState({workspaceDensity:'dense'}).workspaceDensity, 'comfortable');
+    eq('compact authoring presentation is closed by default',
+      S.workspaceAuthoringPresentation('compact', false),
+      {state:'closed', expanded:false, label:'Edit layout'});
+    eq('compact authoring presentation exposes a done action while open',
+      S.workspaceAuthoringPresentation('compact', true),
+      {state:'open', expanded:true, label:'Done editing'});
+    eq('comfortable ignores transient compact authoring state',
+      S.workspaceAuthoringPresentation('comfortable', true),
+      {state:'closed', expanded:false, label:'Edit layout'});
     eq('normalize accepts studio focus layouts', ['spotlight','grid'].map(studioFocusLayout =>
       S.normalizeDashboardState({studioFocusLayout}).studioFocusLayout), ['spotlight','grid']);
     eq('normalize accepts studio focus counts', [4,6,8,12].map(studioFocusCount =>
