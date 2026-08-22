@@ -153,7 +153,7 @@ changes.
 
 Release verification and both framework builds use fresh output and
 intermediate locations owned by the external staging run. `global.json` pins
-SDK `10.0.302`, and the project `UseArtifactsOutput` conditions let SDK artifact
+SDK `10.0.303`, and the project `UseArtifactsOutput` conditions let SDK artifact
 routing supersede their normal source-tree `OutputPath` values. Packaging reads
 only the external artifact tree; it never copies from repository `bin` or `obj`.
 
