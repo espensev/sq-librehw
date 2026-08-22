@@ -99,6 +99,9 @@
   function cleanStudioDensity(value) {
     return STUDIO_DENSITIES.includes(value) ? value : 'comfortable';
   }
+  function cleanWorkspaceDensity(value) {
+    return value === 'compact' ? 'compact' : 'comfortable';
+  }
   function cleanStudioFocusLayout(value) {
     return STUDIO_FOCUS_LAYOUTS.includes(value) ? value : 'spotlight';
   }
@@ -193,6 +196,7 @@
       studioShowSparklines: true,
       studioShowSystems: true,
       studioShowNetwork: true,
+      workspaceDensity: 'comfortable',
       collapsedPanels: {},
       cardStyle: {},
       rangeOverrides: {},
@@ -230,6 +234,7 @@
       studioShowSparklines: value.studioShowSparklines !== false,
       studioShowSystems: value.studioShowSystems !== false,
       studioShowNetwork: value.studioShowNetwork !== false,
+      workspaceDensity: cleanWorkspaceDensity(value.workspaceDensity),
       collapsedPanels: cleanCollapsedMap(value.collapsedPanels),
       cardStyle: cleanCardStyleMap(value.cardStyle),
       rangeOverrides: cleanRangeOverrides(value.rangeOverrides),
@@ -2048,6 +2053,7 @@
 
       const profile = activeWorkspaceProfile();
       const profiles = state.workspace.profiles;
+      $('#workspaceCompactProfile').textContent = profile ? profile.name : 'Workspace';
       setStableHtml(profileSelect, profiles.map(item =>
         '<option value="' + esc(item.id) + '">' + esc(item.name) + '</option>').join(''));
       profileSelect.disabled = !profiles.length;
@@ -2506,6 +2512,12 @@
       $('#studioShowSystems').checked = cfg.studioShowSystems;
       $('#studioShowNetwork').checked = cfg.studioShowNetwork;
     }
+    function paintWorkspacePreferences() {
+      const cfg = state.dashboard;
+      document.documentElement.setAttribute('data-workspace-density', cfg.workspaceDensity);
+      $('#workspaceDensity').value = cfg.workspaceDensity;
+      $('#workspaceDensityCompact').value = cfg.workspaceDensity;
+    }
     function paintViewTheme() {
       const view = $('#viewTheme');
       const studio = state.dashboard.viewTheme === 'cardTruth';
@@ -2518,6 +2530,7 @@
       $('#dashboardSubtitle').textContent = studio ? 'Telemetry Studio'
         : workspace ? 'Sensor Workspace' : 'Hardware Telemetry Console';
       paintStudioPreferences();
+      paintWorkspacePreferences();
       if (workspace) paintWorkspaceControls();
       paintDashContext();
     }
@@ -2581,6 +2594,13 @@
       paintStudioPreferences();
       commitDashboard();
     };
+    const setWorkspaceDensity = value => {
+      state.dashboard.workspaceDensity = cleanWorkspaceDensity(value);
+      paintWorkspacePreferences();
+      commitDashboard();
+    };
+    $('#workspaceDensity').onchange = e => setWorkspaceDensity(e.target.value);
+    $('#workspaceDensityCompact').onchange = e => setWorkspaceDensity(e.target.value);
     $('#studioFocusLayout').onchange = e => {
       state.dashboard.studioFocusLayout = cleanStudioFocusLayout(e.target.value);
       paintStudioPreferences();

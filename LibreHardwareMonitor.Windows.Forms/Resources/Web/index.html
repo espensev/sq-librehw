@@ -193,6 +193,17 @@
 </main>
 
 <main class="wrap workspace-view" id="workspaceView" data-dashboard-view="workspace" hidden>
+  <div class="workspace-compact-bar" id="workspaceCompactBar">
+    <span class="workspace-compact-profile" id="workspaceCompactProfile">Workspace</span>
+    <label class="workspace-compact-density" for="workspaceDensityCompact">
+      <span>Density</span>
+      <select id="workspaceDensityCompact" name="workspaceDensityCompact">
+        <option value="comfortable">Comfortable</option>
+        <option value="compact">Compact</option>
+      </select>
+    </label>
+  </div>
+
   <section class="workspace-hero" aria-labelledby="workspaceTitle">
     <div class="workspace-hero-copy">
       <span class="workspace-kicker">Task-specific telemetry</span>
@@ -234,6 +245,13 @@
 
     <div class="workspace-file-actions" role="group" aria-label="Workspace file and reset actions">
       <input id="workspaceImportFile" type="file" accept="application/json,.json" hidden>
+      <label class="workspace-field" for="workspaceDensity">
+        <span>Density</span>
+        <select id="workspaceDensity" name="workspaceDensity">
+          <option value="comfortable">Comfortable</option>
+          <option value="compact">Compact</option>
+        </select>
+      </label>
       <button class="iconbtn" id="workspaceImport" type="button">Import JSON</button>
       <button class="iconbtn" id="workspaceExport" type="button">Export JSON</button>
       <button class="iconbtn workspace-danger" id="workspaceReset" type="button">Reset workspace</button>

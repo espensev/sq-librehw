@@ -83,6 +83,15 @@ Built-in profiles are editable and deletable like other profiles. `Reset
 workspace` restores the four current built-ins and removes local profile
 changes after confirmation. A single remaining profile cannot be deleted.
 
+Workspace density is a viewer preference, not profile data: the dashboard
+state key `workspaceDensity` (`comfortable` default, `compact`) is stored in
+`sq.dashboard.v1` beside the Studio preferences and survives profile import,
+export, and reset. Compact mode hides the hero, layout library, panel builder,
+panels heading, and per-panel action rows, and replaces them with a compact bar
+carrying the active profile name and a density select, so one control always
+switches back. Compact densifies card, table, graph, and sensor-manager
+surfaces and their spacing; Comfortable is unchanged.
+
 ## Compatibility
 
 The change is confined to embedded HTML/CSS/JS and browser-local storage. It
@@ -109,6 +118,9 @@ owning hardware collection or the deployed `\LibreHardwareMonitor` task.
   desktop and narrow layouts.
 - [x] Pause/polling, stale state, telemetry history, and retired routes keep
   their existing behavior.
+- [x] Workspace density defaults to Comfortable, persists as a dashboard
+  preference, and Compact hides editor chrome behind a reversible bar while
+  densifying panels without changing profile data.
 
 ## Roadmap
 
@@ -116,9 +128,10 @@ owning hardware collection or the deployed `\LibreHardwareMonitor` task.
    against the live task path; the deployed served assets, schema migration,
    Thermal profile, telemetry, and polling endpoints are already verified.
 2. Specify a web Workspace flexibility slice for resizable/reflowing layouts,
-   density and appearance controls, sensor search/grouping, bulk membership
+   further appearance controls, sensor search/grouping, bulk membership
    edits, and graph presentation that remains honest about units and missing
-   values. Native tree, graph, and gadget modernization is owned by
+   values. Density controls shipped 2026-08-22; the slice keeps its remaining
+   scope. Native tree, graph, and gadget modernization is owned by
    `docs/features/feature-native-ui-modernization.md`.
 3. Stabilize and document the bounded profile document plus normalized
    read-only sensor model as inputs to Phase 5 of
@@ -146,6 +159,14 @@ SensorIds, pause, stale telemetry, keyboard focus, and browser-console output.
 
 ## Verification Log
 
+- 2026-08-22 Workspace density: TDD pass added `workspaceDensity` to
+  `sq.dashboard.v1` (normalize/default/merge covered), markup checks for the
+  two density selects and compact bar, and CSS wiring checks. `node --check`
+  passed for `console.js`; `node --test webtests\console.tests.js
+  webtests\workspace.tests.js` passed 18/18; the markup/model self-test passed
+  322/322; both `net10.0-windows` and `net472` Release x64 builds completed
+  with zero warnings and zero errors. Source-only change; no candidate was
+  created and the deployed runtime was not touched.
 - 2026-07-18 SND-DESK -> SND-HOST deployment: both machine identities were
   verified before mutation. Product version
   `0.9.6+ebedd8b-dirty.2026-07-18` was installed under the recreated
