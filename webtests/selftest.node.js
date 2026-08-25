@@ -53,6 +53,95 @@ const menuChecks = [
       && consoleJs.includes('restoreWorkspaceFocus(focus)')
       && consoleJs.includes("workspaceAddPanel:'workspacePanelTitle'")
       && consoleJs.includes("workspaceProfileDuplicate:'workspaceProfileSelect'")],
+  ['root has Workspace density controls', [
+    'workspaceDensity','workspaceDensityCompact','workspaceCompactBar','workspaceCompactProfile'
+  ].every(id => indexHtml.includes(`id="${id}"`))],
+  ['root has accessible persistent toolbar collapse and restore controls',
+    indexHtml.includes('id="dashboardToolbar"')
+      && indexHtml.includes('id="toolbarCollapse"')
+      && indexHtml.includes('aria-controls="dashboardToolbar"')
+      && indexHtml.includes('id="toolbarRestore"')
+      && indexHtml.includes('Show toolbar')],
+  ['Workspace top chooser precedes panels and Sensor Manager is no longer buried below them',
+    indexHtml.includes('id="workspaceChooseSensors"')
+      && indexHtml.indexOf('id="workspaceSensorManager"') < indexHtml.indexOf('id="workspacePanels"')],
+  ['Workspace compact bar retains an accessible heading and polite status region',
+    indexHtml.includes('<h1 class="workspace-compact-profile" id="workspaceCompactProfile">')
+      && indexHtml.includes('id="workspaceCompactStatus"')
+      && indexHtml.includes('role="status"')
+      && indexHtml.includes('aria-live="polite"')],
+  ['root has accessible Workspace authoring disclosure', (() => {
+    const start = indexHtml.indexOf('id="workspaceAuthoringToggle"');
+    const block = start >= 0 ? indexHtml.slice(Math.max(0, start - 120), indexHtml.indexOf('</button>', start) + 9) : '';
+    return block.includes('<button') && block.includes('type="button"')
+      && block.includes('aria-expanded="false"') && block.includes('Edit layout');
+  })()],
+  ['Workspace density options are stable', (() => {
+    const check = (id) => {
+      const start = indexHtml.indexOf(`id="${id}"`);
+      const block = start >= 0 ? indexHtml.slice(start, indexHtml.indexOf('</select>', start)) : '';
+      return ['<option value="comfortable">Comfortable</option>','<option value="compact">Compact</option>'].every(option => block.includes(option));
+    };
+    return check('workspaceDensity') && check('workspaceDensityCompact');
+  })()],
+  ['Workspace compact CSS hides editor chrome and densifies cards', [
+    '[data-workspace-density="compact"][data-workspace-authoring="closed"] .workspace-hero{display:none}',
+    '[data-workspace-density="compact"][data-workspace-authoring="closed"] .workspace-command-bar{display:none',
+    '[data-workspace-density="compact"][data-workspace-authoring="closed"] .workspace-add-panel{display:none',
+    '[data-workspace-density="compact"][data-workspace-authoring="closed"] .workspace-panels-heading{display:none',
+    '[data-workspace-density="compact"] .workspace-compact-bar{display:flex',
+    '[data-workspace-density="compact"][data-workspace-authoring="closed"] .workspace-panel-actions{display:none'
+  ].every(token => consoleCss.includes(token))],
+  ['Workspace compact cards stay substantial and drop secondary catalog prose', [
+    'minmax(min(100%,240px),1fr)',
+    '[data-workspace-density="compact"] .workspace-sensor-card{min-height:112px',
+    '[data-workspace-density="compact"] .workspace-sensor-copy>span{display:none}',
+    '[data-workspace-density="compact"] .workspace-sensor-meta{display:none}',
+    'workspace-sensor-state'
+  ].every(token => consoleCss.includes(token))],
+  ['collapsed toolbar leaves a non-overlaying in-flow restore affordance and consumes no header layout',
+    consoleCss.includes(':root[data-toolbar="collapsed"] header{display:none}')
+      && consoleCss.includes('.toolbar-restore{display:block;position:relative')
+      && !/\.toolbar-restore\{[^}]*position:(?:fixed|sticky|absolute)/.test(consoleCss)],
+  ['compact closed panels expose headings instead of editable title fields', [
+    'workspace-panel-title-display',
+    '[data-workspace-authoring="closed"] .workspace-panel-title{display:none}',
+    '[data-workspace-authoring="closed"] .workspace-panel-title-display{display:block}'
+  ].every(token => consoleJs.includes(token) || consoleCss.includes(token))],
+  ['generated Workspace panel fields expose stable id and name attributes', [
+    'id="workspace-panel-title-input-',
+    'name="workspacePanelTitle"',
+    'id="workspace-panel-type-',
+    'name="workspacePanelType"'
+  ].every(token => consoleJs.includes(token))],
+  ['console wires workspace density', consoleJs.includes("setAttribute('data-workspace-density', cfg.workspaceDensity)")
+    && consoleJs.includes('cleanWorkspaceDensity')
+    && consoleJs.includes("$('#workspaceDensity').onchange")
+    && consoleJs.includes("$('#workspaceDensityCompact').onchange")
+    && consoleJs.includes("$('#workspaceCompactProfile').textContent")],
+  ['console wires transient Workspace authoring without storage',
+    consoleJs.includes('let workspaceAuthoringOpen = false')
+      && consoleJs.includes("setAttribute('data-workspace-authoring', authoring.state)")
+      && consoleJs.includes("setAttribute('aria-expanded', String(authoring.expanded))")
+      && consoleJs.includes("$('#workspaceAuthoringToggle').onclick")
+      && consoleJs.includes('workspaceAuthoringOpen = !workspaceAuthoringOpen')
+      && !consoleJs.includes('workspaceAuthoringOpen:')],
+  ['console persists toolbar collapse and restores focus safely',
+    consoleJs.includes("setAttribute('data-toolbar', cfg.toolbarCollapsed ? 'collapsed' : 'expanded')")
+      && consoleJs.includes("$('#toolbarCollapse').onclick")
+      && consoleJs.includes("$('#toolbarRestore').onclick")
+      && consoleJs.includes("$('#toolbarCollapse').focus()")
+      && consoleJs.includes("$('#toolbarRestore').focus()")
+      && consoleJs.includes("querySelectorAll('#dashboardHeader details[open]')")],
+  ['console opens top sensor selection on the first panel and offers one-click move-to-top',
+    consoleJs.includes("$('#workspaceChooseSensors').onclick")
+      && consoleJs.includes('profile?.panels[0]?.id')
+      && consoleJs.includes('data-workspace-act="sensor-top"')
+      && consoleJs.includes("button.dataset.workspaceAct === 'sensor-top' ? 0")
+      && consoleJs.includes("event.key !== 'Escape'")
+      && consoleJs.includes("$('#workspaceChooseSensors').focus()")
+      && consoleJs.includes('if (!manager.open) workspaceSensorReturnFocus = null')
+      && consoleJs.includes('const focusTarget = workspaceSensorReturnFocus')],
   ['Workspace poll rendering does not churn its live region',
     consoleJs.includes("status.textContent === message && status.className === 'is-' + nextTone")
       && consoleJs.includes('paintWorkspaceControls(false)')],

@@ -134,6 +134,7 @@ test('workspace and dashboard storage remain isolated in both directions', () =>
     sensorAliases:{'/cpu/load':'CPU Work'},
     studioAccent:'plum',
     studioCanvas:'strata',
+    toolbarCollapsed:true,
     observedMax:{'/fan':1200}
   });
   const storage = memoryStorage({
@@ -159,6 +160,7 @@ test('workspace and dashboard storage remain isolated in both directions', () =>
   assert.deepEqual(savedDashboard.observedMax, {'/fan':1500, '/pump':900});
   assert.equal(savedDashboard.studioAccent, 'plum');
   assert.equal(savedDashboard.studioCanvas, 'strata');
+  assert.equal(savedDashboard.toolbarCollapsed, true);
 
   const badWorkspace = memoryStorage({
     [W.STORAGE_KEY]:'{',
@@ -266,7 +268,8 @@ test('editing materializes presets and preserves exact order plus missing Sensor
   const edited = presetState.profiles.find(profile => profile.id === 'gaming').panels
     .find(item => item.id === 'gaming-primary');
   assert.equal(edited.preset, null);
-  assert.ok(edited.sensorIds.includes('/custom/sensor'));
+  assert.equal(edited.sensorIds[0], '/custom/sensor');
+  assert.deepEqual(edited.sensorIds.slice(1), W.resolvePreset('gaming-primary', sensors));
 });
 
 test('profile and panel operations remain collision-safe and ordered', () => {
