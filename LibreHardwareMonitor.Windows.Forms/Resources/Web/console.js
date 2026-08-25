@@ -201,6 +201,7 @@
       studioShowSystems: true,
       studioShowNetwork: true,
       workspaceDensity: 'comfortable',
+      toolbarCollapsed: false,
       collapsedPanels: {},
       cardStyle: {},
       rangeOverrides: {},
@@ -239,6 +240,7 @@
       studioShowSystems: value.studioShowSystems !== false,
       studioShowNetwork: value.studioShowNetwork !== false,
       workspaceDensity: cleanWorkspaceDensity(value.workspaceDensity),
+      toolbarCollapsed: value.toolbarCollapsed === true,
       collapsedPanels: cleanCollapsedMap(value.collapsedPanels),
       cardStyle: cleanCardStyleMap(value.cardStyle),
       rangeOverrides: cleanRangeOverrides(value.rangeOverrides),
@@ -1294,6 +1296,7 @@
     SQ.saveDashboardState(storage, dashboard0);
     const workspace0 = Workspace ? Workspace.load(storage) : null;
     let workspaceAuthoringOpen = false;
+    let workspaceSensorReturnFocus = null;
     const state = {
       paused: dashboard0.paused,
       rate: dashboard0.rate,
@@ -1952,10 +1955,16 @@
     function paintWorkspaceStatus(message, tone) {
       const status = $('#workspaceStatus');
       if (!status) return;
+      const compactStatus = $('#workspaceCompactStatus');
       const nextTone = ['ok','warn','crit','error','info','off'].includes(tone) ? tone : 'info';
-      if (status.textContent === message && status.className === 'is-' + nextTone) return;
+      if (status.textContent === message && status.className === 'is-' + nextTone
+        && compactStatus?.textContent === message && compactStatus?.dataset.tone === nextTone) return;
       status.textContent = message;
       status.className = 'is-' + nextTone;
+      if (compactStatus) {
+        compactStatus.textContent = message;
+        compactStatus.dataset.tone = nextTone;
+      }
       const live = status.closest('.workspace-live');
       if (live) {
         ['ok','warn','crit','error','info','off'].forEach(value => live.classList.remove('is-' + value));
@@ -2045,7 +2054,7 @@
       const interactive = [
         '#workspaceProfileNew','#workspaceProfileDuplicate','#workspaceProfileDelete',
         '#workspaceImport','#workspaceExport','#workspaceReset','#workspacePanelTitle',
-        '#workspacePanelKind','#workspaceAddPanel','#workspaceSensorSearch'
+        '#workspacePanelKind','#workspaceAddPanel','#workspaceSensorSearch','#workspaceChooseSensors'
       ].map($).filter(Boolean);
       if (!Workspace || !state.workspace) {
         interactive.forEach(control => { control.disabled = true; });
@@ -2079,6 +2088,11 @@
       targetSelect.disabled = !panels.length;
       targetSelect.value = state.workspaceSensorTargetId || '';
       $('#workspaceSensorSearch').disabled = !panels.length;
+      const chooseSensors = $('#workspaceChooseSensors');
+      chooseSensors.disabled = !panels.length;
+      chooseSensors.title = panels.length ? 'Choose sensors for the first panel'
+        : 'Open Edit layout and add a panel first';
+      chooseSensors.setAttribute('aria-expanded', String($('#workspaceSensorManager').open));
       $('#workspaceAddPanel').disabled = !profile || panels.length >= Workspace.LIMITS.panelsPerProfile;
 
       if (state.workspaceNotice && state.workspaceNotice.until > Date.now())
@@ -2098,10 +2112,11 @@
     function workspaceSensorHeadMarkup(sensor) {
       const label = SQ.sensorDisplayText(sensor, state.dashboard, sensor.text);
       const raw = label !== sensor.text ? ' · raw ' + sensor.text : '';
-      return '<div class="workspace-sensor-head"><div><strong>' + esc(label) + '</strong>' +
+      const statusLabel = STLABEL[sensor.status] || 'Unavailable';
+      return '<div class="workspace-sensor-head"><div class="workspace-sensor-copy"><strong>' + esc(label) + '</strong>' +
         '<span>' + esc(sensor.hw || 'Sensor') + ' · ' + esc(sensor.type || 'Unknown') + esc(raw) +
-        '</span></div><span class="lamp s-' + esc(sensor.status || 'off') +
-        '" title="' + esc(STLABEL[sensor.status] || 'Unavailable') + '"></span></div>';
+        '</span></div><div class="workspace-sensor-state"><span class="lamp s-' + esc(sensor.status || 'off') +
+        '" aria-hidden="true"></span><span>' + esc(statusLabel) + '</span></div></div>';
     }
     function workspaceReadingMarkup(sensor) {
       if (sensor.raw == null)
@@ -2161,13 +2176,19 @@
     }
     function workspacePanelEl(profile, panel, index) {
       const article = document.createElement('article');
+      const titleId = 'workspace-panel-title-' + profile.id + '-' + panel.id;
       article.className = 'workspace-panel workspace-panel-' + panel.type;
       article.dataset.panelId = panel.id;
+      article.setAttribute('aria-labelledby', titleId);
       article.innerHTML = '<div class="workspace-panel-head">' +
-        '<input class="workspace-panel-title" data-workspace-field="title" data-panel-id="' + esc(panel.id) +
+        '<h2 class="workspace-panel-title workspace-panel-title-display" id="' + esc(titleId) + '">' +
+        esc(panel.title) + '</h2>' +
+        '<input id="workspace-panel-title-input-' + esc(profile.id + '-' + panel.id) + '" name="workspacePanelTitle"' +
+        ' class="workspace-panel-title" data-workspace-field="title" data-panel-id="' + esc(panel.id) +
         '" maxlength="80" value="' + esc(panel.title) + '" aria-label="Panel title">' +
         '<div class="workspace-panel-actions">' +
-        '<select data-workspace-field="type" data-panel-id="' + esc(panel.id) +
+        '<select id="workspace-panel-type-' + esc(profile.id + '-' + panel.id) + '" name="workspacePanelType"' +
+        ' data-workspace-field="type" data-panel-id="' + esc(panel.id) +
         '" aria-label="Presentation for ' + esc(panel.title) + '">' +
         Workspace.PANEL_TYPES.map(type => '<option value="' + type + '"' +
           (panel.type === type ? ' selected' : '') + '>' +
@@ -2305,7 +2326,9 @@
           '<div><strong>' + esc(label) + '</strong><span>' + esc(detail) +
           '</span><code>' + esc(row.id) + '</code></div><div class="workspace-sensor-actions">' +
           (row.selected
-            ? '<span>#' + (index + 1) + '</span><button class="iconbtn" data-workspace-act="sensor-up" data-sensor-id="' +
+            ? '<span>#' + (index + 1) + '</span><button class="iconbtn" data-workspace-act="sensor-top" data-sensor-id="' +
+              esc(row.id) + '" aria-label="Move ' + esc(label) + ' to top"' + (index === 0 ? ' disabled' : '') +
+              '>Top</button><button class="iconbtn" data-workspace-act="sensor-up" data-sensor-id="' +
               esc(row.id) + '" aria-label="Move ' + esc(label) + ' earlier"' + (index === 0 ? ' disabled' : '') +
               '>▲</button><button class="iconbtn" data-workspace-act="sensor-down" data-sensor-id="' + esc(row.id) +
               '" aria-label="Move ' + esc(label) + ' later"' +
@@ -2528,6 +2551,15 @@
       authoringToggle.setAttribute('aria-expanded', String(authoring.expanded));
       authoringToggle.textContent = authoring.label;
     }
+    function paintToolbarPreferences() {
+      const cfg = state.dashboard;
+      document.documentElement.setAttribute('data-toolbar', cfg.toolbarCollapsed ? 'collapsed' : 'expanded');
+      const collapse = $('#toolbarCollapse');
+      const restore = $('#toolbarRestore');
+      collapse.setAttribute('aria-expanded', String(!cfg.toolbarCollapsed));
+      restore.setAttribute('aria-expanded', String(!cfg.toolbarCollapsed));
+      restore.hidden = !cfg.toolbarCollapsed;
+    }
     function paintViewTheme() {
       const view = $('#viewTheme');
       const studio = state.dashboard.viewTheme === 'cardTruth';
@@ -2541,6 +2573,7 @@
         : workspace ? 'Sensor Workspace' : 'Hardware Telemetry Console';
       paintStudioPreferences();
       paintWorkspacePreferences();
+      paintToolbarPreferences();
       if (workspace) paintWorkspaceControls();
       paintDashContext();
     }
@@ -2564,6 +2597,19 @@
     }
     paintTheme();
     paintViewTheme();
+    $('#toolbarCollapse').onclick = () => {
+      document.querySelectorAll('#dashboardHeader details[open]').forEach(details => { details.open = false; });
+      state.dashboard.toolbarCollapsed = true;
+      paintToolbarPreferences();
+      saveDashboard();
+      setTimeout(() => $('#toolbarRestore').focus(), 0);
+    };
+    $('#toolbarRestore').onclick = () => {
+      state.dashboard.toolbarCollapsed = false;
+      paintToolbarPreferences();
+      saveDashboard();
+      setTimeout(() => $('#toolbarCollapse').focus(), 0);
+    };
     $('#theme').onclick = () => {
       const t = state.dashboard.theme === 'dark' ? 'light' : 'dark';
       state.dashboard.theme = t;
@@ -2662,6 +2708,20 @@
       menu.open = true;
       renderSensorsPopover();
       $('#sensorsSearch').focus();
+    };
+    $('#workspaceChooseSensors').onclick = () => {
+      const profile = activeWorkspaceProfile();
+      const panelId = profile?.panels[0]?.id;
+      if (!panelId) return;
+      const manager = $('#workspaceSensorManager');
+      workspaceSensorReturnFocus = $('#workspaceChooseSensors');
+      state.workspaceSensorTargetId = panelId;
+      state.workspaceSensorSignature = null;
+      manager.open = true;
+      paintWorkspaceControls();
+      renderWorkspaceSensorList();
+      manager.scrollIntoView({block:'start'});
+      setTimeout(() => $('#workspaceSensorSearch').focus(), 0);
     };
     $('#workspaceProfileSelect').onchange = event => {
       if (!Workspace) return;
@@ -2805,6 +2865,7 @@
       const index = profile.panels.findIndex(item => item.id === panel.id);
       switch (button.dataset.workspaceAct) {
         case 'manage':
+          workspaceSensorReturnFocus = button;
           state.workspaceSensorTargetId = panel.id;
           paintWorkspaceControls();
           $('#workspaceSensorManager').open = true;
@@ -2839,11 +2900,25 @@
       if (event.key === 'Enter' && event.target.matches('[data-workspace-field="title"]')) event.target.blur();
     });
     $('#workspaceSensorManager').addEventListener('toggle', () => {
+      const manager = $('#workspaceSensorManager');
       state.workspaceSensorSignature = null;
-      if ($('#workspaceSensorManager').open) {
+      $('#workspaceChooseSensors').setAttribute('aria-expanded', String(manager.open));
+      if (!manager.open) workspaceSensorReturnFocus = null;
+      if (manager.open) {
         paintWorkspaceControls();
         renderWorkspaceSensorList();
       }
+    });
+    $('#workspaceSensorManager').addEventListener('keydown', event => {
+      const manager = $('#workspaceSensorManager');
+      if (event.key !== 'Escape' || !manager.open) return;
+      event.preventDefault();
+      const focusTarget = workspaceSensorReturnFocus;
+      workspaceSensorReturnFocus = null;
+      manager.open = false;
+      if (focusTarget?.isConnected) focusTarget.focus();
+      else if (state.dashboard.workspaceDensity === 'compact') $('#workspaceChooseSensors').focus();
+      else manager.querySelector('summary')?.focus();
     });
     $('#workspaceSensorTarget').onchange = event => {
       state.workspaceSensorTargetId = event.target.value || null;
@@ -2866,7 +2941,7 @@
     });
     $('#workspaceSensorList').addEventListener('click', event => {
       if (!Workspace) return;
-      const button = event.target.closest('[data-workspace-act="sensor-up"], [data-workspace-act="sensor-down"]');
+      const button = event.target.closest('[data-workspace-act="sensor-top"], [data-workspace-act="sensor-up"], [data-workspace-act="sensor-down"]');
       if (!button) return;
       const profile = activeWorkspaceProfile();
       const panel = workspacePanel(profile, state.workspaceSensorTargetId);
@@ -2874,7 +2949,8 @@
       const ids = Workspace.resolvePanel(panel, state.allSensors).sensorIds;
       const index = ids.indexOf(button.dataset.sensorId);
       if (index < 0) return;
-      const nextIndex = index + (button.dataset.workspaceAct === 'sensor-up' ? -1 : 1);
+      const nextIndex = button.dataset.workspaceAct === 'sensor-top' ? 0
+        : index + (button.dataset.workspaceAct === 'sensor-up' ? -1 : 1);
       commitWorkspace(Workspace.movePanelSensor(state.workspace, profile.id, panel.id,
         button.dataset.sensorId, nextIndex, state.allSensors), 'Sensor order saved.', 'ok');
     });

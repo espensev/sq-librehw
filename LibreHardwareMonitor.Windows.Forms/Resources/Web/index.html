@@ -5,12 +5,14 @@
 <link rel="stylesheet" href="console.css">
 </head>
 <body>
-<header><div class="wrap mast">
+<header id="dashboardHeader"><div class="wrap mast" id="dashboardToolbar">
   <div class="brand">
     <div class="sigil">SQ</div>
     <div class="wordmark"><b id="host">—</b><span id="dashboardSubtitle">Hardware Telemetry Console</span></div>
   </div>
   <div class="spacer"></div>
+  <button class="iconbtn toolbar-collapse" id="toolbarCollapse" type="button"
+          aria-controls="dashboardToolbar" aria-expanded="true">Hide toolbar</button>
   <div class="controls">
     <div class="fresh"><span class="lamp s-ok" id="freshdot"></span><span id="freshtxt">live</span></div>
     <label class="rate" for="rate"><span id="rateLabel">Poll rate</span><input type="range" id="rate" min="1" max="10" value="2" aria-labelledby="rateLabel" aria-describedby="ratev"><span id="ratev">2s</span></label>
@@ -51,6 +53,8 @@
     </details>
   </div>
 </div></header>
+<button class="btn toolbar-restore" id="toolbarRestore" type="button"
+        aria-controls="dashboardToolbar" hidden>Show toolbar</button>
 
 <div class="studio-atmosphere" aria-hidden="true"></div>
 
@@ -194,7 +198,11 @@
 
 <main class="wrap workspace-view" id="workspaceView" data-dashboard-view="workspace" hidden>
   <div class="workspace-compact-bar" id="workspaceCompactBar">
-    <span class="workspace-compact-profile" id="workspaceCompactProfile">Workspace</span>
+    <h1 class="workspace-compact-profile" id="workspaceCompactProfile">Workspace</h1>
+    <p class="workspace-compact-status" id="workspaceCompactStatus" role="status"
+       aria-live="polite" aria-atomic="true">Preparing profiles and live telemetry.</p>
+    <button class="btn workspace-primary workspace-choose-sensors" id="workspaceChooseSensors"
+            type="button" aria-controls="workspaceSensorManager" aria-expanded="false">Choose top sensors</button>
     <button class="iconbtn workspace-authoring-toggle" id="workspaceAuthoringToggle"
             type="button" aria-expanded="false">Edit layout</button>
     <label class="workspace-compact-density" for="workspaceDensityCompact">
@@ -285,22 +293,6 @@
     </div>
   </section>
 
-  <section class="workspace-panels-section" aria-labelledby="workspacePanelsTitle">
-    <div class="workspace-section-heading workspace-panels-heading">
-      <div>
-        <span>Active layout</span>
-        <h2 id="workspacePanelsTitle">Sensor panels</h2>
-      </div>
-      <p>Panels preserve sensor order and report unavailable hardware instead of hiding it.</p>
-    </div>
-    <div class="workspace-panels" id="workspacePanels">
-      <div class="workspace-empty" role="status">
-        <strong>Preparing your workspace</strong>
-        <span>Live panels will appear here when the active profile is ready.</span>
-      </div>
-    </div>
-  </section>
-
   <details class="workspace-sensor-manager" id="workspaceSensorManager">
     <summary>
       <span><span class="workspace-kicker">Sensor manager</span><strong>Add and order exact sensors</strong></span>
@@ -319,7 +311,7 @@
           <input id="workspaceSensorSearch" name="workspaceSensorSearch" type="search" autocomplete="off" placeholder="Search name, hardware, type, or SensorId">
         </label>
       </div>
-      <p class="workspace-sensor-help" id="workspaceSensorHelp">Sensor membership is independent from Standard and Studio visibility. Missing SensorIds stay in the profile so returning hardware can reconnect.</p>
+      <p class="workspace-sensor-help" id="workspaceSensorHelp">New selections go to the top. Sensor membership is independent from Standard and Studio visibility. Missing SensorIds stay in the profile so returning hardware can reconnect.</p>
       <div class="workspace-sensor-list" id="workspaceSensorList" role="region" aria-label="Available sensors" aria-describedby="workspaceSensorHelp">
         <div class="workspace-empty">
           <strong>Choose a target panel</strong>
@@ -328,6 +320,22 @@
       </div>
     </div>
   </details>
+
+  <section class="workspace-panels-section" aria-labelledby="workspacePanelsTitle">
+    <div class="workspace-section-heading workspace-panels-heading">
+      <div>
+        <span>Active layout</span>
+        <h2 id="workspacePanelsTitle">Sensor panels</h2>
+      </div>
+      <p>Panels preserve sensor order and report unavailable hardware instead of hiding it.</p>
+    </div>
+    <div class="workspace-panels" id="workspacePanels">
+      <div class="workspace-empty" role="status">
+        <strong>Preparing your workspace</strong>
+        <span>Live panels will appear here when the active profile is ready.</span>
+      </div>
+    </div>
+  </section>
 
   <footer class="workspace-footer">
     <span id="workspaceFootLeft">Workspace is initializing.</span>

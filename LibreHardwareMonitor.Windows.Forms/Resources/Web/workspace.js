@@ -640,7 +640,7 @@
     if (!panel) return state;
     const ids = resolvePanel(panel, sensors).sensorIds;
     const next = ids.filter(id => id !== sensorId);
-    if (selected && !ids.includes(sensorId) && next.length < LIMITS.sensorIdsPerPanel) next.push(sensorId);
+    if (selected && !ids.includes(sensorId) && next.length < LIMITS.sensorIdsPerPanel) next.unshift(sensorId);
     return setPanelSensorIds(state, profileId, panelId, next);
   }
 

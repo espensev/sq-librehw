@@ -174,6 +174,15 @@
     eq('normalize accepts workspace densities', ['comfortable','compact'].map(workspaceDensity =>
       S.normalizeDashboardState({workspaceDensity}).workspaceDensity), ['comfortable','compact']);
     eq('normalize workspace density junk -> comfortable', S.normalizeDashboardState({workspaceDensity:'dense'}).workspaceDensity, 'comfortable');
+    eq('shared toolbar is expanded by default', S.defaultDashboardState().toolbarCollapsed, false);
+    eq('shared toolbar collapse preference accepts only true', [true,false,1,'true'].map(toolbarCollapsed =>
+      S.normalizeDashboardState({toolbarCollapsed}).toolbarCollapsed), [true,false,false,false]);
+    eq('shared toolbar collapse preference survives dashboard storage', (() => {
+      let slot = null;
+      const store = {getItem:() => slot, setItem:(key, value) => { slot = value; }};
+      S.saveDashboardState(store, {toolbarCollapsed:true});
+      return S.loadDashboardState(store).toolbarCollapsed;
+    })(), true);
     eq('compact authoring presentation is closed by default',
       S.workspaceAuthoringPresentation('compact', false),
       {state:'closed', expanded:false, label:'Edit layout'});
@@ -571,6 +580,7 @@
       studioCanvasOpacity:25,
       studioDensity:'compact',
       workspaceDensity:'compact',
+      toolbarCollapsed:true,
       studioFocusLayout:'grid',
       studioFocusCount:12,
       studioShowSparklines:false,
@@ -639,9 +649,10 @@
       workspaceTelemetry.viewTheme, workspaceTelemetry.hiddenSensorIds,
       workspaceTelemetry.sensorAliases, workspaceTelemetry.cardOrder,
       workspaceTelemetry.studioAccent, workspaceTelemetry.studioCanvas,
-      workspaceTelemetry.studioDensity, workspaceTelemetry.workspaceDensity, workspaceTelemetry.studioFocusLayout
+      workspaceTelemetry.studioDensity, workspaceTelemetry.workspaceDensity, workspaceTelemetry.studioFocusLayout,
+      workspaceTelemetry.toolbarCollapsed
     ], ['workspace', ['/new-hidden'], {'/fan':'Pump'}, ['/gpu/power','/cpu/temp'],
-      'plum', 'strata', 'compact', 'compact', 'grid']);
+      'plum', 'strata', 'compact', 'compact', 'grid', true]);
     eq('telemetry merge combines telemetry accumulators',
       [mergedTelemetry.observedMax, mergedTelemetry.powerLimitSamples],
       [{'/fan':1500,'/pump':900}, {'/gpu/0':[100,110,120,130,140,150,160,170,180], '/gpu/1':[500,525,550,575,600,625,650,675,700,725]}]);
