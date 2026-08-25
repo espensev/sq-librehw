@@ -284,6 +284,14 @@ try {
             $versionArchive.Dispose()
         }
 
+        $smoke = Invoke-LhmReleasePackageSmoke `
+            -ArchivePath $archivePath `
+            -EntryPoint $entryPoint `
+            -TargetFramework $framework `
+            -ExpectedFileVersion ([string]$versionInfo.FileVersion) `
+            -ExpectedProductVersion ([string]$versionInfo.ProductVersion) `
+            -SmokeRoot (Join-Path $runRoot ('smoke-' + $framework))
+
         $packageRecords += [ordered]@{
             targetFramework = $framework
             platform = 'x64'
@@ -296,6 +304,7 @@ try {
             length = [long]$archiveItem.Length
             sha256 = Get-LhmReleaseFileSha256 -Path $archivePath
             files = $payloadFiles
+            smoke = $smoke
         }
     }
 
@@ -307,7 +316,7 @@ try {
     }
     $manifest = [ordered]@{
         schema = 'sq.lhm-release'
-        version = 1
+        version = 2
         releaseId = $ReleaseId
         createdUtc = $createdUtc.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
         baseVersion = $baseVersion

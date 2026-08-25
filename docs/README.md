@@ -1,9 +1,10 @@
 # SQ LibreHardwareMonitor documentation
 
 **Status:** current repository map
-**Updated:** 2026-08-05
+**Updated:** 2026-08-21
 
-Verify Git and runtime state before relying on dynamic facts in this file.
+This file records stable boundaries. Query Git and stack manifests for current
+commits, versions, hashes, processes, and candidate/live state.
 
 ## Authorities
 
@@ -36,23 +37,30 @@ Use live Git commands for branch, cleanliness, and ahead/behind state.
 
 ## Current boundaries
 
-- `manifests\channels\live.json` currently records SND-HOST candidate
-  `0.9.6-20260805-054355164-5ad1047`, product version
-  `0.9.6+5ad1047.2026-08-05`, observed on 2026-08-05. Re-observe the host before
-  an operational decision.
-- CSV numeric compaction is implemented only in local source. It has no
-  exact-current-source candidate and is not live.
 - `ops\candidate` creates and validates external candidates; it does not
   deploy them.
+- `ops\candidate\Show-LhmExecutableIdentity.ps1` identifies an exact EXE from
+  its hash and the applicable Git/candidate/live/rollback evidence; only a
+  fully validated manifest contract can grant authority. Process or evidence
+  query failures are reported as `INCOMPLETE` instead of being hidden.
 - `ops\live-verification` is read-only and manifest-driven.
 - `ops\log-management` is the source package for installed host log tooling.
 - `ops\deploy\snd-desk` is target-gated to SND-DESK and is not SND-HOST
   deployment authority.
-- The 2026-08-03 SND-DESK managed-task restoration and absent
-  `hardware-optimization` task are dated peer evidence in
-  `docs\features\feature-local-release-system.md`; they do not describe or
-  authorize SND-HOST runtime state.
 - Keep `AssemblyVersion` at `0.9.6`; build with `-p:Platform=x64`.
+
+## Executable flow
+
+| Stage | Executable truth |
+|---|---|
+| Automated tests | `testhost` loads source-built assemblies; it does not make a copied product EXE a development or release authority. |
+| Development | Checkout `bin` output is disposable and identified against its enclosing Git checkout and embedded source stamp. |
+| Candidate | Candidate creation ZIPs each framework, extracts it, and smoke-runs that exact EXE before publishing a hash-bound manifest. |
+| Live | Only the exact `deployments\current` path/hash/product-version match under the valid, current-machine layout/consumer/live manifest contract is live authority. |
+| Rollback | Only an exact file record whose length and SHA-256 validate inside a machine-bound sealed packet is rollback authority; location alone is not. |
+
+Candidate smoke is pre-UI identity/startup proof, not hardware or live health.
+Promotion and live verification remain separate workflows.
 
 Open gates:
 
@@ -114,6 +122,7 @@ dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf -p:Platfo
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseSystem.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Show-LhmExecutableIdentity.ps1 -Path <exact-exe> -StackRoot E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack -Json
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-LhmLogManagement.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\live-verification\Test-LhmLiveStateSystem.ps1
 ```
@@ -127,6 +136,8 @@ through the guarded cleanup tool:
 ```
 
 Never use `git clean -fdX` for this repository.
+The standalone command and candidate workflow share the same tracked-file,
+Git-ignore, reparse, loaded-process, and fail-closed CIM inventory guards.
 
 ## Documentation policy
 

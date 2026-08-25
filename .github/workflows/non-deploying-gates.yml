@@ -9,10 +9,10 @@
 # matching its deny-list before running it. Duplicating a gate command here
 # would defeat that, so the single run step below delegates and nothing else.
 #
-# origin is deliberately unpushed on SND-HOST. This workflow has therefore never
-# executed on a hosted runner: it is verified by YAML parse and by the
-# structural assertions in eng/ci/tests/Test-Workflow.ps1 only. That is a
-# current limitation of the evidence, not a plan to change the push policy.
+# A branch existing on origin is not hosted-run evidence. This workflow runs
+# only for pushes to main and pull requests targeting main; query GitHub for
+# current checks on the exact commit or pull request. Local YAML parse and
+# structural assertions prove workflow shape, not hosted execution.
 #
 # Actions are referenced by version tag rather than by commit SHA. A pinned SHA
 # could not be verified from this machine, and an unverifiable pin is worse than
