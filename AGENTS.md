@@ -52,6 +52,7 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
 - `docs/features/feature-thermal-trends.md`: deployed NVIDIA GPU hotspot rate sensor across native, web, CSV, and Prometheus.
 - `docs/features/feature-independent-text-scaling.md`: shipped independent sensor-pane and graph-axis text scaling.
 - `docs/features/feature-http-server-safety.md`: fail-closed HTTP listener host resolution and exposure contract; source implemented, live deployment not yet promoted.
+- `docs/features/feature-graph-lanes.md`: accepted design for operator-defined graph lanes (same-type sensors on separate axes, per-lane zoom, height weight); implementation not started.
 - `docs/features/feature-host-log-management.md`: deployed host-neutral CSV archive, retention, and task-install package.
 - `docs/features/feature-csv-log-storage-efficiency.md`: source-only compact CSV numeric formatting with a non-zero significant-digit floor; not yet a candidate or live behavior.
 - `docs/features/feature-host-operator-utilities.md`: planned portable thermal snapshot and report-only log evidence analyzer.

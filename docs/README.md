@@ -84,6 +84,7 @@ Open gates:
 | `docs\features\feature-http-server-safety.md` | Direct HTTP listener fail-closed and exposure contract |
 | `docs\features\feature-local-release-system.md` | SND-DESK-only release contract and dated restoration evidence |
 | `eng\ci\README.md` | Non-deploying gate runner |
+| `docs\features\feature-graph-lanes.md` | Operator-defined single-unit graph lanes with per-lane zoom and height weight; design accepted, not implemented |
 
 Other feature documents contain their own status and acceptance criteria.
 `data\plans`, rendered campaign plans, `live-tracker.md`, and agent task files
