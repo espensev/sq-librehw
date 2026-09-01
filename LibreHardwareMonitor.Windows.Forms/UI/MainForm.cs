@@ -1107,14 +1107,13 @@ public sealed partial class MainForm : Form
     {
         _uiTextScalePercent = UiScale.ClampPercent(_uiTextScalePercent);
 
-        // Tree font (scaled from the shared base; dispose the previous scaled font).
-        Font previous = _scaledTreeFont;
-        _scaledTreeFont = new Font(
+        // Tree font (scaled from the shared base). OwnedFont handles Control.Font's value-equal
+        // no-op set: a second commit at the same percent (drag-pause ScaleOnly, then menu-close
+        // Full) must not dispose the font the tree still holds.
+        OwnedFont.Apply(treeView, new Font(
             SystemFonts.MessageBoxFont.FontFamily,
             UiScale.ScaledFontSize(SystemFonts.MessageBoxFont.SizeInPoints, _uiTextScalePercent),
-            SystemFonts.MessageBoxFont.Style);
-        treeView.Font = _scaledTreeFont;   // propagates to all text NodeControls; fires FullUpdate
-        previous?.Dispose();
+            SystemFonts.MessageBoxFont.Style), ref _scaledTreeFont);   // propagates to all text NodeControls; fires FullUpdate
 
         // Top menu-bar font (scaled from its captured base). Scaling a child MenuStrip's font does
         // NOT trigger the form's AutoScaleMode.Font cascade — that keys off the form's own Font.
@@ -1123,13 +1122,10 @@ public sealed partial class MainForm : Form
         if (!deferMenuRefresh)
         {
             _baseMenuFont ??= (Font)mainMenu.Font.Clone();
-            Font previousMenu = _scaledMenuFont;
-            _scaledMenuFont = new Font(
+            OwnedFont.Apply(mainMenu, new Font(
                 _baseMenuFont.FontFamily,
                 UiScale.ScaledFontSize(_baseMenuFont.SizeInPoints, _uiTextScalePercent),
-                _baseMenuFont.Style);
-            mainMenu.Font = _scaledMenuFont;
-            previousMenu?.Dispose();
+                _baseMenuFont.Style), ref _scaledMenuFont);
 
             _textSizeSlider?.RefreshMenuText(_uiTextScalePercent, mainMenu.Font);
         }

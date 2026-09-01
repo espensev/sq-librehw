@@ -65,6 +65,22 @@ public sealed class PlotPanelTextScaleTests
     }
 
     [Fact]
+    public void SetTrackerTextScale_SamePercentTwice_KeepsTrackerFontUsable()
+    {
+        (PlotPanel panel, PlotView view) = CreatePanel();
+        using (panel)
+        {
+            panel.SetTrackerTextScale(200);
+            var firstScaledFont = view.Font;
+
+            panel.SetTrackerTextScale(200);
+
+            Assert.Same(firstScaledFont, view.Font);
+            Assert.True(view.Font.Height > 0);
+        }
+    }
+
+    [Fact]
     public void BothSetters_ClampToUiScaleRange()
     {
         (PlotPanel panel, PlotView view) = CreatePanel();

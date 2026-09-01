@@ -1,7 +1,8 @@
 # Independent Text Scaling: Sensor Pane vs Graph
 
-**Status:** shipped and live-verified by the operator on 2026-07-18
-**Updated:** 2026-07-21
+**Status:** shipped and live-verified by the operator on 2026-07-18; the 2026-08-27
+font-ownership crash fix is source-implemented and not yet promoted to the live runtime
+**Updated:** 2026-08-27
 
 ## Problem
 
@@ -59,8 +60,38 @@ Decisions:
 - [x] Focused scaling tests and the full x64 suite/build passed. The operator
   verified high UI text with an unscaled graph, graph-only axis scaling, tracker
   ownership, smooth dragging, and restart persistence.
+- [x] A repeat commit at the same percent (drag, pause, then close the menu) never
+  disposes a font a control still holds; `OwnedFontTests` covers the ownership
+  branches, `PlotPanelTextScaleTests` exercises a repeated production tracker update,
+  and the tree/menu sites use the same helper (`LibreHardwareMonitor.Tests.Application`).
+- [ ] The promoted live build survives View → Text Size drag → pause → click-away at a
+  non-100% scale (the 2026-08-27 crash sequence) before this fix is marked deployed.
 - 2026-07-18 implementation lineage: `8ebf19e`, `acd4b6b`, `8cfdfdc`; docs
   correction `a006ca2`; closeout `ebedd8b`.
+
+## Defects
+
+### 2026-08-27 — View → Text Size crash on menu close
+
+- **Symptom:** unhandled `System.ArgumentException: Parameter is not valid` in
+  `Font.GetHeight()` from `MainForm.ApplySensorTreeLayout()` ←
+  `ApplyUiTextScale()` ← `TextScaleSliderMenu.Raise(Commit)` on the parent
+  dropdown's `Closed` event. Application log events 1026/1000 at 07:29:46 and
+  14:35:48 on the deployed `e977e577` runtime.
+- **Reproduction:** at any non-100% scale, drag the slider, pause > 150 ms (the
+  gate commits `ScaleOnly`), then click away to close the View menu (the gate
+  commits `Full` at the same percent).
+- **Root cause:** `Control.Font`'s setter compares fonts by value and keeps the
+  instance it already holds when the new font is equal. The swap idiom
+  `control.Font = new; previous.Dispose()` therefore disposed the font the tree
+  was still using on the second same-percent commit, and the next `Font.Height`
+  read threw. The same idiom existed for `mainMenu.Font` and the plot tracker
+  font (`PlotPanel.SetTrackerTextScale`), masked only because the tree read came
+  first.
+- **Fix:** `UI/OwnedFont.Apply(Control, Font candidate, ref Font owned)` applies
+  the candidate, and if the control kept its current font, disposes the
+  candidate instead of the live font. All three swap sites use it. The
+  debounce/defer policy in `UiTextScaleCommitGate` is unchanged.
 
 ## Out of scope
 

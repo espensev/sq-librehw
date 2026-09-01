@@ -974,13 +974,11 @@ public class PlotPanel : UserControl
 
         // Tracker/tooltip is a WinForms Label that inherits PlotView.Font ambiently.
         _trackerBaseFont ??= (Font)_plot.Font.Clone();
-        Font old = _scaledTrackerFont;
-        _scaledTrackerFont = new Font(
+        // OwnedFont: a repeat commit at the same percent must not dispose the font PlotView holds.
+        OwnedFont.Apply(_plot, new Font(
             _trackerBaseFont.FontFamily,
             UiScale.ScaledFontSize(_trackerBaseFont.Size, clamped),
-            _trackerBaseFont.Style);
-        _plot.Font = _scaledTrackerFont;
-        old?.Dispose();
+            _trackerBaseFont.Style), ref _scaledTrackerFont);
 
         InvalidatePlotCosmetic();
     }
