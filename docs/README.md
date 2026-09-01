@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor documentation
 
 **Status:** current repository map
-**Updated:** 2026-08-05
+**Updated:** 2026-09-01
 
 Verify Git and runtime state before relying on dynamic facts in this file.
 
@@ -76,6 +76,7 @@ Open gates:
 | `docs\features\feature-csv-log-storage-efficiency.md` | Source-only CSV formatting contract |
 | `docs\features\feature-host-log-management.md` | Log archive and retention contract |
 | `docs\features\feature-live-state-verification.md` | Read-only host verification contract |
+| `docs\features\feature-http-server-safety.md` | Direct HTTP listener fail-closed and exposure contract |
 | `docs\features\feature-local-release-system.md` | SND-DESK-only release contract and dated restoration evidence |
 | `eng\ci\README.md` | Non-deploying gate runner |
 

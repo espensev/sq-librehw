@@ -384,7 +384,8 @@ public sealed partial class MainForm : Form
             {
                 if (_runWebServer.Value)
                 {
-                    Server.StartHttpListener();
+                    if (!Server.StartHttpListener())
+                        _runWebServer.Value = false;
                 }
                 else
                 {
@@ -392,8 +393,12 @@ public sealed partial class MainForm : Form
 
                     // A quick off/on toggle can race the asynchronous drain. Reassert the latest
                     // requested state after the old listener has fully stopped.
-                    if (_runWebServer.Value && !IsShutdownPending)
-                        Server.StartHttpListener();
+                    if (_runWebServer.Value &&
+                        !IsShutdownPending &&
+                        !Server.StartHttpListener())
+                    {
+                        _runWebServer.Value = false;
+                    }
                 }
             }
             catch (Exception ex)

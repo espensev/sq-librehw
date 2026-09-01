@@ -61,31 +61,18 @@ internal sealed class HttpListenerDispatchService
             if (_cts != null || _listenerTask != null)
                 return false;
 
-            // Validate that the selected IP exists (it could have been previously selected
-            // before switching networks). Enumerate local interfaces instead of a DNS
-            // round-trip: Dns.GetHostEntry can block for seconds on the UI thread while
-            // NICs initialize or DNS is misconfigured.
-            bool ipFound = false;
+            // Validate that a specific selected IPv4 address still exists. Enumerate local
+            // interfaces instead of a DNS round-trip: Dns.GetHostEntry can block for seconds
+            // on the UI thread while NICs initialize or DNS is misconfigured.
+            var assignedAddresses = new List<IPAddress>();
             foreach (System.Net.NetworkInformation.NetworkInterface nic in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
             {
                 foreach (System.Net.NetworkInformation.UnicastIPAddressInformation address in nic.GetIPProperties().UnicastAddresses)
-                {
-                    if (effectiveListenerIp == address.Address.ToString())
-                    {
-                        ipFound = true;
-                        break;
-                    }
-                }
-
-                if (ipFound)
-                    break;
+                    assignedAddresses.Add(address.Address);
             }
 
-            if (!ipFound)
-            {
-                // Default to the previous behavior when the selected interface no longer exists.
-                effectiveListenerIp = "+";
-            }
+            if (!TryResolveListenerHost(listenerIp, assignedAddresses, out effectiveListenerIp))
+                return false;
 
             string prefix = "http://" + effectiveListenerIp + ":" + listenerPort + "/";
 
@@ -108,6 +95,38 @@ internal sealed class HttpListenerDispatchService
         }
 
         return true;
+    }
+
+    internal static bool TryResolveListenerHost(
+        string configuredHost,
+        IEnumerable<IPAddress> assignedAddresses,
+        out string effectiveHost)
+    {
+        effectiveHost = configuredHost;
+        if (configuredHost == "+" || configuredHost == "*" || configuredHost == "0.0.0.0" || configuredHost == "?")
+        {
+            effectiveHost = "+";
+            return true;
+        }
+
+        if (assignedAddresses == null ||
+            !IPAddress.TryParse(configuredHost, out IPAddress configuredAddress) ||
+            configuredAddress.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            return false;
+        }
+
+        foreach (IPAddress assignedAddress in assignedAddresses)
+        {
+            if (assignedAddress?.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+                assignedAddress.Equals(configuredAddress))
+            {
+                effectiveHost = configuredAddress.ToString();
+                return true;
+            }
+        }
+
+        return false;
     }
 
     internal async Task<bool> StopAsync()

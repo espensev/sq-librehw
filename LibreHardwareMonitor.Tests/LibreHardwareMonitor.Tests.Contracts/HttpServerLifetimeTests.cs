@@ -4,6 +4,7 @@
 // All Rights Reserved.
 
 using System;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
@@ -13,6 +14,61 @@ namespace LibreHardwareMonitor.Tests;
 
 public sealed class HttpServerLifetimeTests
 {
+    [Theory]
+    [InlineData("+", "+")]
+    [InlineData("*", "+")]
+    [InlineData("0.0.0.0", "+")]
+    [InlineData("127.0.0.1", "127.0.0.1")]
+    [InlineData("192.168.2.2", "192.168.2.2")]
+    public void ListenerHostResolution_AcceptsOnlyExplicitWildcardOrAssignedIpv4(
+        string configuredHost,
+        string expectedHost)
+    {
+        IPAddress[] assignedAddresses =
+        [
+            IPAddress.Loopback,
+            IPAddress.Parse("192.168.2.2"),
+            IPAddress.IPv6Loopback
+        ];
+
+        Assert.True(HttpListenerDispatchService.TryResolveListenerHost(
+            configuredHost,
+            assignedAddresses,
+            out string effectiveHost));
+        Assert.Equal(expectedHost, effectiveHost);
+    }
+
+    [Fact]
+    public void ListenerHostResolution_UnsetSentinelResolvesToWildcard()
+    {
+        Assert.True(HttpListenerDispatchService.TryResolveListenerHost(
+            "?",
+            [],
+            out string effectiveHost));
+        Assert.Equal("+", effectiveHost);
+    }
+
+    [Theory]
+    [InlineData("192.168.2.99")]
+    [InlineData("not-an-address")]
+    [InlineData("::1")]
+    [InlineData("")]
+    public void ListenerHostResolution_RejectsStaleMalformedAndIpv6SpecificHosts(string configuredHost)
+    {
+        IPAddress[] assignedAddresses =
+        [
+            IPAddress.Loopback,
+            IPAddress.Parse("192.168.2.2"),
+            IPAddress.IPv6Loopback
+        ];
+
+        Assert.False(HttpListenerDispatchService.TryResolveListenerHost(
+            configuredHost,
+            assignedAddresses,
+            out string effectiveHost));
+        Assert.Equal(configuredHost, effectiveHost);
+    }
+
     [Fact]
     public async Task StopBeforeStart_IsIdempotentAndNonBlocking()
     {
