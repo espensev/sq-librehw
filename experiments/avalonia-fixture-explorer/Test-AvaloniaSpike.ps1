@@ -101,8 +101,8 @@ try {
     $globalJson = Get-Content -Raw -LiteralPath $globalJsonPath |
         ConvertFrom-Json
     $pinnedSdk = [string]$globalJson.sdk.version
-    if ($pinnedSdk -cne '10.0.302') {
-        throw "Expected global.json to pin SDK '10.0.302'; found '$pinnedSdk'."
+    if ($pinnedSdk -cne '10.0.400') {
+        throw "Expected global.json to pin SDK '10.0.400'; found '$pinnedSdk'."
     }
 
     $dotnetCommand = Get-Command dotnet -CommandType Application -ErrorAction Stop

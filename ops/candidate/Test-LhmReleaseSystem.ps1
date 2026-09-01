@@ -1075,7 +1075,7 @@ exit 0
     ) 'library outputs must yield to SDK artifacts routing'
 
     $globalJson = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'global.json') | ConvertFrom-Json
-    Assert-LhmReleaseTest ($globalJson.sdk.version -eq '10.0.302') 'release SDK should be pinned to installed stable 10.0.302'
+    Assert-LhmReleaseTest ($globalJson.sdk.version -eq '10.0.400') 'release SDK should be pinned to installed stable 10.0.400'
     Assert-LhmReleaseTest ($globalJson.sdk.rollForward -ceq 'latestPatch') 'release SDK roll-forward policy should stay within the pinned feature band'
     Assert-LhmReleaseTest (-not [bool]$globalJson.sdk.allowPrerelease) 'release SDK must reject prerelease selection'
 

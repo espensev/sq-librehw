@@ -226,7 +226,9 @@ persisted in milestone one.
       dual-shell current-source verification was not recorded before Agent A
       started and cannot be repaired retrospectively.
 - [x] The separate spike solution restores and builds with the pinned stable
-      package versions and .NET SDK `10.0.302`.
+      package versions and the pinned .NET SDK (verified on `10.0.302`; the
+      repository pin moved to `10.0.400` on 2026-08-27, which the spike gate
+      now asserts).
 - [x] Existing `LibreHardwareMonitor.sln`, WinForms project files, existing test
       project, and `global.json` remain unchanged.
 - [x] The parser enforces every hard limit and never exposes a partial document.
@@ -286,7 +288,7 @@ below.
 
 | Evidence | Result |
 |---|---|
-| Toolchain | SDK `10.0.302`; runtime `.NET 10.0.10`; Avalonia, Desktop, Themes Fluent, and Headless XUnit `12.1.0`; xUnit v3 `3.2.2` |
+| Toolchain | SDK `10.0.302` (repository pin now `10.0.400`); runtime `.NET 10.0.10`; Avalonia, Desktop, Themes Fluent, and Headless XUnit `12.1.0`; xUnit v3 `3.2.2` |
 | Clean spike solution build | Passed with one `AVLN3001` warning and zero errors |
 | Agent A bootstrap | Three isolated projects restored; Core Release build passed; frozen contracts and composition root reviewed; release-system fixture `114/114` |
 | Agent B parser/fixtures | `49/49` parser and replacement cases |
