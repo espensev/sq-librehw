@@ -2832,9 +2832,13 @@ try {
     $commonTextForReceipt = [System.IO.File]::ReadAllText($commonScript)
     Assert-True (
         $commonTextForReceipt -match
-            [regex]::Escape('RunW\install-receipt-v2-1.3.1-b5cda6d.json') -and
+            [regex]::Escape('RunW\install-receipt-v2-1.3.1-b5cda6d-relocated.json') -and
+        $commonTextForReceipt -notmatch
+            [regex]::Escape("'RunW\install-receipt-v2-1.3.1-b5cda6d.json'") -and
         $launcherConvergenceText -match
             [regex]::Escape('Get-LhmProductionRunWReceiptPath') -and
+        $launcherConvergenceText -match
+            [regex]::Escape("'Applied', 'Relocated'") -and
         $launcherConvergenceText -notmatch '(?i)E:\\SevLocal\\' -and
         $commonTextForReceipt -notmatch
             [regex]::Escape('E:\Data\RunW\install-receipt-v2-1.3.1-b5cda6d.json') -and
@@ -3098,6 +3102,18 @@ try {
             @($currentAuthorityPlan.BlockingIssues).Count -eq 0
         ) 'Launcher convergence rejected the current RunW v2 destination row.'
 
+        $currentAuthorityReceipt.Operation = 'Relocated'
+        $currentAuthorityReceipt | ConvertTo-Json -Depth 8 | Set-Content `
+            -LiteralPath $launcherConvergence.CentralLauncherAuthorityReceiptPath `
+            -Encoding UTF8
+        $relocatedAuthorityPlan = & $launcherConvergenceScript `
+            -Mode Plan `
+            @launcherConvergenceParameters
+        Assert-True (
+            [bool]$relocatedAuthorityPlan.CentralLauncherCurrent -and
+            @($relocatedAuthorityPlan.BlockingIssues).Count -eq 0
+        ) 'Launcher convergence rejected a Relocated RunW v2 authority receipt.'
+
         $currentAuthorityTamperCases = @(
             [pscustomobject]@{ Name = 'extra property'; Mutate = {
                 param($receipt)
@@ -3189,6 +3205,10 @@ try {
         [pscustomobject]@{ Name = 'artifact length'; Mutate = {
             param($receipt, $fixture)
             $receipt.Artifact.Length = [Int64]$receipt.Artifact.Length + 1
+        } },
+        [pscustomobject]@{ Name = 'operation'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.Operation = 'Adopt'
         } }
     )
     $authorityCaseIndex = 0
@@ -3754,29 +3774,62 @@ try {
         $launcherText -match [regex]::Escape('Get-LauncherProductionDataRoot')
     ) 'Canonical launcher does not target the stable runtime and env-var data root.'
 
+    $fakeEnvironmentValues = @{
+        MACHINE_TOOLS_ROOT = 'X:\'
+        SEV_LOCAL_ROOT = '%MACHINE_TOOLS_ROOT%FakeLocal'
+        SEV_LOCAL_DATA = '%SEV_LOCAL_ROOT%\Data'
+        CYCLE_A = '%CYCLE_B%'
+        CYCLE_B = '%CYCLE_A%'
+    }
+    $fakeResolver = { param($TokenName) $fakeEnvironmentValues[$TokenName] }.GetNewClosure()
+    Assert-True (
+        (Expand-LhmPersistedEnvironmentTemplate `
+            -Name 'SEV_LOCAL_DATA' `
+            -Value $fakeEnvironmentValues.SEV_LOCAL_DATA `
+            -RawValueResolver $fakeResolver) -ceq 'X:\FakeLocal\Data'
+    ) 'Chained persisted templates did not expand through the drive-root separator verbatim.'
+    Assert-True (
+        (Expand-LhmPersistedEnvironmentTemplate `
+            -Name 'SEV_LOCAL_PLAIN' `
+            -Value 'X:\Plain' `
+            -RawValueResolver $fakeResolver) -ceq 'X:\Plain'
+    ) 'A template-free persisted value must expand to itself.'
+    Assert-Throws {
+        Expand-LhmPersistedEnvironmentTemplate `
+            -Name 'SEV_LOCAL_DATA' `
+            -Value '%LHM_MISSING_TOKEN%\Data' `
+            -RawValueResolver $fakeResolver
+    } "references '%LHM_MISSING_TOKEN%'"
+    Assert-Throws {
+        Expand-LhmPersistedEnvironmentTemplate `
+            -Name 'CYCLE_A' `
+            -Value $fakeEnvironmentValues.CYCLE_A `
+            -RawValueResolver $fakeResolver
+    } 'did not fully expand after 8 passes'
+
     $processData = [Environment]::GetEnvironmentVariable('SEV_LOCAL_DATA', 'Process')
     $userData = [Environment]::GetEnvironmentVariable('SEV_LOCAL_DATA', 'User')
     $machineData = [Environment]::GetEnvironmentVariable('SEV_LOCAL_DATA', 'Machine')
-    $persistedData = if (-not [string]::IsNullOrWhiteSpace($userData)) {
-        $userData.Trim().TrimEnd('\', '/')
-    }
-    elseif (-not [string]::IsNullOrWhiteSpace($machineData)) {
-        $machineData.Trim().TrimEnd('\', '/')
-    }
-    if (-not [string]::IsNullOrWhiteSpace($persistedData)) {
+    if (-not [string]::IsNullOrWhiteSpace($userData) -or
+        -not [string]::IsNullOrWhiteSpace($machineData)) {
         try {
             [Environment]::SetEnvironmentVariable(
                 'SEV_LOCAL_DATA',
                 'C:\wrong-lhm-data',
                 'Process')
-            Assert-True (
-                (Get-LhmPersistedEnvironmentValue -Name 'SEV_LOCAL_DATA') -ceq
-                    $persistedData
-            ) 'Data-root resolution preferred a stale Process value over persisted User/Machine.'
+            $resolvedData = Get-LhmPersistedEnvironmentValue -Name 'SEV_LOCAL_DATA'
+            Assert-True ($resolvedData -cne 'C:\wrong-lhm-data') `
+                'Data-root resolution preferred a stale Process value over persisted User/Machine.'
+            Assert-True ($resolvedData -notmatch '%') `
+                'Data-root resolution returned an unexpanded %...% template.'
+            Assert-True ($resolvedData -match '^(?:[A-Za-z]:[\\/]|\\\\)') `
+                "Data-root resolution returned non-absolute path '$resolvedData'."
+            Assert-True (Test-Path -LiteralPath $resolvedData -PathType Container) `
+                "Persisted SEV_LOCAL_DATA root '$resolvedData' does not exist."
             Assert-True (
                 (Test-LhmPathEqual `
                     -Left (Get-LhmProductionDataRoot) `
-                    -Right (Join-Path $persistedData 'LibreHardwareMonitor'))
+                    -Right (Join-Path $resolvedData 'LibreHardwareMonitor'))
             ) 'Production data root did not join SEV_LOCAL_DATA with LibreHardwareMonitor.'
         }
         finally {
@@ -3790,26 +3843,26 @@ try {
     $processBin = [Environment]::GetEnvironmentVariable('SEV_LOCAL_BIN', 'Process')
     $userBin = [Environment]::GetEnvironmentVariable('SEV_LOCAL_BIN', 'User')
     $machineBin = [Environment]::GetEnvironmentVariable('SEV_LOCAL_BIN', 'Machine')
-    $persistedBin = if (-not [string]::IsNullOrWhiteSpace($userBin)) {
-        $userBin.Trim().TrimEnd('\', '/')
-    }
-    elseif (-not [string]::IsNullOrWhiteSpace($machineBin)) {
-        $machineBin.Trim().TrimEnd('\', '/')
-    }
-    if (-not [string]::IsNullOrWhiteSpace($persistedBin)) {
+    if (-not [string]::IsNullOrWhiteSpace($userBin) -or
+        -not [string]::IsNullOrWhiteSpace($machineBin)) {
         try {
             [Environment]::SetEnvironmentVariable(
                 'SEV_LOCAL_BIN',
                 'C:\wrong-lhm-bin',
                 'Process')
-            Assert-True (
-                (Get-LhmPersistedEnvironmentValue -Name 'SEV_LOCAL_BIN') -ceq
-                    $persistedBin
-            ) 'Bin-root resolution preferred a stale Process value over persisted User/Machine.'
+            $resolvedBin = Get-LhmPersistedEnvironmentValue -Name 'SEV_LOCAL_BIN'
+            Assert-True ($resolvedBin -cne 'C:\wrong-lhm-bin') `
+                'Bin-root resolution preferred a stale Process value over persisted User/Machine.'
+            Assert-True ($resolvedBin -notmatch '%') `
+                'Bin-root resolution returned an unexpanded %...% template.'
+            Assert-True ($resolvedBin -match '^(?:[A-Za-z]:[\\/]|\\\\)') `
+                "Bin-root resolution returned non-absolute path '$resolvedBin'."
+            Assert-True (Test-Path -LiteralPath $resolvedBin -PathType Container) `
+                "Persisted SEV_LOCAL_BIN root '$resolvedBin' does not exist."
             Assert-True (
                 (Test-LhmPathEqual `
                     -Left (Get-LhmProductionPublicShimPath) `
-                    -Right (Join-Path $persistedBin 'librehw.cmd'))
+                    -Right (Join-Path $resolvedBin 'librehw.cmd'))
             ) 'Production public shim path did not join SEV_LOCAL_BIN with librehw.cmd.'
         }
         finally {

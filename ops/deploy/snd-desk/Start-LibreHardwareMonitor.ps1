@@ -25,7 +25,7 @@ $ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 $ProcessName = 'LibreHardwareMonitor.Windows.Forms'
 $MutexName = 'Local\Sev.LibreHardwareMonitorLauncher'
 
-function Get-LauncherPersistedEnvironmentValue {
+function Get-LauncherRawPersistedEnvironmentValue {
     param(
         [Parameter(Mandatory)]
         [string] $Name
@@ -34,18 +34,60 @@ function Get-LauncherPersistedEnvironmentValue {
     foreach ($scope in @('User', 'Machine', 'Process')) {
         $value = [Environment]::GetEnvironmentVariable($Name, $scope)
         if (-not [string]::IsNullOrWhiteSpace($value)) {
-            return $value.Trim().TrimEnd('\', '/')
+            return $value
         }
     }
 
-    throw "Required environment variable '$Name' is not set at User, Machine, or Process scope."
+    return $null
+}
+
+function Get-LauncherPersistedEnvironmentValue {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Name
+    )
+
+    $value = Get-LauncherRawPersistedEnvironmentValue -Name $Name
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        throw "Required environment variable '$Name' is not set at User, Machine, or Process scope."
+    }
+
+    # Persisted REG_EXPAND_SZ values chain through other persisted variables
+    # that may exist only at User or Machine scope, so one pass against the
+    # process block cannot resolve them.
+    for ($pass = 0; $pass -lt 8; $pass++) {
+        $tokenMatches = [regex]::Matches($value, '%([^%]+)%')
+        if ($tokenMatches.Count -eq 0) {
+            return $value.Trim().TrimEnd('\', '/')
+        }
+
+        foreach ($tokenMatch in $tokenMatches) {
+            $tokenName = $tokenMatch.Groups[1].Value
+            $tokenValue = Get-LauncherRawPersistedEnvironmentValue -Name $tokenName
+            if ([string]::IsNullOrWhiteSpace($tokenValue)) {
+                throw ("Environment variable '$Name' references '%$tokenName%', " +
+                    'which is not set at User, Machine, or Process scope.')
+            }
+
+            # Token values substitute verbatim: trimming a trailing separator
+            # here would turn '%MACHINE_TOOLS_ROOT%SevLocal' into a
+            # drive-relative path when the root is 'E:\'.
+            $value = $value.Replace($tokenMatch.Value, $tokenValue)
+        }
+    }
+
+    throw ("Environment variable '$Name' did not fully expand after 8 passes; " +
+        "its persisted %...% references are unresolvable or cyclic: '$value'.")
 }
 
 function Get-LauncherProductionDataRoot {
+    $dataRootBase = Get-LauncherPersistedEnvironmentValue -Name $DataRootVariable
+    if ($dataRootBase -notmatch '^(?:[A-Za-z]:[\\/]|\\\\)') {
+        throw "Environment variable '$DataRootVariable' resolved to '$dataRootBase', which is not an absolute path."
+    }
+
     return [System.IO.Path]::GetFullPath(
-        [System.IO.Path]::Combine(
-            (Get-LauncherPersistedEnvironmentValue -Name $DataRootVariable),
-            $DataRootRelativePath))
+        [System.IO.Path]::Combine($dataRootBase, $DataRootRelativePath))
 }
 
 function Assert-LauncherMachineIdentity {

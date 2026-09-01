@@ -297,7 +297,7 @@ function Read-LhmLauncherAuthorityReceipt {
             -Value $receipt.Artifact `
             -Expected @('Path', 'Sha256', 'Length', 'Version')) -or
         [string]$receipt.Schema -cne 'runw.deployment.v2' -or
-        [string]$receipt.Operation -cne 'Applied' -or
+        [string]$receipt.Operation -cnotin @('Applied', 'Relocated') -or
         -not (Test-LhmPathEqual `
             -Left ([string]$receipt.ReceiptPath) `
             -Right $receiptPath) -or

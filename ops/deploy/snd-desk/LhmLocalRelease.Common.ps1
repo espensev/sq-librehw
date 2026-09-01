@@ -16,7 +16,7 @@ $script:LhmProductionDataRelativePath = 'LibreHardwareMonitor'
 $script:LhmProductionPublicShimName = 'librehw.cmd'
 $script:LhmProductionCentralLauncherRelativePath = 'runw\runw.exe'
 $script:LhmProductionRunWReceiptRelativePath =
-    'RunW\install-receipt-v2-1.3.1-b5cda6d.json'
+    'RunW\install-receipt-v2-1.3.1-b5cda6d-relocated.json'
 $script:LhmManagedTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC'
 $script:LhmProductionHealthUri = 'http://localhost:8085/data.json'
 $script:LhmExpectedMachineId = 'snd-desk'
@@ -101,7 +101,7 @@ function Resolve-LhmFullPath {
         [System.IO.Path]::AltDirectorySeparatorChar)
 }
 
-function Get-LhmPersistedEnvironmentValue {
+function Get-LhmRawPersistedEnvironmentValue {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -112,11 +112,75 @@ function Get-LhmPersistedEnvironmentValue {
     foreach ($scope in @('User', 'Machine', 'Process')) {
         $value = [Environment]::GetEnvironmentVariable($Name, $scope)
         if (-not [string]::IsNullOrWhiteSpace($value)) {
-            return $value.Trim().TrimEnd('\', '/')
+            return $value
         }
     }
 
-    throw "Required environment variable '$Name' is not set at User, Machine, or Process scope."
+    return $null
+}
+
+function Expand-LhmPersistedEnvironmentTemplate {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Name,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Value,
+
+        [scriptblock] $RawValueResolver = {
+            param($TokenName)
+            Get-LhmRawPersistedEnvironmentValue -Name $TokenName
+        }
+    )
+
+    # Persisted REG_EXPAND_SZ values chain through other persisted variables
+    # (%MACHINE_TOOLS_ROOT% -> %SEV_LOCAL_ROOT% -> ...) that may exist only at
+    # User or Machine scope, so one pass against the process block cannot
+    # resolve them.
+    $expanded = $Value
+    for ($pass = 0; $pass -lt 8; $pass++) {
+        $tokenMatches = [regex]::Matches($expanded, '%([^%]+)%')
+        if ($tokenMatches.Count -eq 0) {
+            return $expanded
+        }
+
+        foreach ($tokenMatch in $tokenMatches) {
+            $tokenName = $tokenMatch.Groups[1].Value
+            $tokenValue = & $RawValueResolver $tokenName
+            if ([string]::IsNullOrWhiteSpace($tokenValue)) {
+                throw ("Environment variable '$Name' references '%$tokenName%', " +
+                    'which is not set at User, Machine, or Process scope.')
+            }
+
+            # Token values substitute verbatim: trimming a trailing separator
+            # here would turn '%MACHINE_TOOLS_ROOT%SevLocal' into a
+            # drive-relative path when the root is 'E:\'.
+            $expanded = $expanded.Replace($tokenMatch.Value, $tokenValue)
+        }
+    }
+
+    throw ("Environment variable '$Name' did not fully expand after 8 passes; " +
+        "its persisted %...% references are unresolvable or cyclic: '$expanded'.")
+}
+
+function Get-LhmPersistedEnvironmentValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Name
+    )
+
+    $value = Get-LhmRawPersistedEnvironmentValue -Name $Name
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        throw "Required environment variable '$Name' is not set at User, Machine, or Process scope."
+    }
+
+    $expanded = Expand-LhmPersistedEnvironmentTemplate -Name $Name -Value $value
+    return $expanded.Trim().TrimEnd('\', '/')
 }
 
 function Get-LhmRequiredEnvironmentRoot {
@@ -127,7 +191,17 @@ function Get-LhmRequiredEnvironmentRoot {
         [string] $Name
     )
 
-    return Resolve-LhmFullPath -Path (Get-LhmPersistedEnvironmentValue -Name $Name)
+    $value = Get-LhmPersistedEnvironmentValue -Name $Name
+    if (-not [System.Text.RegularExpressions.Regex]::IsMatch($value, '^(?:[A-Za-z]:[\\/]|\\\\)')) {
+        throw "Environment variable '$Name' resolved to '$value', which is not an absolute path."
+    }
+
+    $root = Resolve-LhmFullPath -Path $value
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) {
+        throw "Environment variable '$Name' resolved to '$root', which does not exist."
+    }
+
+    return $root
 }
 
 function Get-LhmProductionDataRoot {

@@ -11,10 +11,17 @@ live-accepted on 2026-08-16; bounded task recovery live-accepted on 2026-08-22;
 wait-capable launcher convergence implemented and fixture-verified on
 2026-08-23; its central-RunW v2 receipt migration was implemented and
 fixture-verified on 2026-08-28. A 2026-08-31 read-only Plan accepted the pinned
-clean RunW 1.3.1 authority without blockers; the public shim and convergence
-receipt remain drifted. No LibreHW v2 live Apply has run. Current Data/Bin
-authority is persisted `SEV_LOCAL_DATA` / `SEV_LOCAL_BIN` (User, then Machine,
-then Process). Source no longer stores drive-letter current Data/Bin paths.
+clean RunW 1.3.1 authority without blockers. On 2026-09-01 the RunW receipt was
+relocated onto `SEV_LOCAL_*` without changing launcher bytes; LibreHW now
+proves against that Relocated receipt. Identity-verified LibreHW v2 Apply
+then converged the public shim and launcher-convergence receipt; Validate
+returned PASS with no drift. Later the same day the persisted `SEV_LOCAL_*`
+values were re-templated as `REG_EXPAND_SZ` chains, which the scope-ordered
+lookup returned unexpanded; the resolver and the canonical launcher now expand
+persisted `%...%` chains recursively, so launcher convergence must re-run
+(Plan, Apply, Validate) before promotion. Current Data/Bin authority is persisted
+`SEV_LOCAL_DATA` / `SEV_LOCAL_BIN` (User, then Machine, then Process). Source
+no longer stores drive-letter current Data/Bin paths.
 **Updated:** 2026-09-01
 
 ## Problem
@@ -160,7 +167,7 @@ tray-toggle/foreground restoration.
 drift without mutation. `Apply` first requires the installed known-folder v2
 identity for `snd-desk`, validates but never recreates the existing managed
 task, validates the installed central RunW bytes against
-`%SEV_LOCAL_DATA%\RunW\install-receipt-v2-1.3.1-b5cda6d.json`, and transactionally replaces only the
+`%SEV_LOCAL_DATA%\RunW\install-receipt-v2-1.3.1-b5cda6d-relocated.json`, and transactionally replaces only the
 app relay and public CMD. RunW is an authority dependency, not an app-vendored
 deployment or rollback target. The convergence tool retains a typed v2 receipt
 and exact two-file rollback packet under
@@ -178,11 +185,31 @@ join `LibreHardwareMonitor` / `librehw.cmd` / `runw\runw.exe`. Inherited
 Process `sqdata` / `sqbin` are not authority because a long-lived agent can
 keep pre-cutover values. Canonical `librehw.cmd` stores
 `%SEV_LOCAL_BIN%\runw\runw.exe`. The app still requires an expanded absolute
-`dataRoot` in `librehw.runtime.json`. A 2026-09-01 identity-gated pointer
+`dataRoot` in `librehw.runtime.json`.
+
+Since the 2026-09-01 DevHome storage-role work, the persisted values are
+`REG_EXPAND_SZ` templates chained through other persisted variables
+(`SEV_LOCAL_DATA = %SEV_LOCAL_ROOT%\Data`,
+`SEV_LOCAL_ROOT = %MACHINE_TOOLS_ROOT%SevLocal`), and
+`[Environment]::GetEnvironmentVariable` returns User/Machine values
+unexpanded. `Get-LhmPersistedEnvironmentValue` and the canonical launcher
+therefore expand persisted `%...%` references recursively against the same
+User, then Machine, then Process order. Token values substitute verbatim so a
+trailing separator in a drive root such as `E:\` survives; unresolvable or
+cyclic references fail closed. `Get-LhmRequiredEnvironmentRoot` additionally
+requires the resolved root to be an absolute path to an existing directory.
+
+A 2026-09-01 identity-gated pointer
 repair retargeted the live runtime JSON and installed launcher; recovery
 copies are under
 `%SEV_LOCAL_DATA%\LibreHardwareMonitor\release-recovery\sevlocal-env-pointer-20260901`.
-The public shim remains the pre-Apply HideLaunch form.
+The same day's RunW root relocation wrote
+`%SEV_LOCAL_DATA%\RunW\install-receipt-v2-1.3.1-b5cda6d-relocated.json`
+(`Operation=Relocated`) without changing launcher bytes or alias targets.
+Launcher convergence accepts Applied or Relocated RunW v2 receipts. The same
+session's identity-verified Apply wrote the canonical public shim
+(`%SEV_LOCAL_BIN%\runw\runw.exe`) and a current
+`sq.librehw.launcher-convergence.v2` receipt. Validate then returned PASS.
 
 ### Data-root relocation compatibility island — 2026-08-15
 
@@ -811,6 +838,15 @@ Identity-verified cutover gate:
 - prove one exact-path process, managed task ownership, settings persistence,
   new log location, populated UI restoration, and HTTP health;
 - retain old build/runtime evidence until the new release passes.
+
+Source verification on 2026-09-01 (resolver expansion and Relocated RunW
+receipt; not a promotion):
+
+- `Test-LhmLocalRelease.ps1` PASS, including Windows PowerShell 5.1 launcher,
+  data-root relocation, and cleanup compatibility.
+- `Test-LhmReleaseSystem.ps1` PASS, 144 assertions.
+- Deterministic .NET suites: 384 passed, one established live-config test
+  skipped, zero failed; both x64 Release target frameworks 0W/0E.
 
 ## Initial config decision
 
