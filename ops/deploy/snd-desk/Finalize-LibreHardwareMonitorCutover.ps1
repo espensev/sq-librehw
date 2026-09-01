@@ -27,11 +27,11 @@ if (-not $NormalUserLauncherAccepted) {
 $null = Assert-LhmVerifiedMachineIdentity
 
 $installRoot = $script:LhmProductionInstallRoot
-$dataRoot = $script:LhmProductionDataRoot
+$dataRoot = Get-LhmProductionDataRoot
 $executablePath = Join-Path $installRoot $script:LhmExecutableName
 $runtimeConfigPath = Join-Path $installRoot $script:LhmRuntimeConfigName
 $launcherTargetPath = $script:LhmLauncherTargetPath
-$publicShimPath = $script:LhmPublicShimPath
+$publicShimPath = Get-LhmProductionPublicShimPath
 $canonicalLauncher = Join-Path $PSScriptRoot 'Start-LibreHardwareMonitor.ps1'
 $legacyExecutablePath =
     'E:\SQ_HQ\Monitoring\sq-librehwdev\sq-librehw\bin\Release\net10.0-windows\LibreHardwareMonitor.Windows.Forms.exe'

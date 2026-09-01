@@ -10,7 +10,13 @@ $script:LhmProductionInstallRoot = 'E:\Monitoring\LibreHW\Runtime'
 $script:LhmLegacyProductionInstallRoot = 'E:\SQ_HQ\Monitoring\LibreHW'
 $script:LhmPreviousProductionDataRoot =
     'E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor'
-$script:LhmProductionDataRoot = 'E:\Data\LibreHardwareMonitor'
+$script:LhmProductionDataRootVariable = 'SEV_LOCAL_DATA'
+$script:LhmProductionBinRootVariable = 'SEV_LOCAL_BIN'
+$script:LhmProductionDataRelativePath = 'LibreHardwareMonitor'
+$script:LhmProductionPublicShimName = 'librehw.cmd'
+$script:LhmProductionCentralLauncherRelativePath = 'runw\runw.exe'
+$script:LhmProductionRunWReceiptRelativePath =
+    'RunW\install-receipt-v2-1.3.1-b5cda6d.json'
 $script:LhmManagedTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC'
 $script:LhmProductionHealthUri = 'http://localhost:8085/data.json'
 $script:LhmExpectedMachineId = 'snd-desk'
@@ -19,6 +25,8 @@ $script:LhmManagedTaskPrincipalSid =
     'S-1-5-21-3033086598-3000262358-161002696-1001'
 $script:LhmManagedTaskPrincipalUserId = 'Sev'
 $script:LhmManagedTaskLogonUserId = 'SND-Desk\Sev'
+$script:LhmManagedTaskRestartCount = 3
+$script:LhmManagedTaskRestartInterval = [TimeSpan]'00:01:00'
 $script:LhmIdentityVerifierPath = [System.IO.Path]::Combine(
     [Environment]::GetFolderPath('LocalApplicationData'),
     'common_dev\v2\Test-LocalMachineIdentity.ps1')
@@ -27,9 +35,8 @@ $script:LhmLauncherTargetPath =
     'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
 $script:LhmLegacyLauncherTargetPath =
     'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'
-$script:LhmPublicShimPath = 'E:\Bin\librehw.cmd'
 $script:LhmPublicShimSha256 =
-    'e56afd988c84de2324db626d5ed7ddf2bcea5a2e223c14d4b24d8802aa70f351'
+    '240544fb8c40d352c14988ceb39695b5c957b528a2918c39f4a28d4d02ffa2ed'
 $script:LhmLegacyPublicShimSha256 =
     'fe319aabd007a3a639cd618c748d480f7881dd18864db6f9c94bac537bd10d73'
 $script:LhmLegacyLauncherSha256 =
@@ -92,6 +99,119 @@ function Resolve-LhmFullPath {
     return $fullPath.TrimEnd(
         [System.IO.Path]::DirectorySeparatorChar,
         [System.IO.Path]::AltDirectorySeparatorChar)
+}
+
+function Get-LhmPersistedEnvironmentValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Name
+    )
+
+    foreach ($scope in @('User', 'Machine', 'Process')) {
+        $value = [Environment]::GetEnvironmentVariable($Name, $scope)
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            return $value.Trim().TrimEnd('\', '/')
+        }
+    }
+
+    throw "Required environment variable '$Name' is not set at User, Machine, or Process scope."
+}
+
+function Get-LhmRequiredEnvironmentRoot {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Name
+    )
+
+    return Resolve-LhmFullPath -Path (Get-LhmPersistedEnvironmentValue -Name $Name)
+}
+
+function Get-LhmProductionDataRoot {
+    [CmdletBinding()]
+    param()
+
+    return Join-Path `
+        (Get-LhmRequiredEnvironmentRoot -Name $script:LhmProductionDataRootVariable) `
+        $script:LhmProductionDataRelativePath
+}
+
+function Get-LhmProductionPublicShimPath {
+    [CmdletBinding()]
+    param()
+
+    return Join-Path `
+        (Get-LhmRequiredEnvironmentRoot -Name $script:LhmProductionBinRootVariable) `
+        $script:LhmProductionPublicShimName
+}
+
+function Get-LhmProductionCentralLauncherPath {
+    [CmdletBinding()]
+    param()
+
+    return Join-Path `
+        (Get-LhmRequiredEnvironmentRoot -Name $script:LhmProductionBinRootVariable) `
+        $script:LhmProductionCentralLauncherRelativePath
+}
+
+function Get-LhmProductionRunWReceiptPath {
+    [CmdletBinding()]
+    param()
+
+    return Join-Path `
+        (Get-LhmRequiredEnvironmentRoot -Name $script:LhmProductionDataRootVariable) `
+        $script:LhmProductionRunWReceiptRelativePath
+}
+
+function Get-LhmProductionLauncherConvergenceReceiptPath {
+    [CmdletBinding()]
+    param()
+
+    return Join-Path (Get-LhmProductionDataRoot) 'launcher-convergence\current.json'
+}
+
+function Get-LhmProductionLauncherConvergenceRollbackRoot {
+    [CmdletBinding()]
+    param()
+
+    return Join-Path (Get-LhmProductionDataRoot) 'launcher-convergence\rollback'
+}
+
+function Get-LhmPublicShimCentralLauncherToken {
+    [CmdletBinding()]
+    param()
+
+    return '%' + $script:LhmProductionBinRootVariable + '%\' +
+        $script:LhmProductionCentralLauncherRelativePath
+}
+
+function Resolve-LhmUnspecifiedProductionPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $ParameterName,
+
+        [string] $CurrentValue,
+
+        [Parameter(Mandatory)]
+        [scriptblock] $Resolver,
+
+        [switch] $NonLiveTestMode
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($CurrentValue)) {
+        return $CurrentValue
+    }
+
+    if ($NonLiveTestMode) {
+        throw "Parameter '$ParameterName' is required in NonLiveTestMode."
+    }
+
+    return & $Resolver
 }
 
 function Test-LhmPathEqual {
@@ -414,8 +534,8 @@ function Assert-LhmOperationMode {
             throw "Production installation is fixed at '$($script:LhmProductionInstallRoot)'."
         }
 
-        if (-not (Test-LhmPathEqual -Left $resolvedDataRoot -Right $script:LhmProductionDataRoot)) {
-            throw "Production data is fixed at '$($script:LhmProductionDataRoot)'."
+        if (-not (Test-LhmPathEqual -Left $resolvedDataRoot -Right (Get-LhmProductionDataRoot))) {
+            throw "Production data is fixed at '$(Get-LhmProductionDataRoot)'."
         }
 
         return [pscustomobject]@{
@@ -1594,6 +1714,21 @@ function Split-LhmManagedTaskPath {
     }
 }
 
+function New-LhmManagedTaskSettings {
+    [CmdletBinding()]
+    param()
+
+    return New-ScheduledTaskSettingsSet `
+        -MultipleInstances IgnoreNew `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable `
+        -DisallowHardTerminate `
+        -ExecutionTimeLimit ([TimeSpan]::Zero) `
+        -RestartCount $script:LhmManagedTaskRestartCount `
+        -RestartInterval $script:LhmManagedTaskRestartInterval
+}
+
 function Register-LhmManagedTask {
     [CmdletBinding()]
     param(
@@ -1617,13 +1752,7 @@ function Register-LhmManagedTask {
         -UserId $qualifiedUser `
         -LogonType Interactive `
         -RunLevel Highest
-    $settings = New-ScheduledTaskSettingsSet `
-        -MultipleInstances IgnoreNew `
-        -AllowStartIfOnBatteries `
-        -DontStopIfGoingOnBatteries `
-        -StartWhenAvailable `
-        -DisallowHardTerminate `
-        -ExecutionTimeLimit ([TimeSpan]::Zero)
+    $settings = New-LhmManagedTaskSettings
 
     Register-ScheduledTask `
         -TaskPath $taskParts.TaskPath `

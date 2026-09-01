@@ -7,7 +7,7 @@ param(
 
     [string] $InstallRoot = 'E:\Monitoring\LibreHW\Runtime',
 
-    [string] $DataRoot = 'E:\Data\LibreHardwareMonitor',
+    [string] $DataRoot,
 
     [string] $ManagedStartupTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC',
 
@@ -17,7 +17,13 @@ param(
     [string] $LauncherTargetPath =
         'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1',
 
-    [string] $PublicShimPath = 'E:\Bin\librehw.cmd',
+    [string] $PublicShimPath,
+
+    [string] $HideLaunchArtifactPath =
+        'D:\Development\System\launch-hidden-shim\bin\runw.exe',
+
+    [string] $HideLaunchAuthorityReceiptPath =
+        'E:\Data\RunW\install-receipt-v2.json',
 
     [uri] $HealthUri = 'http://localhost:8085/data.json',
 
@@ -48,6 +54,17 @@ if (-not $NonLiveTestMode) {
     $null = Assert-LhmVerifiedMachineIdentity
 }
 
+$DataRoot = Resolve-LhmUnspecifiedProductionPath `
+    -ParameterName 'DataRoot' `
+    -CurrentValue $DataRoot `
+    -Resolver { Get-LhmProductionDataRoot } `
+    -NonLiveTestMode:$NonLiveTestMode
+$PublicShimPath = Resolve-LhmUnspecifiedProductionPath `
+    -ParameterName 'PublicShimPath' `
+    -CurrentValue $PublicShimPath `
+    -Resolver { Get-LhmProductionPublicShimPath } `
+    -NonLiveTestMode:$NonLiveTestMode
+
 function Resolve-LhmRuntimeMigrationScope {
     $modeState = Assert-LhmOperationMode `
         -InstallRoot $InstallRoot `
@@ -61,7 +78,13 @@ function Resolve-LhmRuntimeMigrationScope {
         DataRoot = $modeState.DataRoot
         LegacyLauncherPath = Resolve-LhmFullPath -Path $LegacyLauncherPath
         LauncherTargetPath = Resolve-LhmFullPath -Path $LauncherTargetPath
+        RuntimeHideLaunchPath = Resolve-LhmFullPath -Path (Join-Path `
+            (Split-Path -Parent $LauncherTargetPath) `
+            'hidelaunch.exe')
         PublicShimPath = Resolve-LhmFullPath -Path $PublicShimPath
+        HideLaunchArtifactPath = Resolve-LhmFullPath -Path $HideLaunchArtifactPath
+        HideLaunchAuthorityReceiptPath =
+            Resolve-LhmFullPath -Path $HideLaunchAuthorityReceiptPath
         IsTest = $modeState.IsTest
     }
 
@@ -73,7 +96,10 @@ function Resolve-LhmRuntimeMigrationScope {
             $resolved.DataRoot,
             $resolved.LegacyLauncherPath,
             $resolved.LauncherTargetPath,
+            $resolved.RuntimeHideLaunchPath,
             $resolved.PublicShimPath,
+            $resolved.HideLaunchArtifactPath,
+            $resolved.HideLaunchAuthorityReceiptPath,
             $TestExternalTaskStatePath
         )) {
             if ([string]::IsNullOrWhiteSpace([string]$path) -or
@@ -94,7 +120,13 @@ function Resolve-LhmRuntimeMigrationScope {
                 -Right $script:LhmLauncherTargetPath) -or
             -not (Test-LhmPathEqual `
                 -Left $resolved.PublicShimPath `
-                -Right $script:LhmPublicShimPath) -or
+                -Right (Get-LhmProductionPublicShimPath)) -or
+            -not (Test-LhmPathEqual `
+                -Left $resolved.HideLaunchArtifactPath `
+                -Right 'D:\Development\System\launch-hidden-shim\bin\runw.exe') -or
+            -not (Test-LhmPathEqual `
+                -Left $resolved.HideLaunchAuthorityReceiptPath `
+                -Right 'E:\Data\RunW\install-receipt-v2.json') -or
             [string]$HealthUri.AbsoluteUri -cne $script:LhmProductionHealthUri) {
             throw 'Production runtime migration paths and health URI are fixed.'
         }
@@ -115,6 +147,69 @@ function Resolve-LhmRuntimeMigrationScope {
     }
 
     return [pscustomobject]$resolved
+}
+
+function Get-LhmRuntimeMigrationHideLaunchAuthority {
+    param([Parameter(Mandatory)][pscustomobject] $Scope)
+
+    $receiptPath = Assert-LhmNormalFile `
+        -Path $Scope.HideLaunchAuthorityReceiptPath `
+        -Label 'HideLaunch authority receipt'
+    $artifactPath = Assert-LhmNormalFile `
+        -Path $Scope.HideLaunchArtifactPath `
+        -Label 'Validated HideLaunch artifact'
+    try {
+        $receipt = Get-Content -LiteralPath $receiptPath -Raw -Encoding UTF8 |
+            ConvertFrom-Json
+    }
+    catch {
+        throw "HideLaunch authority receipt is invalid: $($_.Exception.Message)"
+    }
+    $artifactHash = (Get-LhmFileSha256 -Path $artifactPath).ToUpperInvariant()
+    if ([string]$receipt.Schema -cne 'runw.deployment.v2' -or
+        -not (Test-LhmPathEqual `
+            -Left ([string]$receipt.Artifact.Path) `
+            -Right $artifactPath) -or
+        [string]$receipt.Artifact.Sha256 -cne $artifactHash -or
+        [Int64]$receipt.Artifact.Length -ne
+            [Int64](Get-Item -LiteralPath $artifactPath -Force).Length -or
+        [string]$receipt.Artifact.Version -notmatch '^1\.[0-9]+\.[0-9]+$' -or
+        [string]$receipt.Source.Commit -notmatch '^[0-9a-fA-F]{40}$') {
+        throw 'HideLaunch authority receipt does not prove its selected artifact.'
+    }
+    if (-not $Scope.IsTest) {
+        $sourceRoot = Assert-LhmNormalDirectoryTree `
+            -Path ([string]$receipt.Source.Root) `
+            -Label 'HideLaunch source repository'
+        $gitCommands = @(Get-Command git.exe -CommandType Application -ErrorAction Stop)
+        $head = @(& ([string]$gitCommands[0].Source) `
+            -C $sourceRoot rev-parse HEAD 2>&1)
+        if ($LASTEXITCODE -ne 0 -or
+            ($head -join '').Trim() -cne [string]$receipt.Source.Commit) {
+            throw 'HideLaunch source repository no longer matches its authority receipt.'
+        }
+    }
+    return [pscustomobject]@{
+        ArtifactSha256 = $artifactHash.ToLowerInvariant()
+        ReceiptSha256 = Get-LhmFileSha256 -Path $receiptPath
+    }
+}
+
+function Assert-LhmRuntimeMigrationHideLaunchCurrent {
+    param([Parameter(Mandatory)][pscustomobject] $Scope)
+
+    $authority = Get-LhmRuntimeMigrationHideLaunchAuthority -Scope $Scope
+    if (-not (Test-Path `
+            -LiteralPath $Scope.RuntimeHideLaunchPath `
+            -PathType Leaf) -or
+        (Get-LhmFileSha256 -Path $Scope.RuntimeHideLaunchPath) -cne
+            [string]$authority.ArtifactSha256) {
+        throw "The app-vendored HideLaunch must already match its validated authority before runtime migration: '$($Scope.RuntimeHideLaunchPath)'."
+    }
+    $null = Assert-LhmNormalFile `
+        -Path $Scope.RuntimeHideLaunchPath `
+        -Label 'App-vendored HideLaunch'
+    return $authority
 }
 
 function Get-LhmRuntimeMigrationTaskState {
@@ -144,7 +239,9 @@ function Get-LhmRuntimeMigrationTaskState {
         [string]$task.Principal.RunLevel -cne 'Highest' -or
         [string]$task.Settings.MultipleInstances -cne 'IgnoreNew' -or
         -not [bool]$task.Settings.StartWhenAvailable -or
-        [bool]$task.Settings.AllowHardTerminate) {
+        [bool]$task.Settings.AllowHardTerminate -or
+        [int]$task.Settings.RestartCount -ne $script:LhmManagedTaskRestartCount -or
+        [string]$task.Settings.RestartInterval -cne 'PT1M') {
         throw "Managed task '$ManagedStartupTaskPath' does not match the accepted task contract."
     }
 
@@ -158,6 +255,8 @@ function Get-LhmRuntimeMigrationTaskState {
     return [pscustomobject]@{
         execute = [string]$action[0].Execute
         workingDirectory = [string]$action[0].WorkingDirectory
+        restartCount = [int]$task.Settings.RestartCount
+        restartInterval = [string]$task.Settings.RestartInterval
         enabled = [bool]$task.Settings.Enabled
     }
 }
@@ -171,6 +270,8 @@ function Assert-LhmRuntimeMigrationTaskTarget {
     $taskState = Get-LhmRuntimeMigrationTaskState -Scope $Scope
     $expectedExecutable = Join-Path $ExpectedInstallRoot $script:LhmExecutableName
     if (-not [bool]$taskState.enabled -or
+        [int]$taskState.restartCount -ne $script:LhmManagedTaskRestartCount -or
+        [string]$taskState.restartInterval -cne 'PT1M' -or
         -not (Test-LhmPathEqual -Left ([string]$taskState.execute) -Right $expectedExecutable) -or
         -not (Test-LhmPathEqual `
             -Left ([string]$taskState.workingDirectory) `
@@ -190,6 +291,8 @@ function Set-LhmRuntimeMigrationTaskTarget {
         [pscustomobject][ordered]@{
             execute = $targetExecutable
             workingDirectory = $TargetInstallRoot
+            restartCount = $script:LhmManagedTaskRestartCount
+            restartInterval = 'PT1M'
             enabled = $true
         } | ConvertTo-Json | Set-Content `
             -LiteralPath $TestExternalTaskStatePath `
@@ -206,9 +309,12 @@ function Set-LhmRuntimeMigrationTaskTarget {
 function Get-LhmRuntimeMigrationShimText {
     param([Parameter(Mandatory)][string] $LauncherPath)
 
+    $hideLaunchPath = Join-Path (Split-Path -Parent $LauncherPath) 'hidelaunch.exe'
     return "@echo off`r`n" +
-        "start `"`" /min powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass " +
-        "-File `"$LauncherPath`"`r`n" +
+        "`"$hideLaunchPath`" /wait /quiet /cwd:- " +
+        "`"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`" " +
+        "-NoLogo -NoProfile -ExecutionPolicy Bypass " +
+        "-File `"$LauncherPath`" %*`r`n" +
         "exit /b %ERRORLEVEL%`r`n"
 }
 
@@ -334,11 +440,20 @@ function Assert-LhmRuntimeMigrationTarget {
     if (-not (Test-Path -LiteralPath $Scope.PublicShimPath -PathType Leaf)) {
         throw 'Migrated public shim is absent.'
     }
+    $expectedShimText = Get-LhmRuntimeMigrationShimText `
+        -LauncherPath $Scope.LauncherTargetPath
+    $actualShimText =
+        [System.IO.File]::ReadAllText($Scope.PublicShimPath) -replace "`r?`n", "`r`n"
+    if ($actualShimText -cne $expectedShimText) {
+        throw 'Migrated public shim does not match the complete launcher chain.'
+    }
     if (-not $Scope.IsTest -and
         (Get-LhmFileSha256 -Path $Scope.PublicShimPath) -cne
             $script:LhmPublicShimSha256) {
         throw 'Migrated public shim does not match the pinned production hash.'
     }
+    $hideLaunchAuthority =
+        Assert-LhmRuntimeMigrationHideLaunchCurrent -Scope $Scope
     Assert-LhmRuntimeMigrationTaskTarget `
         -Scope $Scope `
         -ExpectedInstallRoot $Scope.InstallRoot
@@ -360,6 +475,8 @@ function Assert-LhmRuntimeMigrationTarget {
         InstallRoot = $Scope.InstallRoot
         LauncherTargetPath = $Scope.LauncherTargetPath
         PublicShimPath = $Scope.PublicShimPath
+        RuntimeHideLaunchPath = $Scope.RuntimeHideLaunchPath
+        HideLaunchSha256 = [string]$hideLaunchAuthority.ArtifactSha256
         ReleaseId = [string]$payload.Manifest.releaseId
         LegacyInstallRootAbsent = $true
         LegacyLauncherAbsent = $true
@@ -377,18 +494,31 @@ if ($Mode -ceq 'Validate') {
 $legacyExists = Test-Path -LiteralPath $scope.LegacyInstallRoot -PathType Container
 $targetExists = Test-Path -LiteralPath $scope.InstallRoot -PathType Container
 if ($Mode -ceq 'Plan') {
+    $hideLaunchCurrent = $true
+    $hideLaunchIssue = $null
+    try {
+        $null = Assert-LhmRuntimeMigrationHideLaunchCurrent -Scope $scope
+    }
+    catch {
+        $hideLaunchCurrent = $false
+        $hideLaunchIssue = $_.Exception.Message
+    }
     [pscustomobject][ordered]@{
-        Result = 'PASS'
+        Result = if ($hideLaunchCurrent) { 'PASS' } else { 'DRIFT' }
         Mode = 'Plan'
         LegacyInstallRoot = $scope.LegacyInstallRoot
         InstallRoot = $scope.InstallRoot
         LegacyRuntimePresent = $legacyExists
         MigratedRuntimePresent = $targetExists
         LegacyLauncherPresent = Test-Path -LiteralPath $scope.LegacyLauncherPath -PathType Leaf
+        HideLaunchCurrent = $hideLaunchCurrent
+        HideLaunchIssue = $hideLaunchIssue
         MutationPerformed = $false
     }
     return
 }
+
+$null = Assert-LhmRuntimeMigrationHideLaunchCurrent -Scope $scope
 
 if ($targetExists -and -not $legacyExists) {
     Assert-LhmRuntimeMigrationTarget -Scope $scope

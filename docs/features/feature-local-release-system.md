@@ -7,8 +7,15 @@ users, or runtime state as SND-HOST instructions.
 
 **Status:** stable release installed on SND-DESK; guarded data-root relocation
 live-accepted on 2026-08-15; runtime-root retirement implemented, verified, and
-live-accepted on 2026-08-16
-**Updated:** 2026-08-16
+live-accepted on 2026-08-16; bounded task recovery live-accepted on 2026-08-22;
+wait-capable launcher convergence implemented and fixture-verified on
+2026-08-23; its central-RunW v2 receipt migration was implemented and
+fixture-verified on 2026-08-28. A 2026-08-31 read-only Plan accepted the pinned
+clean RunW 1.3.1 authority without blockers; the public shim and convergence
+receipt remain drifted. No LibreHW v2 live Apply has run. Current Data/Bin
+authority is persisted `SEV_LOCAL_DATA` / `SEV_LOCAL_BIN` (User, then Machine,
+then Process). Source no longer stores drive-letter current Data/Bin paths.
+**Updated:** 2026-09-01
 
 ## Problem
 
@@ -29,11 +36,11 @@ coupled.
 
 ## Goals
 
-- Keep `librehw.cmd` as the permanent public command under `E:\Bin`.
+- Keep `librehw.cmd` as the permanent public command under `%SEV_LOCAL_BIN%`.
 - Run one fixed, shallow installed EXE rather than a Debug/Release build output.
 - Publish the local net10 x64 app as one framework-dependent EXE.
 - Keep config, backups, and CSV logs under the dedicated machine-local
-  `E:\Data\LibreHardwareMonitor` root.
+  `%SEV_LOCAL_DATA%\LibreHardwareMonitor` root.
 - Provide manifest-backed promotion, exactly one rollback slot, and bounded
   retention.
 - Converge the launcher, no-UAC task, logon start, shortcuts, and process checks
@@ -116,27 +123,66 @@ the application payload; the later guarded runtime-root migration does.
 ### Mutable data
 
 ```text
-E:\Data\LibreHardwareMonitor\
+%SEV_LOCAL_DATA%\LibreHardwareMonitor\
 ├─ LibreHardwareMonitor.Windows.Forms.config
 ├─ LibreHardwareMonitor.Windows.Forms.config.backup
 └─ logs\
    └─ LibreHardwareMonitorLog-*.csv
 ```
 
-The installed SND-DESK runtime manifest selects `E:\Data\LibreHardwareMonitor`
-explicitly. The app resolves that
-runtime configuration first, then an explicit Libre Hardware Monitor data-root
-override, then falls back to executable-adjacent storage. Ambient `%sqdata%` is
-deliberately not application authority because other hosts and shells may bind
-it to unrelated state.
+Deploy scripts resolve that root from persisted `SEV_LOCAL_DATA` at User, then
+Machine, then Process scope. They must not prefer inherited Process `sqdata` or
+`sqbin`: a long-lived agent can keep the pre-cutover values after User/Machine
+already name SevLocal. The installed runtime JSON still stores an expanded
+absolute `dataRoot` because the app requires a filesystem path. The app
+resolves that runtime configuration first, then an explicit Libre Hardware
+Monitor data-root override, then falls back to executable-adjacent storage.
+Ambient `%sqdata%` remains not application authority because other hosts and
+shells may bind it to unrelated state.
 
 ### Public launcher
 
-`E:\Bin\librehw.cmd` remains the public command. It delegates to the app-owned
-`E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1`; that script
-targets the stable EXE/working directory and the dedicated data root.
-Existing-process restore still uses the app-owned tray-toggle path. When no
-process exists, elevated start routes through the managed no-UAC task.
+`%SEV_LOCAL_BIN%\librehw.cmd` remains the public command. Its canonical source
+invokes the installed, receipted `%SEV_LOCAL_BIN%\runw\runw.exe` with
+`/wait /quiet /cwd:-`,
+starts the app-owned
+`Start-LibreHardwareMonitor.ps1` through Windows PowerShell 5.1, forwards all
+arguments, and returns the helper's exit code. The host is pinned to
+`%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`; ambient command
+search is not launcher authority. It does not use `start`, so a
+caller can observe activation failure instead of receiving an asynchronous
+success. The PowerShell helper owns the bounded launch mutex, stable
+EXE/working-directory checks, managed-task start, and existing-window
+tray-toggle/foreground restoration.
+
+`Sync-LibreHardwareMonitorLauncher.ps1` is the continuing convergence owner.
+`Plan` and `Validate` report source, deployed-artifact, receipt, and managed-task
+drift without mutation. `Apply` first requires the installed known-folder v2
+identity for `snd-desk`, validates but never recreates the existing managed
+task, validates the installed central RunW bytes against
+`%SEV_LOCAL_DATA%\RunW\install-receipt-v2-1.3.1-b5cda6d.json`, and transactionally replaces only the
+app relay and public CMD. RunW is an authority dependency, not an app-vendored
+deployment or rollback target. The convergence tool retains a typed v2 receipt
+and exact two-file rollback packet under
+`%SEV_LOCAL_DATA%\LibreHardwareMonitor\launcher-convergence`.
+The newest five packets are retained, while the packet referenced by the
+active receipt is protected during cleanup. Non-live fixture mode accepts only
+explicit paths below the OS temporary root.
+
+### SevLocal env-var current roots — 2026-09-01
+
+After the machine SevLocal cutover, current Data/Bin production paths are no
+longer drive-letter constants. Deploy scripts resolve `SEV_LOCAL_DATA` and
+`SEV_LOCAL_BIN` from persisted User, then Machine, then Process scope, and
+join `LibreHardwareMonitor` / `librehw.cmd` / `runw\runw.exe`. Inherited
+Process `sqdata` / `sqbin` are not authority because a long-lived agent can
+keep pre-cutover values. Canonical `librehw.cmd` stores
+`%SEV_LOCAL_BIN%\runw\runw.exe`. The app still requires an expanded absolute
+`dataRoot` in `librehw.runtime.json`. A 2026-09-01 identity-gated pointer
+repair retargeted the live runtime JSON and installed launcher; recovery
+copies are under
+`%SEV_LOCAL_DATA%\LibreHardwareMonitor\release-recovery\sevlocal-env-pointer-20260901`.
+The public shim remains the pre-Apply HideLaunch form.
 
 ### Data-root relocation compatibility island — 2026-08-15
 
@@ -210,6 +256,11 @@ parents.
 The non-live suite covers a complete move and an injected post-binding failure
 with byte-for-byte task/shim rollback. `Plan` is report-only, `Apply` is the
 guarded transition, and `Validate` proves the final path/task/process contract.
+That one-time historical migration generator remains evidence of the then-
+accepted sibling app-vendored HideLaunch transition and still fails closed on
+its own authority contract. It is not current public-shim generator authority
+and cannot regenerate the central-RunW shim; continuing convergence belongs to
+`Sync-LibreHardwareMonitorLauncher.ps1`.
 
 ## Package decision
 
@@ -278,6 +329,9 @@ output into the repository's shared `bin` tree.
 - `\SevGrp\AdminTask\LibreHW-No-UAC` is the sole managed elevated start owner on
   `snd-desk`; it supports the intended logon and on-demand starts.
 - The task action and working directory name the stable runtime.
+- A non-zero process exit receives at most three restart attempts at one-minute
+  intervals. This restores monitoring after a transient native-provider crash
+  without creating an unbounded restart loop.
 - The app must not recreate a scheduler-root task under this managed install.
 - The duplicate root `\LibreHardwareMonitor` task is retired only after the
   managed task and logon behavior pass.
@@ -507,10 +561,103 @@ needed two bounded fixes before it could safely bootstrap that clean state.
   release ID, and hashes remain in the bounded recovery packet at
   `E:\Data\LibreHardwareMonitor\release-recovery\runtime-root-relocation`.
 
+## Bounded crash-recovery hardening — 2026-08-22
+
+- Libre Hardware Monitor and HWiNFO both terminated during an NVIDIA
+  driver/NVML incident. Libre's Application 1026 stack ended in
+  `NvmlDeviceGetPowerUsage`, its task returned `0xC0000005`, and the logon-only
+  task left monitoring and HTTP down after the crash.
+- Identity was reverified as `snd-desk` instance
+  `ca96d510-7d87-4cec-8e1a-bd8fc3866903`. The installed executable still
+  matched release `0.9.6_e977e57.2026-08-14-e977e577ea13-20260814T205711Z`
+  and SHA-256
+  `e2ac66b3791dba60d77d297708056d5716e44ec596d63f1b778e950352f0fca8`
+  before task mutation.
+- The exact managed task was re-registered with three one-minute restart
+  attempts, `IgnoreNew`, no hard termination, and the unchanged executable and
+  working directory. Its prior XML is retained at
+  `E:\Data\LibreHardwareMonitor\release-recovery\managed-task-hardening-2026-08-22`.
+- Exact stable PID `56392` then returned HTTP 200. `data.json` reached 148,829
+  bytes with the `Sensor` root and `/metrics` reached 604 populated lines. No
+  new Libre crash event appeared during the acceptance dwell.
+- No firewall rule was added. HTTP.sys currently registers `HTTP://+:8085/`
+  and authentication remains disabled, so intentional remote access is still
+  gated on a separately selected listener/authentication/firewall boundary.
+  The source fail-closed listener change is not present in this installed
+  2026-08-14 binary and requires a separately authorized promotion.
+
+## Wait-capable launcher convergence — updated 2026-08-31
+
+- `ops/deploy/snd-desk/librehw.cmd` is now the canonical public-shim source.
+  Its normalized expected deployment hash is
+  `13a96605268b43dbf1052e837f15557ff655165c1e31ea936a1d30f452dbaee3`;
+  the shared release validators and convergence tool use the same bytes. The
+  historical runtime-migration generator remains intentionally separate.
+- The convergence tool trusts only the installed
+  `E:\Bin\runw\runw.exe`. Its RunW v2 authority receipt must self-bind to
+  `E:\Data\RunW\install-receipt-v2-1.3.1-b5cda6d.json`, contain exactly one destination row
+  for that canonical path, and match the destination hash plus artifact hash
+  and length to the installed bytes. It also records the exact clean
+  `b5cda6d` source commit, source root, artifact path, and version 1.3.1;
+  recorded historical paths need not remain present. Mutable build output and
+  source HEAD are not continuing launcher authority.
+- Immutable legacy v2 receipts remain compatible only through their exact
+  two-field destination row; current four-field rows require strict Boolean
+  existence and conditional pre-state hash evidence. Other row shapes block.
+- The convergence receipt is `sq.librehw.launcher-convergence.v2`. It records
+  the central launcher path/hash and authority-receipt path/hash, while its
+  managed targets and rollback manifest contain only the app relay and public
+  CMD. A structurally valid v1 app-vendored receipt is recognized only as
+  migration input: Plan reports drift and proposes v2, and it is never current.
+- Fixture Apply is identity-gated before writes, stages and hashes both owned
+  files, retains displaced files, and restores from a fixed in-memory
+  plan after injected failures following each owned file and the receipt.
+  Receipt validation rejects source, central-authority, managed-task,
+  target-set, rollback ancestry, manifest, and backup tampering. Original and
+  rollback failures are reported separately, retention is bounded, and both
+  the managed-task fixture and central RunW bytes remain unchanged.
+- The focused 25-case launcher-convergence suite passed in PowerShell 7 and
+  Windows PowerShell 5.1. It uses only isolated OS-temp fixture roots.
+- The 2026-08-31 live Plan was non-mutating: central RunW, its receipt, and the
+  managed task were current with no blocker; the public shim and convergence
+  receipt remained drifted. No LibreHW Apply ran. Identity-verified Apply,
+  Validate, and attended absent/running/tray-hidden foreground smokes remain
+  the promotion gate. The app relay retains its start-if-closed and tray
+  restore/foreground behavior; the CMD does not use generic `/focus`.
+
+## Historical live launcher Plan recheck — 2026-08-27
+
+- The installed verifier returned `VERIFIED` for `snd-desk` instance
+  `ca96d510-7d87-4cec-8e1a-bd8fc3866903`. One process still runs the accepted
+  `e977e577` executable, and `/`, `/data.json`, and `/metrics` returned HTTP 200.
+- The managed task still has the accepted action, working directory, and
+  `IgnoreNew`, but its exported XML has no `RestartOnFailure`; the observed
+  restart count is zero. The bounded three-attempt/PT1M contract has drifted.
+- The then-current v1 `Sync-LibreHardwareMonitorLauncher.ps1 -Mode Plan` was
+  non-mutating and returned `DRIFT`. Its blocking issues were the missing
+  authority-pinned
+  `D:\Development\System\launch-hidden-shim\bin\runw.exe` artifact and
+  the managed-task contract mismatch. The runtime HideLaunch file is absent,
+  the public shim is still the old asynchronous form, and the convergence
+  receipt is not current.
+- This evidence predates the v2 central-launcher implementation above. Current
+  source no longer consumes the missing mutable build artifact or source HEAD,
+  and the observed task drift remains relevant until an authorized recheck.
+
+## Central-RunW v2 read-only Plan — 2026-08-28
+
+- The source `Plan` performed no mutation, confirmed the installed central
+  RunW and its authority receipt, reported the public-shim drift, recognized
+  the existing exact v1 app-vendored receipt as migration input, and proposed
+  `sq.librehw.launcher-convergence.v2`.
+- Scheduled-task inspection returned `Access denied` in the current shell, so
+  the Plan remained blocked and did not supersede the earlier task-contract
+  finding. No Apply, file deployment, task change, or process action ran.
+
 ## Acceptance
 
-- [x] `Get-Command librehw` resolves `E:\Bin\librehw.cmd` in fresh PowerShell 7
-  and Windows PowerShell 5.1 sessions.
+- [x] `Get-Command librehw` resolves `%SEV_LOCAL_BIN%\librehw.cmd` in fresh
+  PowerShell 7 and Windows PowerShell 5.1 sessions.
 - [x] Publish emits exactly one framework-dependent x64 EXE and a separate
   bounded manifest.
 - [x] The installed process path is the fixed shallow path.
@@ -528,11 +675,30 @@ needed two bounded fixes before it could safely bootstrap that clean state.
 - [x] `\SevGrp\AdminTask\LibreHW-No-UAC` owns on-demand and intended logon start,
   with the stable action/working directory.
 - [x] The Start Menu/Desktop shortcut scan contains no legacy-root binding;
-  public command entry points route through `E:\Bin` rather than a repository
-  `bin` tree.
+  public command entry points route through `%SEV_LOCAL_BIN%` rather than a
+  repository `bin` tree.
 - [x] The duplicate scheduler-root task is absent after accepted cutover.
 - [x] Direct task, normal-user `librehw.cmd`, and repeated launcher calls
   converge on one process.
+- [x] The managed-task source contract uses bounded restart-on-failure: three
+  attempts at one-minute intervals, while `IgnoreNew` prevents duplicates.
+- [ ] The live managed task matches that restart contract. The 2026-08-27
+  read-only recheck observed restart count zero and no `RestartOnFailure` XML.
+- [x] Canonical `librehw.cmd` uses the exact installed
+  `%SEV_LOCAL_BIN%\runw\runw.exe` with `/wait /quiet /cwd:-`, pins the System32
+  Windows PowerShell 5.1 host, forwards arguments, propagates non-zero status,
+  and contains no asynchronous `start`, generic `/focus`, ambient host lookup,
+  or recursive public-command dispatch.
+- [x] Launcher convergence validates the central RunW receipt self path, exact
+  destination row, hash, length, and installed bytes without mutable artifact
+  or source-HEAD coupling; v1 receipts are migration input only.
+- [x] Non-live launcher convergence covers drift reporting, identity-before-
+  write, exact two-file deployment, task/central-launcher immutability,
+  retained rollback, and restoration after an injected partial deployment in
+  PowerShell 7 and Windows PowerShell 5.1.
+- [ ] Identity-verified live Apply and Validate have deployed the new launcher
+  chain and attended absent/running/tray-hidden smokes have accepted foreground
+  behavior and status propagation.
 - [x] Existing-window restore shows populated child controls and obtains
   foreground ownership from a normal unelevated shell without a lingering
   helper.
@@ -597,6 +763,13 @@ Operator workflow:
 ```powershell
 # Non-live parser, failure-injection, hostile-input, and rollback checks
 .\ops\deploy\snd-desk\Test-LhmLocalRelease.ps1
+
+# Focused launcher convergence checks in the current host
+.\ops\deploy\snd-desk\Test-LhmLocalRelease.ps1 -LauncherConvergenceOnly
+
+# Report launcher drift; Apply remains a separately attended live gate
+.\ops\deploy\snd-desk\Sync-LibreHardwareMonitorLauncher.ps1 -Mode Plan
+.\ops\deploy\snd-desk\Sync-LibreHardwareMonitorLauncher.ps1 -Mode Validate
 
 # After QA: relocate only runtime authority, launcher content, and existing task
 .\ops\deploy\snd-desk\Relocate-LibreHardwareMonitorDataRoot.ps1 `

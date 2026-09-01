@@ -6,7 +6,7 @@ param(
 
     [string] $InstallRoot = 'E:\Monitoring\LibreHW\Runtime',
 
-    [string] $DataRoot = 'E:\Data\LibreHardwareMonitor',
+    [string] $DataRoot,
 
     [string] $ManagedStartupTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC',
 
@@ -22,7 +22,7 @@ param(
     [string] $LauncherTargetPath =
         'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1',
 
-    [string] $PublicShimPath = 'E:\Bin\librehw.cmd',
+    [string] $PublicShimPath,
 
     [switch] $NonLiveTestMode,
 
@@ -50,6 +50,17 @@ if (-not $NonLiveTestMode) {
     $null = Assert-LhmVerifiedMachineIdentity
 }
 
+$DataRoot = Resolve-LhmUnspecifiedProductionPath `
+    -ParameterName 'DataRoot' `
+    -CurrentValue $DataRoot `
+    -Resolver { Get-LhmProductionDataRoot } `
+    -NonLiveTestMode:$NonLiveTestMode
+$PublicShimPath = Resolve-LhmUnspecifiedProductionPath `
+    -ParameterName 'PublicShimPath' `
+    -CurrentValue $PublicShimPath `
+    -Resolver { Get-LhmProductionPublicShimPath } `
+    -NonLiveTestMode:$NonLiveTestMode
+
 $mode = Assert-LhmOperationMode `
     -InstallRoot $InstallRoot `
     -DataRoot $DataRoot `
@@ -75,7 +86,7 @@ if ($mode.IsTest) {
 }
 else {
     if (-not (Test-LhmPathEqual -Left $LauncherTargetPath -Right $script:LhmLauncherTargetPath) -or
-        -not (Test-LhmPathEqual -Left $PublicShimPath -Right $script:LhmPublicShimPath)) {
+        -not (Test-LhmPathEqual -Left $PublicShimPath -Right (Get-LhmProductionPublicShimPath))) {
         throw 'Production launcher and public shim paths are fixed.'
     }
     if ($TestFailurePoint -cne 'None' -or

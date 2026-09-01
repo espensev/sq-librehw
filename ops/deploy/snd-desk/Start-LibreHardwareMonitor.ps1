@@ -10,7 +10,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $InstallRoot = 'E:\Monitoring\LibreHW\Runtime'
-$DataRoot = 'E:\Data\LibreHardwareMonitor'
+$DataRootVariable = 'SEV_LOCAL_DATA'
+$DataRootRelativePath = 'LibreHardwareMonitor'
+$DataRoot = [System.IO.Path]::Combine('%' + $DataRootVariable + '%', $DataRootRelativePath)
 $ExecutablePath =
     [System.IO.Path]::Combine($InstallRoot, 'LibreHardwareMonitor.Windows.Forms.exe')
 $RuntimeConfigPath = [System.IO.Path]::Combine($InstallRoot, 'librehw.runtime.json')
@@ -22,6 +24,29 @@ $ExpectedMachineId = 'snd-desk'
 $ExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
 $ProcessName = 'LibreHardwareMonitor.Windows.Forms'
 $MutexName = 'Local\Sev.LibreHardwareMonitorLauncher'
+
+function Get-LauncherPersistedEnvironmentValue {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Name
+    )
+
+    foreach ($scope in @('User', 'Machine', 'Process')) {
+        $value = [Environment]::GetEnvironmentVariable($Name, $scope)
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            return $value.Trim().TrimEnd('\', '/')
+        }
+    }
+
+    throw "Required environment variable '$Name' is not set at User, Machine, or Process scope."
+}
+
+function Get-LauncherProductionDataRoot {
+    return [System.IO.Path]::GetFullPath(
+        [System.IO.Path]::Combine(
+            (Get-LauncherPersistedEnvironmentValue -Name $DataRootVariable),
+            $DataRootRelativePath))
+}
 
 function Assert-LauncherMachineIdentity {
     if (-not (Test-Path -LiteralPath $IdentityVerifierPath -PathType Leaf)) {
@@ -461,6 +486,7 @@ if ($ValidateScriptOnly) {
 }
 
 Assert-LauncherMachineIdentity
+$DataRoot = Get-LauncherProductionDataRoot
 Initialize-LauncherNativeMethods
 
 $launcherMutex = [System.Threading.Mutex]::new($false, $MutexName)

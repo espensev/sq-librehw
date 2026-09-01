@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param()
+param(
+    [switch] $LauncherConvergenceOnly
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -16,6 +18,9 @@ $legacyRecoveryScript = Join-Path $opsRoot 'Restore-LegacyLibreHardwareMonitorSt
 $preStableRecoveryScript =
     Join-Path $opsRoot 'Restore-PreStableLibreHardwareMonitorStartup.ps1'
 $canonicalLauncher = Join-Path $opsRoot 'Start-LibreHardwareMonitor.ps1'
+$canonicalPublicShim = Join-Path $opsRoot 'librehw.cmd'
+$launcherConvergenceScript =
+    Join-Path $opsRoot 'Sync-LibreHardwareMonitorLauncher.ps1'
 $cleanupScript = Join-Path $repositoryRoot 'eng\Clear-LhmRepositoryBuildOutputs.ps1'
 
 function Assert-True {
@@ -2073,6 +2078,14 @@ if (-not $NonLiveTestMode) {
 $identityGateContractsVerified = Invoke-LhmIdentityContractPreflight
 . $commonScript
 
+if (-not $LauncherConvergenceOnly) {
+    $managedTaskSettings = New-LhmManagedTaskSettings
+    Assert-True ($managedTaskSettings.RestartCount -eq 3) `
+        'Managed task restart count is not bounded to three attempts.'
+    Assert-True ([string]$managedTaskSettings.RestartInterval -ceq 'PT1M') `
+        'Managed task restart interval is not one minute.'
+}
+
 $relocationBehaviorAst = Get-LhmScriptAst -Path $relocationScript
 foreach ($functionName in @(
     'Assert-LhmRelocationHealthUri',
@@ -2280,6 +2293,8 @@ function New-ProductionRelocationTaskFixture {
             MultipleInstances = 'IgnoreNew'
             StartWhenAvailable = $true
             AllowHardTerminate = $false
+            RestartCount = 3
+            RestartInterval = 'PT1M'
         }
         Triggers = @([pscustomobject]@{
             CimClass = [pscustomobject]@{ CimClassName = 'MSFT_TaskLogonTrigger' }
@@ -2287,6 +2302,140 @@ function New-ProductionRelocationTaskFixture {
             Enabled = $true
         })
         State = 'Disabled'
+    }
+}
+
+function New-LauncherConvergenceFixture {
+    param(
+        [Parameter(Mandatory)][string] $Root,
+        [Parameter(Mandatory)][string] $Name,
+        [switch] $BadIdentity,
+        [switch] $SeedDestinations
+    )
+
+    $fixtureRoot = Join-Path $Root "launcher-convergence-$Name"
+    $sourceRoot = Join-Path $fixtureRoot 'source'
+    $runtimeScriptsRoot = Join-Path $fixtureRoot 'Monitoring\LibreHW\Scripts'
+    $runtimeRoot = Join-Path $fixtureRoot 'Monitoring\LibreHW\Runtime'
+    $dataRoot = Join-Path $fixtureRoot 'Data\LibreHardwareMonitor'
+    $binRoot = Join-Path $fixtureRoot 'Bin'
+    $authorityRoot = Join-Path $fixtureRoot 'RunW'
+    foreach ($directory in @(
+        $sourceRoot,
+        $runtimeScriptsRoot,
+        $runtimeRoot,
+        $dataRoot,
+        $binRoot,
+        $authorityRoot
+    )) {
+        [System.IO.Directory]::CreateDirectory($directory) | Out-Null
+    }
+
+    $sourceLauncherPath = Join-Path $sourceRoot 'Start-LibreHardwareMonitor.ps1'
+    $sourceShimPath = Join-Path $sourceRoot 'librehw.cmd'
+    $centralLauncherPath = Join-Path $authorityRoot 'runw.exe'
+    $centralLauncherAuthorityReceiptPath =
+        Join-Path $authorityRoot 'install-receipt-v2.json'
+    $runtimeLauncherPath = Join-Path $runtimeScriptsRoot 'Start-LibreHardwareMonitor.ps1'
+    $legacyVendoredLauncherPath = Join-Path $runtimeScriptsRoot 'hidelaunch.exe'
+    $runtimeExecutablePath =
+        Join-Path $runtimeRoot 'LibreHardwareMonitor.Windows.Forms.exe'
+    $publicShimPath = Join-Path $binRoot 'librehw.cmd'
+    $receiptPath = Join-Path $dataRoot 'launcher-convergence\current.json'
+    $rollbackRoot = Join-Path $dataRoot 'launcher-convergence\rollback'
+    $taskStatePath = Join-Path $fixtureRoot 'task\managed-task.json'
+    [System.IO.Directory]::CreateDirectory((Split-Path -Parent $taskStatePath)) |
+        Out-Null
+
+    '# launcher fixture' | Set-Content -LiteralPath $sourceLauncherPath -Encoding UTF8
+    $shimText = "@echo off`r`n" +
+        "`"$centralLauncherPath`" /wait /quiet /cwd:- " +
+        "`"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`" " +
+        "-NoLogo -NoProfile -ExecutionPolicy Bypass " +
+        "-File `"$runtimeLauncherPath`" %*`r`n" +
+        "exit /b %ERRORLEVEL%`r`n"
+    [System.IO.File]::WriteAllText(
+        $sourceShimPath,
+        $shimText,
+        [System.Text.Encoding]::ASCII)
+    'validated central runw fixture' |
+        Set-Content -LiteralPath $centralLauncherPath -Encoding ASCII
+    'runtime executable fixture' |
+        Set-Content -LiteralPath $runtimeExecutablePath -Encoding ASCII
+    $centralLauncherHash = Get-LhmFileSha256 -Path $centralLauncherPath
+    [ordered]@{
+        Schema = 'runw.deployment.v2'
+        Operation = 'Applied'
+        AppliedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        ReceiptPath = $centralLauncherAuthorityReceiptPath
+        Source = [ordered]@{
+            Root = 'D:\Devtools\runW'
+            Commit = 'b5cda6dc0d98c8a6be28a6b27c347d780280fe4a'
+            Dirty = $false
+            Inputs = @()
+        }
+        Artifact = [ordered]@{
+            Path = 'D:\Devtools\runW\bin\runw.exe'
+            Sha256 = $centralLauncherHash.ToUpperInvariant()
+            Length = (Get-Item -LiteralPath $centralLauncherPath).Length
+            Version = '1.3.1'
+        }
+        Destinations = @([ordered]@{
+            Path = $centralLauncherPath
+            Sha256 = $centralLauncherHash.ToUpperInvariant()
+        })
+        Aliases = @()
+        Retired = @()
+        RollbackDirectory = Join-Path $authorityRoot 'rollback'
+        RollbackFiles = @()
+    } | ConvertTo-Json -Depth 6 | Set-Content `
+        -LiteralPath $centralLauncherAuthorityReceiptPath `
+        -Encoding UTF8
+
+    [ordered]@{
+        taskPath = $script:LhmManagedTaskPath
+        execute = $runtimeExecutablePath
+        arguments = $null
+        workingDirectory = $runtimeRoot
+        principalUserId = $script:LhmManagedTaskPrincipalUserId
+        logonType = 'Interactive'
+        runLevel = 'Highest'
+        multipleInstances = 'IgnoreNew'
+        startWhenAvailable = $true
+        allowHardTerminate = $false
+        restartCount = 3
+        restartInterval = 'PT1M'
+        trigger = 'Logon'
+        triggerUserId = $script:LhmManagedTaskLogonUserId
+        enabled = $true
+    } | ConvertTo-Json | Set-Content -LiteralPath $taskStatePath -Encoding UTF8
+
+    $identityVerifierPath = New-TestIdentityVerifier `
+        -Root $fixtureRoot `
+        -Name 'identity' `
+        -Status $(if ($BadIdentity) { 'UNVERIFIED' } else { 'VERIFIED' }) `
+        -MachineId 'snd-desk'
+
+    if ($SeedDestinations) {
+        'old launcher' | Set-Content -LiteralPath $runtimeLauncherPath -Encoding UTF8
+        '@echo off' | Set-Content -LiteralPath $publicShimPath -Encoding ASCII
+    }
+
+    return [pscustomobject]@{
+        Root = $fixtureRoot
+        SourceLauncherPath = $sourceLauncherPath
+        SourceShimPath = $sourceShimPath
+        CentralLauncherPath = $centralLauncherPath
+        CentralLauncherAuthorityReceiptPath =
+            $centralLauncherAuthorityReceiptPath
+        RuntimeLauncherPath = $runtimeLauncherPath
+        LegacyVendoredLauncherPath = $legacyVendoredLauncherPath
+        RuntimeExecutablePath = $runtimeExecutablePath
+        PublicShimPath = $publicShimPath
+        ReceiptPath = $receiptPath
+        RollbackRoot = $rollbackRoot
+        TaskStatePath = $taskStatePath
+        IdentityVerifierPath = $identityVerifierPath
     }
 }
 
@@ -2352,6 +2501,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$launcherTarget" %*
         multipleInstances = 'IgnoreNew'
         startWhenAvailable = $true
         allowHardTerminate = $false
+        restartCount = 3
+        restartInterval = 'PT1M'
         enabled = $false
     } | ConvertTo-Json | Set-Content `
         -LiteralPath (Join-Path $externalRoot 'managed-task.json') `
@@ -2405,6 +2556,12 @@ function New-RuntimeRootMigrationFixture {
     $launcherTargetPath = Join-Path `
         $fixtureRoot `
         'Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+    $runtimeHideLaunchPath =
+        Join-Path (Split-Path -Parent $launcherTargetPath) 'hidelaunch.exe'
+    $hideLaunchArtifactPath =
+        Join-Path $fixtureRoot 'HideLaunch\source\hidelaunch.exe'
+    $hideLaunchAuthorityReceiptPath =
+        Join-Path $fixtureRoot 'HideLaunch\install-receipt.json'
     $publicShimPath = Join-Path $fixtureRoot 'Bin\librehw.cmd'
     $taskStatePath = Join-Path $fixtureRoot 'task\managed-task.json'
 
@@ -2412,6 +2569,8 @@ function New-RuntimeRootMigrationFixture {
         $legacyInstallRoot,
         $dataRoot,
         (Split-Path -Parent $legacyLauncherPath),
+        (Split-Path -Parent $launcherTargetPath),
+        (Split-Path -Parent $hideLaunchArtifactPath),
         (Split-Path -Parent $publicShimPath),
         (Split-Path -Parent $taskStatePath)
     )) {
@@ -2437,9 +2596,33 @@ function New-RuntimeRootMigrationFixture {
         -LiteralPath $publicShimPath `
         -Encoding Ascii `
         -NoNewline
+    'validated migration hidelaunch fixture' | Set-Content `
+        -LiteralPath $hideLaunchArtifactPath `
+        -Encoding ASCII
+    Copy-Item `
+        -LiteralPath $hideLaunchArtifactPath `
+        -Destination $runtimeHideLaunchPath
+    $hideLaunchHash = Get-LhmFileSha256 -Path $hideLaunchArtifactPath
+    [ordered]@{
+        Schema = 'runw.deployment.v2'
+        Source = [ordered]@{
+            Root = Split-Path -Parent $hideLaunchArtifactPath
+            Commit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        }
+        Artifact = [ordered]@{
+            Path = $hideLaunchArtifactPath
+            Sha256 = $hideLaunchHash.ToUpperInvariant()
+            Length = (Get-Item -LiteralPath $hideLaunchArtifactPath).Length
+            Version = '1.1.0'
+        }
+    } | ConvertTo-Json -Depth 5 | Set-Content `
+        -LiteralPath $hideLaunchAuthorityReceiptPath `
+        -Encoding UTF8
     [ordered]@{
         execute = Join-Path $legacyInstallRoot $script:LhmExecutableName
         workingDirectory = $legacyInstallRoot
+        restartCount = 3
+        restartInterval = 'PT1M'
         enabled = $true
     } | ConvertTo-Json | Set-Content `
         -LiteralPath $taskStatePath `
@@ -2452,6 +2635,9 @@ function New-RuntimeRootMigrationFixture {
         DataRoot = $dataRoot
         LegacyLauncherPath = $legacyLauncherPath
         LauncherTargetPath = $launcherTargetPath
+        RuntimeHideLaunchPath = $runtimeHideLaunchPath
+        HideLaunchArtifactPath = $hideLaunchArtifactPath
+        HideLaunchAuthorityReceiptPath = $hideLaunchAuthorityReceiptPath
         PublicShimPath = $publicShimPath
         TaskStatePath = $taskStatePath
         RecoveryRoot = Join-Path `
@@ -2579,17 +2765,937 @@ try {
     $env:DOTNET_NOLOGO = '1'
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
     $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = 'false'
-    $candidate1 = New-TestCandidate `
-        -Root $testRoot -Name 'one' -Version '1.0.1' -ShortCommit 'abcde01'
-    $candidate2 = New-TestCandidate `
-        -Root $testRoot -Name 'two' -Version '1.0.2' -ShortCommit 'abcde02'
+    if (-not $LauncherConvergenceOnly) {
+        $candidate1 = New-TestCandidate `
+            -Root $testRoot -Name 'one' -Version '1.0.1' -ShortCommit 'abcde01'
+        $candidate2 = New-TestCandidate `
+            -Root $testRoot -Name 'two' -Version '1.0.2' -ShortCommit 'abcde02'
+    }
+
+    Assert-True (Test-Path -LiteralPath $canonicalPublicShim -PathType Leaf) `
+        'Canonical librehw.cmd source is missing.'
+    Assert-True (Test-Path -LiteralPath $launcherConvergenceScript -PathType Leaf) `
+        'Launcher convergence script is missing.'
+    $canonicalShimText = [System.IO.File]::ReadAllText($canonicalPublicShim)
+    Assert-True ($canonicalShimText -notmatch '(?im)^\s*start(?:\s|$)') `
+        'Canonical librehw.cmd must not dispatch asynchronously with start.'
+    Assert-True (
+        $canonicalShimText -match [regex]::Escape(
+            '%SEV_LOCAL_BIN%\runw\runw.exe') -and
+        $canonicalShimText -notmatch '(?i)E:\\SevLocal\\' -and
+        $canonicalShimText -notmatch '(?i)E:\\Bin\\' -and
+        $canonicalShimText -match '(?i)/wait\s+/quiet\s+/cwd:-' -and
+        $canonicalShimText -match [regex]::Escape(
+            '"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"') -and
+        $canonicalShimText -notmatch '(?i)/cwd:-\s+powershell\.exe\b' -and
+        $canonicalShimText -match [regex]::Escape(
+            '-File "E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1"') -and
+        $canonicalShimText -match [regex]::Escape('%*') -and
+        $canonicalShimText -match [regex]::Escape('exit /b %ERRORLEVEL%') -and
+        $canonicalShimText -notmatch '(?i)librehw\.cmd' -and
+        $canonicalShimText -notmatch [regex]::Escape(
+            'E:\Monitoring\LibreHW\Scripts\hidelaunch.exe') -and
+        $canonicalShimText -notmatch '(?i)(?:^|\s)/focus(?:\s|$)'
+    ) 'Canonical librehw.cmd is not a central, wait-capable, non-recursive app launcher.'
+    $normalizedCanonicalShimText =
+        ($canonicalShimText -replace "`r?`n", "`r`n")
+    $normalizedCanonicalShimPath = Join-Path $testRoot 'normalized-librehw.cmd'
+    [System.IO.File]::WriteAllText(
+        $normalizedCanonicalShimPath,
+        $normalizedCanonicalShimText,
+        [System.Text.Encoding]::ASCII)
+    Assert-True (
+        (Get-LhmFileSha256 -Path $normalizedCanonicalShimPath) -ceq
+            $script:LhmPublicShimSha256
+    ) 'Canonical public-shim deployment bytes do not match the shared release pin.'
+
+    $runtimeMigrationAst = Get-LhmScriptAst -Path $runtimeMigrationScript
+    $runtimeShimFunctions = @($runtimeMigrationAst.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -ceq 'Get-LhmRuntimeMigrationShimText'
+    }, $true))
+    Assert-True ($runtimeShimFunctions.Count -eq 1) `
+        'Runtime migration must define its public-shim generator exactly once.'
+    . ([scriptblock]::Create($runtimeShimFunctions[0].Extent.Text))
+    $runtimeMigrationShimText = Get-LhmRuntimeMigrationShimText `
+        -LauncherPath 'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+    Assert-True (
+        $runtimeMigrationShimText -match '(?i)hidelaunch\.exe' -and
+        $runtimeMigrationShimText -notmatch [regex]::Escape(
+            '%SEV_LOCAL_BIN%\runw\runw.exe') -and
+        $runtimeMigrationShimText -notmatch '(?i)E:\\SevLocal\\'
+    ) 'Historical runtime migration no longer exposes its app-vendored migration contract.'
+
+    $launcherConvergenceText =
+        [System.IO.File]::ReadAllText($launcherConvergenceScript)
+    $commonTextForReceipt = [System.IO.File]::ReadAllText($commonScript)
+    Assert-True (
+        $commonTextForReceipt -match
+            [regex]::Escape('RunW\install-receipt-v2-1.3.1-b5cda6d.json') -and
+        $launcherConvergenceText -match
+            [regex]::Escape('Get-LhmProductionRunWReceiptPath') -and
+        $launcherConvergenceText -notmatch '(?i)E:\\SevLocal\\' -and
+        $commonTextForReceipt -notmatch
+            [regex]::Escape('E:\Data\RunW\install-receipt-v2-1.3.1-b5cda6d.json') -and
+        $launcherConvergenceText -notmatch
+            [regex]::Escape('E:\Data\RunW\install-receipt-v2-1.3.1-b5cda6d.json') -and
+        $launcherConvergenceText -notmatch
+            [regex]::Escape('E:\Data\RunW\install-receipt-v2.json')
+    ) 'Launcher convergence production receipt pins are not the current immutable RunW receipt.'
+    foreach ($productionRunWProvenancePin in @(
+        'D:\Devtools\runW',
+        'D:\Devtools\runW\bin\runw.exe',
+        'b5cda6dc0d98c8a6be28a6b27c347d780280fe4a',
+        '987ECB227C630AB810EEDD7D5DC8622A5720ECE77261888C822BC20AE5FEF9C5',
+        '316928',
+        '1.3.1'
+    )) {
+        Assert-True (
+            $launcherConvergenceText.Contains($productionRunWProvenancePin)
+        ) "Launcher convergence is missing RunW provenance pin '$productionRunWProvenancePin'."
+    }
+    foreach ($forbiddenTaskCommand in @(
+        'Register-ScheduledTask',
+        'Set-ScheduledTask',
+        'Unregister-ScheduledTask',
+        'Start-ScheduledTask'
+    )) {
+        Assert-True (
+            $launcherConvergenceText -notmatch
+                ('(?i)\b' + [regex]::Escape($forbiddenTaskCommand) + '\b')
+        ) "Launcher convergence must not call $forbiddenTaskCommand."
+    }
+    $null = Get-LhmScriptAst -Path $launcherConvergenceScript
+
+    $shimSemanticsRoot = Join-Path $testRoot 'launcher-shim-semantics'
+    [System.IO.Directory]::CreateDirectory($shimSemanticsRoot) | Out-Null
+    $semanticRunW = Join-Path $shimSemanticsRoot 'runw.cmd'
+    $semanticLauncher = Join-Path $shimSemanticsRoot 'Start-LibreHardwareMonitor.ps1'
+    $semanticShim = Join-Path $shimSemanticsRoot 'librehw.cmd'
+    $semanticArguments = Join-Path $shimSemanticsRoot 'arguments.txt'
+    '# launcher semantic fixture' |
+        Set-Content -LiteralPath $semanticLauncher -Encoding UTF8
+    $semanticRunWText = "@echo off`r`n" +
+        "> `"$semanticArguments`" echo %*`r`n" +
+        "exit /b 23`r`n"
+    [System.IO.File]::WriteAllText(
+        $semanticRunW,
+        $semanticRunWText,
+        [System.Text.Encoding]::ASCII)
+    $semanticShimText = $canonicalShimText.Replace(
+        '%SEV_LOCAL_BIN%\runw\runw.exe',
+        $semanticRunW).Replace(
+        'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1',
+        $semanticLauncher)
+    [System.IO.File]::WriteAllText(
+        $semanticShim,
+        $semanticShimText,
+        [System.Text.Encoding]::ASCII)
+    & $semanticShim 'first-argument' 'second argument'
+    $semanticExitCode = $LASTEXITCODE
+    $semanticArgumentText =
+        [System.IO.File]::ReadAllText($semanticArguments).Trim()
+    Assert-True ($semanticExitCode -eq 23) `
+        'Canonical librehw.cmd did not propagate the hidden helper exit status.'
+    Assert-True (
+        $semanticArgumentText -match '(?i)^/wait\s+/quiet\s+/cwd:-\s+' -and
+        $semanticArgumentText -match [regex]::Escape('first-argument') -and
+        $semanticArgumentText -match [regex]::Escape('second argument')
+    ) 'Canonical librehw.cmd did not forward launcher arguments through central RunW.'
+
+    $launcherConvergence = New-LauncherConvergenceFixture `
+        -Root $testRoot `
+        -Name 'success'
+    $launcherConvergenceParameters = @{
+        CanonicalLauncherPath = $launcherConvergence.SourceLauncherPath
+        CanonicalShimPath = $launcherConvergence.SourceShimPath
+        RuntimeLauncherPath = $launcherConvergence.RuntimeLauncherPath
+        RuntimeExecutablePath = $launcherConvergence.RuntimeExecutablePath
+        PublicShimPath = $launcherConvergence.PublicShimPath
+        CentralLauncherPath = $launcherConvergence.CentralLauncherPath
+        CentralLauncherAuthorityReceiptPath =
+            $launcherConvergence.CentralLauncherAuthorityReceiptPath
+        ReceiptPath = $launcherConvergence.ReceiptPath
+        RollbackRoot = $launcherConvergence.RollbackRoot
+        TestManagedTaskStatePath = $launcherConvergence.TaskStatePath
+        TestIdentityVerifierPath = $launcherConvergence.IdentityVerifierPath
+        RollbackRetentionCount = 2
+        NonLiveTestMode = $true
+    }
+    $launcherTaskHash = Get-LhmFileSha256 -Path $launcherConvergence.TaskStatePath
+    $launcherPlan = & $launcherConvergenceScript `
+        -Mode Plan `
+        @launcherConvergenceParameters
+    Assert-True (
+        $launcherPlan.Result -ceq 'DRIFT' -and
+        [bool]$launcherPlan.DriftDetected -and
+        [string]$launcherPlan.ProposedReceiptSchema -ceq
+            'sq.librehw.launcher-convergence.v2' -and
+        -not [bool]$launcherPlan.MutationPerformed -and
+        @($launcherPlan.Issues).Count -gt 0
+    ) 'Launcher convergence Plan did not report the missing fixture deployment.'
+    $launcherValidateDrift = & $launcherConvergenceScript `
+        -Mode Validate `
+        @launcherConvergenceParameters
+    Assert-True (
+        $launcherValidateDrift.Result -ceq 'DRIFT' -and
+        [bool]$launcherValidateDrift.DriftDetected -and
+        -not [bool]$launcherValidateDrift.MutationPerformed
+    ) 'Launcher convergence Validate did not report drift without mutation.'
+
+    $centralLauncherHash =
+        Get-LhmFileSha256 -Path $launcherConvergence.CentralLauncherPath
+    $launcherApply = & $launcherConvergenceScript `
+        -Mode Apply `
+        @launcherConvergenceParameters `
+        -Confirm:$false
+    Assert-True (
+        $launcherApply.Result -ceq 'PASS' -and
+        -not [bool]$launcherApply.DriftDetected -and
+        [bool]$launcherApply.MutationPerformed -and
+        (Get-LhmFileSha256 -Path $launcherConvergence.RuntimeLauncherPath) -ceq
+            (Get-LhmFileSha256 -Path $launcherConvergence.SourceLauncherPath) -and
+        (Get-LhmFileSha256 -Path $launcherConvergence.CentralLauncherPath) -ceq
+            $centralLauncherHash -and
+        -not (Test-Path `
+            -LiteralPath $launcherConvergence.LegacyVendoredLauncherPath `
+            -PathType Leaf) -and
+        (Get-LhmFileSha256 -Path $launcherConvergence.PublicShimPath) -ceq
+            (Get-LhmFileSha256 -Path $launcherConvergence.SourceShimPath) -and
+        (Get-LhmFileSha256 -Path $launcherConvergence.TaskStatePath) -ceq
+            $launcherTaskHash -and
+        (Test-Path -LiteralPath $launcherConvergence.ReceiptPath -PathType Leaf)
+    ) 'Launcher convergence Apply did not deploy the exact fixture artifacts.'
+    $launcherReceipt = Get-Content `
+        -LiteralPath $launcherConvergence.ReceiptPath `
+        -Raw | ConvertFrom-Json
+    Assert-True (
+        [string]$launcherReceipt.schema -ceq
+            'sq.librehw.launcher-convergence.v2' -and
+        @($launcherReceipt.targets).Count -eq 2 -and
+        [string]$launcherReceipt.centralLauncher.path -ceq
+            $launcherConvergence.CentralLauncherPath -and
+        [string]$launcherReceipt.centralLauncher.sha256 -ceq
+            $centralLauncherHash -and
+        [string]$launcherReceipt.centralLauncher.authorityReceiptPath -ceq
+            $launcherConvergence.CentralLauncherAuthorityReceiptPath -and
+        @($launcherReceipt.targets | Where-Object {
+            [string]$_.path -ceq $launcherConvergence.CentralLauncherPath
+        }).Count -eq 0
+    ) 'Launcher convergence receipt is missing its typed central-launcher v2 record.'
+    $launcherRollbackManifest = Get-Content `
+        -LiteralPath ([string]$launcherReceipt.rollbackManifestPath) `
+        -Raw | ConvertFrom-Json
+    Assert-True (
+        @($launcherRollbackManifest.files).Count -eq 2 -and
+        @($launcherRollbackManifest.files | Where-Object {
+            [string]$_.originalPath -ceq $launcherConvergence.CentralLauncherPath
+        }).Count -eq 0
+    ) 'Launcher convergence incorrectly owns central RunW rollback.'
+    $launcherValidate = & $launcherConvergenceScript `
+        -Mode Validate `
+        @launcherConvergenceParameters
+    Assert-True (
+        $launcherValidate.Result -ceq 'PASS' -and
+        -not [bool]$launcherValidate.DriftDetected -and
+        -not [bool]$launcherValidate.MutationPerformed
+    ) 'Launcher convergence Validate did not accept the converged fixture.'
+
+    $legacyReceipt = [ordered]@{
+        schema = 'sq.librehw.launcher-convergence.v1'
+        appliedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        source = $launcherReceipt.source
+        hideLaunch = [ordered]@{
+            artifactPath = Join-Path `
+                $launcherConvergence.Root `
+                'legacy-build-output\runw.exe'
+            artifactSha256 = $centralLauncherHash
+            authorityReceiptPath =
+                $launcherConvergence.CentralLauncherAuthorityReceiptPath
+            authorityReceiptSha256 = Get-LhmFileSha256 `
+                -Path $launcherConvergence.CentralLauncherAuthorityReceiptPath
+            runtimePath = $launcherConvergence.LegacyVendoredLauncherPath
+        }
+        managedTask = $launcherReceipt.managedTask
+        targets = @(
+            $launcherReceipt.targets
+            [ordered]@{
+                role = 'hidelaunch'
+                path = $launcherConvergence.LegacyVendoredLauncherPath
+                sha256 = $centralLauncherHash
+            }
+        )
+        rollbackDirectory = $launcherReceipt.rollbackDirectory
+        rollbackManifestPath = $launcherReceipt.rollbackManifestPath
+        rollbackManifestSha256 = $launcherReceipt.rollbackManifestSha256
+    }
+    $legacyReceipt | ConvertTo-Json -Depth 8 | Set-Content `
+        -LiteralPath $launcherConvergence.ReceiptPath `
+        -Encoding UTF8
+    $legacyReceiptPlan = & $launcherConvergenceScript `
+        -Mode Plan `
+        @launcherConvergenceParameters
+    Assert-True (
+        $legacyReceiptPlan.Result -ceq 'DRIFT' -and
+        -not [bool]$legacyReceiptPlan.ReceiptCurrent -and
+        [bool]$legacyReceiptPlan.ReceiptMigrationRequired -and
+        [string]$legacyReceiptPlan.ProposedReceiptSchema -ceq
+            'sq.librehw.launcher-convergence.v2' -and
+        @($legacyReceiptPlan.BlockingIssues).Count -eq 0 -and
+        @($legacyReceiptPlan.Issues) -match 'migrat' -and
+        (Get-LhmFileSha256 -Path $launcherConvergence.CentralLauncherPath) -ceq
+            $centralLauncherHash -and
+        -not (Test-Path `
+            -LiteralPath $launcherConvergence.LegacyVendoredLauncherPath `
+            -PathType Leaf)
+    ) 'Launcher convergence did not expose v1 as migration-only drift toward v2.'
+    $legacyReceiptValidate = & $launcherConvergenceScript `
+        -Mode Validate `
+        @launcherConvergenceParameters
+    Assert-True (
+        $legacyReceiptValidate.Result -ceq 'DRIFT' -and
+        -not [bool]$legacyReceiptValidate.ReceiptCurrent -and
+        [bool]$legacyReceiptValidate.ReceiptMigrationRequired -and
+        -not [bool]$legacyReceiptValidate.MutationPerformed
+    ) 'Launcher convergence Validate treated the v1 migration input as current.'
+    $legacyReceiptMigration = & $launcherConvergenceScript `
+        -Mode Apply `
+        @launcherConvergenceParameters `
+        -Confirm:$false
+    Assert-True (
+        $legacyReceiptMigration.Result -ceq 'PASS' -and
+        [bool]$legacyReceiptMigration.ReceiptCurrent -and
+        -not [bool]$legacyReceiptMigration.ReceiptMigrationRequired -and
+        [string](Get-Content `
+            -LiteralPath $launcherConvergence.ReceiptPath `
+            -Raw | ConvertFrom-Json).schema -ceq
+                'sq.librehw.launcher-convergence.v2'
+    ) 'Launcher convergence did not migrate the v1 app-vendored receipt to v2.'
+
+    $legacyAuthorityReceiptBytes = [System.IO.File]::ReadAllBytes(
+        $launcherConvergence.CentralLauncherAuthorityReceiptPath)
+    $legacyAuthorityReceiptText = [System.IO.File]::ReadAllText(
+        $launcherConvergence.CentralLauncherAuthorityReceiptPath)
+    try {
+        $currentAuthorityReceipt = $legacyAuthorityReceiptText | ConvertFrom-Json
+        $currentAuthorityReceipt.Destinations[0] | Add-Member `
+            -NotePropertyName Existed `
+            -NotePropertyValue $true
+        $currentAuthorityReceipt.Destinations[0] | Add-Member `
+            -NotePropertyName BeforeHash `
+            -NotePropertyValue ('B' * 64)
+        $currentAuthorityReceiptText =
+            $currentAuthorityReceipt | ConvertTo-Json -Depth 8
+        $currentAuthorityReceiptText | Set-Content `
+            -LiteralPath $launcherConvergence.CentralLauncherAuthorityReceiptPath `
+            -Encoding UTF8
+        $currentAuthorityPlan = & $launcherConvergenceScript `
+            -Mode Plan `
+            @launcherConvergenceParameters
+        Assert-True (
+            [bool]$currentAuthorityPlan.CentralLauncherCurrent -and
+            @($currentAuthorityPlan.BlockingIssues).Count -eq 0
+        ) 'Launcher convergence rejected the current RunW v2 destination row.'
+
+        $currentAuthorityTamperCases = @(
+            [pscustomobject]@{ Name = 'extra property'; Mutate = {
+                param($receipt)
+                $receipt.Destinations[0] | Add-Member `
+                    -NotePropertyName Unexpected `
+                    -NotePropertyValue 'tamper'
+            } },
+            [pscustomobject]@{ Name = 'non-Boolean Existed'; Mutate = {
+                param($receipt)
+                $receipt.Destinations[0].Existed = 'true'
+            } },
+            [pscustomobject]@{ Name = 'invalid BeforeHash'; Mutate = {
+                param($receipt)
+                $receipt.Destinations[0].BeforeHash = 'tamper'
+            } }
+        )
+        foreach ($tamperCase in $currentAuthorityTamperCases) {
+            $tamperedCurrentAuthorityReceipt =
+                $currentAuthorityReceiptText | ConvertFrom-Json
+            & ([scriptblock]$tamperCase.Mutate) $tamperedCurrentAuthorityReceipt
+            $tamperedCurrentAuthorityReceipt | ConvertTo-Json -Depth 8 |
+                Set-Content `
+                    -LiteralPath `
+                        $launcherConvergence.CentralLauncherAuthorityReceiptPath `
+                    -Encoding UTF8
+            $tamperedCurrentAuthorityPlan = & $launcherConvergenceScript `
+                -Mode Plan `
+                @launcherConvergenceParameters
+            Assert-True (
+                $tamperedCurrentAuthorityPlan.Result -ceq 'DRIFT' -and
+                @($tamperedCurrentAuthorityPlan.BlockingIssues).Count -gt 0
+            ) "Launcher convergence trusted current RunW receipt tamper: $($tamperCase.Name)."
+        }
+    }
+    finally {
+        [System.IO.File]::WriteAllBytes(
+            $launcherConvergence.CentralLauncherAuthorityReceiptPath,
+            $legacyAuthorityReceiptBytes)
+    }
+
+    $authorityReceiptTamperCases = @(
+        [pscustomobject]@{ Name = 'source root'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.Source.Root = Join-Path $fixture.Root 'foreign-source'
+        } },
+        [pscustomobject]@{ Name = 'source commit'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.Source.Commit = ('0' * 40)
+        } },
+        [pscustomobject]@{ Name = 'dirty source'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.Source.Dirty = $true
+        } },
+        [pscustomobject]@{ Name = 'non-Boolean source dirt'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.Source.Dirty = 'false'
+        } },
+        [pscustomobject]@{ Name = 'artifact path'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.Artifact.Path = Join-Path $fixture.Root 'foreign-runw.exe'
+        } },
+        [pscustomobject]@{ Name = 'artifact version'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.Artifact.Version = '1.3.0'
+        } },
+        [pscustomobject]@{ Name = 'self path'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.ReceiptPath = Join-Path $fixture.Root 'foreign-receipt.json'
+        } },
+        [pscustomobject]@{ Name = 'destination path'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.Destinations[0].Path = Join-Path $fixture.Root 'foreign-runw.exe'
+        } },
+        [pscustomobject]@{ Name = 'destination hash'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.Destinations[0].Sha256 = ('0' * 64)
+        } },
+        [pscustomobject]@{ Name = 'exact destination set'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.Destinations = @($receipt.Destinations) + [pscustomobject]@{
+                Path = Join-Path $fixture.Root 'extra-runw.exe'
+                Sha256 = [string]$receipt.Destinations[0].Sha256
+            }
+        } },
+        [pscustomobject]@{ Name = 'artifact hash'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.Artifact.Sha256 = ('0' * 64)
+        } },
+        [pscustomobject]@{ Name = 'artifact length'; Mutate = {
+            param($receipt, $fixture)
+            $receipt.Artifact.Length = [Int64]$receipt.Artifact.Length + 1
+        } }
+    )
+    $authorityCaseIndex = 0
+    foreach ($tamperCase in $authorityReceiptTamperCases) {
+        $authorityCaseIndex++
+        $authorityFixture = New-LauncherConvergenceFixture `
+            -Root $testRoot `
+            -Name "authority-$authorityCaseIndex"
+        $authorityReceipt = Get-Content `
+            -LiteralPath $authorityFixture.CentralLauncherAuthorityReceiptPath `
+            -Raw | ConvertFrom-Json
+        & ([scriptblock]$tamperCase.Mutate) $authorityReceipt $authorityFixture
+        $authorityReceipt | ConvertTo-Json -Depth 8 | Set-Content `
+            -LiteralPath $authorityFixture.CentralLauncherAuthorityReceiptPath `
+            -Encoding UTF8
+        $authorityTamperPlan = & $launcherConvergenceScript `
+            -Mode Plan `
+            -CanonicalLauncherPath $authorityFixture.SourceLauncherPath `
+            -CanonicalShimPath $authorityFixture.SourceShimPath `
+            -RuntimeLauncherPath $authorityFixture.RuntimeLauncherPath `
+            -RuntimeExecutablePath $authorityFixture.RuntimeExecutablePath `
+            -PublicShimPath $authorityFixture.PublicShimPath `
+            -CentralLauncherPath $authorityFixture.CentralLauncherPath `
+            -CentralLauncherAuthorityReceiptPath `
+                $authorityFixture.CentralLauncherAuthorityReceiptPath `
+            -ReceiptPath $authorityFixture.ReceiptPath `
+            -RollbackRoot $authorityFixture.RollbackRoot `
+            -TestManagedTaskStatePath $authorityFixture.TaskStatePath `
+            -TestIdentityVerifierPath $authorityFixture.IdentityVerifierPath `
+            -NonLiveTestMode
+        Assert-True (
+            $authorityTamperPlan.Result -ceq 'DRIFT' -and
+            @($authorityTamperPlan.BlockingIssues).Count -gt 0
+        ) "Central RunW authority tamper was trusted: $($tamperCase.Name)."
+    }
+
+    $installedBytesFixture = New-LauncherConvergenceFixture `
+        -Root $testRoot `
+        -Name 'authority-installed-bytes'
+    Add-Content `
+        -LiteralPath $installedBytesFixture.CentralLauncherPath `
+        -Value 'tamper'
+    $installedBytesPlan = & $launcherConvergenceScript `
+        -Mode Plan `
+        -CanonicalLauncherPath $installedBytesFixture.SourceLauncherPath `
+        -CanonicalShimPath $installedBytesFixture.SourceShimPath `
+        -RuntimeLauncherPath $installedBytesFixture.RuntimeLauncherPath `
+        -RuntimeExecutablePath $installedBytesFixture.RuntimeExecutablePath `
+        -PublicShimPath $installedBytesFixture.PublicShimPath `
+        -CentralLauncherPath $installedBytesFixture.CentralLauncherPath `
+        -CentralLauncherAuthorityReceiptPath `
+            $installedBytesFixture.CentralLauncherAuthorityReceiptPath `
+        -ReceiptPath $installedBytesFixture.ReceiptPath `
+        -RollbackRoot $installedBytesFixture.RollbackRoot `
+        -TestManagedTaskStatePath $installedBytesFixture.TaskStatePath `
+        -TestIdentityVerifierPath $installedBytesFixture.IdentityVerifierPath `
+        -NonLiveTestMode
+    Assert-True (
+        $installedBytesPlan.Result -ceq 'DRIFT' -and
+        @($installedBytesPlan.BlockingIssues).Count -gt 0
+    ) 'Central RunW authority validation trusted modified installed bytes.'
+
+    'tampered shim' |
+        Set-Content -LiteralPath $launcherConvergence.PublicShimPath -Encoding ASCII
+    $launcherRepairPlan = & $launcherConvergenceScript `
+        -Mode Plan `
+        @launcherConvergenceParameters
+    Assert-True (
+        $launcherRepairPlan.Result -ceq 'DRIFT' -and
+        @($launcherRepairPlan.Issues) -match 'public shim'
+    ) 'Launcher convergence Plan did not report public-shim drift.'
+    $launcherRepair = & $launcherConvergenceScript `
+        -Mode Apply `
+        @launcherConvergenceParameters `
+        -Confirm:$false
+    Assert-True (
+        $launcherRepair.Result -ceq 'PASS' -and
+        (Get-LhmFileSha256 -Path $launcherConvergence.PublicShimPath) -ceq
+            (Get-LhmFileSha256 -Path $launcherConvergence.SourceShimPath) -and
+        @(Get-ChildItem -LiteralPath $launcherConvergence.RollbackRoot -Directory).Count -ge 1
+    ) 'Launcher convergence did not repair drift with retained rollback evidence.'
+
+    $baselineReceiptText =
+        [System.IO.File]::ReadAllText($launcherConvergence.ReceiptPath)
+    $receiptTamperCases = @(
+        [pscustomobject]@{ Name = 'source launcher path'; Mutate = {
+            param($receipt) $receipt.source.launcherPath = 'C:\foreign\launcher.ps1'
+        } },
+        [pscustomobject]@{ Name = 'source launcher hash'; Mutate = {
+            param($receipt) $receipt.source.launcherSha256 = ('0' * 64)
+        } },
+        [pscustomobject]@{ Name = 'source shim path'; Mutate = {
+            param($receipt) $receipt.source.shimPath = 'C:\foreign\librehw.cmd'
+        } },
+        [pscustomobject]@{ Name = 'source shim hash'; Mutate = {
+            param($receipt) $receipt.source.shimSha256 = ('0' * 64)
+        } },
+        [pscustomobject]@{ Name = 'central launcher path'; Mutate = {
+            param($receipt) $receipt.centralLauncher.path = 'C:\foreign\runw.exe'
+        } },
+        [pscustomobject]@{ Name = 'central launcher hash'; Mutate = {
+            param($receipt) $receipt.centralLauncher.sha256 = ('0' * 64)
+        } },
+        [pscustomobject]@{ Name = 'central launcher authority path'; Mutate = {
+            param($receipt) $receipt.centralLauncher.authorityReceiptPath = 'C:\foreign\receipt.json'
+        } },
+        [pscustomobject]@{ Name = 'central launcher authority hash'; Mutate = {
+            param($receipt) $receipt.centralLauncher.authorityReceiptSha256 = ('0' * 64)
+        } },
+        [pscustomobject]@{ Name = 'managed task path'; Mutate = {
+            param($receipt) $receipt.managedTask.path = '\Foreign\Task'
+        } },
+        [pscustomobject]@{ Name = 'managed task executable'; Mutate = {
+            param($receipt) $receipt.managedTask.executablePath = 'C:\foreign\lhm.exe'
+        } },
+        [pscustomobject]@{ Name = 'managed task mutation flag'; Mutate = {
+            param($receipt) $receipt.managedTask.validationOnly = $false
+        } },
+        [pscustomobject]@{ Name = 'managed task mutation flag string false'; Mutate = {
+            param($receipt) $receipt.managedTask.validationOnly = 'false'
+        } },
+        [pscustomobject]@{ Name = 'managed task mutation flag numeric zero'; Mutate = {
+            param($receipt) $receipt.managedTask.validationOnly = 0
+        } },
+        [pscustomobject]@{ Name = 'managed task mutation flag numeric one'; Mutate = {
+            param($receipt) $receipt.managedTask.validationOnly = 1
+        } },
+        [pscustomobject]@{ Name = 'managed task mutation flag null'; Mutate = {
+            param($receipt) $receipt.managedTask.validationOnly = $null
+        } },
+        [pscustomobject]@{ Name = 'rollback directory'; Mutate = {
+            param($receipt) $receipt.rollbackDirectory = 'C:\foreign\rollback'
+        } },
+        [pscustomobject]@{ Name = 'rollback manifest path'; Mutate = {
+            param($receipt) $receipt.rollbackManifestPath = 'C:\foreign\rollback.json'
+        } },
+        [pscustomobject]@{ Name = 'rollback manifest hash'; Mutate = {
+            param($receipt) $receipt.rollbackManifestSha256 = ('0' * 64)
+        } },
+        [pscustomobject]@{ Name = 'exact target set'; Mutate = {
+            param($receipt)
+            $receipt.targets = @($receipt.targets) + [pscustomobject]@{
+                role = 'foreign'
+                path = 'C:\foreign\target'
+                sha256 = ('0' * 64)
+            }
+        } }
+    )
+    foreach ($tamperCase in $receiptTamperCases) {
+        $tamperedReceipt = $baselineReceiptText | ConvertFrom-Json
+        $mutation = [scriptblock]$tamperCase.Mutate
+        & $mutation $tamperedReceipt
+        $tamperedReceipt | ConvertTo-Json -Depth 8 | Set-Content `
+            -LiteralPath $launcherConvergence.ReceiptPath `
+            -Encoding UTF8
+        $tamperValidation = & $launcherConvergenceScript `
+            -Mode Validate `
+            @launcherConvergenceParameters
+        Assert-True (
+            $tamperValidation.Result -ceq 'DRIFT' -and
+            -not [bool]$tamperValidation.ReceiptCurrent
+        ) "Receipt tamper was trusted: $($tamperCase.Name)."
+    }
+    [System.IO.File]::WriteAllText(
+        $launcherConvergence.ReceiptPath,
+        $baselineReceiptText,
+        [System.Text.UTF8Encoding]::new($false))
+
+    $baselineReceipt = $baselineReceiptText | ConvertFrom-Json
+    $rollbackManifestPath = [string]$baselineReceipt.rollbackManifestPath
+    $baselineRollbackManifestBytes =
+        [System.IO.File]::ReadAllBytes($rollbackManifestPath)
+    Add-Content -LiteralPath $rollbackManifestPath -Value 'tamper'
+    $manifestTamperValidation = & $launcherConvergenceScript `
+        -Mode Validate `
+        @launcherConvergenceParameters
+    Assert-True (-not [bool]$manifestTamperValidation.ReceiptCurrent) `
+        'Receipt validation trusted a tampered rollback manifest.'
+    [System.IO.File]::WriteAllBytes(
+        $rollbackManifestPath,
+        $baselineRollbackManifestBytes)
+
+    $rollbackManifest = Get-Content `
+        -LiteralPath $rollbackManifestPath `
+        -Raw | ConvertFrom-Json
+    $priorReceiptPath = [string]$rollbackManifest.receiptBackup
+    $priorReceiptText = [System.IO.File]::ReadAllText($priorReceiptPath)
+    $priorReceipt = $priorReceiptText | ConvertFrom-Json
+    $priorRollbackManifestPath = [string]$priorReceipt.rollbackManifestPath
+    [System.IO.File]::WriteAllText(
+        $launcherConvergence.ReceiptPath,
+        $priorReceiptText,
+        [System.Text.UTF8Encoding]::new($false))
+    $priorReceiptValidation = & $launcherConvergenceScript `
+        -Mode Validate `
+        @launcherConvergenceParameters
+    Assert-True (
+        $priorReceiptValidation.Result -ceq 'PASS' -and
+        [bool]$priorReceiptValidation.ReceiptCurrent
+    ) 'Launcher convergence fixture did not retain a valid false-ownership receipt.'
+    [System.IO.File]::WriteAllText(
+        $launcherConvergence.ReceiptPath,
+        $baselineReceiptText,
+        [System.Text.UTF8Encoding]::new($false))
+
+    $rollbackBooleanTamperCases = @(
+        [pscustomobject]@{
+            Name = 'rollback receipt ownership string false'
+            ReceiptText = $baselineReceiptText
+            ManifestPath = $rollbackManifestPath
+            Field = 'receiptExisted'
+            Value = 'false'
+        },
+        [pscustomobject]@{
+            Name = 'rollback receipt ownership numeric one'
+            ReceiptText = $baselineReceiptText
+            ManifestPath = $rollbackManifestPath
+            Field = 'receiptExisted'
+            Value = 1
+        },
+        [pscustomobject]@{
+            Name = 'rollback receipt ownership numeric zero'
+            ReceiptText = $priorReceiptText
+            ManifestPath = $priorRollbackManifestPath
+            Field = 'receiptExisted'
+            Value = 0
+        },
+        [pscustomobject]@{
+            Name = 'rollback receipt ownership null'
+            ReceiptText = $priorReceiptText
+            ManifestPath = $priorRollbackManifestPath
+            Field = 'receiptExisted'
+            Value = $null
+        },
+        [pscustomobject]@{
+            Name = 'rollback file ownership string false'
+            ReceiptText = $baselineReceiptText
+            ManifestPath = $rollbackManifestPath
+            Field = 'fileExisted'
+            Value = 'false'
+        },
+        [pscustomobject]@{
+            Name = 'rollback file ownership numeric one'
+            ReceiptText = $baselineReceiptText
+            ManifestPath = $rollbackManifestPath
+            Field = 'fileExisted'
+            Value = 1
+        },
+        [pscustomobject]@{
+            Name = 'rollback file ownership numeric zero'
+            ReceiptText = $priorReceiptText
+            ManifestPath = $priorRollbackManifestPath
+            Field = 'fileExisted'
+            Value = 0
+        },
+        [pscustomobject]@{
+            Name = 'rollback file ownership null'
+            ReceiptText = $priorReceiptText
+            ManifestPath = $priorRollbackManifestPath
+            Field = 'fileExisted'
+            Value = $null
+        }
+    )
+    foreach ($tamperCase in $rollbackBooleanTamperCases) {
+        $tamperedManifestPath = [string]$tamperCase.ManifestPath
+        $originalManifestBytes =
+            [System.IO.File]::ReadAllBytes($tamperedManifestPath)
+        try {
+            $tamperedManifest =
+                [System.IO.File]::ReadAllText($tamperedManifestPath) |
+                ConvertFrom-Json
+            if ([string]$tamperCase.Field -ceq 'receiptExisted') {
+                $tamperedManifest.receiptExisted = $tamperCase.Value
+            }
+            else {
+                @($tamperedManifest.files)[0].existed = $tamperCase.Value
+            }
+            $tamperedManifest | ConvertTo-Json -Depth 8 | Set-Content `
+                -LiteralPath $tamperedManifestPath `
+                -Encoding UTF8
+
+            $tamperedReceipt = [string]$tamperCase.ReceiptText | ConvertFrom-Json
+            $tamperedReceipt.rollbackManifestSha256 =
+                Get-LhmFileSha256 -Path $tamperedManifestPath
+            $tamperedReceipt | ConvertTo-Json -Depth 8 | Set-Content `
+                -LiteralPath $launcherConvergence.ReceiptPath `
+                -Encoding UTF8
+            $tamperValidation = & $launcherConvergenceScript `
+                -Mode Validate `
+                @launcherConvergenceParameters
+            Assert-True (
+                $tamperValidation.Result -ceq 'DRIFT' -and
+                -not [bool]$tamperValidation.ReceiptCurrent
+            ) "Rollback Boolean tamper was trusted: $($tamperCase.Name)."
+        }
+        finally {
+            [System.IO.File]::WriteAllBytes(
+                $tamperedManifestPath,
+                $originalManifestBytes)
+            [System.IO.File]::WriteAllText(
+                $launcherConvergence.ReceiptPath,
+                $baselineReceiptText,
+                [System.Text.UTF8Encoding]::new($false))
+        }
+    }
+
+    $rollbackBackup = @($rollbackManifest.files | Where-Object existed)[0]
+    $baselineRollbackBackupBytes =
+        [System.IO.File]::ReadAllBytes([string]$rollbackBackup.backupPath)
+    Add-Content -LiteralPath ([string]$rollbackBackup.backupPath) -Value 'tamper'
+    $backupTamperValidation = & $launcherConvergenceScript `
+        -Mode Validate `
+        @launcherConvergenceParameters
+    Assert-True (-not [bool]$backupTamperValidation.ReceiptCurrent) `
+        'Receipt validation trusted a tampered rollback backup.'
+    [System.IO.File]::WriteAllBytes(
+        [string]$rollbackBackup.backupPath,
+        $baselineRollbackBackupBytes)
+
+    $activeRollbackDirectory = [string]$baselineReceipt.rollbackDirectory
+    $missingRollbackDirectory = "$activeRollbackDirectory.missing"
+    Move-Item -LiteralPath $activeRollbackDirectory -Destination $missingRollbackDirectory
+    try {
+        $missingRollbackValidation = & $launcherConvergenceScript `
+            -Mode Validate `
+            @launcherConvergenceParameters
+        Assert-True (-not [bool]$missingRollbackValidation.ReceiptCurrent) `
+            'Receipt validation trusted a missing rollback directory.'
+    }
+    finally {
+        Move-Item `
+            -LiteralPath $missingRollbackDirectory `
+            -Destination $activeRollbackDirectory
+    }
+
+    for ($retentionCase = 0; $retentionCase -lt 4; $retentionCase++) {
+        "retention tamper $retentionCase" | Set-Content `
+            -LiteralPath $launcherConvergence.PublicShimPath `
+            -Encoding ASCII
+        $null = & $launcherConvergenceScript `
+            -Mode Apply `
+            @launcherConvergenceParameters `
+            -Confirm:$false
+    }
+    Assert-True (
+        @(Get-ChildItem `
+            -LiteralPath $launcherConvergence.RollbackRoot `
+            -Directory).Count -le 2
+    ) 'Launcher convergence did not enforce bounded rollback retention.'
+
+    $activeReceiptAfterRetention = Get-Content `
+        -LiteralPath $launcherConvergence.ReceiptPath `
+        -Raw | ConvertFrom-Json
+    $protectedRollbackDirectory =
+        [string]$activeReceiptAfterRetention.rollbackDirectory
+    'pre-apply drift retained across failures' | Set-Content `
+        -LiteralPath $launcherConvergence.PublicShimPath `
+        -Encoding ASCII
+    for ($failedRetentionCase = 0; $failedRetentionCase -lt 3; $failedRetentionCase++) {
+        Assert-Throws -MessagePattern 'AfterLauncherDeployment' -Action {
+            $null = & $launcherConvergenceScript `
+                -Mode Apply `
+                @launcherConvergenceParameters `
+                -TestFailurePoint AfterLauncherDeployment `
+                -Confirm:$false
+        }
+    }
+    Assert-True (
+        (Test-Path -LiteralPath $protectedRollbackDirectory -PathType Container) -and
+        @(Get-ChildItem `
+            -LiteralPath $launcherConvergence.RollbackRoot `
+            -Directory).Count -le 2
+    ) 'Rollback retention pruned the packet owned by the active receipt.'
+
+    $badIdentityConvergence = New-LauncherConvergenceFixture `
+        -Root $testRoot `
+        -Name 'bad-identity' `
+        -BadIdentity
+    $badIdentitySignature = Get-TreeSignature -Root $badIdentityConvergence.Root
+    Assert-Throws -MessagePattern 'restricted to verified machine' -Action {
+        $null = & $launcherConvergenceScript `
+            -Mode Apply `
+            -CanonicalLauncherPath $badIdentityConvergence.SourceLauncherPath `
+            -CanonicalShimPath $badIdentityConvergence.SourceShimPath `
+            -RuntimeLauncherPath $badIdentityConvergence.RuntimeLauncherPath `
+            -RuntimeExecutablePath $badIdentityConvergence.RuntimeExecutablePath `
+            -PublicShimPath $badIdentityConvergence.PublicShimPath `
+            -CentralLauncherPath $badIdentityConvergence.CentralLauncherPath `
+            -CentralLauncherAuthorityReceiptPath `
+                $badIdentityConvergence.CentralLauncherAuthorityReceiptPath `
+            -ReceiptPath $badIdentityConvergence.ReceiptPath `
+            -RollbackRoot $badIdentityConvergence.RollbackRoot `
+            -TestManagedTaskStatePath $badIdentityConvergence.TaskStatePath `
+            -TestIdentityVerifierPath $badIdentityConvergence.IdentityVerifierPath `
+            -NonLiveTestMode `
+            -Confirm:$false
+    }
+    Assert-True (
+        (Get-TreeSignature -Root $badIdentityConvergence.Root) -ceq
+            $badIdentitySignature
+    ) 'Rejected launcher identity changed the non-live fixture.'
+
+    foreach ($failurePoint in @(
+        'AfterLauncherDeployment',
+        'AfterPublicShimDeployment',
+        'AfterReceiptDeployment'
+    )) {
+        $atomicConvergence = New-LauncherConvergenceFixture `
+            -Root $testRoot `
+            -Name "atomic-$failurePoint" `
+            -SeedDestinations
+        $atomicLauncherHash =
+            Get-LhmFileSha256 -Path $atomicConvergence.RuntimeLauncherPath
+        $atomicCentralLauncherHash =
+            Get-LhmFileSha256 -Path $atomicConvergence.CentralLauncherPath
+        $atomicShimHash = Get-LhmFileSha256 -Path $atomicConvergence.PublicShimPath
+        $atomicTaskHash = Get-LhmFileSha256 -Path $atomicConvergence.TaskStatePath
+        Assert-Throws -MessagePattern $failurePoint -Action {
+            $null = & $launcherConvergenceScript `
+                -Mode Apply `
+                -CanonicalLauncherPath $atomicConvergence.SourceLauncherPath `
+                -CanonicalShimPath $atomicConvergence.SourceShimPath `
+                -RuntimeLauncherPath $atomicConvergence.RuntimeLauncherPath `
+                -RuntimeExecutablePath $atomicConvergence.RuntimeExecutablePath `
+                -PublicShimPath $atomicConvergence.PublicShimPath `
+                -CentralLauncherPath $atomicConvergence.CentralLauncherPath `
+                -CentralLauncherAuthorityReceiptPath `
+                    $atomicConvergence.CentralLauncherAuthorityReceiptPath `
+                -ReceiptPath $atomicConvergence.ReceiptPath `
+                -RollbackRoot $atomicConvergence.RollbackRoot `
+                -TestManagedTaskStatePath $atomicConvergence.TaskStatePath `
+                -TestIdentityVerifierPath $atomicConvergence.IdentityVerifierPath `
+                -TestFailurePoint $failurePoint `
+                -NonLiveTestMode `
+                -Confirm:$false
+        }
+        Assert-True (
+            (Get-LhmFileSha256 -Path $atomicConvergence.RuntimeLauncherPath) -ceq
+                $atomicLauncherHash -and
+            (Get-LhmFileSha256 -Path $atomicConvergence.CentralLauncherPath) -ceq
+                $atomicCentralLauncherHash -and
+            -not (Test-Path `
+                -LiteralPath $atomicConvergence.LegacyVendoredLauncherPath `
+                -PathType Leaf) -and
+            (Get-LhmFileSha256 -Path $atomicConvergence.PublicShimPath) -ceq
+                $atomicShimHash -and
+            (Get-LhmFileSha256 -Path $atomicConvergence.TaskStatePath) -ceq
+                $atomicTaskHash -and
+            -not (Test-Path -LiteralPath $atomicConvergence.ReceiptPath)
+        ) "Injected $failurePoint failure did not restore every deployed target."
+    }
+
+    $rollbackFailureConvergence = New-LauncherConvergenceFixture `
+        -Root $testRoot `
+        -Name 'rollback-failure-reporting' `
+        -SeedDestinations
+    $rollbackFailureMessage = $null
+    try {
+        $null = & $launcherConvergenceScript `
+            -Mode Apply `
+            -CanonicalLauncherPath $rollbackFailureConvergence.SourceLauncherPath `
+            -CanonicalShimPath $rollbackFailureConvergence.SourceShimPath `
+            -RuntimeLauncherPath $rollbackFailureConvergence.RuntimeLauncherPath `
+            -RuntimeExecutablePath $rollbackFailureConvergence.RuntimeExecutablePath `
+            -PublicShimPath $rollbackFailureConvergence.PublicShimPath `
+            -CentralLauncherPath $rollbackFailureConvergence.CentralLauncherPath `
+            -CentralLauncherAuthorityReceiptPath `
+                $rollbackFailureConvergence.CentralLauncherAuthorityReceiptPath `
+            -ReceiptPath $rollbackFailureConvergence.ReceiptPath `
+            -RollbackRoot $rollbackFailureConvergence.RollbackRoot `
+            -TestManagedTaskStatePath $rollbackFailureConvergence.TaskStatePath `
+            -TestIdentityVerifierPath $rollbackFailureConvergence.IdentityVerifierPath `
+            -TestCorruptRollbackBackupRole launcher `
+            -TestFailurePoint AfterLauncherDeployment `
+            -NonLiveTestMode `
+            -Confirm:$false
+    }
+    catch {
+        $rollbackFailureMessage = $_.Exception.Message
+    }
+    Assert-True (
+        $rollbackFailureMessage -match 'AfterLauncherDeployment' -and
+        $rollbackFailureMessage -match 'Rollback also failed' -and
+        $rollbackFailureMessage -match "Target 'launcher'"
+    ) 'Launcher convergence did not report original and rollback failures separately.'
+
+    if ($LauncherConvergenceOnly) {
+        [pscustomobject]@{
+            Result = 'PASS'
+            TestRoot = $testRoot
+            LauncherConvergenceCases = 25
+            WindowsPowerShellLauncherShimCompatibility = $true
+        }
+        return
+    }
 
     Assert-True (
         $script:LhmProductionInstallRoot -ceq 'E:\Monitoring\LibreHW\Runtime' -and
         $script:LhmLegacyProductionInstallRoot -ceq 'E:\SQ_HQ\Monitoring\LibreHW' -and
         $script:LhmPreviousProductionDataRoot -ceq
             'E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor' -and
-        $script:LhmProductionDataRoot -ceq 'E:\Data\LibreHardwareMonitor' -and
+        $script:LhmProductionDataRootVariable -ceq 'SEV_LOCAL_DATA' -and
+        $script:LhmProductionBinRootVariable -ceq 'SEV_LOCAL_BIN' -and
+        $script:LhmProductionDataRelativePath -ceq 'LibreHardwareMonitor' -and
+        $script:LhmProductionPublicShimName -ceq 'librehw.cmd' -and
+        (Get-LhmPublicShimCentralLauncherToken) -ceq
+            '%SEV_LOCAL_BIN%\runw\runw.exe' -and
         $script:LhmProductionHealthUri -ceq 'http://localhost:8085/data.json' -and
         $script:LhmExpectedInstanceId -ceq
             'ca96d510-7d87-4cec-8e1a-bd8fc3866903' -and
@@ -2602,28 +3708,118 @@ try {
         $script:LhmLauncherTargetPath -ceq
             'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1' -and
         $script:LhmLegacyLauncherTargetPath -ceq
-            'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1' -and
-        $script:LhmPublicShimPath -ceq 'E:\Bin\librehw.cmd'
+            'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'
     ) 'Production roots do not match the reviewed runtime-migration contract.'
+    $forbiddenCurrentRoots = @(
+        'E:\SevLocal\Data\LibreHardwareMonitor',
+        'E:\SevLocal\Bin\librehw.cmd',
+        'E:\SevLocal\Bin\runw\runw.exe',
+        'E:\Data\LibreHardwareMonitor',
+        'E:\Bin\librehw.cmd',
+        'E:\Bin\runw\runw.exe'
+    )
+    $currentAuthorityScripts = @(
+        $commonScript,
+        $installScript,
+        $rollbackScript,
+        $relocationScript,
+        $canonicalLauncher,
+        $canonicalPublicShim,
+        $launcherConvergenceScript,
+        $finalizeScript
+    )
+    foreach ($authorityScript in $currentAuthorityScripts) {
+        $authorityText = [System.IO.File]::ReadAllText($authorityScript)
+        foreach ($forbiddenRoot in $forbiddenCurrentRoots) {
+            Assert-True ($authorityText -notmatch [regex]::Escape($forbiddenRoot)) `
+                "'$authorityScript' still hardcodes current root '$forbiddenRoot'."
+        }
+    }
     foreach ($releaseScript in @($installScript, $rollbackScript, $relocationScript)) {
         $releaseText = Get-Content -LiteralPath $releaseScript -Raw
         Assert-True (
             $releaseText -match [regex]::Escape(
                 "[string] `$InstallRoot = 'E:\Monitoring\LibreHW\Runtime'") -and
+            $releaseText -match [regex]::Escape('Get-LhmProductionDataRoot') -and
+            $releaseText -match [regex]::Escape('Get-LhmProductionPublicShimPath') -and
             $releaseText -match [regex]::Escape(
-                "[string] `$DataRoot = 'E:\Data\LibreHardwareMonitor'") -and
-            $releaseText -match [regex]::Escape(
-                "'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'") -and
-            $releaseText -match [regex]::Escape("'E:\Bin\librehw.cmd'")
+                "'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'")
         ) "Production defaults drifted in '$releaseScript'."
     }
     $launcherText = Get-Content -LiteralPath $canonicalLauncher -Raw
     Assert-True (
         $launcherText -match [regex]::Escape(
             "`$InstallRoot = 'E:\Monitoring\LibreHW\Runtime'") -and
-        $launcherText -match [regex]::Escape(
-            "`$DataRoot = 'E:\Data\LibreHardwareMonitor'")
-    ) 'Canonical launcher does not target the stable runtime and data roots.'
+        $launcherText -match [regex]::Escape("'SEV_LOCAL_DATA'") -and
+        $launcherText -match [regex]::Escape('Get-LauncherProductionDataRoot')
+    ) 'Canonical launcher does not target the stable runtime and env-var data root.'
+
+    $processData = [Environment]::GetEnvironmentVariable('SEV_LOCAL_DATA', 'Process')
+    $userData = [Environment]::GetEnvironmentVariable('SEV_LOCAL_DATA', 'User')
+    $machineData = [Environment]::GetEnvironmentVariable('SEV_LOCAL_DATA', 'Machine')
+    $persistedData = if (-not [string]::IsNullOrWhiteSpace($userData)) {
+        $userData.Trim().TrimEnd('\', '/')
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($machineData)) {
+        $machineData.Trim().TrimEnd('\', '/')
+    }
+    if (-not [string]::IsNullOrWhiteSpace($persistedData)) {
+        try {
+            [Environment]::SetEnvironmentVariable(
+                'SEV_LOCAL_DATA',
+                'C:\wrong-lhm-data',
+                'Process')
+            Assert-True (
+                (Get-LhmPersistedEnvironmentValue -Name 'SEV_LOCAL_DATA') -ceq
+                    $persistedData
+            ) 'Data-root resolution preferred a stale Process value over persisted User/Machine.'
+            Assert-True (
+                (Test-LhmPathEqual `
+                    -Left (Get-LhmProductionDataRoot) `
+                    -Right (Join-Path $persistedData 'LibreHardwareMonitor'))
+            ) 'Production data root did not join SEV_LOCAL_DATA with LibreHardwareMonitor.'
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable(
+                'SEV_LOCAL_DATA',
+                $processData,
+                'Process')
+        }
+    }
+
+    $processBin = [Environment]::GetEnvironmentVariable('SEV_LOCAL_BIN', 'Process')
+    $userBin = [Environment]::GetEnvironmentVariable('SEV_LOCAL_BIN', 'User')
+    $machineBin = [Environment]::GetEnvironmentVariable('SEV_LOCAL_BIN', 'Machine')
+    $persistedBin = if (-not [string]::IsNullOrWhiteSpace($userBin)) {
+        $userBin.Trim().TrimEnd('\', '/')
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($machineBin)) {
+        $machineBin.Trim().TrimEnd('\', '/')
+    }
+    if (-not [string]::IsNullOrWhiteSpace($persistedBin)) {
+        try {
+            [Environment]::SetEnvironmentVariable(
+                'SEV_LOCAL_BIN',
+                'C:\wrong-lhm-bin',
+                'Process')
+            Assert-True (
+                (Get-LhmPersistedEnvironmentValue -Name 'SEV_LOCAL_BIN') -ceq
+                    $persistedBin
+            ) 'Bin-root resolution preferred a stale Process value over persisted User/Machine.'
+            Assert-True (
+                (Test-LhmPathEqual `
+                    -Left (Get-LhmProductionPublicShimPath) `
+                    -Right (Join-Path $persistedBin 'librehw.cmd'))
+            ) 'Production public shim path did not join SEV_LOCAL_BIN with librehw.cmd.'
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable(
+                'SEV_LOCAL_BIN',
+                $processBin,
+                'Process')
+        }
+    }
+
     $finalizerText = Get-Content -LiteralPath $finalizeScript -Raw
     Assert-True (
         $finalizerText -match [regex]::Escape(
@@ -2636,7 +3832,7 @@ try {
         "[string] `$InstallRoot = 'E:\Monitoring\LibreHW\Runtime'",
         "'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'",
         "'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'",
-        "[string] `$PublicShimPath = 'E:\Bin\librehw.cmd'"
+        'Get-LhmProductionPublicShimPath'
     )) {
         Assert-True ($runtimeMigrationText -match [regex]::Escape($expectedLiteral)) `
             "Runtime migration default is missing '$expectedLiteral'."
@@ -2654,12 +3850,15 @@ try {
         -LegacyLauncherPath $runtimeMigration.LegacyLauncherPath `
         -LauncherTargetPath $runtimeMigration.LauncherTargetPath `
         -PublicShimPath $runtimeMigration.PublicShimPath `
+        -HideLaunchArtifactPath $runtimeMigration.HideLaunchArtifactPath `
+        -HideLaunchAuthorityReceiptPath $runtimeMigration.HideLaunchAuthorityReceiptPath `
         -TestExternalTaskStatePath $runtimeMigration.TaskStatePath `
         -NonLiveTestMode
     Assert-True (
         $runtimeMigrationPlan.Result -ceq 'PASS' -and
         $runtimeMigrationPlan.LegacyRuntimePresent -and
         -not $runtimeMigrationPlan.MigratedRuntimePresent -and
+        [bool]$runtimeMigrationPlan.HideLaunchCurrent -and
         -not $runtimeMigrationPlan.MutationPerformed
     ) 'Runtime migration plan did not report the legacy fixture accurately.'
 
@@ -2671,6 +3870,8 @@ try {
         -LegacyLauncherPath $runtimeMigration.LegacyLauncherPath `
         -LauncherTargetPath $runtimeMigration.LauncherTargetPath `
         -PublicShimPath $runtimeMigration.PublicShimPath `
+        -HideLaunchArtifactPath $runtimeMigration.HideLaunchArtifactPath `
+        -HideLaunchAuthorityReceiptPath $runtimeMigration.HideLaunchAuthorityReceiptPath `
         -TestExternalTaskStatePath $runtimeMigration.TaskStatePath `
         -NonLiveTestMode `
         -Confirm:$false
@@ -2680,6 +3881,8 @@ try {
         (Test-Path -LiteralPath $runtimeMigration.InstallRoot -PathType Container) -and
         -not (Test-Path -LiteralPath $runtimeMigration.LegacyInstallRoot) -and
         (Test-Path -LiteralPath $runtimeMigration.LauncherTargetPath -PathType Leaf) -and
+        (Get-LhmFileSha256 -Path $runtimeMigration.RuntimeHideLaunchPath) -ceq
+            (Get-LhmFileSha256 -Path $runtimeMigration.HideLaunchArtifactPath) -and
         -not (Test-Path -LiteralPath $runtimeMigration.LegacyLauncherPath) -and
         (Test-Path -LiteralPath $runtimeMigration.RecoveryRoot -PathType Container)
     ) 'Runtime migration did not converge the success fixture.'
@@ -2704,8 +3907,53 @@ try {
         -LegacyLauncherPath $runtimeMigration.LegacyLauncherPath `
         -LauncherTargetPath $runtimeMigration.LauncherTargetPath `
         -PublicShimPath $runtimeMigration.PublicShimPath `
+        -HideLaunchArtifactPath $runtimeMigration.HideLaunchArtifactPath `
+        -HideLaunchAuthorityReceiptPath $runtimeMigration.HideLaunchAuthorityReceiptPath `
         -TestExternalTaskStatePath $runtimeMigration.TaskStatePath `
         -NonLiveTestMode
+
+    'tampered migration hidelaunch' | Set-Content `
+        -LiteralPath $runtimeMigration.RuntimeHideLaunchPath `
+        -Encoding ASCII
+    Assert-Throws -MessagePattern 'app-vendored HideLaunch' -Action {
+        $null = & $runtimeMigrationScript `
+            -Mode Validate `
+            -LegacyInstallRoot $runtimeMigration.LegacyInstallRoot `
+            -InstallRoot $runtimeMigration.InstallRoot `
+            -DataRoot $runtimeMigration.DataRoot `
+            -LegacyLauncherPath $runtimeMigration.LegacyLauncherPath `
+            -LauncherTargetPath $runtimeMigration.LauncherTargetPath `
+            -PublicShimPath $runtimeMigration.PublicShimPath `
+            -HideLaunchArtifactPath $runtimeMigration.HideLaunchArtifactPath `
+            -HideLaunchAuthorityReceiptPath $runtimeMigration.HideLaunchAuthorityReceiptPath `
+            -TestExternalTaskStatePath $runtimeMigration.TaskStatePath `
+            -NonLiveTestMode
+    }
+
+    $missingHideMigration = New-RuntimeRootMigrationFixture `
+        -Root $testRoot `
+        -Name 'missing-hide' `
+        -CandidateDirectory $candidate1
+    Remove-Item -LiteralPath $missingHideMigration.RuntimeHideLaunchPath -Force
+    Assert-Throws -MessagePattern 'app-vendored HideLaunch' -Action {
+        $null = & $runtimeMigrationScript `
+            -Mode Apply `
+            -LegacyInstallRoot $missingHideMigration.LegacyInstallRoot `
+            -InstallRoot $missingHideMigration.InstallRoot `
+            -DataRoot $missingHideMigration.DataRoot `
+            -LegacyLauncherPath $missingHideMigration.LegacyLauncherPath `
+            -LauncherTargetPath $missingHideMigration.LauncherTargetPath `
+            -PublicShimPath $missingHideMigration.PublicShimPath `
+            -HideLaunchArtifactPath $missingHideMigration.HideLaunchArtifactPath `
+            -HideLaunchAuthorityReceiptPath $missingHideMigration.HideLaunchAuthorityReceiptPath `
+            -TestExternalTaskStatePath $missingHideMigration.TaskStatePath `
+            -NonLiveTestMode `
+            -Confirm:$false
+    }
+    Assert-True (
+        (Test-Path -LiteralPath $missingHideMigration.LegacyInstallRoot) -and
+        -not (Test-Path -LiteralPath $missingHideMigration.InstallRoot)
+    ) 'Missing HideLaunch did not fail closed before runtime migration mutation.'
 
     $failedRuntimeMigration = New-RuntimeRootMigrationFixture `
         -Root $testRoot `
@@ -2722,6 +3970,8 @@ try {
             -LegacyLauncherPath $failedRuntimeMigration.LegacyLauncherPath `
             -LauncherTargetPath $failedRuntimeMigration.LauncherTargetPath `
             -PublicShimPath $failedRuntimeMigration.PublicShimPath `
+            -HideLaunchArtifactPath $failedRuntimeMigration.HideLaunchArtifactPath `
+            -HideLaunchAuthorityReceiptPath $failedRuntimeMigration.HideLaunchAuthorityReceiptPath `
             -TestExternalTaskStatePath $failedRuntimeMigration.TaskStatePath `
             -NonLiveTestMode `
             -TestFailurePoint AfterBindings `
@@ -3264,7 +4514,7 @@ try {
     $currentLauncherValidation = & $canonicalLauncher -ValidateScriptOnly
     Assert-True (
         $currentLauncherValidation.Result -ceq 'PASS' -and
-        $currentLauncherValidation.DataRoot -ceq 'E:\Data\LibreHardwareMonitor' -and
+        $currentLauncherValidation.DataRoot -ceq '%SEV_LOCAL_DATA%\LibreHardwareMonitor' -and
         $currentLauncherValidation.ExpectedInstanceId -ceq
             'ca96d510-7d87-4cec-8e1a-bd8fc3866903' -and
         -not [bool]$currentLauncherValidation.MutationPerformed
@@ -3323,7 +4573,7 @@ function Get-Process {
         ($launcherNoProcessOutput -join "`n") -match
             'DetectedProcessCount\s*:\s*0' -and
         ($launcherNoProcessOutput -join "`n") -match
-            'DataRoot\s*:\s*E:\\Data\\LibreHardwareMonitor'
+            'DataRoot\s*:\s*%SEV_LOCAL_DATA%\\LibreHardwareMonitor'
     ) (
         'Windows PowerShell 5.1 empty-process launcher validation did not ' +
         'report zero detected processes and the dedicated data root.'
@@ -4904,7 +6154,8 @@ function Get-Process {
         HostileRecoveryManifestCases = 16
         HostileReparseCases = 12
         DataRootRelocationCases = 6
-        RuntimeRootMigrationCases = 2
+        RuntimeRootMigrationCases = 4
+        LauncherConvergenceCases = 25
         ProductionTaskContractNegativeCases = 3
         ProductionHealthUriNegativeCases = 1
         InstallationIdentityNegativeCases = 2

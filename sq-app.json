@@ -8,7 +8,7 @@
   "mutableState": [
     {
       "location": "filesystem",
-      "path": "E:\\Data\\LibreHardwareMonitor",
+      "path": "%SEV_LOCAL_DATA%\\LibreHardwareMonitor",
       "role": "managed-data-root"
     }
   ],
@@ -37,7 +37,7 @@
     },
     {
       "kind": "pathShim",
-      "path": "E:\\Bin\\librehw.cmd"
+      "path": "%SEV_LOCAL_BIN%\\librehw.cmd"
     },
     {
       "kind": "solexEffectiveCatalog",
@@ -56,13 +56,13 @@
     "surfaces": [
       "E:\\Monitoring\\LibreHW\\Runtime",
       "E:\\Monitoring\\LibreHW\\Scripts\\Start-LibreHardwareMonitor.ps1",
-      "E:\\Bin\\librehw.cmd"
+      "%SEV_LOCAL_BIN%\\librehw.cmd"
     ],
     "retiredRoots": [
       "E:\\SQ_HQ",
       "E:\\UserProfile"
     ],
-    "recoveryRoot": "E:\\Data\\LibreHardwareMonitor\\release-recovery\\runtime-root-relocation",
+    "recoveryRoot": "%SEV_LOCAL_DATA%\\LibreHardwareMonitor\\release-recovery\\runtime-root-relocation",
     "runtimeInventory": "closed-release-owned; do not add sq-app.json to the managed runtime root"
   }
 }

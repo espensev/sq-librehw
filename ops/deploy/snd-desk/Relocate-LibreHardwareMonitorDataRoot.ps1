@@ -4,14 +4,14 @@ param(
 
     [string] $SourceDataRoot = 'E:\SQ_HQ\sqprofile\sqdata\LibreHardwareMonitor',
 
-    [string] $DataRoot = 'E:\Data\LibreHardwareMonitor',
+    [string] $DataRoot,
 
     [string] $ManagedStartupTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC',
 
     [string] $LauncherTargetPath =
         'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1',
 
-    [string] $PublicShimPath = 'E:\Bin\librehw.cmd',
+    [string] $PublicShimPath,
 
     [uri] $HealthUri = 'http://localhost:8085/data.json',
 
@@ -50,6 +50,17 @@ function Invoke-TestFailurePoint {
 if (-not $NonLiveTestMode) {
     $null = Assert-LhmVerifiedMachineIdentity
 }
+
+$DataRoot = Resolve-LhmUnspecifiedProductionPath `
+    -ParameterName 'DataRoot' `
+    -CurrentValue $DataRoot `
+    -Resolver { Get-LhmProductionDataRoot } `
+    -NonLiveTestMode:$NonLiveTestMode
+$PublicShimPath = Resolve-LhmUnspecifiedProductionPath `
+    -ParameterName 'PublicShimPath' `
+    -CurrentValue $PublicShimPath `
+    -Resolver { Get-LhmProductionPublicShimPath } `
+    -NonLiveTestMode:$NonLiveTestMode
 
 function Assert-LhmRelocationHealthUri {
     param(
@@ -126,6 +137,8 @@ function Assert-LhmRelocationTaskContract {
             'logonType',
             'multipleInstances',
             'principalUserId',
+            'restartCount',
+            'restartInterval',
             'runLevel',
             'startWhenAvailable',
             'taskPath',
@@ -159,6 +172,8 @@ function Assert-LhmRelocationTaskContract {
             -not [bool]$Task.startWhenAvailable -or
             $Task.allowHardTerminate -isnot [bool] -or
             [bool]$Task.allowHardTerminate -or
+            [int]$Task.restartCount -ne $script:LhmManagedTaskRestartCount -or
+            [string]$Task.restartInterval -cne 'PT1M' -or
             $Task.enabled -isnot [bool]) {
             throw "Managed task '$ManagedTaskPath' does not match the exact relocation contract."
         }
@@ -184,6 +199,8 @@ function Assert-LhmRelocationTaskContract {
             [string]$Task.Settings.MultipleInstances -cne 'IgnoreNew' -or
             -not [bool]$Task.Settings.StartWhenAvailable -or
             [bool]$Task.Settings.AllowHardTerminate -or
+            [int]$Task.Settings.RestartCount -ne $script:LhmManagedTaskRestartCount -or
+            [string]$Task.Settings.RestartInterval -cne 'PT1M' -or
             $triggers.Count -ne 1 -or
             [string]$triggers[0].CimClass.CimClassName -cne 'MSFT_TaskLogonTrigger' -or
             -not [bool]$triggers[0].Enabled -or
@@ -252,6 +269,8 @@ function Set-LhmRelocationTestTaskEnabled {
             multipleInstances = [string]$task.multipleInstances
             startWhenAvailable = [bool]$task.startWhenAvailable
             allowHardTerminate = [bool]$task.allowHardTerminate
+            restartCount = [int]$task.restartCount
+            restartInterval = [string]$task.restartInterval
             enabled = [bool]$Enabled
         } | ConvertTo-Json | Set-Content -LiteralPath $stagePath -Encoding UTF8
         $null = Assert-LhmNormalFile `
@@ -580,7 +599,7 @@ else {
             -Right $script:LhmLauncherTargetPath) -or
         -not (Test-LhmPathEqual `
             -Left $PublicShimPath `
-            -Right $script:LhmPublicShimPath)) {
+            -Right (Get-LhmProductionPublicShimPath))) {
         throw 'Production source-data, launcher, and public-shim paths are fixed.'
     }
     if ($TestFailurePoint -cne 'None' -or
