@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SQ Monitoring · Unified Desk</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #080b0f;
+      color: #edf2f7;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+
+    body {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      background:
+        radial-gradient(circle at 12% -10%, rgba(78, 164, 255, .15), transparent 31rem),
+        radial-gradient(circle at 88% -12%, rgba(255, 111, 97, .12), transparent 28rem),
+        #080b0f;
+    }
+
+    .masthead {
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 8px 12px;
+      border-bottom: 1px solid #29313b;
+      background: rgba(11, 15, 20, .94);
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+    .sigil {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border: 1px solid #4ea4ff;
+      border-radius: 9px;
+      color: #8bc5ff;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .08em;
+    }
+
+    .title { min-width: 0; }
+    .title strong { display: block; font-size: 14px; letter-spacing: .03em; }
+    .title span { display: block; margin-top: 1px; color: #96a3b2; font-size: 11px; }
+
+    .actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+    button, .standalone {
+      min-height: 32px;
+      padding: 6px 10px;
+      border: 1px solid #354251;
+      border-radius: 7px;
+      background: #151b22;
+      color: #dfe8f2;
+      font: inherit;
+      font-size: 12px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    button:hover, .standalone:hover, button:focus-visible, .standalone:focus-visible {
+      border-color: #65b2ff;
+      outline: none;
+    }
+
+    .views {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 8px;
+      padding: 8px;
+    }
+
+    .machine {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: 38px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid #29313b;
+      border-radius: 10px;
+      background: #0d1117;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, .24);
+    }
+
+    .machine-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 9px;
+      border-bottom: 1px solid #29313b;
+      background: #11161d;
+    }
+
+    .machine-name { font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+    .machine-role { color: #8d9aaa; font-size: 11px; }
+
+    .state {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      margin-left: auto;
+      color: #aab5c1;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    .state::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #d3a84d;
+      box-shadow: 0 0 8px rgba(211, 168, 77, .45);
+    }
+
+    .state.loaded::before {
+      background: #4bd38a;
+      box-shadow: 0 0 8px rgba(75, 211, 138, .5);
+    }
+
+    iframe { width: 100%; height: 100%; border: 0; background: #080b0f; }
+
+    @media (max-width: 900px) {
+      html, body { overflow: auto; }
+      body { min-height: 100%; }
+      .views { grid-template-columns: 1fr; grid-auto-rows: minmax(720px, 92vh); }
+      .title span { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand">
+      <div class="sigil" aria-hidden="true">SQ</div>
+      <div class="title">
+        <strong>Unified Hardware Monitoring</strong>
+        <span>SND-DESK main view · private tailnet surfaces</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="button" id="reload">Reload both</button>
+      <a class="standalone" href="https://snd-desk.tailbd0610.ts.net:9443/" target="_blank" rel="noopener">Desk standalone</a>
+      <a class="standalone" href="https://snd-host.tailbd0610.ts.net:8443/" target="_blank" rel="noopener">Host standalone</a>
+    </div>
+  </header>
+
+  <main class="views">
+    <section class="machine" aria-labelledby="desk-title">
+      <header class="machine-head">
+        <span class="machine-name" id="desk-title">SND-DESK</span>
+        <span class="machine-role">local workstation</span>
+        <span class="state" id="desk-state" role="status">loading</span>
+      </header>
+      <iframe
+        id="desk-frame"
+        title="SND-DESK hardware telemetry"
+        src="https://snd-desk.tailbd0610.ts.net:9443/"
+        loading="eager"
+        referrerpolicy="no-referrer"></iframe>
+    </section>
+
+    <section class="machine" aria-labelledby="host-title">
+      <header class="machine-head">
+        <span class="machine-name" id="host-title">SND-HOST</span>
+        <span class="machine-role">monitoring host</span>
+        <span class="state" id="host-state" role="status">loading</span>
+      </header>
+      <iframe
+        id="host-frame"
+        title="SND-HOST hardware telemetry"
+        src="https://snd-host.tailbd0610.ts.net:8443/"
+        loading="eager"
+        referrerpolicy="no-referrer"></iframe>
+    </section>
+  </main>
+
+  <script>
+    'use strict';
+
+    const frames = [
+      { frame: document.getElementById('desk-frame'), state: document.getElementById('desk-state') },
+      { frame: document.getElementById('host-frame'), state: document.getElementById('host-state') }
+    ];
+
+    function watch(entry) {
+      entry.state.textContent = 'loading';
+      entry.state.classList.remove('loaded');
+      entry.frame.addEventListener('load', () => {
+        entry.state.textContent = 'loaded';
+        entry.state.classList.add('loaded');
+      }, { once: true });
+    }
+
+    frames.forEach(watch);
+    document.getElementById('reload').addEventListener('click', () => {
+      frames.forEach(entry => {
+        watch(entry);
+        entry.frame.src = entry.frame.src;
+      });
+    });
+  </script>
+</body>
+</html>
