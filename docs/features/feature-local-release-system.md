@@ -21,8 +21,10 @@ lookup returned unexpanded; the resolver and the canonical launcher now expand
 persisted `%...%` chains recursively, so launcher convergence must re-run
 (Plan, Apply, Validate) before promotion. Current Data/Bin authority is persisted
 `SEV_LOCAL_DATA` / `SEV_LOCAL_BIN` (User, then Machine, then Process). Source
-no longer stores drive-letter current Data/Bin paths.
-**Updated:** 2026-09-01
+no longer stores drive-letter current Data/Bin paths. On 2026-09-02 the redundant
+SoleX target, command, and receipt record were retired transactionally; the
+app-owned `librehw` launcher is the sole LibreHW activation authority.
+**Updated:** 2026-09-02
 
 ## Problem
 
@@ -161,6 +163,10 @@ caller can observe activation failure instead of receiving an asynchronous
 success. The PowerShell helper owns the bounded launch mutex, stable
 EXE/working-directory checks, managed-task start, and existing-window
 tray-toggle/foreground restoration.
+
+No SoleX target or command participates in LibreHW launch or activation.
+`Retire-LibreHardwareMonitorSoleXIntegration.ps1` owns the completed transition,
+its recovery packet, and idempotent Plan/Apply/Validate proof.
 
 `Sync-LibreHardwareMonitorLauncher.ps1` is the continuing convergence owner.
 `Plan` and `Validate` report source, deployed-artifact, receipt, and managed-task
@@ -545,15 +551,14 @@ needed two bounded fixes before it could safely bootstrap that clean state.
   SHA-256 is
   `e2ac66b3791dba60d77d297708056d5716e44ec596d63f1b778e950352f0fca8`.
 - One exact-path process remained at the stable shallow runtime after repeated
-  direct and SoleX activation. The native window was visible and responsive
+  direct activation. The native window was visible and responsive
   with the named `treeView` pane, five menu items, and two scrollbars.
 - `/`, `/data.json`, and `/metrics` returned HTTP 200. The data payload kept
   its `Sensor` envelope, metrics exposed 670 lines, and the new 1-second CSV
   grew from 142,535 to 149,240 bytes during the acceptance sample.
-- The public `librehw.cmd` retained its required hash. The additive
-  `librehw-solex.cmd` extension uses the app-owned launcher for a tray-hidden
-  process; that path returned exit 0, restored the same PID, and created no
-  duplicate.
+- The public `librehw.cmd` retained its required hash and used the app-owned
+  launcher for a tray-hidden process; that path returned exit 0, restored the
+  same PID, and created no duplicate.
 - The canonical all-target gate passed 9/9 runnable targets. This included 370
   deterministic .NET tests passing with one intentional skip, both shipping
   framework builds, 75/75 Avalonia spike tests, dashboard checks, and the
@@ -574,11 +579,11 @@ needed two bounded fixes before it could safely bootstrap that clean state.
   Interactive/Highest, `IgnoreNew`, and `PT0S`. `data.json` returned HTTP 200
   and a new `LibreHardwareMonitorLog-2026-08-16-4.csv` grew under the dedicated
   data root.
-- Direct `E:\Bin\librehw.cmd` and SoleX `librehw-solex` calls retained one PID
-  and restored the visible `Libre Hardware Monitor - Sev IQ` window. Fresh
+- Repeated direct `E:\Bin\librehw.cmd` calls retained one PID and restored the
+  visible `Libre Hardware Monitor - Sev IQ` window. Fresh
   PowerShell 7 and 5.1 sessions both resolve `librehw` to `E:\Bin\librehw.cmd`.
-- The SoleX extension authority and generated catalog now use the app-owned
-  launcher directory and exact migrated executable. Tasks, services, running
+- The launcher authority uses the app-owned launcher directory and exact
+  migrated executable. Tasks, services, running
   process paths, User/Machine environment, registry startup values, shortcuts,
   and managed live-file text contain no executable binding to `E:\SQ_HQ` or
   `E:\UserProfile`. The controlling Codex process retains one inherited stale
@@ -755,7 +760,7 @@ needed two bounded fixes before it could safely bootstrap that clean state.
   (`3A9366E8...CE04`) were unchanged. The relocation recovery directory contains
   exactly the four bounded config/launcher/task/manifest files.
 - [x] Runtime-root migration moved the verified payload and launcher into
-  `E:\Monitoring\LibreHW`, rebound the task and SoleX metadata, preserved the
+  `E:\Monitoring\LibreHW`, rebound the task and launcher metadata, preserved the
   release/data contract, and removed `E:\SQ_HQ` and `E:\UserProfile` only after
   exact-process, HTTP, logging, and launcher acceptance passed.
 

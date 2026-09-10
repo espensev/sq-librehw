@@ -38,11 +38,6 @@
     {
       "kind": "pathShim",
       "path": "%SEV_LOCAL_BIN%\\librehw.cmd"
-    },
-    {
-      "kind": "solexEffectiveCatalog",
-      "name": "librehw-solex",
-      "authorityPath": "E:\\Data\\SoleX\\generated\\solex.effective.json"
     }
   ],
   "source": {
