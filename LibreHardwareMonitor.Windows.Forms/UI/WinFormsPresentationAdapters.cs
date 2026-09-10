@@ -47,10 +47,31 @@ internal sealed class PlotPanelPresentationAdapter : IPresentationPlotSurface
         set => _plotPanel.ResetGraphView = value;
     }
 
+    public Action<string> LaneRemoved
+    {
+        get => _plotPanel.LaneRemoved;
+        set => _plotPanel.LaneRemoved = value;
+    }
+
     public void SetCurrentSettings() => _plotPanel.SetCurrentSettings();
 
-    public void SetSensors(List<ISensor> sensors, IDictionary<ISensor, Color> colors, double strokeThickness) =>
-        _plotPanel.SetSensors(sensors, colors, strokeThickness);
+    public void SetSensors(
+        List<ISensor> sensors,
+        IDictionary<ISensor, Color> colors,
+        IDictionary<ISensor, string> laneKeys,
+        double strokeThickness) =>
+        _plotPanel.SetSensors(sensors, colors, laneKeys, strokeThickness);
+
+    public IReadOnlyList<PlotLane> GetLanes(SensorType type) => _plotPanel.GetLanes(type);
+
+    public string GetSuggestedLaneName(SensorType type) => _plotPanel.GetSuggestedLaneName(type);
+
+    public string ResolveLaneKey(SensorType type, string persistedKey) =>
+        _plotPanel.ResolveLaneKey(type, persistedKey);
+
+    public PlotLane CreateLane(SensorType type, string name) => _plotPanel.CreateLane(type, name);
+
+    public System.Windows.Forms.ToolStripMenuItem CreateLanesMenu() => _plotPanel.CreateLanesMenu();
 
     public void UpdateStrokeThickness(double strokeThickness) => _plotPanel.UpdateStrokeThickness(strokeThickness);
 

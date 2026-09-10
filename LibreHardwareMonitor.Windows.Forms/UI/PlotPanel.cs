@@ -28,6 +28,28 @@ public class PlotPanel : UserControl
     private const int TimeAxisLabelModeLocalTime = 0;
     private const int TimeAxisLabelModeElapsed = 1;
 
+    private static readonly Dictionary<SensorType, string> AxisUnits = new()
+    {
+        { SensorType.Voltage, "V" },
+        { SensorType.Current, "A" },
+        { SensorType.Clock, "MHz" },
+        { SensorType.Temperature, "°C" },
+        { SensorType.TemperatureRate, "°C/s" },
+        { SensorType.Load, "%" },
+        { SensorType.Fan, "RPM" },
+        { SensorType.Flow, "L/h" },
+        { SensorType.Control, "%" },
+        { SensorType.Level, "%" },
+        { SensorType.Factor, "1" },
+        { SensorType.Power, "W" },
+        { SensorType.Data, "GB" },
+        { SensorType.Frequency, "Hz" },
+        { SensorType.Energy, "mWh" },
+        { SensorType.Noise, "dBA" },
+        { SensorType.Conductivity, "µS/cm" },
+        { SensorType.Humidity, "%" }
+    };
+
     private readonly PersistentSettings _settings;
     private readonly UnitManager _unitManager;
     private readonly PlotView _plot;
@@ -36,8 +58,15 @@ public class PlotPanel : UserControl
     private Button _optionsButton;
     private readonly ToolTip _toolTip = new ToolTip();
     private readonly SessionTimeAxis _timeAxis = new SessionTimeAxis();
-    private readonly SortedDictionary<SensorType, LinearAxis> _axes = new SortedDictionary<SensorType, LinearAxis>();
-    private readonly Dictionary<SensorType, LineAnnotation> _annotations = new Dictionary<SensorType, LineAnnotation>();
+    private readonly PlotLanes _lanes;
+    private readonly Dictionary<string, LinearAxis> _axes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LineAnnotation> _annotations = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _autoRangeLaneKeys = new(StringComparer.Ordinal);
+    private readonly Dictionary<ISensor, string> _sensorLaneKeys = new();
+    private List<ISensor> _currentSensors = new();
+    private IDictionary<ISensor, Color> _currentColors = new Dictionary<ISensor, Color>();
+    private double _currentStrokeThickness = 2;
+    private bool _suppressLaneAxisChange;
     private UserOption _stackedAxes;
     private UserOption _showAxesLabels;
     private UserOption _timeAxisEnableZoom;
@@ -89,6 +118,20 @@ public class PlotPanel : UserControl
         _historyStore = new PlotPanelHistoryStore(_timeOrigin);
         _lastTemperatureUnit = unitManager.TemperatureUnit;
 
+        var nextNumbers = new Dictionary<SensorType, int>();
+        var defaultWeights = new Dictionary<SensorType, int>();
+        foreach (SensorType type in Enum.GetValues(typeof(SensorType)))
+        {
+            string typeName = type.ToString();
+            nextNumbers[type] = _settings.GetValue("plotPanel.laneNext." + typeName, 2);
+            defaultWeights[type] = _settings.GetValue("plotPanel.laneWeight." + typeName, 1);
+        }
+
+        _lanes = new PlotLanes(
+            _settings.GetValue("plotPanel.lanes", string.Empty),
+            nextNumbers,
+            defaultWeights);
+
         // One-time gate for the startup Y-axis auto-fit (see InvalidatePlot()): reclaims empty
         // graph bands left over from a stale persisted zoom (axis.Zoom(...) below in
         // CreatePlotModel), without touching later in-session zooms (manual or menu-driven).
@@ -138,6 +181,197 @@ public class PlotPanel : UserControl
     /// </summary>
     public Action ResetGraphView { get; set; }
 
+    public Action<string> LaneRemoved { get; set; }
+
+    public IReadOnlyList<PlotLane> GetLanes(SensorType type) => _lanes.GetLanes(type);
+
+    public string GetSuggestedLaneName(SensorType type) =>
+        type + " " + _lanes.GetNextNumber(type).ToString(CultureInfo.InvariantCulture);
+
+    public string ResolveLaneKey(SensorType type, string persistedKey) =>
+        _lanes.ResolveLane(type, persistedKey).Key;
+
+    public PlotLane CreateLane(SensorType type, string name)
+    {
+        PlotLane lane = _lanes.CreateLane(type, name);
+        CreateAxis(lane);
+        ReorderValueAxes();
+        ApplyTheme();
+        SetAxisTextScale(_axisTextScalePercent);
+        PersistLaneSettings();
+        RebuildCurrentSensors();
+        return lane;
+    }
+
+    public bool RenameLane(string key, string name)
+    {
+        if (!_lanes.TryGetLane(key, out PlotLane lane) || !_lanes.RenameLane(key, name))
+            return false;
+
+        _axes[key].Title = lane.Name;
+        PersistLaneSettings();
+        InvalidatePlotCosmetic();
+        return true;
+    }
+
+    public bool RemoveLane(string key)
+    {
+        if (!_lanes.TryGetLane(key, out PlotLane lane) || lane.IsDefault || !_lanes.RemoveLane(key))
+            return false;
+
+        LinearAxis axis = _axes[key];
+        LineAnnotation annotation = _annotations[key];
+        _model.Axes.Remove(axis);
+        _model.Annotations.Remove(annotation);
+        _axes.Remove(key);
+        _annotations.Remove(key);
+        _autoRangeLaneKeys.Remove(key);
+        _settings.Remove("plotPanel.Min" + key);
+        _settings.Remove("plotPanel.Max" + key);
+
+        foreach (ISensor sensor in _sensorLaneKeys.Where(pair => pair.Value == key).Select(pair => pair.Key).ToList())
+            _sensorLaneKeys[sensor] = null;
+
+        PersistLaneSettings();
+        LaneRemoved?.Invoke(key);
+        ReorderValueAxes();
+        RebuildCurrentSensors();
+        return true;
+    }
+
+    public bool SetLaneWeight(string key, int weight)
+    {
+        if (!_lanes.SetWeight(key, weight))
+            return false;
+
+        PersistLaneSettings();
+        UpdateAxesPosition();
+        InvalidatePlotCosmetic();
+        return true;
+    }
+
+    public bool AutoRangeLane(string key)
+    {
+        if (!SetLaneAutoRange(key))
+            return false;
+
+        InvalidatePlotCosmetic();
+        return true;
+    }
+
+    private bool SetLaneAutoRange(string key)
+    {
+        if (!_axes.TryGetValue(key ?? string.Empty, out LinearAxis axis))
+            return false;
+
+        bool zoomEnabled = axis.IsZoomEnabled;
+        _suppressLaneAxisChange = true;
+        axis.IsZoomEnabled = true;
+        try
+        {
+            axis.Reset();
+        }
+        finally
+        {
+            axis.IsZoomEnabled = zoomEnabled;
+            _suppressLaneAxisChange = false;
+        }
+
+        _autoRangeLaneKeys.Add(key);
+        _settings.Remove("plotPanel.Min" + key);
+        _settings.Remove("plotPanel.Max" + key);
+        return true;
+    }
+
+    public ToolStripMenuItem CreateLanesMenu()
+    {
+        var menu = new ToolStripMenuItem("Lanes");
+        menu.DropDownOpening += (sender, args) => PopulateLanesMenu(menu.DropDownItems);
+        return menu;
+    }
+
+    private void PopulateLanesMenu(ToolStripItemCollection items)
+    {
+        ClearMenuItems(items);
+        List<PlotLane> lanes = _lanes.Lanes
+            .Where(lane => !lane.IsDefault || _axes[lane.Key].IsAxisVisible)
+            .ToList();
+        if (lanes.Count == 0)
+        {
+            items.Add(new ToolStripMenuItem("No visible lanes") { Enabled = false });
+            return;
+        }
+
+        foreach (PlotLane lane in lanes)
+        {
+            var laneItem = new ToolStripMenuItem(lane.Name);
+            if (!lane.IsDefault)
+            {
+                var rename = new ToolStripMenuItem("Rename...");
+                rename.Click += (sender, args) =>
+                {
+                    if (PlotLaneNamePrompt.TryShow(FindForm(), "Rename Graph Lane", lane.Name, out string name))
+                        RenameLane(lane.Key, name);
+                };
+                laneItem.DropDownItems.Add(rename);
+
+                var remove = new ToolStripMenuItem("Remove Lane");
+                remove.Click += (sender, args) =>
+                {
+                    if (MessageBox.Show(
+                            FindForm(),
+                            "Remove lane '" + lane.Name + "' and return its sensors to " + lane.SensorType + "?",
+                            "Remove Graph Lane",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Question) == DialogResult.Yes)
+                    {
+                        RemoveLane(lane.Key);
+                    }
+                };
+                laneItem.DropDownItems.Add(remove);
+                laneItem.DropDownItems.Add(new ToolStripSeparator());
+            }
+
+            var height = new ToolStripMenuItem("Height");
+            for (int weight = 1; weight <= 3; weight++)
+            {
+                int selectedWeight = weight;
+                var weightItem = new ToolStripRadioButtonMenuItem(weight + "x") { Checked = lane.Weight == weight };
+                weightItem.Click += (sender, args) => SetLaneWeight(lane.Key, selectedWeight);
+                height.DropDownItems.Add(weightItem);
+            }
+            laneItem.DropDownItems.Add(height);
+
+            var autoRange = new ToolStripMenuItem("Auto Range") { Checked = _autoRangeLaneKeys.Contains(lane.Key) };
+            autoRange.Click += (sender, args) => AutoRangeLane(lane.Key);
+            laneItem.DropDownItems.Add(autoRange);
+            items.Add(laneItem);
+        }
+    }
+
+    private static void ClearMenuItems(ToolStripItemCollection items)
+    {
+        while (items.Count > 0)
+        {
+            ToolStripItem item = items[0];
+            items.RemoveAt(0);
+            item.Dispose();
+        }
+    }
+
+    private void ReorderValueAxes()
+    {
+        _model.Axes.Clear();
+        _model.Axes.Add(_timeAxis);
+        foreach (PlotLane lane in _lanes.Lanes)
+            _model.Axes.Add(_axes[lane.Key]);
+    }
+
+    private void RebuildCurrentSensors()
+    {
+        SetSensors(_currentSensors, _currentColors, _sensorLaneKeys, _currentStrokeThickness);
+    }
+
     public void ApplyTheme()
     {
         _model.Background = Theme.Current.PlotBackgroundColor.ToOxyColor();
@@ -169,10 +403,22 @@ public class PlotPanel : UserControl
 
     public void SetCurrentSettings()
     {
-        foreach (LinearAxis axis in _axes.Values)
+        PersistLaneSettings();
+
+        foreach (KeyValuePair<string, LinearAxis> pair in _axes)
         {
-            _settings.SetValue("plotPanel.Min" + axis.Key, (float)axis.ActualMinimum);
-            _settings.SetValue("plotPanel.Max" + axis.Key, (float)axis.ActualMaximum);
+            string minKey = "plotPanel.Min" + pair.Key;
+            string maxKey = "plotPanel.Max" + pair.Key;
+            if (_autoRangeLaneKeys.Contains(pair.Key))
+            {
+                _settings.Remove(minKey);
+                _settings.Remove(maxKey);
+            }
+            else
+            {
+                _settings.SetValue(minKey, (float)pair.Value.ActualMinimum);
+                _settings.SetValue(maxKey, (float)pair.Value.ActualMaximum);
+            }
         }
 
         // Persist the window in age semantics (seconds before "now"), matching what the
@@ -303,6 +549,8 @@ public class PlotPanel : UserControl
                 axis.IsZoomEnabled = _yAxesEnableZoom.Value;
         };
 
+        menu.Items.Add(CreateLanesMenu());
+
         menu.Items.Add(new ToolStripSeparator());
         ToolStripMenuItem resetGraphViewMenuItem = new ToolStripMenuItem("Reset Graph View");
         resetGraphViewMenuItem.Click += (sender, e) => ResetGraphView?.Invoke();
@@ -407,79 +655,120 @@ public class PlotPanel : UserControl
 
 #pragma warning restore CS0618 //obsolete warning
 
-        var units = new Dictionary<SensorType, string>
-        {
-            { SensorType.Voltage, "V" },
-            { SensorType.Current, "A" },
-            { SensorType.Clock, "MHz" },
-            { SensorType.Temperature, "°C" },
-            { SensorType.TemperatureRate, "°C/s" },
-            { SensorType.Load, "%" },
-            { SensorType.Fan, "RPM" },
-            { SensorType.Flow, "L/h" },
-            { SensorType.Control, "%" },
-            { SensorType.Level, "%" },
-            { SensorType.Factor, "1" },
-            { SensorType.Power, "W" },
-            { SensorType.Data, "GB" },
-            { SensorType.Frequency, "Hz" },
-            { SensorType.Energy, "mWh" },
-            { SensorType.Noise, "dBA" },
-            { SensorType.Conductivity, "µS/cm" },
-            { SensorType.Humidity, "%" }
-        };
-
-        foreach (SensorType type in Enum.GetValues(typeof(SensorType)))
-        {
-            string typeName = type.ToString();
-            var axis = new LinearAxis
-            {
-                Position = AxisPosition.Left,
-                MajorGridlineStyle = LineStyle.Solid,
-                MajorGridlineThickness = 1,
-                MajorGridlineColor = _timeAxis.MajorGridlineColor,
-                MinorGridlineStyle = LineStyle.Solid,
-                MinorGridlineThickness = 1,
-                MinorGridlineColor = _timeAxis.MinorGridlineColor,
-                AxislineStyle = LineStyle.Solid,
-                Title = typeName,
-                Key = typeName,
-            };
-
-            var annotation = new LineAnnotation
-            {
-                Type = LineAnnotationType.Horizontal,
-                ClipByXAxis = false,
-                ClipByYAxis = false,
-                LineStyle = LineStyle.Solid,
-                Color = Theme.Current.PlotBorderColor.ToOxyColor(),
-                YAxisKey = typeName,
-                StrokeThickness = 2,
-            };
-
-#pragma warning disable CS0618 //obsolete warning
-
-            axis.AxisChanged += (sender, args) => annotation.Y = axis.ActualMinimum;
-            axis.TransformChanged += (sender, args) => annotation.Y = axis.ActualMinimum;
-
-#pragma warning restore CS0618 //obsolete warning
-
-            axis.Zoom(_settings.GetValue("plotPanel.Min" + axis.Key, float.NaN), _settings.GetValue("plotPanel.Max" + axis.Key, float.NaN));
-
-            if (units.ContainsKey(type))
-                axis.Unit = units[type];
-
-            _axes.Add(type, axis);
-            _annotations.Add(type, annotation);
-        }
+        foreach (PlotLane lane in _lanes.Lanes)
+            CreateAxis(lane);
 
         var model = new ScaledPlotModel(_dpiXScale, _dpiYScale);
         model.Axes.Add(_timeAxis);
-        foreach (LinearAxis axis in _axes.Values)
-            model.Axes.Add(axis);
+        foreach (PlotLane lane in _lanes.Lanes)
+            model.Axes.Add(_axes[lane.Key]);
         model.IsLegendVisible = false;
 
         return model;
+    }
+
+    private void CreateAxis(PlotLane lane)
+    {
+        var axis = new LinearAxis
+        {
+            Position = AxisPosition.Left,
+            MajorGridlineStyle = LineStyle.Solid,
+            MajorGridlineThickness = 1,
+            MajorGridlineColor = _timeAxis.MajorGridlineColor,
+            MinorGridlineStyle = LineStyle.Solid,
+            MinorGridlineThickness = 1,
+            MinorGridlineColor = _timeAxis.MinorGridlineColor,
+            AxislineStyle = LineStyle.Solid,
+            Title = lane.Name,
+            Key = lane.Key,
+            IsZoomEnabled = _yAxesEnableZoom?.Value ?? true
+        };
+
+        if (AxisUnits.TryGetValue(lane.SensorType, out string unit))
+            axis.Unit = unit;
+
+        var annotation = new LineAnnotation
+        {
+            Type = LineAnnotationType.Horizontal,
+            ClipByXAxis = false,
+            ClipByYAxis = false,
+            LineStyle = LineStyle.Solid,
+            Color = Theme.Current.PlotBorderColor.ToOxyColor(),
+            YAxisKey = lane.Key,
+            StrokeThickness = 2
+        };
+
+#pragma warning disable CS0618 // obsolete warning
+
+        axis.AxisChanged += (sender, args) =>
+        {
+            annotation.Y = axis.ActualMinimum;
+            if (!_suppressLaneAxisChange &&
+                (args.ChangeType == AxisChangeTypes.Zoom || args.ChangeType == AxisChangeTypes.Pan))
+            {
+                _autoRangeLaneKeys.Remove(lane.Key);
+            }
+        };
+        axis.TransformChanged += (sender, args) => annotation.Y = axis.ActualMinimum;
+
+#pragma warning restore CS0618 // obsolete warning
+
+        string minKey = "plotPanel.Min" + lane.Key;
+        string maxKey = "plotPanel.Max" + lane.Key;
+        float minimum = _settings.GetValue(minKey, float.NaN);
+        float maximum = _settings.GetValue(maxKey, float.NaN);
+        bool fixedRange = _settings.Contains(minKey) &&
+                          _settings.Contains(maxKey) &&
+                          !float.IsNaN(minimum) &&
+                          !float.IsInfinity(minimum) &&
+                          !float.IsNaN(maximum) &&
+                          !float.IsInfinity(maximum) &&
+                          maximum > minimum;
+        if (fixedRange)
+        {
+            _suppressLaneAxisChange = true;
+            try
+            {
+                axis.Zoom(minimum, maximum);
+            }
+            finally
+            {
+                _suppressLaneAxisChange = false;
+            }
+        }
+        else
+        {
+            _autoRangeLaneKeys.Add(lane.Key);
+        }
+
+        _axes.Add(lane.Key, axis);
+        _annotations.Add(lane.Key, annotation);
+    }
+
+    private void PersistLaneSettings()
+    {
+        string serialized = _lanes.Serialize();
+        if (serialized.Length == 0)
+            _settings.Remove("plotPanel.lanes");
+        else
+            _settings.SetValue("plotPanel.lanes", serialized);
+
+        foreach (SensorType type in Enum.GetValues(typeof(SensorType)))
+        {
+            PlotLane lane = _lanes.GetDefaultLane(type);
+            string weightKey = "plotPanel.laneWeight." + lane.Key;
+            if (lane.Weight == 1)
+                _settings.Remove(weightKey);
+            else
+                _settings.SetValue(weightKey, lane.Weight);
+
+            string nextKey = "plotPanel.laneNext." + lane.Key;
+            int nextNumber = _lanes.GetNextNumber(type);
+            if (nextNumber == 2)
+                _settings.Remove(nextKey);
+            else
+                _settings.SetValue(nextKey, nextNumber);
+        }
     }
 
     private void ApplyTimeAxisLabelMode()
@@ -585,16 +874,34 @@ public class PlotPanel : UserControl
             _dpiYScale = _dpiY / defaultDpi;
     }
 
-    public void SetSensors(List<ISensor> sensors, IDictionary<ISensor, Color> colors, double strokeThickness)
+    public void SetSensors(
+        List<ISensor> sensors,
+        IDictionary<ISensor, Color> colors,
+        IDictionary<ISensor, string> laneKeys,
+        double strokeThickness)
     {
+        _currentSensors = sensors?.ToList() ?? new List<ISensor>();
+        _currentColors = colors != null
+            ? new Dictionary<ISensor, Color>(colors)
+            : new Dictionary<ISensor, Color>();
+        _currentStrokeThickness = strokeThickness;
+        _sensorLaneKeys.Clear();
+        if (laneKeys != null)
+        {
+            foreach (KeyValuePair<ISensor, string> pair in laneKeys)
+                _sensorLaneKeys[pair.Key] = pair.Value;
+        }
+
         _model.Series.Clear();
-        var types = new HashSet<SensorType>();
+        var visibleLaneKeys = new HashSet<string>(StringComparer.Ordinal);
 
-        _historyStore.RetainSensors(sensors);
+        _historyStore.RetainSensors(_currentSensors);
 
-        foreach (ISensor sensor in sensors)
+        foreach (ISensor sensor in _currentSensors)
         {
             PlotPanelSeriesState state = _historyStore.GetOrCreateState(sensor);
+            _sensorLaneKeys.TryGetValue(sensor, out string persistedLaneKey);
+            PlotLane lane = _lanes.ResolveLane(sensor.SensorType, persistedLaneKey);
 
             var series = new LineSeries
             {
@@ -603,23 +910,19 @@ public class PlotPanel : UserControl
                 // history snapshot actually changed.
                 ItemsSource = state.Points,
                 Decimator = DecimateIfDense,
-                Color = colors[sensor].ToOxyColor(),
+                Color = _currentColors[sensor].ToOxyColor(),
                 StrokeThickness = strokeThickness,
-                YAxisKey = _axes[sensor.SensorType].Key,
+                YAxisKey = lane.Key,
                 Title = sensor.Hardware.Name + " " + sensor.Name
             };
 
             _model.Series.Add(series);
 
-            types.Add(sensor.SensorType);
+            visibleLaneKeys.Add(lane.Key);
         }
 
-        foreach (KeyValuePair<SensorType, LinearAxis> pair in _axes.Reverse())
-        {
-            LinearAxis axis = pair.Value;
-            SensorType type = pair.Key;
-            axis.IsAxisVisible = types.Contains(type);
-        }
+        foreach (KeyValuePair<string, LinearAxis> pair in _axes)
+            pair.Value.IsAxisVisible = visibleLaneKeys.Contains(pair.Key);
 
         UpdateAxesPosition();
         InvalidatePlot();
@@ -776,17 +1079,18 @@ public class PlotPanel : UserControl
     {
         if (_stackedAxes.Value)
         {
-            int count = _axes.Values.Count(axis => axis.IsAxisVisible);
             double start = 0.0;
-            foreach (KeyValuePair<SensorType, LinearAxis> pair in _axes.Reverse())
+            IDictionary<string, double> shares = _lanes.CalculateStackedShares(
+                _axes.Where(pair => pair.Value.IsAxisVisible).Select(pair => pair.Key));
+            foreach (PlotLane lane in _lanes.Lanes.Reverse())
             {
-                LinearAxis axis = pair.Value;
+                LinearAxis axis = _axes[lane.Key];
                 axis.StartPosition = start;
-                double delta = axis.IsAxisVisible ? 1.0 / count : 0;
+                double delta = axis.IsAxisVisible ? shares[lane.Key] : 0;
                 start += delta;
                 axis.EndPosition = start;
                 axis.PositionTier = 0;
-                LineAnnotation annotation = _annotations[pair.Key];
+                LineAnnotation annotation = _annotations[lane.Key];
                 annotation.Y = axis.ActualMinimum;
                 if (!_model.Annotations.Contains(annotation)) 
                     _model.Annotations.Add(annotation);
@@ -796,9 +1100,9 @@ public class PlotPanel : UserControl
         {
             int tier = 0;
 
-            foreach (KeyValuePair<SensorType, LinearAxis> pair in _axes.Reverse())
+            foreach (PlotLane lane in _lanes.Lanes.Reverse())
             {
-                LinearAxis axis = pair.Value;
+                LinearAxis axis = _axes[lane.Key];
 
                 if (axis.IsAxisVisible)
                 {
@@ -813,9 +1117,9 @@ public class PlotPanel : UserControl
                     axis.EndPosition = 0;
                     axis.PositionTier = 0;
                 }
-                LineAnnotation annotation = _annotations[pair.Key];
+                LineAnnotation annotation = _annotations[lane.Key];
                 if (_model.Annotations.Contains(annotation))
-                    _model.Annotations.Remove(_annotations[pair.Key]);
+                    _model.Annotations.Remove(annotation);
             }
         }
     }
@@ -841,10 +1145,10 @@ public class PlotPanel : UserControl
 
         if (_axes != null)
         {
-            foreach (KeyValuePair<SensorType, LinearAxis> pair in _axes)
+            foreach (PlotLane lane in _lanes.Lanes)
             {
-                LinearAxis axis = pair.Value;
-                SensorType type = pair.Key;
+                LinearAxis axis = _axes[lane.Key];
+                SensorType type = lane.SensorType;
                 if (type == SensorType.Temperature)
                     axis.Unit = _unitManager.TemperatureUnit == TemperatureUnit.Celsius ? "°C" : "°F";
                 else if (type == SensorType.TemperatureRate)
@@ -853,7 +1157,7 @@ public class PlotPanel : UserControl
                 if (!_stackedAxes.Value)
                     continue;
 
-                var annotation = _annotations[pair.Key];
+                var annotation = _annotations[lane.Key];
                 annotation.Y = axis.ActualMaximum;
             }
         }
@@ -919,23 +1223,8 @@ public class PlotPanel : UserControl
 
     public void AutoscaleAllYAxes()
     {
-        foreach (LinearAxis axis in _axes.Values)
-        {
-            // Zoom() silently no-ops when IsZoomEnabled is false (persisted via Value Axes >
-            // Enable Zoom, default true but can be off from a prior session). Force-enable around
-            // the call and restore after, mirroring UpdateTimeAxisWindow's pattern, so this always
-            // actually un-zooms the axis regardless of that setting.
-            bool zoomEnabled = axis.IsZoomEnabled;
-            axis.IsZoomEnabled = true;
-            try
-            {
-                axis.Zoom(double.NaN, double.NaN);
-            }
-            finally
-            {
-                axis.IsZoomEnabled = zoomEnabled;
-            }
-        }
+        foreach (string key in _axes.Keys.ToList())
+            SetLaneAutoRange(key);
 
         // Refresh now instead of waiting for the next update tick, so the rescale is visible
         // immediately after the menu action.

@@ -17,6 +17,7 @@ public class SensorNode : Node
 {
     private readonly PersistentSettings _settings;
     private readonly UnitManager _unitManager;
+    private string _graphLaneKey;
     private Color? _penColor;
     private bool _plot;
 
@@ -103,6 +104,7 @@ public class SensorNode : Node
         // "plot=false" entry for every sensor ever seen and raise PlotSelectionChanged from the
         // constructor (before any listener can be attached, and on whatever thread created us).
         _plot = settings.GetValue(new Identifier(sensor.Identifier, "plot").ToString(), false);
+        _graphLaneKey = settings.GetValue(new Identifier(sensor.Identifier, "graphLane").ToString(), (string)null);
         string id = new Identifier(sensor.Identifier, "penColor").ToString();
 
         if (settings.Contains(id))
@@ -163,6 +165,26 @@ public class SensorNode : Node
 
             _plot = value;
             _settings.SetValue(new Identifier(Sensor.Identifier, "plot").ToString(), value);
+            PlotSelectionChanged?.Invoke(this, null);
+        }
+    }
+
+    public string GraphLaneKey
+    {
+        get { return _graphLaneKey; }
+        set
+        {
+            string normalized = string.IsNullOrWhiteSpace(value) ? null : value;
+            if (string.Equals(_graphLaneKey, normalized, StringComparison.Ordinal))
+                return;
+
+            _graphLaneKey = normalized;
+            string id = new Identifier(Sensor.Identifier, "graphLane").ToString();
+            if (normalized == null)
+                _settings.Remove(id);
+            else
+                _settings.SetValue(id, normalized);
+
             PlotSelectionChanged?.Invoke(this, null);
         }
     }

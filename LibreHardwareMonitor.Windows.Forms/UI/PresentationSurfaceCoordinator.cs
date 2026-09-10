@@ -31,9 +31,25 @@ internal interface IPresentationPlotSurface
 
     Action ResetGraphView { get; set; }
 
+    Action<string> LaneRemoved { get; set; }
+
     void SetCurrentSettings();
 
-    void SetSensors(List<ISensor> sensors, IDictionary<ISensor, Color> colors, double strokeThickness);
+    void SetSensors(
+        List<ISensor> sensors,
+        IDictionary<ISensor, Color> colors,
+        IDictionary<ISensor, string> laneKeys,
+        double strokeThickness);
+
+    IReadOnlyList<PlotLane> GetLanes(SensorType type);
+
+    string GetSuggestedLaneName(SensorType type);
+
+    string ResolveLaneKey(SensorType type, string persistedKey);
+
+    PlotLane CreateLane(SensorType type, string name);
+
+    ToolStripMenuItem CreateLanesMenu();
 
     void UpdateStrokeThickness(double strokeThickness);
 
@@ -141,6 +157,12 @@ internal sealed class PresentationSurfaceCoordinator : IDisposable
         set => _plot.ResetGraphView = value;
     }
 
+    internal Action<string> PlotLaneRemoved
+    {
+        get => _plot.LaneRemoved;
+        set => _plot.LaneRemoved = value;
+    }
+
     internal bool IsTrayMainIconEnabled
     {
         get => _tray.IsMainIconEnabled;
@@ -167,8 +189,23 @@ internal sealed class PresentationSurfaceCoordinator : IDisposable
 
     internal void ApplyPlotCurrentSettings() => _plot.SetCurrentSettings();
 
-    internal void SetPlotSensors(List<ISensor> sensors, IDictionary<ISensor, Color> colors, double strokeThickness) =>
-        _plot.SetSensors(sensors, colors, strokeThickness);
+    internal void SetPlotSensors(
+        List<ISensor> sensors,
+        IDictionary<ISensor, Color> colors,
+        IDictionary<ISensor, string> laneKeys,
+        double strokeThickness) =>
+        _plot.SetSensors(sensors, colors, laneKeys, strokeThickness);
+
+    internal IReadOnlyList<PlotLane> GetPlotLanes(SensorType type) => _plot.GetLanes(type);
+
+    internal string GetSuggestedPlotLaneName(SensorType type) => _plot.GetSuggestedLaneName(type);
+
+    internal string ResolvePlotLaneKey(SensorType type, string persistedKey) =>
+        _plot.ResolveLaneKey(type, persistedKey);
+
+    internal PlotLane CreatePlotLane(SensorType type, string name) => _plot.CreateLane(type, name);
+
+    internal ToolStripMenuItem CreatePlotLanesMenu() => _plot.CreateLanesMenu();
 
     internal void UpdatePlotStrokeThickness(double strokeThickness) => _plot.UpdateStrokeThickness(strokeThickness);
 

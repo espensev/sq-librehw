@@ -94,10 +94,13 @@ public sealed class PresentationSurfaceCoordinatorTests : IDisposable
         List<ISensor> sensors = new() { sensor };
         Dictionary<ISensor, Color> colors = new() { [sensor] = Color.Red };
 
-        coordinator.SetPlotSensors(sensors, colors, 2.5d);
+        Dictionary<ISensor, string> laneKeys = new() { [sensor] = "Temperature" };
+
+        coordinator.SetPlotSensors(sensors, colors, laneKeys, 2.5d);
 
         Assert.Same(sensors, _plot.Sensors);
         Assert.Same(colors, _plot.Colors);
+        Assert.Same(laneKeys, _plot.LaneKeys);
         Assert.Equal(2.5d, _plot.SetSensorsStrokeThickness);
     }
 
@@ -256,9 +259,12 @@ public sealed class PresentationSurfaceCoordinatorTests : IDisposable
 
         public Action ResetGraphView { get; set; }
 
+        public Action<string> LaneRemoved { get; set; }
+
         internal int SetCurrentSettingsCount { get; private set; }
         internal List<ISensor> Sensors { get; private set; }
         internal IDictionary<ISensor, Color> Colors { get; private set; }
+        internal IDictionary<ISensor, string> LaneKeys { get; private set; }
         internal double? SetSensorsStrokeThickness { get; private set; }
         internal double? UpdatedStrokeThickness { get; private set; }
         internal int? AxisTextScalePercent { get; private set; }
@@ -266,12 +272,27 @@ public sealed class PresentationSurfaceCoordinatorTests : IDisposable
 
         public void SetCurrentSettings() => SetCurrentSettingsCount++;
 
-        public void SetSensors(List<ISensor> sensors, IDictionary<ISensor, Color> colors, double strokeThickness)
+        public void SetSensors(
+            List<ISensor> sensors,
+            IDictionary<ISensor, Color> colors,
+            IDictionary<ISensor, string> laneKeys,
+            double strokeThickness)
         {
             Sensors = sensors;
             Colors = colors;
+            LaneKeys = laneKeys;
             SetSensorsStrokeThickness = strokeThickness;
         }
+
+        public IReadOnlyList<PlotLane> GetLanes(SensorType type) => Array.Empty<PlotLane>();
+
+        public string GetSuggestedLaneName(SensorType type) => $"{type} lane";
+
+        public string ResolveLaneKey(SensorType type, string persistedKey) => persistedKey;
+
+        public PlotLane CreateLane(SensorType type, string name) => new($"{type}:2", name, type, 1, false);
+
+        public ToolStripMenuItem CreateLanesMenu() => new("Lanes");
 
         public void UpdateStrokeThickness(double strokeThickness) => UpdatedStrokeThickness = strokeThickness;
 

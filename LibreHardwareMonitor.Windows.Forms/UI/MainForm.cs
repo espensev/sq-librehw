@@ -945,6 +945,7 @@ public sealed partial class MainForm : Form
 
         // The graph-local options menu offers the same reset command as this menu item.
         _presentation.PlotResetGraphView = () => resetPlotMenuItem_Click(this, EventArgs.Empty);
+        _presentation.PlotLaneRemoved = ReturnRemovedLaneSensorsToDefault;
         sensorValuesTimeWindowMenuItem.Text = "&Time Window";
         plotLocationMenuItem.Text = "Graph &Location";
         strokeThicknessMenuItem.Text = "&Stroke Thickness";
@@ -988,6 +989,7 @@ public sealed partial class MainForm : Form
         graphMenuItem.DropDownItems.Add(graphInputsMenuItem);
         graphMenuItem.DropDownItems.Add(togglePlotSelectionMenuItem);
         graphMenuItem.DropDownItems.Add(clearGraphInputsMenuItem);
+        graphMenuItem.DropDownItems.Add(_presentation.CreatePlotLanesMenu());
         MoveMenuItem(graphMenuItem.DropDownItems, resetPlotMenuItem);
         graphMenuItem.DropDownItems.Add(new ToolStripSeparator());
         MoveMenuItem(graphMenuItem.DropDownItems, sensorValuesTimeWindowMenuItem);
@@ -1550,6 +1552,7 @@ public sealed partial class MainForm : Form
 
         List<ISensor> selected = new();
         IDictionary<ISensor, Color> colors = new Dictionary<ISensor, Color>();
+        IDictionary<ISensor, string> laneKeys = new Dictionary<ISensor, string>();
         int colorIndex = 0;
 
         foreach (SensorNode sensorNode in sensorNodes)
@@ -1563,6 +1566,7 @@ public sealed partial class MainForm : Form
                 }
 
                 selected.Add(sensorNode.Sensor);
+                laneKeys[sensorNode.Sensor] = sensorNode.GraphLaneKey;
             }
 
             colorIndex++;
@@ -1605,7 +1609,7 @@ public sealed partial class MainForm : Form
         }
 
         _sensorPlotColors = colors;
-        _presentation.SetPlotSensors(selected, colors, _plotStrokeThickness);
+        _presentation.SetPlotSensors(selected, colors, laneKeys, _plotStrokeThickness);
     }
 
     private void NodeTextBoxText_EditorShowing(object sender, CancelEventArgs e)
@@ -1878,6 +1882,62 @@ public sealed partial class MainForm : Form
         RunBatchedPlotChange(sensorNodes, node => node.Plot = plot);
     }
 
+    private void AssignSensorNodesToLane(IEnumerable<SensorNode> sensorNodes, PlotLane lane)
+    {
+        RunBatchedPlotChange(sensorNodes, node =>
+        {
+            node.GraphLaneKey = lane.IsDefault ? null : lane.Key;
+            node.Plot = true;
+        });
+    }
+
+    private void ReturnRemovedLaneSensorsToDefault(string laneKey)
+    {
+        List<SensorNode> nodes = GetAllSensorNodes()
+            .Where(node => string.Equals(node.GraphLaneKey, laneKey, StringComparison.Ordinal))
+            .ToList();
+        if (nodes.Count > 0)
+            RunBatchedPlotChange(nodes, node => node.GraphLaneKey = null);
+    }
+
+    private ToolStripMenuItem CreateGraphLaneMenu(List<SensorNode> sensorNodes)
+    {
+        var menu = new ToolStripMenuItem("Graph Lane");
+        SensorType[] types = sensorNodes.Select(node => node.Sensor.SensorType).Distinct().ToArray();
+        if (types.Length != 1)
+        {
+            menu.Enabled = false;
+            return menu;
+        }
+
+        SensorType type = types[0];
+        foreach (PlotLane lane in _presentation.GetPlotLanes(type))
+        {
+            bool selected = sensorNodes.All(node =>
+                string.Equals(
+                    _presentation.ResolvePlotLaneKey(type, node.GraphLaneKey),
+                    lane.Key,
+                    StringComparison.Ordinal));
+            var laneItem = new ToolStripRadioButtonMenuItem(lane.Name) { Checked = selected };
+            laneItem.Click += (sender, args) => AssignSensorNodesToLane(sensorNodes, lane);
+            menu.DropDownItems.Add(laneItem);
+        }
+
+        menu.DropDownItems.Add(new ToolStripSeparator());
+        var create = new ToolStripMenuItem("New Lane...");
+        create.Click += (sender, args) =>
+        {
+            string suggestedName = _presentation.GetSuggestedPlotLaneName(type);
+            if (!PlotLaneNamePrompt.TryShow(this, "New Graph Lane", suggestedName, out string name))
+                return;
+
+            PlotLane lane = _presentation.CreatePlotLane(type, name);
+            AssignSensorNodesToLane(sensorNodes, lane);
+        };
+        menu.DropDownItems.Add(create);
+        return menu;
+    }
+
     private void SetSensorNodesPenColor(IEnumerable<SensorNode> sensorNodes, Color? color)
     {
         RunBatchedPlotChange(sensorNodes, node => node.PenColor = color);
@@ -2039,6 +2099,8 @@ public sealed partial class MainForm : Form
                 item.Click += delegate { SetSensorNodesPlot(selectedSensorNodes, false); };
                 treeContextMenu.Items.Add(item);
             }
+
+            treeContextMenu.Items.Add(CreateGraphLaneMenu(selectedSensorNodes));
 
             {
                 ToolStripItem item = new ToolStripMenuItem(multipleSensorsSelected ? $"Pen Color... ({count})" : "Pen Color...");

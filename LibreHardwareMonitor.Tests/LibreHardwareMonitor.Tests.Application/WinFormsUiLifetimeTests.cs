@@ -252,8 +252,7 @@ public sealed class WinFormsUiLifetimeTests
         Form shownForm = null;
         VScrollBar nativeVertical = null;
         HScrollBar nativeHorizontal = null;
-        System.Drawing.Point verticalPoint = default;
-        System.Drawing.Point horizontalPoint = default;
+        IntPtr formHandle = IntPtr.Zero;
         IntPtr verticalHandle = IntPtr.Zero;
         IntPtr horizontalHandle = IntPtr.Zero;
         Exception uiThreadFailure = null;
@@ -313,10 +312,7 @@ public sealed class WinFormsUiLifetimeTests
                 {
                     ThemedVScrollIndicator verticalIndicator = host.Controls.OfType<ThemedVScrollIndicator>().Single();
                     ThemedHScrollIndicator horizontalIndicator = host.Controls.OfType<ThemedHScrollIndicator>().Single();
-                    verticalPoint = verticalIndicator.PointToScreen(
-                        new System.Drawing.Point(verticalIndicator.Width / 2, verticalIndicator.Height / 2));
-                    horizontalPoint = horizontalIndicator.PointToScreen(
-                        new System.Drawing.Point(horizontalIndicator.Width / 2, horizontalIndicator.Height / 2));
+                    formHandle = shownForm.Handle;
                     verticalHandle = verticalIndicator.Handle;
                     horizontalHandle = horizontalIndicator.Handle;
                     ready.Set();
@@ -350,8 +346,11 @@ public sealed class WinFormsUiLifetimeTests
             // hit-testing intermittently resolves to invisible full-desktop overlay windows owned
             // by other processes (observed: mstsc's 'Input Capture Window'), which no retry can
             // outwait. The painted-hit-target claim is preserved by asserting each element's
-            // BoundingRectangle contains the indicator's painted center point.
+            // BoundingRectangle contains the indicator's painted center point. Read that point
+            // from the HWND's native rectangle: Control.PointToScreen can return DPI-virtualized
+            // coordinates with a different multi-monitor origin than UI Automation.
             AutomationElement verticalElement = GetAutomationElementFromHandle(verticalHandle);
+            System.Drawing.Point verticalPoint = GetUiAutomationWindowCenter(verticalHandle, formHandle);
             Assert.Equal(ControlType.ScrollBar, verticalElement.Current.ControlType);
             Assert.Equal("Sensor list vertical scrollbar", verticalElement.Current.Name);
             Assert.True(verticalElement.Current.BoundingRectangle.Contains(verticalPoint.X, verticalPoint.Y),
@@ -364,6 +363,7 @@ public sealed class WinFormsUiLifetimeTests
             AssertScrollBarValue(shownForm, nativeVertical, 55);
 
             AutomationElement horizontalElement = GetAutomationElementFromHandle(horizontalHandle);
+            System.Drawing.Point horizontalPoint = GetUiAutomationWindowCenter(horizontalHandle, formHandle);
             Assert.Equal(ControlType.ScrollBar, horizontalElement.Current.ControlType);
             Assert.Equal("Sensor list horizontal scrollbar", horizontalElement.Current.Name);
             Assert.True(horizontalElement.Current.BoundingRectangle.Contains(horizontalPoint.X, horizontalPoint.Y),
@@ -597,6 +597,30 @@ public sealed class WinFormsUiLifetimeTests
                (0.0722 * Linearize(color.B));
     }
 
+    private static System.Drawing.Point GetUiAutomationWindowCenter(IntPtr handle, IntPtr rootHandle)
+    {
+        if (!GetWindowRect(handle, out NativeRect bounds) ||
+            !GetWindowRect(rootHandle, out NativeRect rootBounds))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+
+        System.Windows.Rect automationRootBounds =
+            GetAutomationElementFromHandle(rootHandle).Current.BoundingRectangle;
+        double nativeRootWidth = rootBounds.Right - rootBounds.Left;
+        double nativeRootHeight = rootBounds.Bottom - rootBounds.Top;
+        if (nativeRootWidth <= 0 || nativeRootHeight <= 0 || automationRootBounds.IsEmpty)
+            throw new InvalidOperationException("Scrollbar test root window has invalid bounds.");
+
+        double scaleX = automationRootBounds.Width / nativeRootWidth;
+        double scaleY = automationRootBounds.Height / nativeRootHeight;
+        return new System.Drawing.Point(
+            (int)Math.Round(
+                automationRootBounds.Left +
+                ((bounds.Left - rootBounds.Left) + ((bounds.Right - bounds.Left) / 2.0)) * scaleX),
+            (int)Math.Round(
+                automationRootBounds.Top +
+                ((bounds.Top - rootBounds.Top) + ((bounds.Bottom - bounds.Top) / 2.0)) * scaleY));
+    }
+
     private sealed class RenderableVScrollIndicator : ThemedVScrollIndicator
     {
         public RenderableVScrollIndicator(VScrollBar scrollbar)
@@ -622,6 +646,19 @@ public sealed class WinFormsUiLifetimeTests
 
     [DllImport("user32.dll")]
     private static extern int GetGuiResources(IntPtr process, int flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr handle, out NativeRect bounds);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
 
     private sealed class TestHardware : HardwareBase
     {

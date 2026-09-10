@@ -1,7 +1,7 @@
 # Feature Spec: Graph Lanes
 
-**Status:** design accepted by the operator on 2026-08-27; implementation not started
-**Updated:** 2026-08-27
+**Status:** source implemented and automated gates pass; live operator verification and promotion pending
+**Updated:** 2026-09-01
 **Design lineage:** brainstormed in chat 2026-08-27 after the Text Size crash fix; supersedes no earlier spec
 
 ## Problem and motivation
@@ -44,8 +44,9 @@ the graph is exactly today's graph.
 - A lane is one Y axis. The **default lanes** are today's per-type axes and keep their
   keys (`Voltage`, `Fan`, `Power`, ...), so existing persisted zoom keeps working.
 - A **user lane** is created from a sensor and is bound to that sensor's `SensorType`. It
-  accepts only sensors of that type. Its key is `<SensorType>#<n>` with `n` the smallest
-  unused integer from 2; its display name defaults to `<Type> <n>` and is renamable.
+  accepts only sensors of that type. Its key is `<SensorType>#<n>` with a monotonically
+  increasing `n` starting at 2; removed keys are never reused. Its display name defaults
+  to `<Type> <n>` and is renamable.
 - Axis title is the lane name; the unit comes from the type as today.
 - A lane with no plotted sensor is hidden, like an empty type axis today, but persists.
 - Removing a lane returns its sensors to the default lane of their type. Default lanes
@@ -62,13 +63,16 @@ the graph is exactly today's graph.
 - `Graph` menu and the graph-local options menu: `Lanes >` with one entry per visible or
   user lane: `Rename...` and `Remove Lane` (user lanes only), `Height > 1x | 2x | 3x`,
   and `Auto Range`.
-- `Reset Graph View` keeps its meaning: it resets zoom on every lane. It never deletes
-  lanes, membership, or weights.
+- `Reset Graph View` keeps today's meaning: it clears sensor values/history and does not
+  alter lane zoom, membership, or weights. The existing `Value Axes > Autoscale All`
+  action resets zoom on every lane.
 
 ### Zoom and height
 
 - Mouse-wheel over a lane's axis zooms only that lane (existing OxyPlot behavior under
-  `yAxesEnableZoom`). `Auto Range` clears that lane's persisted zoom and re-fits it.
+  `yAxesEnableZoom`). `Auto Range` clears that lane's persisted zoom and leaves it in
+  durable auto-range mode. A later manual zoom returns only that lane to fixed-range
+  persistence.
 - With `Stacked Axes` on, each visible lane gets `weight / sum(weights of visible lanes)`
   of the plot height. With `Stacked Axes` off, lanes are overlaid tiers as today and
   weights are ignored.
@@ -80,9 +84,10 @@ the graph is exactly today's graph.
 | Key | Value | Notes |
 |---|---|---|
 | `plotPanel.lanes` | `key=name:weight;...` for user lanes, in creation order | names are trimmed; `;`, `=`, `:` are replaced by space on input |
+| `plotPanel.laneNext.<SensorType>` | next monotonically increasing user-lane number | minimum `2`; repaired from the largest persisted key when absent or malformed |
 | `plotPanel.laneWeight.<key>` | `1`..`3` | default lanes only; user-lane weight lives in `plotPanel.lanes` |
 | `<sensor identifier>/graphLane` | lane key | same pattern as `<sensor identifier>/plot`; absent means the default lane |
-| `plotPanel.Min<key>` / `plotPanel.Max<key>` | existing zoom persistence | unchanged; user lanes reuse it by key |
+| `plotPanel.Min<key>` / `plotPanel.Max<key>` | fixed zoom persistence | both absent means durable auto range; user lanes reuse the existing key pattern |
 
 ### Edge cases and failure states
 
@@ -93,6 +98,9 @@ the graph is exactly today's graph.
 - A user lane whose type name no longer parses as a `SensorType`: skipped on load.
 - Creating a lane for a sensor that is not plotted: allowed; it also turns plotting on.
 - Sensor removed from hardware: its lane membership stays persisted, like `plot`.
+- Removing a lane never makes its key reusable, so retained membership for an absent
+  sensor cannot attach to a later unrelated lane. It resolves to the default lane until
+  the operator explicitly assigns that sensor again.
 
 ## Affected surfaces
 
@@ -101,8 +109,8 @@ the graph is exactly today's graph.
   serialization. No WinForms or OxyPlot types; unit-testable like `UiScale`.
 - `PlotPanel`: axes and annotations created from `PlotLanes` instead of the type enum;
   `SetSensors` binds `YAxisKey` to the resolved lane; `UpdateAxesPosition` uses weight
-  shares; new public `CreateLane`, `AssignLane`, `RenameLane`, `RemoveLane`,
-  `SetLaneWeight`, `AutoRangeLane`; the graph-local `Lanes >` submenu.
+  shares; new public lane create, resolve, rename, remove, weight, and auto-range
+  operations; the graph-local `Lanes >` submenu.
 - `MainForm`: sensor context submenu, `Graph > Lanes >` submenu, forwarding through
   `PresentationSurfaceCoordinator` / `WinFormsPresentationAdapters` like
   `PlotResetGraphView`.
@@ -120,22 +128,27 @@ the graph is exactly today's graph.
 
 ## Acceptance criteria
 
-- [ ] With no user lane and no weight set, axes, keys, stacking, zoom persistence, and
+- [x] With no user lane and no weight set, axes, keys, stacking, zoom persistence, and
   series binding are unchanged (existing plot tests stay green without edits).
 - [ ] A sensor can be moved to a new lane, to an existing lane of its type, and back to the
   default lane from the tree context menu; the graph reflects it immediately.
-- [ ] A lane accepts only its type; the submenu never offers a lane of another type.
-- [ ] Per-lane zoom and `Auto Range` affect only that lane; `Reset Graph View` resets all.
-- [ ] Height weights 1x-3x change stacked shares exactly as `weight / sum`; overlay mode
+- [x] A lane accepts only its type; the submenu never offers a lane of another type.
+- [x] Per-lane zoom and `Auto Range` affect only that lane; `Value Axes > Autoscale All`
+  resets all lane zoom, while `Reset Graph View` retains its sensor-value reset behavior.
+- [x] Height weights 1x-3x change stacked shares exactly as `weight / sum`; overlay mode
   ignores them.
-- [ ] Lanes, membership, weights, and zoom survive a restart; malformed or stale values
+- [x] Lanes, membership, weights, and zoom survive a restart; malformed or stale values
   self-heal without touching other settings.
-- [ ] Removing a lane returns its sensors to the default lane.
-- [ ] `PlotLanesTests` cover key allocation, membership resolution, clamping, layout
+- [x] Removing a lane returns its sensors to the default lane.
+- [x] Remove-while-sensor-absent, create another lane, and sensor-return cannot reactivate
+  the removed membership because lane keys are never reused.
+- [x] Auto Range remains auto through autosave and restart; a subsequent manual zoom stores
+  fixed Min/Max only for that lane.
+- [x] `PlotLanesTests` cover key allocation, membership resolution, clamping, layout
   shares, serialization round-trip, and removal.
-- [ ] Both Release builds and the full x64 suite pass; the operator verifies a Vcore vs
-  12 V lane split, a pump vs fan split, CPU vs GPU power, a 3x CPU lane, and restart
-  persistence on the live build.
+- [x] Both Release builds and the full x64 suite pass.
+- [ ] The operator verifies a Vcore vs 12 V lane split, a pump vs fan split, CPU vs GPU
+  power, a 3x CPU lane, and restart persistence on the live build.
 
 ## Verification plan
 
@@ -160,3 +173,16 @@ confirm the layout returns. Then record the result here and mark the status ship
 4. Menus in `MainForm` and the graph-local menu, forwarded through the presentation
    coordinator.
 5. Spec verification log, `docs/README.md` row, and `AGENTS.md` pointer updated.
+
+## Verification log
+
+### 2026-09-01 — source implementation
+
+- Application graph-lane regression tests: 13 passed (`PlotLanesTests` and
+  `PlotPanelLaneTests`).
+- Full x64 solution filter: 397 passed, 1 skipped, 0 failed.
+- Release `net10.0-windows` x64 build: passed with 0 warnings and 0 errors.
+- Release `net472` x64 build: passed with 0 warnings and 0 errors.
+- The UI Automation scrollbar gate was hardened to compare UIA bounds with the HWND's
+  native physical coordinates; this removes DPI-virtualized multi-monitor origin drift.
+- Live GUI verification and promotion were not run.
