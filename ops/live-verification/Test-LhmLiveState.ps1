@@ -247,11 +247,12 @@ if ($manifestsValid) {
 if ($manifestsValid) {
     try {
         $declaredComputer = [string](Get-LhmManifestValue -Object $layout -PropertyPath @('computerName'))
-        if ($declaredComputer -ieq $env:COMPUTERNAME) {
+        $runningComputer = [System.Environment]::MachineName
+        if ($declaredComputer -ieq $runningComputer) {
             Add-LhmLiveCheck 'machine' 'Pass' "Declared computer '$declaredComputer' matches the running machine."
         }
         else {
-            Add-LhmLiveCheck 'machine' 'Fail' "Manifest declares '$declaredComputer' but this machine is '$env:COMPUTERNAME'."
+            Add-LhmLiveCheck 'machine' 'Fail' "Manifest declares '$declaredComputer' but this machine is '$runningComputer'."
         }
     }
     catch {

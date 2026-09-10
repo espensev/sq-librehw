@@ -111,7 +111,7 @@ try {
         schema = 'sq.librehw-layout'
         version = 1
         machineId = 'live-state-fixture'
-        computerName = $env:COMPUTERNAME
+        computerName = [System.Environment]::MachineName
         operations = [ordered]@{
             root = $testRoot
             live = $liveDir
@@ -157,7 +157,7 @@ try {
         Version = 1
         SourceDirectories = @($liveDir)
         ArchiveRoot = $archiveDir
-        MachineName = $env:COMPUTERNAME
+        MachineName = [System.Environment]::MachineName
         RetentionDays = 365
     }
     Write-LhmFixtureJson -Path (Join-Path $logMgmtDir 'log-management.json') -Value $logConfig
@@ -256,7 +256,7 @@ try {
     Write-LhmFixtureJson -Path (Join-Path $manifestDir 'layout.json') -Value $layout
     $tamper = Invoke-LhmFixtureProcess -Engine $engine -Verifier $verifier -StackRoot $testRoot
     Assert-LhmFixtureFailure -Invocation $tamper -Check 'machine' -DetailPattern '*OTHER-HOST-FIXTURE*'
-    $layout.computerName = $env:COMPUTERNAME
+    $layout.computerName = [System.Environment]::MachineName
     Write-LhmFixtureJson -Path (Join-Path $manifestDir 'layout.json') -Value $layout
 
     $logConfig.Schema = 'sq.lhm-log-management.invalid'
@@ -287,7 +287,7 @@ try {
     Write-LhmFixtureJson -Path (Join-Path $logMgmtDir 'log-management.json') -Value $logConfig
     $tamper = Invoke-LhmFixtureProcess -Engine $engine -Verifier $verifier -StackRoot $testRoot
     Assert-LhmFixtureFailure -Invocation $tamper -Check 'log-tooling' -DetailPattern '*MachineName*'
-    $logConfig.MachineName = $env:COMPUTERNAME
+    $logConfig.MachineName = [System.Environment]::MachineName
 
     foreach ($invalidRetention in @(0, 36501)) {
         $logConfig.RetentionDays = $invalidRetention
