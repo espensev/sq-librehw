@@ -1,6 +1,6 @@
 # Feature Spec: Graph Lanes
 
-**Status:** promoted on SND-DESK; live checks found a startup zoom-persistence regression, so full acceptance remains open
+**Status:** promoted and live-verified on SND-DESK, including repaired startup zoom persistence; operator layout sign-off remains separate
 **Updated:** 2026-09-11
 **Design lineage:** brainstormed in chat 2026-08-27 after the Text Size crash fix; supersedes no earlier spec
 
@@ -143,7 +143,7 @@ the graph is exactly today's graph.
   resets all lane zoom, while `Reset Graph View` retains its sensor-value reset behavior.
 - [x] Height weights 1x-3x change stacked shares exactly as `weight / sum`; overlay mode
   ignores them.
-- [ ] Lanes, membership, weights, and zoom survive a restart; malformed or stale values
+- [x] Lanes, membership, weights, and customized-layout zoom survive a restart; malformed or stale values
   self-heal without touching other settings.
 - [x] Removing a lane returns its sensors to the default lane.
 - [x] Remove-while-sensor-absent, create another lane, and sensor-return cannot reactivate
@@ -183,7 +183,7 @@ confirm the layout returns. Then record the result here and mark the status ship
 
 ## Verification log
 
-### 2026-09-11 — approved startup zoom repair
+### 2026-09-11 — startup zoom repair and live re-verification
 
 - The operator authorized the fix and repeated build, promotion, and live restart
   verification. The repair preserves the legacy uncustomized startup auto-fit while
@@ -196,6 +196,34 @@ confirm the layout returns. Then record the result here and mark the status ship
   path (expected manual bounds 20 and 0.5; observed auto-fit minima 39.8 and 1.099).
   After the guard, all 11 `PlotPanelLaneTests` passed. Legacy auto-fit, subsequent
   manual zoom, explicit resets, and removal of the last user lane are covered.
+- Independent diff review accepted the fix and independently passed all 11 panel
+  tests in Release. Clean source `d65d2ae336820a5cc97541319f971f30bd682dfb`
+  passed the candidate gates: 401 tests passed, one established live-config skip,
+  and both x64 Release frameworks built with zero warnings/errors.
+- Verified `snd-desk` promotion at 2026-09-10 23:43 UTC installed release
+  `0.9.6_d65d2ae.2026-09-11-d65d2ae33682-20260910T234223Z`, SHA-256
+  `c7fb15fe9a26494db5cab2c0b9bdd1adcd3279c64df1ba84255a60fafa68bf10`.
+  The rollback slot now contains the preceding `96a3e629` release.
+- Native wheel input set manual zoom on Vcore and default Voltage before promotion.
+  Clean File > Exit saves, populated live graphs, public-launch restarts, and
+  subsequent saves preserved these exact bounds through promotion and another
+  normal restart:
+
+  | Lane | Minimum | Maximum |
+  |---|---|---|
+  | Voltage (3.3 V) | 1.8759649 | 4.9208164 |
+  | Vcore (`Voltage#2`) | 1.0818045 | 1.2093045 |
+
+- `zoom-fix-before-promotion.config`, `zoom-fix-after-promotion.config`, and
+  `zoom-fix-after-restart.config` under the recovery directory below retain all
+  four bounds, lane definitions, three sensor memberships, and stacked mode.
+  CPU Power remains 3x and in Auto Range (both fixed-bound keys absent).
+  This closes the earlier failed technical criterion without claiming operator
+  ratification. An unchecked native Auto Range menu item exposes no UIA toggle
+  pattern, so numeric persisted bounds, not a missing toggle value, prove zoom mode.
+- The fixed live build passed independent executable/rollback hash checks, exact
+  single-process checks, all three HTTP endpoints, continuing CSV growth, and
+  launcher Validate with no drift. No SND-HOST promotion was performed.
 
 ### 2026-09-11 — live verification preparation
 
@@ -227,16 +255,18 @@ confirm the layout returns. Then record the result here and mark the status ship
   remained checked after a clean File > Exit and public-launch restart.
 - Lane definitions, membership, and weights survived restart:
   `Voltage#2=Vcore:1;Fan#2=Pump:1;Power#2=CPU Power:3`.
-- **Failed live criterion:** manual Vcore zoom did not survive startup.
+- **Initial failure, resolved by the repair above:** manual Vcore zoom did not survive startup.
   `after-first-clean-exit.config` retained `MinVoltage#2=1.0946635` and
   `MaxVoltage#2=1.1938664`; `after-restart-clean-exit.config` lost both keys
   without another zoom action. Both evidence copies are alongside the
   pre-test backup above. `PlotPanel.InvalidatePlot` calls
   `AutoscaleAllYAxes()` on first real data when `AutoFitYOnStart` is true,
-  overriding the restored manual range. This blocks full acceptance.
+  overriding the restored manual range. The repaired startup guard and new live
+  evidence above supersede this failure; the original evidence is retained.
 - These are agent-executed live checks, not a claim of operator ratification
-  or SND-HOST promotion. The application remains healthy on SND-DESK;
-  the August 14 release is retained in the installer's rollback slot.
+  or SND-HOST promotion. At this initial checkpoint, the application remained
+  healthy on SND-DESK and the rollback slot retained the August 14 release;
+  the subsequent repair promotion above replaced that slot with `96a3e629`.
 
 ### 2026-09-01 — source implementation
 

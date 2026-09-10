@@ -909,8 +909,26 @@ This does not add an unelevated-shell acceptance claim.
   rollback hashes, and launcher Validate PASS without drift.
 - Rollback retains source `e977e577ea133fa6e9486f40f29b2266dcc22d70`,
   SHA-256 `e2ac66b3791dba60d77d297708056d5716e44ec596d63f1b778e950352f0fca8`.
-  Graph-lane live tests found a manual-zoom startup regression; see
-  `feature-graph-lanes.md`. Promotion success is not full feature acceptance.
+  Initial graph-lane live tests found a manual-zoom startup regression, repaired
+  by the subsequent promotion below. Promotion success is not operator sign-off.
+
+### Startup zoom repair promotion — 2026-09-11
+
+- User-authorized repair source `d65d2ae336820a5cc97541319f971f30bd682dfb`
+  produced candidate `0.9.6_d65d2ae.2026-09-11-d65d2ae33682-20260910T234223Z`
+  under `E:\Monitoring\LibreHW\Candidates\graph-lanes-zoom-fix-20260911`.
+- Candidate gates: 401 passed, one established skip; both Release frameworks
+  zero warnings/errors. Identity-verified WhatIf and promotion succeeded on
+  `snd-desk` at 2026-09-10 23:43 UTC, using the existing data root and task.
+- Installed SHA-256:
+  `c7fb15fe9a26494db5cab2c0b9bdd1adcd3279c64df1ba84255a60fafa68bf10`.
+  The one rollback slot now retains `96a3e629`, SHA-256
+  `cfeb25307a961b21bb2488822e79fa25170b9dc29db9432cfecf443f3e513771`.
+- Independent checks passed for installed/rollback hashes, exact process,
+  HTTP health, CSV growth, and launcher convergence. Native clean-exit and
+  restart checks preserved exact zoom bounds for both voltage lanes, plus
+  membership, CPU 3x height, and Auto Range. See `feature-graph-lanes.md` for
+  the numeric evidence and remaining operator sign-off boundary.
 
 ## Initial config decision
 
