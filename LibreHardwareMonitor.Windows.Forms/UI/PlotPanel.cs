@@ -132,9 +132,8 @@ public class PlotPanel : UserControl
             nextNumbers,
             defaultWeights);
 
-        // One-time gate for the startup Y-axis auto-fit (see InvalidatePlot()): reclaims empty
-        // graph bands left over from a stale persisted zoom (axis.Zoom(...) below in
-        // CreatePlotModel), without touching later in-session zooms (manual or menu-driven).
+        // One-time legacy startup auto-fit (see InvalidatePlot). Customized lane layouts
+        // retain their restored zoom; later manual/menu-driven zoom is never reset here.
         _autoFitYOnStart = _settings.GetValue("plotPanel.AutoFitYOnStart", true);
 
         SetDpi();
@@ -1131,13 +1130,13 @@ public class PlotPanel : UserControl
 
         SyncSeriesPoints();
 
-        // One-shot: reclaim empty Y-axis bands left over from a stale persisted zoom
-        // (CreatePlotModel's axis.Zoom(...) restore) once real data exists, then never again
-        // this session so a later manual/menu zoom sticks.
+        // Consume the startup decision once real data exists, even for a customized layout,
+        // so removing its final user lane later cannot trigger a delayed zoom reset.
         if (_autoFitYOnStart && !_didAutoFitYAxesOnStart && _historyStore.States.Any(state => state.Points.Count > 0))
         {
             _didAutoFitYAxesOnStart = true;
-            AutoscaleAllYAxes();
+            if (_lanes.Lanes.All(lane => lane.IsDefault && lane.Weight == 1))
+                AutoscaleAllYAxes();
         }
 
         UpdateTimeAxisWindow(nowX);

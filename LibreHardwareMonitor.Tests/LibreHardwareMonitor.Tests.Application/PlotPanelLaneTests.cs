@@ -10,6 +10,7 @@ using System.Linq;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Windows.Forms.UI;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
+using OxyPlot;
 using OxyPlot.Axes;
 using OxyPlot.Series;
 using OxyPlot.WindowsForms;
@@ -89,6 +90,149 @@ public sealed class PlotPanelLaneTests
         LinearAxis restoredAxis = Assert.IsType<LinearAxis>(restoredView.Model.Axes.Single(axis => axis.Key == laneKey));
         Assert.Equal(30, restoredAxis.ActualMinimum, 3);
         Assert.Equal(90, restoredAxis.ActualMaximum, 3);
+    }
+
+    [Fact]
+    public void CustomizedLaneZoom_SurvivesRestartAndFirstHistoryIncludingDefaultLane()
+    {
+        var settings = new PersistentSettings();
+        var unitManager = new UnitManager(settings);
+        var cpu = new FakeSensor(SensorType.Power, "CPU", 40, 60);
+        var gpu = new FakeSensor(SensorType.Power, "GPU", 150, 180);
+        string laneKey;
+
+        using (var panel = new PlotPanel(settings, unitManager))
+        {
+            laneKey = panel.CreateLane(SensorType.Power, "GPU Power").Key;
+            BindHistory(panel, (cpu, null), (gpu, laneKey));
+            GetAxis(panel, "Power").Zoom(20, 100);
+            GetAxis(panel, laneKey).Zoom(120, 220);
+            panel.SetCurrentSettings();
+        }
+
+        Assert.False(settings.Contains("plotPanel.AutoFitYOnStart"));
+        using var restored = new PlotPanel(settings, unitManager);
+        Assert.Equal(20, GetAxis(restored, "Power").ActualMinimum);
+        Assert.Equal(120, GetAxis(restored, laneKey).ActualMinimum);
+
+        BindHistory(restored, (cpu, null), (gpu, laneKey));
+        restored.InvalidatePlot();
+        restored.SetCurrentSettings();
+
+        Assert.Equal(20, GetAxis(restored, "Power").ActualMinimum);
+        Assert.Equal(100, GetAxis(restored, "Power").ActualMaximum);
+        Assert.Equal(120, GetAxis(restored, laneKey).ActualMinimum);
+        Assert.Equal(220, GetAxis(restored, laneKey).ActualMaximum);
+        Assert.Equal(20, settings.GetValue("plotPanel.MinPower", float.NaN));
+        Assert.Equal(120, settings.GetValue("plotPanel.Min" + laneKey, float.NaN));
+
+        Assert.True(restored.RemoveLane(laneKey));
+        restored.InvalidatePlot();
+        Assert.Equal(20, GetAxis(restored, "Power").ActualMinimum);
+        Assert.Equal(100, GetAxis(restored, "Power").ActualMaximum);
+    }
+
+    [Fact]
+    public void WeightedDefaultLaneZoom_SurvivesRestartAndFirstHistory()
+    {
+        var settings = new PersistentSettings();
+        var unitManager = new UnitManager(settings);
+        var sensor = new FakeSensor(SensorType.Voltage, "Vcore", 1.1f, 1.2f);
+
+        using (var panel = new PlotPanel(settings, unitManager))
+        {
+            Assert.True(panel.SetLaneWeight("Voltage", 3));
+            BindHistory(panel, (sensor, null));
+            GetAxis(panel, "Voltage").Zoom(0.5, 1.5);
+            panel.SetCurrentSettings();
+        }
+
+        Assert.False(settings.Contains("plotPanel.AutoFitYOnStart"));
+        using var restored = new PlotPanel(settings, unitManager);
+        Assert.Equal(3, Assert.Single(restored.GetLanes(SensorType.Voltage)).Weight);
+        BindHistory(restored, (sensor, null));
+        restored.InvalidatePlot();
+        restored.SetCurrentSettings();
+
+        Assert.Equal(0.5, GetAxis(restored, "Voltage").ActualMinimum);
+        Assert.Equal(1.5, GetAxis(restored, "Voltage").ActualMaximum);
+        Assert.Equal(0.5f, settings.GetValue("plotPanel.MinVoltage", float.NaN));
+        Assert.Equal(1.5f, settings.GetValue("plotPanel.MaxVoltage", float.NaN));
+    }
+
+    [Fact]
+    public void LegacyLayout_AutoFitsStaleZoomOnceAndPreservesLaterManualZoom()
+    {
+        var settings = new PersistentSettings();
+        settings.SetValue("plotPanel.MinPower", 1000f);
+        settings.SetValue("plotPanel.MaxPower", 2000f);
+        var unitManager = new UnitManager(settings);
+        var sensor = new FakeSensor(SensorType.Power, "CPU", 40, 60);
+        using var panel = new PlotPanel(settings, unitManager);
+        LinearAxis axis = GetAxis(panel, "Power");
+        Assert.Equal(1000, axis.ActualMinimum);
+        Assert.False(settings.Contains("plotPanel.AutoFitYOnStart"));
+
+        BindHistory(panel, (sensor, null));
+        panel.SetCurrentSettings();
+
+        Assert.NotEqual(1000, axis.ActualMinimum);
+        Assert.NotEqual(2000, axis.ActualMaximum);
+        Assert.False(settings.Contains("plotPanel.MinPower"));
+        Assert.False(settings.Contains("plotPanel.MaxPower"));
+
+        axis.Zoom(20, 100);
+        BindHistory(panel, (sensor, null));
+        panel.InvalidatePlot();
+        panel.SetCurrentSettings();
+
+        Assert.Equal(20, axis.ActualMinimum);
+        Assert.Equal(100, axis.ActualMaximum);
+        Assert.Equal(20, settings.GetValue("plotPanel.MinPower", float.NaN));
+        Assert.Equal(100, settings.GetValue("plotPanel.MaxPower", float.NaN));
+    }
+
+    [Fact]
+    public void CustomizedLayout_ExplicitAutoRangeAndAutoscaleAllStillClearManualZoom()
+    {
+        var settings = new PersistentSettings();
+        var unitManager = new UnitManager(settings);
+        var cpu = new FakeSensor(SensorType.Power, "CPU", 40, 60);
+        var gpu = new FakeSensor(SensorType.Power, "GPU", 150, 180);
+        using var panel = new PlotPanel(settings, unitManager);
+        string laneKey = panel.CreateLane(SensorType.Power, "GPU Power").Key;
+        BindHistory(panel, (cpu, null), (gpu, laneKey));
+        LinearAxis defaultAxis = GetAxis(panel, "Power");
+        LinearAxis userAxis = GetAxis(panel, laneKey);
+        defaultAxis.Zoom(20, 100);
+        userAxis.Zoom(120, 220);
+        panel.SetCurrentSettings();
+
+        Assert.True(panel.AutoRangeLane(laneKey));
+        BindHistory(panel, (cpu, null), (gpu, laneKey));
+        panel.SetCurrentSettings();
+
+        Assert.Equal(20, defaultAxis.ActualMinimum);
+        Assert.Equal(100, defaultAxis.ActualMaximum);
+        Assert.NotEqual(120, userAxis.ActualMinimum);
+        Assert.NotEqual(220, userAxis.ActualMaximum);
+        Assert.False(settings.Contains("plotPanel.Min" + laneKey));
+        Assert.False(settings.Contains("plotPanel.Max" + laneKey));
+
+        userAxis.Zoom(130, 210);
+        panel.AutoscaleAllYAxes();
+        BindHistory(panel, (cpu, null), (gpu, laneKey));
+        panel.SetCurrentSettings();
+
+        foreach (string key in new[] { "Power", laneKey })
+        {
+            Assert.False(settings.Contains("plotPanel.Min" + key));
+            Assert.False(settings.Contains("plotPanel.Max" + key));
+        }
+        Assert.NotEqual(20, defaultAxis.ActualMinimum);
+        Assert.NotEqual(100, defaultAxis.ActualMaximum);
+        Assert.NotEqual(130, userAxis.ActualMinimum);
+        Assert.NotEqual(210, userAxis.ActualMaximum);
     }
 
     [Fact]
@@ -209,6 +353,26 @@ public sealed class PlotPanelLaneTests
         Assert.Equal(2, changes);
     }
 
+    private static LinearAxis GetAxis(PlotPanel panel, string key)
+    {
+        PlotView view = panel.Controls.OfType<PlotView>().Single();
+        return Assert.IsType<LinearAxis>(view.Model.Axes.Single(axis => axis.Key == key));
+    }
+
+    private static void BindHistory(PlotPanel panel, params (ISensor Sensor, string LaneKey)[] bindings)
+    {
+        panel.SetSensors(
+            bindings.Select(binding => binding.Sensor).ToList(),
+            bindings.ToDictionary(binding => binding.Sensor, _ => Color.Red),
+            bindings.ToDictionary(binding => binding.Sensor, binding => binding.LaneKey),
+            2);
+
+        PlotView view = panel.Controls.OfType<PlotView>().Single();
+        Assert.All(view.Model.Series.Cast<LineSeries>(), series =>
+            Assert.NotEmpty(Assert.IsAssignableFrom<IEnumerable<DataPoint>>(series.ItemsSource)));
+        ((IPlotModel)view.Model).Update(true);
+    }
+
 #pragma warning disable CS0067 // Events required by IHardware are not raised by this test fake.
 
     private sealed class FakeHardware : IHardware
@@ -234,11 +398,13 @@ public sealed class PlotPanelLaneTests
 
     private sealed class FakeSensor : ISensor
     {
-        internal FakeSensor(SensorType sensorType, string name = "Test sensor")
+        internal FakeSensor(SensorType sensorType, string name = "Test sensor", params float[] history)
         {
             SensorType = sensorType;
             Name = name;
             Identifier = new Identifier("plot-lane-test", sensorType.ToString().ToLowerInvariant(), name.ToLowerInvariant());
+            DateTime timeOrigin = DateTime.UtcNow.AddSeconds(-history.Length);
+            Values = history.Select((value, index) => new SensorValue(value, timeOrigin.AddSeconds(index))).ToArray();
         }
 
         public IControl Control => null;
@@ -252,7 +418,7 @@ public sealed class PlotPanelLaneTests
         public IReadOnlyList<IParameter> Parameters => Array.Empty<IParameter>();
         public SensorType SensorType { get; }
         public float? Value => null;
-        public IEnumerable<SensorValue> Values => Array.Empty<SensorValue>();
+        public IEnumerable<SensorValue> Values { get; }
         public TimeSpan ValuesTimeWindow { get; set; }
 
         public void ResetMin() { }

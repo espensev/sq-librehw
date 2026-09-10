@@ -78,6 +78,12 @@ the graph is exactly today's graph.
   weights are ignored.
 - Weights apply to default lanes too, so a temperature-heavy CPU view can be 3x without
   creating a user lane.
+- Startup auto-fit retains its legacy behavior only when there are no user lanes and
+  every default lane has weight 1. With any user lane or customized default weight,
+  the first real data must preserve restored manual zoom for all lanes, including the
+  default member of a split. The startup decision is consumed once; removing a lane
+  later must not trigger a delayed reset. Explicit `Auto Range` and `Autoscale All`
+  remain unchanged.
 
 ### Persistence
 
@@ -176,6 +182,20 @@ confirm the layout returns. Then record the result here and mark the status ship
 5. Spec verification log, `docs/README.md` row, and `AGENTS.md` pointer updated.
 
 ## Verification log
+
+### 2026-09-11 — approved startup zoom repair
+
+- The operator authorized the fix and repeated build, promotion, and live restart
+  verification. The repair preserves the legacy uncustomized startup auto-fit while
+  protecting manual ranges in customized lane layouts.
+- Regression coverage must use the default `AutoFitYOnStart` setting and nonempty
+  sensor history after reconstruction, covering user lanes, weighted default lanes,
+  uncustomized compatibility, and explicit range-reset actions. Source and live
+  results are recorded below only after verification.
+- The new user-lane and weighted-default tests first failed against the old startup
+  path (expected manual bounds 20 and 0.5; observed auto-fit minima 39.8 and 1.099).
+  After the guard, all 11 `PlotPanelLaneTests` passed. Legacy auto-fit, subsequent
+  manual zoom, explicit resets, and removal of the last user lane are covered.
 
 ### 2026-09-11 — live verification preparation
 
