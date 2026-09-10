@@ -1,7 +1,7 @@
 # Feature Spec: Graph Lanes
 
-**Status:** source implemented and automated gates pass; live operator verification and promotion pending
-**Updated:** 2026-09-01
+**Status:** promoted on SND-DESK; live checks found a startup zoom-persistence regression, so full acceptance remains open
+**Updated:** 2026-09-11
 **Design lineage:** brainstormed in chat 2026-08-27 after the Text Size crash fix; supersedes no earlier spec
 
 ## Problem and motivation
@@ -130,14 +130,14 @@ the graph is exactly today's graph.
 
 - [x] With no user lane and no weight set, axes, keys, stacking, zoom persistence, and
   series binding are unchanged (existing plot tests stay green without edits).
-- [ ] A sensor can be moved to a new lane, to an existing lane of its type, and back to the
+- [x] A sensor can be moved to a new lane, to an existing lane of its type, and back to the
   default lane from the tree context menu; the graph reflects it immediately.
 - [x] A lane accepts only its type; the submenu never offers a lane of another type.
 - [x] Per-lane zoom and `Auto Range` affect only that lane; `Value Axes > Autoscale All`
   resets all lane zoom, while `Reset Graph View` retains its sensor-value reset behavior.
 - [x] Height weights 1x-3x change stacked shares exactly as `weight / sum`; overlay mode
   ignores them.
-- [x] Lanes, membership, weights, and zoom survive a restart; malformed or stale values
+- [ ] Lanes, membership, weights, and zoom survive a restart; malformed or stale values
   self-heal without touching other settings.
 - [x] Removing a lane returns its sensors to the default lane.
 - [x] Remove-while-sensor-absent, create another lane, and sensor-return cannot reactivate
@@ -185,6 +185,38 @@ confirm the layout returns. Then record the result here and mark the status ship
 - Pre-test settings were backed up without changing the live config to
   `E:\SevLocal\Data\LibreHardwareMonitor\release-recovery\graph-lanes-20260911\before-graph-lanes.config`,
   SHA-256 `6703FB1CEFDD6D6FED517B0A5C48CFDA2952351089F511D4AC11ECB467CFF104`.
+
+### 2026-09-11 — SND-DESK promotion and live checks
+
+- Verified controller/target `snd-desk`, installation
+  `ca96d510-7d87-4cec-8e1a-bd8fc3866903`. Promoted clean source
+  `96a3e629087200b3fcfacdd7de8b99536228e84f` through the guarded local installer.
+  Installed SHA-256:
+  `cfeb25307a961b21bb2488822e79fa25170b9dc29db9432cfecf443f3e513771`.
+- Candidate gates: 397 passed, one established live-config test skipped;
+  both x64 Release frameworks built with zero warnings/errors. HTTP `/`,
+  `/data.json`, and `/metrics` returned 200; CSV logging continued.
+- Native menu interaction created `Vcore` (`Voltage#2`), `Pump` (`Fan#2`),
+  and `CPU Power` (`Power#2`). The 3.3 V sensor was assigned to the existing
+  Vcore lane, then returned to default Voltage; menu check states confirmed
+  both assignments and the live graph updated immediately.
+- Screenshots confirmed separate Vcore/3.3 V, pump/fan, and CPU/GPU power
+  scales. CPU Power at 3x occupied three times a 1x lane's height. Overlay
+  mode ignored weights; restoring stacked mode restored the 3x share.
+  Wheel zoom changed Vcore's scale independently. CPU Power Auto Range
+  remained checked after a clean File > Exit and public-launch restart.
+- Lane definitions, membership, and weights survived restart:
+  `Voltage#2=Vcore:1;Fan#2=Pump:1;Power#2=CPU Power:3`.
+- **Failed live criterion:** manual Vcore zoom did not survive startup.
+  `after-first-clean-exit.config` retained `MinVoltage#2=1.0946635` and
+  `MaxVoltage#2=1.1938664`; `after-restart-clean-exit.config` lost both keys
+  without another zoom action. Both evidence copies are alongside the
+  pre-test backup above. `PlotPanel.InvalidatePlot` calls
+  `AutoscaleAllYAxes()` on first real data when `AutoFitYOnStart` is true,
+  overriding the restored manual range. This blocks full acceptance.
+- These are agent-executed live checks, not a claim of operator ratification
+  or SND-HOST promotion. The application remains healthy on SND-DESK;
+  the August 14 release is retained in the installer's rollback slot.
 
 ### 2026-09-01 — source implementation
 

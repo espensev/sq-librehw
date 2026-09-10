@@ -891,8 +891,26 @@ from the elevated controller shell; the existing PID `15072` was retained
 and its native window changed from hidden to visible (`MainWindowHandle=66534`).
 This does not add an unelevated-shell acceptance claim.
 
-Binary promotion and attended graph-lane acceptance are recorded separately
-in this specification and `feature-graph-lanes.md` when exercised.
+### Graph-lane release promotion — 2026-09-11
+
+- Clean source `96a3e629087200b3fcfacdd7de8b99536228e84f` produced candidate
+  `0.9.6_96a3e62.2026-09-11-96a3e6290872-20260910T230940Z` under
+  `E:\Monitoring\LibreHW\Candidates\graph-lanes-20260911-2310`.
+  The publisher's duplicate Git PATH discovery was avoided by removing the
+  redundant Git `bin` entry only in its child process; persisted PATH and
+  publisher source were unchanged.
+- Candidate gates passed: Library 93, Application 195 plus one established
+  skip, Contracts 109; both Release frameworks zero warnings/errors.
+  Guarded installer WhatIf passed, followed by verified `snd-desk` promotion
+  at 2026-09-10 23:10 UTC. Installed SHA-256:
+  `cfeb25307a961b21bb2488822e79fa25170b9dc29db9432cfecf443f3e513771`.
+- Independent checks confirmed one exact installed process, all three HTTP
+  endpoints returning 200, continuing CSV growth, matching installed and
+  rollback hashes, and launcher Validate PASS without drift.
+- Rollback retains source `e977e577ea133fa6e9486f40f29b2266dcc22d70`,
+  SHA-256 `e2ac66b3791dba60d77d297708056d5716e44ec596d63f1b778e950352f0fca8`.
+  Graph-lane live tests found a manual-zoom startup regression; see
+  `feature-graph-lanes.md`. Promotion success is not full feature acceptance.
 
 ## Initial config decision
 

@@ -63,8 +63,10 @@ Open gates:
 - SND-DESK launcher convergence: the 2026-09-11 identity-verified
   `Plan`/`Apply`/`Validate` run aligned the helper and receipt with the current
   RunW artifact and portable public shim; Validate returned PASS without drift.
-  Application promotion remains separate; see
-  `docs\features\feature-local-release-system.md`.
+  The graph-lane build was then promoted on SND-DESK and passed health checks;
+  full feature acceptance remains blocked by a manual-zoom startup regression.
+  See `docs\features\feature-local-release-system.md` and
+  `docs\features\feature-graph-lanes.md`.
 - Push, candidate creation, candidate acceptance, and live promotion are
   separate decisions.
 
@@ -85,7 +87,7 @@ Open gates:
 | `docs\features\feature-local-release-system.md` | SND-DESK-only release contract and dated restoration evidence |
 | `docs\features\feature-unified-tailnet-monitoring-view.md` | Deployed SND-DESK main browser view embedding live SND-DESK and SND-HOST dashboards |
 | `eng\ci\README.md` | Non-deploying gate runner |
-| `docs\features\feature-graph-lanes.md` | Operator-defined single-unit graph lanes with per-lane zoom and height weight; source implemented and automated gates pass, live verification pending |
+| `docs\features\feature-graph-lanes.md` | Promoted on SND-DESK; lane splits, height, and layout persistence verified live; manual zoom startup regression blocks full acceptance |
 
 Other feature documents contain their own status and acceptance criteria.
 `data\plans`, rendered campaign plans, `live-tracker.md`, and agent task files
