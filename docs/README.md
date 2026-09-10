@@ -60,11 +60,11 @@ Open gates:
 - Plan-012 criterion 10 remains open without a waiver; the implemented source
   seam is not reopened.
 - Plan-014 remains gated by explicit maintainer authorization.
-- SND-DESK launcher convergence: a 2026-09-01 identity-verified Apply converged
-  the public shim and launcher-convergence receipt with Validate PASS. The same
-  day's persisted-template resolver fix changed the canonical launcher, so Sync
-  `Plan`/`Apply`/`Validate` must re-run before promotion. Application promotion
-  remains open; see `docs\features\feature-local-release-system.md`.
+- SND-DESK launcher convergence: the 2026-09-11 identity-verified
+  `Plan`/`Apply`/`Validate` run aligned the helper and receipt with the current
+  RunW artifact and portable public shim; Validate returned PASS without drift.
+  Application promotion remains separate; see
+  `docs\features\feature-local-release-system.md`.
 - Push, candidate creation, candidate acceptance, and live promotion are
   separate decisions.
 

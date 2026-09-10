@@ -147,7 +147,8 @@ the graph is exactly today's graph.
 - [x] `PlotLanesTests` cover key allocation, membership resolution, clamping, layout
   shares, serialization round-trip, and removal.
 - [x] Both Release builds and the full x64 suite pass.
-- [ ] The operator verifies a Vcore vs 12 V lane split, a pump vs fan split, CPU vs GPU
+- [ ] The operator verifies a Vcore vs 12 V lane split (or the approved SND-DESK
+  Vcore vs 3.3 V substitute), a pump vs fan split, CPU vs GPU
   power, a 3x CPU lane, and restart persistence on the live build.
 
 ## Verification plan
@@ -175,6 +176,15 @@ confirm the layout returns. Then record the result here and mark the status ship
 5. Spec verification log, `docs/README.md` row, and `AGENTS.md` pointer updated.
 
 ## Verification log
+
+### 2026-09-11 — live verification preparation
+
+- The operator approved Vcore versus 3.3 V for SND-DESK because the live
+  sensor inventory has no 12 V reading. The operator identified Fan #7
+  (`/lpc/nct6701d/0/fan/6`) as the pump for the pump-versus-fan check.
+- Pre-test settings were backed up without changing the live config to
+  `E:\SevLocal\Data\LibreHardwareMonitor\release-recovery\graph-lanes-20260911\before-graph-lanes.config`,
+  SHA-256 `6703FB1CEFDD6D6FED517B0A5C48CFDA2952351089F511D4AC11ECB467CFF104`.
 
 ### 2026-09-01 — source implementation
 

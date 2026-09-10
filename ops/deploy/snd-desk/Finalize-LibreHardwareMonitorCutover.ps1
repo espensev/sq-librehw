@@ -26,6 +26,31 @@ if (-not $NormalUserLauncherAccepted) {
 
 $null = Assert-LhmVerifiedMachineIdentity
 
+function Assert-LhmFinalizerLauncherBinding {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $ShimText,
+        [Parameter(Mandatory)][string] $LauncherTargetPath
+    )
+
+    $launcherToken =
+        '%MACHINE_TOOLS_ROOT%\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+    if ($ShimText -notmatch [regex]::Escape('-File "' + $launcherToken + '"')) {
+        throw 'Public librehw.cmd does not delegate to the exact canonical launcher target.'
+    }
+    $expandedLauncherPath = Expand-LhmPersistedEnvironmentTemplate `
+        -Name 'Public librehw shim launcher' `
+        -Value $launcherToken
+    if ($expandedLauncherPath -notmatch '^(?:[A-Za-z]:[\\/]|\\\\)') {
+        throw 'Public shim launcher token must resolve to an absolute path.'
+    }
+    if (-not (Test-LhmPathEqual `
+        -Left (Resolve-LhmFullPath -Path $expandedLauncherPath) `
+        -Right $LauncherTargetPath)) {
+        throw 'Public shim launcher token does not resolve to the scoped runtime launcher.'
+    }
+}
+
 $installRoot = $script:LhmProductionInstallRoot
 $dataRoot = Get-LhmProductionDataRoot
 $executablePath = Join-Path $installRoot $script:LhmExecutableName
@@ -54,10 +79,9 @@ if ((Get-LhmFileSha256 -Path $publicShimPath) -cne $script:LhmPublicShimSha256) 
     throw 'Public librehw.cmd does not match the accepted unchanged shim hash.'
 }
 $shimText = Get-Content -LiteralPath $publicShimPath -Raw
-if ($shimText -notmatch [regex]::Escape(
-    '-File "E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1"')) {
-    throw 'Public librehw.cmd does not delegate to the exact canonical launcher target.'
-}
+Assert-LhmFinalizerLauncherBinding `
+    -ShimText $shimText `
+    -LauncherTargetPath $launcherTargetPath
 if (-not (Test-Path -LiteralPath $launcherTargetPath -PathType Leaf) -or
     (Get-LhmFileSha256 -Path $launcherTargetPath) -cne
         (Get-LhmFileSha256 -Path $canonicalLauncher)) {

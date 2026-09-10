@@ -24,7 +24,7 @@ persisted `%...%` chains recursively, so launcher convergence must re-run
 no longer stores drive-letter current Data/Bin paths. On 2026-09-02 the redundant
 SoleX target, command, and receipt record were retired transactionally; the
 app-owned `librehw` launcher is the sole LibreHW activation authority.
-**Updated:** 2026-09-02
+**Updated:** 2026-09-11
 
 ## Problem
 
@@ -173,7 +173,7 @@ its recovery packet, and idempotent Plan/Apply/Validate proof.
 drift without mutation. `Apply` first requires the installed known-folder v2
 identity for `snd-desk`, validates but never recreates the existing managed
 task, validates the installed central RunW bytes against
-`%SEV_LOCAL_DATA%\RunW\install-receipt-v2-1.3.1-b5cda6d-relocated.json`, and transactionally replaces only the
+`%SEV_LOCAL_DATA%\RunW\install-receipt-v2-1.3.1-64472d3-help-docs.json`, and transactionally replaces only the
 app relay and public CMD. RunW is an authority dependency, not an app-vendored
 deployment or rollback target. The convergence tool retains a typed v2 receipt
 and exact two-file rollback packet under
@@ -852,6 +852,47 @@ receipt; not a promotion):
 - `Test-LhmReleaseSystem.ps1` PASS, 144 assertions.
 - Deterministic .NET suites: 384 passed, one established live-config test
   skipped, zero failed; both x64 Release target frameworks 0W/0E.
+
+## Launcher alignment — 2026-09-11
+
+The installed RunW 1.3.1 binary now matches the September 4 v2 receipt for
+source commit `64472d33d43aeac0493781f1739c8ebe7ae1165b`, SHA-256
+`422F4534350A8174712345C972C5618F320A7FDDFFED5BD46368A91EBCDA9E96`,
+and length 316928. The prior `b5cda6d` pin rejects those installed bytes.
+Convergence adopts this exact receipt and artifact identity while retaining
+all destination, schema, clean-source, identity, and hash checks. It does not
+update RunW itself or infer authority from RunW's current working tree.
+
+The public shim retains its existing helper path token
+`%MACHINE_TOOLS_ROOT%\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1`.
+The System32 host, wait/exit behavior, and fixed SND-DESK operation boundaries
+remain unchanged. Fixture mode continues to use explicit temporary paths.
+The app-owned helper receives the already-implemented recursive persisted
+environment-variable resolver so chained Data/Bin values resolve correctly.
+
+Acceptance and verification:
+
+- [x] Focused launcher fixtures pass in PowerShell 7 and Windows PowerShell 5.1;
+  the complete local-release fixture passes with the updated pins and shim.
+- [x] Plan verifies the current RunW receipt and managed task with no blockers.
+- [x] Identity-verified Apply and Validate converge the helper, shim, and receipt;
+  installed RunW, application executable, and managed task remain unchanged.
+- [x] The public launcher forwards `-ValidateScriptOnly` successfully and normal
+  activation retains the exact installed PID with a populated native window.
+
+Verified on controller/target `snd-desk`, installation
+`ca96d510-7d87-4cec-8e1a-bd8fc3866903`, at 2026-09-10 23:02 UTC:
+Apply and Validate returned `PASS`, no drift or blockers, and all five
+current-state checks true. The full fixture passed with 25 launcher cases,
+12 injected failures, 16 hostile manifests, and 12 hostile-reparse cases.
+Runtime executable, RunW, public shim, and exported managed-task XML hashes
+matched the pre-apply baseline. Public validation and activation exited zero
+from the elevated controller shell; the existing PID `15072` was retained
+and its native window changed from hidden to visible (`MainWindowHandle=66534`).
+This does not add an unelevated-shell acceptance claim.
+
+Binary promotion and attended graph-lane acceptance are recorded separately
+in this specification and `feature-graph-lanes.md` when exercised.
 
 ## Initial config decision
 

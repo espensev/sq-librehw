@@ -98,10 +98,10 @@ $script:ProductionRuntimeExecutablePath =
     'E:\Monitoring\LibreHW\Runtime\LibreHardwareMonitor.Windows.Forms.exe'
 $script:ProductionCentralLauncherSourceRoot = 'D:\Devtools\runW'
 $script:ProductionCentralLauncherSourceCommit =
-    'b5cda6dc0d98c8a6be28a6b27c347d780280fe4a'
+    '64472d33d43aeac0493781f1739c8ebe7ae1165b'
 $script:ProductionCentralLauncherArtifactPath = 'D:\Devtools\runW\bin\runw.exe'
 $script:ProductionCentralLauncherArtifactSha256 =
-    '987ECB227C630AB810EEDD7D5DC8622A5720ECE77261888C822BC20AE5FEF9C5'
+    '422F4534350A8174712345C972C5618F320A7FDDFFED5BD46368A91EBCDA9E96'
 $script:ProductionCentralLauncherArtifactLength = [Int64]316928
 $script:ProductionCentralLauncherArtifactVersion = '1.3.1'
 
@@ -118,12 +118,31 @@ function Get-LhmLauncherExpectedShimText {
     else {
         Get-LhmPublicShimCentralLauncherToken
     }
+    $shimLauncherPath = if ($NonLiveTestMode) {
+        $LauncherPath
+    }
+    else {
+        $launcherToken =
+            '%MACHINE_TOOLS_ROOT%\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+        $expandedLauncherPath = Expand-LhmPersistedEnvironmentTemplate `
+            -Name 'Public librehw shim launcher' `
+            -Value $launcherToken
+        if ($expandedLauncherPath -notmatch '^(?:[A-Za-z]:[\\/]|\\\\)') {
+            throw 'Public shim launcher token must resolve to an absolute path.'
+        }
+        if (-not (Test-LhmPathEqual `
+            -Left (Resolve-LhmFullPath -Path $expandedLauncherPath) `
+            -Right $LauncherPath)) {
+            throw 'Public shim launcher token does not resolve to the scoped runtime launcher.'
+        }
+        $launcherToken
+    }
 
     return "@echo off`r`n" +
         "`"$shimCentralLauncherPath`" /wait /quiet /cwd:- " +
         "`"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`" " +
         "-NoLogo -NoProfile -ExecutionPolicy Bypass " +
-        "-File `"$LauncherPath`" %*`r`n" +
+        "-File `"$shimLauncherPath`" %*`r`n" +
         "exit /b %ERRORLEVEL%`r`n"
 }
 

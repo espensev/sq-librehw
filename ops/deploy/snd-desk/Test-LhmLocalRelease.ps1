@@ -2370,7 +2370,7 @@ function New-LauncherConvergenceFixture {
         ReceiptPath = $centralLauncherAuthorityReceiptPath
         Source = [ordered]@{
             Root = 'D:\Devtools\runW'
-            Commit = 'b5cda6dc0d98c8a6be28a6b27c347d780280fe4a'
+            Commit = '64472d33d43aeac0493781f1739c8ebe7ae1165b'
             Dirty = $false
             Inputs = @()
         }
@@ -2789,7 +2789,7 @@ try {
             '"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"') -and
         $canonicalShimText -notmatch '(?i)/cwd:-\s+powershell\.exe\b' -and
         $canonicalShimText -match [regex]::Escape(
-            '-File "E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1"') -and
+            '-File "%MACHINE_TOOLS_ROOT%\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1"') -and
         $canonicalShimText -match [regex]::Escape('%*') -and
         $canonicalShimText -match [regex]::Escape('exit /b %ERRORLEVEL%') -and
         $canonicalShimText -notmatch '(?i)librehw\.cmd' -and
@@ -2832,6 +2832,8 @@ try {
     $commonTextForReceipt = [System.IO.File]::ReadAllText($commonScript)
     Assert-True (
         $commonTextForReceipt -match
+            [regex]::Escape('RunW\install-receipt-v2-1.3.1-64472d3-help-docs.json') -and
+        $commonTextForReceipt -notmatch
             [regex]::Escape('RunW\install-receipt-v2-1.3.1-b5cda6d-relocated.json') -and
         $commonTextForReceipt -notmatch
             [regex]::Escape("'RunW\install-receipt-v2-1.3.1-b5cda6d.json'") -and
@@ -2850,8 +2852,8 @@ try {
     foreach ($productionRunWProvenancePin in @(
         'D:\Devtools\runW',
         'D:\Devtools\runW\bin\runw.exe',
-        'b5cda6dc0d98c8a6be28a6b27c347d780280fe4a',
-        '987ECB227C630AB810EEDD7D5DC8622A5720ECE77261888C822BC20AE5FEF9C5',
+        '64472d33d43aeac0493781f1739c8ebe7ae1165b',
+        '422F4534350A8174712345C972C5618F320A7FDDFFED5BD46368A91EBCDA9E96',
         '316928',
         '1.3.1'
     )) {
@@ -2870,7 +2872,103 @@ try {
                 ('(?i)\b' + [regex]::Escape($forbiddenTaskCommand) + '\b')
         ) "Launcher convergence must not call $forbiddenTaskCommand."
     }
-    $null = Get-LhmScriptAst -Path $launcherConvergenceScript
+    $launcherConvergenceAst = Get-LhmScriptAst -Path $launcherConvergenceScript
+    $convergenceShimFunctions = @($launcherConvergenceAst.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -ceq 'Get-LhmLauncherExpectedShimText'
+    }, $true))
+    Assert-True ($convergenceShimFunctions.Count -eq 1) `
+        'Launcher convergence must define its public-shim generator exactly once.'
+    . ([scriptblock]::Create($convergenceShimFunctions[0].Extent.Text))
+    $productionExpectedShimText = & {
+        $NonLiveTestMode = $false
+        function Get-LhmRawPersistedEnvironmentValue {
+            param($Name)
+            if ($Name -ceq 'MACHINE_TOOLS_ROOT') { return 'E:\' }
+        }
+        Get-LhmLauncherExpectedShimText `
+            -CentralLauncherPath 'E:\SevLocal\Bin\runw\runw.exe' `
+            -LauncherPath 'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+        Assert-Throws {
+            Get-LhmLauncherExpectedShimText `
+                -CentralLauncherPath 'E:\SevLocal\Bin\runw\runw.exe' `
+                -LauncherPath 'C:\foreign\Start-LibreHardwareMonitor.ps1'
+        } 'Public shim launcher token does not resolve to the scoped runtime launcher'
+        function Get-LhmRawPersistedEnvironmentValue {
+            param($Name)
+            if ($Name -ceq 'MACHINE_TOOLS_ROOT') { return '..\..' }
+        }
+        Assert-Throws {
+            Get-LhmLauncherExpectedShimText `
+                -CentralLauncherPath 'E:\SevLocal\Bin\runw\runw.exe' `
+                -LauncherPath 'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+        } 'Public shim launcher token must resolve to an absolute path'
+        function Get-LhmRawPersistedEnvironmentValue {
+            param($Name)
+            return $null
+        }
+        Assert-Throws {
+            Get-LhmLauncherExpectedShimText `
+                -CentralLauncherPath 'E:\SevLocal\Bin\runw\runw.exe' `
+                -LauncherPath 'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+        } 'which is not set at User, Machine, or Process scope'
+    }
+    Assert-True ($productionExpectedShimText -ceq $normalizedCanonicalShimText) `
+        'Production convergence must preserve the portable canonical public-shim tokens.'
+
+    $finalizerAst = Get-LhmScriptAst -Path $finalizeScript
+    $finalizerBindingFunctions = @($finalizerAst.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -ceq 'Assert-LhmFinalizerLauncherBinding'
+    }, $true))
+    Assert-True ($finalizerBindingFunctions.Count -eq 1) `
+        'Finalizer must define its public-shim binding check exactly once.'
+    $finalizerBindingCalls = @($finalizerAst.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.GetCommandName() -ceq 'Assert-LhmFinalizerLauncherBinding'
+    }, $true))
+    Assert-True ($finalizerBindingCalls.Count -eq 1) `
+        'Finalizer must invoke its public-shim binding check exactly once.'
+    . ([scriptblock]::Create($finalizerBindingFunctions[0].Extent.Text))
+    & {
+        function Get-LhmRawPersistedEnvironmentValue {
+            param($Name)
+            if ($Name -ceq 'MACHINE_TOOLS_ROOT') { return 'E:\' }
+        }
+        Assert-LhmFinalizerLauncherBinding `
+            -ShimText $normalizedCanonicalShimText `
+            -LauncherTargetPath 'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+        function Get-LhmRawPersistedEnvironmentValue {
+            param($Name)
+            if ($Name -ceq 'MACHINE_TOOLS_ROOT') { return 'C:\' }
+        }
+        Assert-Throws {
+            Assert-LhmFinalizerLauncherBinding `
+                -ShimText $normalizedCanonicalShimText `
+                -LauncherTargetPath 'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+        } 'Public shim launcher token does not resolve to the scoped runtime launcher'
+        function Get-LhmRawPersistedEnvironmentValue {
+            param($Name)
+            if ($Name -ceq 'MACHINE_TOOLS_ROOT') { return '..\..' }
+        }
+        Assert-Throws {
+            Assert-LhmFinalizerLauncherBinding `
+                -ShimText $normalizedCanonicalShimText `
+                -LauncherTargetPath 'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+        } 'Public shim launcher token must resolve to an absolute path'
+        function Get-LhmRawPersistedEnvironmentValue {
+            param($Name)
+            return $null
+        }
+        Assert-Throws {
+            Assert-LhmFinalizerLauncherBinding `
+                -ShimText $normalizedCanonicalShimText `
+                -LauncherTargetPath 'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+        } 'which is not set at User, Machine, or Process scope'
+    }
 
     $shimSemanticsRoot = Join-Path $testRoot 'launcher-shim-semantics'
     [System.IO.Directory]::CreateDirectory($shimSemanticsRoot) | Out-Null
@@ -2890,7 +2988,7 @@ try {
     $semanticShimText = $canonicalShimText.Replace(
         '%SEV_LOCAL_BIN%\runw\runw.exe',
         $semanticRunW).Replace(
-        'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1',
+        '%MACHINE_TOOLS_ROOT%\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1',
         $semanticLauncher)
     [System.IO.File]::WriteAllText(
         $semanticShim,
@@ -2904,6 +3002,7 @@ try {
         'Canonical librehw.cmd did not propagate the hidden helper exit status.'
     Assert-True (
         $semanticArgumentText -match '(?i)^/wait\s+/quiet\s+/cwd:-\s+' -and
+        $semanticArgumentText -match [regex]::Escape('-File "' + $semanticLauncher + '"') -and
         $semanticArgumentText -match [regex]::Escape('first-argument') -and
         $semanticArgumentText -match [regex]::Escape('second argument')
     ) 'Canonical librehw.cmd did not forward launcher arguments through central RunW.'
@@ -3876,7 +3975,7 @@ try {
     $finalizerText = Get-Content -LiteralPath $finalizeScript -Raw
     Assert-True (
         $finalizerText -match [regex]::Escape(
-            '-File "E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1"')
+            '%MACHINE_TOOLS_ROOT%\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1')
     ) 'Finalizer no longer requires the app-owned public-shim launcher path.'
 
     $runtimeMigrationText = Get-Content -LiteralPath $runtimeMigrationScript -Raw

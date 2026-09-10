@@ -16,7 +16,7 @@ $script:LhmProductionDataRelativePath = 'LibreHardwareMonitor'
 $script:LhmProductionPublicShimName = 'librehw.cmd'
 $script:LhmProductionCentralLauncherRelativePath = 'runw\runw.exe'
 $script:LhmProductionRunWReceiptRelativePath =
-    'RunW\install-receipt-v2-1.3.1-b5cda6d-relocated.json'
+    'RunW\install-receipt-v2-1.3.1-64472d3-help-docs.json'
 $script:LhmManagedTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC'
 $script:LhmProductionHealthUri = 'http://localhost:8085/data.json'
 $script:LhmExpectedMachineId = 'snd-desk'
@@ -36,7 +36,7 @@ $script:LhmLauncherTargetPath =
 $script:LhmLegacyLauncherTargetPath =
     'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'
 $script:LhmPublicShimSha256 =
-    '240544fb8c40d352c14988ceb39695b5c957b528a2918c39f4a28d4d02ffa2ed'
+    '5ca38a21f048eca89c5cbc79126393567da4a91a182bf7a0ac490ff16fad172b'
 $script:LhmLegacyPublicShimSha256 =
     'fe319aabd007a3a639cd618c748d480f7881dd18864db6f9c94bac537bd10d73'
 $script:LhmLegacyLauncherSha256 =
