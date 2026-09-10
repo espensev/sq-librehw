@@ -4666,6 +4666,37 @@ function Get-Process {
         'report the detected process.'
     )
 
+    $emptyOutputCleanupFixtureRoot =
+        Join-Path $testRoot 'cleanup-empty-output-repository'
+    [System.IO.Directory]::CreateDirectory(
+        (Join-Path $emptyOutputCleanupFixtureRoot 'Aga.Controls\bin')) | Out-Null
+    foreach ($marker in @(
+        'LibreHardwareMonitor.sln',
+        'Directory.Build.props',
+        'Directory.Packages.props'
+    )) {
+        'cleanup test marker' |
+            Set-Content `
+                -LiteralPath (Join-Path $emptyOutputCleanupFixtureRoot $marker) `
+                -Encoding UTF8
+    }
+    $emptyOutputCleanupOutput = @(
+        & $windowsPowerShell.Source `
+            -NoLogo `
+            -NoProfile `
+            -ExecutionPolicy Bypass `
+            -File $cleanupScript `
+            -RepositoryRoot $emptyOutputCleanupFixtureRoot `
+            -WhatIf 2>&1
+    )
+    $emptyOutputCleanupExitCode = $LASTEXITCODE
+    Assert-True (
+        $emptyOutputCleanupExitCode -eq 0
+    ) (
+        'Windows PowerShell 5.1 cleanup of an empty allowed output directory failed: ' +
+        ($emptyOutputCleanupOutput -join "`n")
+    )
+
     $cleanupCompatibilityOutput = @(
         & $windowsPowerShell.Source `
             -NoLogo `

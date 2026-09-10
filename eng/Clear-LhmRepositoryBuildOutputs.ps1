@@ -216,7 +216,10 @@ foreach ($relativePath in $relativeOutputRoots) {
         )
     }
 
-    $fileBytes = [long](($files | Measure-Object -Property Length -Sum).Sum)
+    $fileBytes = [long]0
+    if ($files.Count -ne 0) {
+        $fileBytes = [long](($files | Measure-Object -Property Length -Sum).Sum)
+    }
     $exeCount = @($files | Where-Object Extension -ieq '.exe').Count
     $status = 'Planned'
     if ($PSCmdlet.ShouldProcess($outputPath, 'Remove disposable repository build output')) {
