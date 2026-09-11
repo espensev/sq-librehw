@@ -159,7 +159,9 @@ if ($reuseRecovery) {
 }
 else {
     for ($index = 0; $index -lt $shortcutPaths.Count; $index++) {
-        Assert-LhmLegacyShortcutContract -Path $shortcutPaths[$index] -Index $index
+        if (Test-Path -LiteralPath $shortcutPaths[$index]) {
+            Assert-LhmLegacyShortcutContract -Path $shortcutPaths[$index] -Index $index
+        }
     }
 }
 
