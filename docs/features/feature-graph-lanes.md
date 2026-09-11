@@ -223,7 +223,8 @@ confirm the layout returns. Then record the result here and mark the status ship
   `/data.json`, and `/metrics`, continuing CSV growth, and launcher Validate PASS
   without drift. Public validation and two normal activations returned success
   and retained that same PID. The managed task is the only enabled LibreHW
-  startup owner; the legacy repository-build task remains disabled.
+  startup owner; the legacy repository-build task was subsequently retired by
+  the guarded local-release finalizer.
 - All 18 selected graph settings, including lane membership, weights, and zoom,
   match the clean-exit backup at
   `E:\SevLocal\Data\LibreHardwareMonitor\release-recovery\focused-value-zoom-20260911\before-promotion.config`.

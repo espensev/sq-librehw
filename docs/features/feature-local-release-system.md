@@ -7,6 +7,8 @@ users, or runtime state as SND-HOST instructions.
 
 **Status:** focused value-axis Shift-wheel zoom and adaptive lane tick spacing
 are installed on SND-DESK, including the earlier startup zoom repair.
+The legacy scheduler-root task is retired; the enabled managed task's logon
+trigger is the sole automatic-start authority.
 Launcher convergence and runtime/rollback hashes were rechecked on
 2026-09-11; Validate returned PASS without drift. Technical graph restart
 verification passed; operator layout sign-off remains separate.
@@ -977,6 +979,18 @@ The guarded publisher and installer, independent hashes, sole runtime PID,
 managed-task ownership, launcher convergence/public activation, HTTP health,
 and CSV growth passed. See the focused value zoom promotion record in
 [the graph-lane spec](feature-graph-lanes.md) for exact release and evidence.
+
+The same day, the guarded finalizer was aligned with the actual disabled legacy
+task at `E:\Monitoring\sq-librehw\bin\Release\net10.0-windows` and taught to
+record already-absent legacy shortcuts safely. The full local-release fixture
+passed, a restricted-token normal-user `librehw` validation and activation
+retained the installed PID, and finalizer WhatIf passed before execution.
+Finalization preserved bounded recovery under
+`%SEV_LOCAL_DATA%\LibreHardwareMonitor\release-recovery\legacy-root-task-cutover`,
+converged both Start Menu links on the public shim, and removed exactly
+`\LibreHardwareMonitor`. The remaining managed task is enabled with one enabled
+logon trigger for `SND-Desk\Sev`, so automatic startup remains active while the
+in-app `Run On Windows Startup` item stays intentionally hidden.
 
 Resolved for the first install: use the then-current
 `bin\Release\net10.0-windows\LibreHardwareMonitor.Windows.Forms.config`
