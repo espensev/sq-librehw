@@ -5,25 +5,14 @@ launcher actions fail closed to `snd-desk`; the non-live fixture is intentionall
 peer-safe under isolated temporary roots. Do not treat these paths, tasks,
 users, or runtime state as SND-HOST instructions.
 
-**Status:** stable release installed on SND-DESK; guarded data-root relocation
-live-accepted on 2026-08-15; runtime-root retirement implemented, verified, and
-live-accepted on 2026-08-16; bounded task recovery live-accepted on 2026-08-22;
-wait-capable launcher convergence implemented and fixture-verified on
-2026-08-23; its central-RunW v2 receipt migration was implemented and
-fixture-verified on 2026-08-28. A 2026-08-31 read-only Plan accepted the pinned
-clean RunW 1.3.1 authority without blockers. On 2026-09-01 the RunW receipt was
-relocated onto `SEV_LOCAL_*` without changing launcher bytes; LibreHW now
-proves against that Relocated receipt. Identity-verified LibreHW v2 Apply
-then converged the public shim and launcher-convergence receipt; Validate
-returned PASS with no drift. Later the same day the persisted `SEV_LOCAL_*`
-values were re-templated as `REG_EXPAND_SZ` chains, which the scope-ordered
-lookup returned unexpanded; the resolver and the canonical launcher now expand
-persisted `%...%` chains recursively, so launcher convergence must re-run
-(Plan, Apply, Validate) before promotion. Current Data/Bin authority is persisted
-`SEV_LOCAL_DATA` / `SEV_LOCAL_BIN` (User, then Machine, then Process). Source
-no longer stores drive-letter current Data/Bin paths. On 2026-09-02 the redundant
-SoleX target, command, and receipt record were retired transactionally; the
-app-owned `librehw` launcher is the sole LibreHW activation authority.
+**Status:** the graph-lane startup zoom repair is installed on SND-DESK.
+Launcher convergence and runtime/rollback hashes were rechecked on
+2026-09-11; Validate returned PASS without drift. Technical graph restart
+verification passed; operator layout sign-off remains separate.
+Current Data/Bin authority is persisted `SEV_LOCAL_DATA` / `SEV_LOCAL_BIN`
+(User, then Machine, then Process), with recursive expansion of `%...%`
+templates. The app-owned `librehw` launcher is the sole activation authority.
+Completed migrations and their dated evidence are retained below.
 **Updated:** 2026-09-11
 
 ## Problem
@@ -386,6 +375,47 @@ The source-controlled publish entry point:
 
 The manifest never authorizes deleting files outside the fixed current and
 rollback payload slots.
+
+### Stage one local test release
+
+Review and commit the intended source first. Invoke the publisher once with a
+new external candidate directory, for example:
+
+```powershell
+.\ops\deploy\snd-desk\Publish-LibreHardwareMonitor.ps1 `
+  -CandidateDirectory 'E:\Monitoring\LibreHW\Candidates\local-test-<commit>'
+```
+
+The publisher owns the three test suites, both compatibility build gates, and
+the single-file publish. Do not duplicate those gates with preliminary builds.
+Tool discovery selects the first `git` and `dotnet` application on PATH, so
+duplicate application paths do not become an invalid command array.
+It retains one candidate EXE plus `release.json` and removes its temporary
+build outputs. One release invocation still performs those required internal
+compilations; no skip-build or skip-verification switch exists.
+
+Validate the manifest/hash and exact two-file candidate shape with
+`Read-LhmReleasePayload -RequireCandidateShape` from
+`LhmLocalRelease.Common.ps1`. The manifest commit must equal the clean source
+commit used for publication. Installer preflight can then run without promotion:
+
+```powershell
+.\ops\deploy\snd-desk\Install-LibreHardwareMonitorRelease.ps1 `
+  -CandidateDirectory 'E:\Monitoring\LibreHW\Candidates\local-test-<commit>' `
+  -AllowStopExactProcess -WhatIf
+```
+
+`-WhatIf` leaves the running application and installed payloads intact.
+Launch through `librehw` only after a separately authorized guarded promotion;
+do not launch a candidate directly into the active hardware/settings session.
+The runtime and its one rollback slot remain separate from staged candidates.
+
+Verification on 2026-09-11: independent review accepted the staging commands
+and scalar tool-discovery fix. PowerShell 7.6.6 and Windows PowerShell 5.1 both
+parsed the publisher without errors, selected one Git application from two
+PATH matches, and successfully invoked the selected Git and .NET SDK. The
+guarded repository cleanup removed 1,643 generated files (1,427,399,207 bytes)
+from 16 output roots; runtime and rollback payload hashes remained valid.
 
 ## Promotion and rollback contract
 

@@ -43,8 +43,8 @@ if ([string]::IsNullOrWhiteSpace($candidateParent)) {
     throw 'CandidateDirectory must have a parent directory.'
 }
 
-$dotnet = Get-Command dotnet -CommandType Application -ErrorAction Stop
-$git = Get-Command git -CommandType Application -ErrorAction Stop
+$dotnet = Get-Command dotnet -CommandType Application -ErrorAction Stop | Select-Object -First 1
+$git = Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1
 
 $dirtyLines = @(& $git.Source -C $repositoryRoot status --porcelain --untracked-files=all)
 if ($LASTEXITCODE -ne 0) {

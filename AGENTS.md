@@ -5,7 +5,12 @@
 **Updated:** 2026-07-31
 **Purpose:** keep feature work spec-first without blocking normal review, build, launch, and bugfix work.
 
-**Current SND-HOST workspace:** primary checkout at
+**Current SND-DESK workspace:** `E:\Monitoring\sq-librehw`, branch `master`.
+Local candidates, installed runtime, and rollback belong under
+`E:\Monitoring\LibreHW`; use `ops/deploy/snd-desk` and
+`docs/features/feature-local-release-system.md` for this machine.
+
+**Separate SND-HOST workspace:** primary checkout at
 `D:\DevHome\workspaces\librehw-host\checkouts\main`; future linked agent lanes
 belong under `D:\DevHome\workspaces\librehw-host\worktrees`. The physical
 release/runtime/rollback/log authority is
