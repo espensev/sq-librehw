@@ -140,6 +140,10 @@ public class PlotPanel : UserControl
         _model = CreatePlotModel();
 
         _plot = new PlotView { Dock = DockStyle.Fill, Model = _model, BackColor = Color.Black, ContextMenuStrip = CreateMenu() };
+        var controller = new PlotController();
+        controller.BindMouseWheel(OxyModifierKeys.Shift,
+            new DelegatePlotCommand<OxyMouseWheelEventArgs>((view, _, args) => ZoomHoveredValueAxis(args)));
+        _plot.Controller = controller;
         _plot.MouseDown += (sender, e) =>
         {
             if (e.Button == MouseButtons.Right)
@@ -957,6 +961,27 @@ public class PlotPanel : UserControl
         InvalidatePlotCosmetic();
     }
 
+    private void ZoomHoveredValueAxis(OxyMouseWheelEventArgs args)
+    {
+        // Consume even a miss: this gesture must never fall back to time/all-axis zoom.
+        args.Handled = true;
+        if (args.Delta == 0 || !_model.PlotAndAxisArea.Contains(args.Position) ||
+            (!_stackedAxes.Value && _model.PlotArea.Contains(args.Position)))
+            return;
+
+        _model.GetAxesFromPoint(args.Position, out _, out Axis axis);
+        if (axis == null || !axis.IsAxisVisible || !axis.IsZoomEnabled ||
+            !_axes.ContainsKey(axis.Key))
+            return;
+
+        double value = axis.InverseTransform(args.Position.Y);
+        if (double.IsNaN(value) || double.IsInfinity(value))
+            return;
+
+        axis.ZoomAt(Math.Pow(1.2, args.Delta / 120.0), value);
+        InvalidatePlotCosmetic();
+    }
+
     private void ApplyGridDensity()
     {
         int density = _gridDensity?.Value ?? DefaultGridDensity;
@@ -990,7 +1015,9 @@ public class PlotPanel : UserControl
 
         SetGridlineStyle(axis, LineStyle.Solid, density >= 2 ? LineStyle.Solid : LineStyle.None);
 
-        if (density == 3)
+        // Let OxyPlot fit value ticks to each lane's rendered height and font spacing.
+        // Fixed fine divisions pack twenty labels into even a very short lane.
+        if (density == 3 && axis.IsHorizontal())
             ApplyFineAxisSteps(axis, textScalePercent);
         else
             ResetAxisSteps(axis);

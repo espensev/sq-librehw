@@ -2,6 +2,7 @@
 
 **Status:** promoted and live-verified on SND-DESK, including repaired startup zoom persistence; operator layout sign-off remains separate
 **Updated:** 2026-09-11
+**Focused value zoom and spacing extension:** source verified; not yet promoted
 **Design lineage:** brainstormed in chat 2026-08-27 after the Text Size crash fix; supersedes no earlier spec
 
 ## Problem and motivation
@@ -26,7 +27,8 @@ the graph is exactly today's graph.
 - Let the operator weight a lane's height (1x, 2x, 3x) to focus on it.
 - Persist lanes, membership, weights, and zoom across restarts, self-healing on stale or
   malformed state.
-- Keep the default graph identical in behavior when no lane exists.
+- Preserve default graph behavior when no user lane exists, except for the
+  additive Shift-wheel shortcut and adaptive value tick spacing described below.
 
 ## Non-goals
 
@@ -69,6 +71,18 @@ the graph is exactly today's graph.
 
 ### Zoom and height
 
+- Shift + mouse wheel over a stacked lane's plot area or value-axis labels zooms
+  only that lane's Y range, anchored at the pointer value. Wheel up zooms in;
+  wheel down zooms out. The time window and every other lane retain their ranges
+  and auto-range modes. Normal live time scrolling continues.
+- The shortcut respects `Value Axes > Enable Zoom`. Outside a visible lane it
+  does nothing. In overlay mode, target the value-axis labels; the shared plot
+  area is ambiguous and does nothing. Plain wheel and Ctrl + wheel stay unchanged.
+- Value tick spacing follows rendered lane height and axis text size, including
+  Fine grid mode, instead of forcing twenty labels into short lanes. Time-axis
+  Fine spacing and the existing grid visibility choices remain unchanged.
+  No new settings, units, APIs, hardware access, or admin requirement are added;
+  both frameworks use the same controller binding and existing zoom persistence.
 - Mouse-wheel over a lane's axis zooms only that lane (existing OxyPlot behavior under
   `yAxesEnableZoom`). `Auto Range` clears that lane's persisted zoom and leaves it in
   durable auto-range mode. A later manual zoom returns only that lane to fixed-range
@@ -134,8 +148,13 @@ the graph is exactly today's graph.
 
 ## Acceptance criteria
 
-- [x] With no user lane and no weight set, axes, keys, stacking, zoom persistence, and
-  series binding are unchanged (existing plot tests stay green without edits).
+- [x] Shift + wheel changes only the hovered value axis in both directions; time
+  and sibling ranges/modes stay fixed, with disabled zoom and outside hits inert.
+- [x] Overlay axis-label targeting works; overlay plot-area input is inert.
+- [x] Rendered short lanes have readable tick spacing at 100% and 200% text scale,
+  adapting after resize and height changes; existing zoom persistence remains green.
+- [x] With no user lane and no weight set, axis keys, stacking, zoom persistence,
+  and series binding are unchanged (existing plot tests stay green without edits).
 - [x] A sensor can be moved to a new lane, to an existing lane of its type, and back to the
   default lane from the tree context menu; the graph reflects it immediately.
 - [x] A lane accepts only its type; the submenu never offers a lane of another type.
@@ -158,6 +177,12 @@ the graph is exactly today's graph.
   power, a 3x CPU lane, and restart persistence on the live build.
 
 ## Verification plan
+
+For the focused-wheel extension, render fixture lanes and send wheel events through
+the actual plot controller. Check pointer anchoring, sibling/time isolation,
+auto-range persistence, overlay targeting, disabled zoom, and outside hits. Render
+short and weighted lanes at multiple text scales and inspect adjacent tick spacing.
+After a separately authorized promotion, repeat Shift + wheel on the live graph.
 
 ```powershell
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Application\LibreHardwareMonitor.Tests.Application.csproj -p:Platform=x64
@@ -182,6 +207,23 @@ confirm the layout returns. Then record the result here and mark the status ship
 5. Spec verification log, `docs/README.md` row, and `AGENTS.md` pointer updated.
 
 ## Verification log
+
+### 2026-09-11 — focused value zoom and readable lane ticks (source only)
+
+- Added Shift-wheel through the plot controller, selecting the rendered value
+  axis under the pointer. Only its range and manual/auto mode change; overlay
+  plot-area input, outside hits, and disabled zoom are inert.
+- Value axes now use automatic pixel-based tick intervals in Fine mode, fixing
+  the fixed twenty-division crowding while retaining Fine time-axis spacing.
+- Before implementation, three focused-wheel cases and both rendered spacing
+  cases failed. After implementation, all nine new cases pass, including overlay
+  axis-label targeting, pointer anchoring, sibling/time isolation, persistence
+  mode, resize, weights, and 100%/200% fonts. Existing panel tests remain green.
+- Full x64 solution filter: 410 passed, one established live-config skip, zero
+  failures. Both Release builds (`net10.0-windows`, `net472`) pass with zero
+  warnings/errors. Fixtures rendered through the real WinForms PNG exporter;
+  no hardware runtime was launched or replaced. Live shortcut/visual acceptance
+  remains a separate post-promotion check.
 
 ### 2026-09-11 — startup zoom repair and live re-verification
 

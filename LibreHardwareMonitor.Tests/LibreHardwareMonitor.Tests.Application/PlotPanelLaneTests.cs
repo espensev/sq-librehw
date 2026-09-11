@@ -20,6 +20,107 @@ namespace LibreHardwareMonitor.Tests;
 
 public sealed class PlotPanelLaneTests
 {
+    [Theory]
+    [InlineData(120, false, false)]
+    [InlineData(-120, false, false)]
+    [InlineData(120, true, false)]
+    [InlineData(120, true, true)]
+    public void ShiftWheel_ZoomsOnlyHoveredValueAxis(int delta, bool overLabels, bool overlay)
+    {
+        var settings = new PersistentSettings();
+        settings.SetValue("stackedAxes", !overlay);
+        using var panel = new PlotPanel(settings, new UnitManager(settings));
+        string laneKey = panel.CreateLane(SensorType.Power, "CPU").Key;
+        BindHistory(panel, (new FakeSensor(SensorType.Power, "GPU", 40, 60), null),
+            (new FakeSensor(SensorType.Power, "CPU", 100, 200), laneKey));
+        PlotView view = panel.Controls.OfType<PlotView>().Single();
+        RenderPlot(view);
+        Axis target = GetAxis(panel, laneKey);
+        double min = target.ActualMinimum;
+        double max = target.ActualMaximum;
+        double anchor = min + (max - min) * 0.3;
+        var others = view.Model.Axes.Where(a => a != target)
+            .Select(a => (Axis: a, Min: a.ActualMinimum, Max: a.ActualMaximum)).ToArray();
+        double x = overLabels ? view.Model.PlotArea.Left - 10 : view.Model.PlotArea.Center.X;
+        var point = new ScreenPoint(x, target.Transform(anchor));
+
+        view.ActualController.HandleMouseWheel(view, new OxyMouseWheelEventArgs
+        {
+            Position = point, Delta = delta, ModifierKeys = OxyModifierKeys.Shift
+        });
+        RenderPlot(view);
+
+        double span = target.ActualMaximum - target.ActualMinimum;
+        Assert.True(delta > 0 ? span < max - min : span > max - min);
+        Assert.Equal(anchor, target.InverseTransform(point.Y), 6);
+        foreach (var other in others)
+        {
+            Assert.Equal(other.Min, other.Axis.ActualMinimum);
+            Assert.Equal(other.Max, other.Axis.ActualMaximum);
+        }
+        panel.SetCurrentSettings();
+        Assert.True(settings.Contains("plotPanel.Min" + laneKey));
+        Assert.False(settings.Contains("plotPanel.MinPower"));
+    }
+
+    [Theory]
+    [InlineData(false, false, false)] // Zoom disabled.
+    [InlineData(true, true, false)]   // Outside the lanes.
+    [InlineData(true, false, true)]   // Ambiguous overlay plot area.
+    public void ShiftWheel_InvalidTargetLeavesEveryAxisUnchanged(bool zoomEnabled, bool outside, bool overlay)
+    {
+        var settings = new PersistentSettings();
+        settings.SetValue("yAxesEnableZoom", zoomEnabled);
+        settings.SetValue("stackedAxes", !overlay);
+        using var panel = new PlotPanel(settings, new UnitManager(settings));
+        BindHistory(panel, (new FakeSensor(SensorType.Power, "CPU", 40, 60), null));
+        PlotView view = panel.Controls.OfType<PlotView>().Single();
+        RenderPlot(view);
+        var before = view.Model.Axes.Select(a => (a.ActualMinimum, a.ActualMaximum)).ToArray();
+        view.ActualController.HandleMouseWheel(view, new OxyMouseWheelEventArgs
+        {
+            Position = outside ? new ScreenPoint(0, 0) : view.Model.PlotArea.Center,
+            Delta = 120, ModifierKeys = OxyModifierKeys.Shift
+        });
+        RenderPlot(view);
+        Assert.Equal(before, view.Model.Axes.Select(a => (a.ActualMinimum, a.ActualMaximum)).ToArray());
+    }
+
+    [Theory]
+    [InlineData(100)]
+    [InlineData(200)]
+    public void FineValueGrid_LabelsFitShortLanesAfterResizeAndWeightChange(int textScale)
+    {
+        var settings = new PersistentSettings();
+        using var panel = new PlotPanel(settings, new UnitManager(settings));
+        string laneKey = panel.CreateLane(SensorType.Power, "CPU").Key;
+        BindHistory(panel, (new FakeSensor(SensorType.Power, "GPU", 40, 60), null),
+            (new FakeSensor(SensorType.Power, "CPU", 100, 200), laneKey));
+        panel.SetAxisTextScale(textScale);
+        PlotView view = panel.Controls.OfType<PlotView>().Single();
+        foreach (int height in new[] { 300, 600 })
+        {
+            panel.SetLaneWeight(laneKey, height == 300 ? 1 : 3);
+            panel.InvalidatePlot();
+            RenderPlot(view, height);
+            foreach (Axis axis in view.Model.Axes.Where(a => a.IsAxisVisible && a.IsVertical()))
+            {
+                axis.GetTickValues(out var labels, out _, out _);
+                var pixels = labels.Select(axis.Transform).OrderBy(y => y).ToArray();
+                Assert.True(pixels.Length >= 2);
+                for (int i = 1; i < pixels.Length; i++)
+                    Assert.True(pixels[i] - pixels[i - 1] >= axis.FontSize * 1.5,
+                        $"{axis.Key}: labels only {pixels[i] - pixels[i - 1]:F1}px apart at {axis.FontSize}px font");
+            }
+        }
+    }
+
+    private static void RenderPlot(PlotView view, int height = 400)
+    {
+        using Bitmap bitmap = new PngExporter { Width = 1000, Height = height }.ExportToBitmap(view.Model);
+        Assert.Null(view.Model.GetLastPlotException());
+    }
+
     [Fact]
     public void CreateLane_BindsSameTypeSeriesAndPreservesAxisPresentation()
     {
