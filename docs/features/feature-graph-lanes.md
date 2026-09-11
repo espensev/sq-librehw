@@ -2,7 +2,7 @@
 
 **Status:** promoted and live-verified on SND-DESK, including repaired startup zoom persistence; operator layout sign-off remains separate
 **Updated:** 2026-09-11
-**Focused value zoom and spacing extension:** source verified; not yet promoted
+**Focused value zoom and spacing extension:** promoted on SND-DESK; installed health and settings verified, operator gesture/visual acceptance pending
 **Design lineage:** brainstormed in chat 2026-08-27 after the Text Size crash fix; supersedes no earlier spec
 
 ## Problem and motivation
@@ -207,6 +207,29 @@ confirm the layout returns. Then record the result here and mark the status ship
 5. Spec verification log, `docs/README.md` row, and `AGENTS.md` pointer updated.
 
 ## Verification log
+
+### 2026-09-11 — focused value zoom promotion
+
+- Explicitly authorized standard deployment on verified `snd-desk`, installation
+  `ca96d510-7d87-4cec-8e1a-bd8fc3866903`. Clean source
+  `fbb3a3ea079b4aab863cac4a59b2bbb0aa812e62` passed the publisher's isolated gates:
+  410 tests passed, one established skip, both Release builds zero warnings/errors.
+- Candidate `focused-value-zoom-20260911` was promoted through installer WhatIf
+  and normal guarded install, after native File > Exit saved current settings.
+  Release `0.9.6_fbb3a3e.2026-09-11-fbb3a3ea079b-20260911T020503Z` has SHA-256
+  `f1788f34e968545898b9d5b60b0b96dfa0fa2cf96b80967d30b6a99f3ca14097`.
+- Independent checks at 02:06 UTC verified installed/rollback hashes, exactly
+  one installed-path process (PID 59288), a responding window, HTTP 200 for `/`,
+  `/data.json`, and `/metrics`, continuing CSV growth, and launcher Validate PASS
+  without drift. Public validation and two normal activations returned success
+  and retained that same PID. The managed task is the only enabled LibreHW
+  startup owner; the legacy repository-build task remains disabled.
+- All 18 selected graph settings, including lane membership, weights, and zoom,
+  match the clean-exit backup at
+  `E:\SevLocal\Data\LibreHardwareMonitor\release-recovery\focused-value-zoom-20260911\before-promotion.config`.
+  The one rollback slot retains `d65d2ae336820a5cc97541319f971f30bd682dfb`.
+  This verifies deployment and preservation; operator Shift-wheel/visual
+  acceptance remains separate from the rendered/controller regression tests.
 
 ### 2026-09-11 — focused value zoom and readable lane ticks (source only)
 

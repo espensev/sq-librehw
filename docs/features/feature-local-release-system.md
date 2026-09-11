@@ -5,7 +5,8 @@ launcher actions fail closed to `snd-desk`; the non-live fixture is intentionall
 peer-safe under isolated temporary roots. Do not treat these paths, tasks,
 users, or runtime state as SND-HOST instructions.
 
-**Status:** the graph-lane startup zoom repair is installed on SND-DESK.
+**Status:** focused value-axis Shift-wheel zoom and adaptive lane tick spacing
+are installed on SND-DESK, including the earlier startup zoom repair.
 Launcher convergence and runtime/rollback hashes were rechecked on
 2026-09-11; Validate returned PASS without drift. Technical graph restart
 verification passed; operator layout sign-off remains separate.
@@ -961,6 +962,14 @@ This does not add an unelevated-shell acceptance claim.
   the numeric evidence and remaining operator sign-off boundary.
 
 ## Initial config decision
+
+The 2026-09-11 focused value zoom promotion retained the existing mutable
+data root and graph settings. Installed source is
+`fbb3a3ea079b4aab863cac4a59b2bbb0aa812e62`; rollback retains `d65d2ae336820a5cc97541319f971f30bd682dfb`.
+The guarded publisher and installer, independent hashes, sole runtime PID,
+managed-task ownership, launcher convergence/public activation, HTTP health,
+and CSV growth passed. See the focused value zoom promotion record in
+[the graph-lane spec](feature-graph-lanes.md) for exact release and evidence.
 
 Resolved for the first install: use the then-current
 `bin\Release\net10.0-windows\LibreHardwareMonitor.Windows.Forms.config`
