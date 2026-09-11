@@ -2662,8 +2662,7 @@ function New-LegacyRecoveryFixture {
     )
 
     [System.IO.Directory]::CreateDirectory($Root) | Out-Null
-    $legacyExecutable =
-        'E:\SQ_HQ\Monitoring\sq-librehwdev\sq-librehw\bin\Release\net10.0-windows\LibreHardwareMonitor.Windows.Forms.exe'
+    $legacyExecutable = $script:LhmLegacyRootTaskExecutablePath
     $legacyWorkingDirectory = Split-Path -Parent $legacyExecutable
     $userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $taskXml = @"
@@ -3824,6 +3823,8 @@ try {
             'S-1-5-21-3033086598-3000262358-161002696-1001' -and
         $script:LhmManagedTaskPrincipalUserId -ceq 'Sev' -and
         $script:LhmManagedTaskLogonUserId -ceq 'SND-Desk\Sev' -and
+        $script:LhmLegacyRootTaskExecutablePath -ceq
+            'E:\Monitoring\sq-librehw\bin\Release\net10.0-windows\LibreHardwareMonitor.Windows.Forms.exe' -and
         $script:LhmLauncherTargetPath -ceq
             'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1' -and
         $script:LhmLegacyLauncherTargetPath -ceq
@@ -4939,6 +4940,26 @@ function Get-Process {
         -ExpectedPublicShimSha256 $shimHash `
         -NonLiveTestMode
 
+    $absentShortcutRoot = Join-Path $testRoot 'legacy-recovery-absent-shortcuts'
+    Copy-Item -LiteralPath $legacyFixtureRoot -Destination $absentShortcutRoot -Recurse
+    $absentShortcutManifestPath = Join-Path $absentShortcutRoot 'recovery.json'
+    $absentShortcutManifest =
+        Get-Content -LiteralPath $absentShortcutManifestPath -Raw |
+        ConvertFrom-Json
+    foreach ($record in $absentShortcutManifest.shortcuts) {
+        $record.existed = $false
+        $record.backup = $null
+        $record.sha256 = $null
+    }
+    $absentShortcutManifest | ConvertTo-Json -Depth 6 | Set-Content `
+        -LiteralPath $absentShortcutManifestPath
+    Remove-Item -LiteralPath (Join-Path $absentShortcutRoot '0.lnk') -Force
+    Remove-Item -LiteralPath (Join-Path $absentShortcutRoot '1.lnk') -Force
+    $null = Read-LhmLegacyRecoveryPacket `
+        -RecoveryRoot $absentShortcutRoot `
+        -ExpectedPublicShimPath $shimPath `
+        -ExpectedPublicShimSha256 $shimHash
+
     $tamperedPathRoot = Join-Path $testRoot 'legacy-recovery-tampered-path'
     Copy-Item -LiteralPath $legacyFixtureRoot -Destination $tamperedPathRoot -Recurse
     $tamperedPathManifest =
@@ -4977,7 +4998,7 @@ function Get-Process {
     $tamperedXmlText =
         Get-Content -LiteralPath $tamperedXmlPath -Raw -Encoding Unicode
     $tamperedXmlText.Replace(
-        'E:\SQ_HQ\Monitoring\sq-librehwdev\sq-librehw\bin\Release\net10.0-windows\LibreHardwareMonitor.Windows.Forms.exe',
+        $script:LhmLegacyRootTaskExecutablePath,
         'C:\Windows\System32\cmd.exe') |
         Set-Content -LiteralPath $tamperedXmlPath -Encoding Unicode
     $tamperedXmlManifest =

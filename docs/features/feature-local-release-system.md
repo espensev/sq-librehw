@@ -351,6 +351,10 @@ output into the repository's shared `bin` tree.
 
 - `\SevGrp\AdminTask\LibreHW-No-UAC` is the sole managed elevated start owner on
   `snd-desk`; it supports the intended logon and on-demand starts.
+- Managed installations hide the in-app `Run On Windows Startup` checkbox because
+  deployment tooling owns the permanent task. Automatic startup is active when
+  that task and its single enabled logon trigger are enabled; the checkbox is not
+  a second startup authority.
 - The task action and working directory name the stable runtime.
 - A non-zero process exit receives at most three restart attempts at one-minute
   intervals. This restores monitoring after a transient native-provider crash
@@ -358,6 +362,9 @@ output into the repository's shared `bin` tree.
 - The app must not recreate a scheduler-root task under this managed install.
 - The duplicate root `\LibreHardwareMonitor` task is retired only after the
   managed task and logon behavior pass.
+- The finalizer fingerprints the discovered root task's current repository-build
+  path and can preserve an already-absent Start Menu shortcut as an explicit
+  absence record. It still refuses task shape, principal, trigger, or path drift.
 - Release acceptance proves one PID and the exact installed process path.
 
 ## Build and manifest contract

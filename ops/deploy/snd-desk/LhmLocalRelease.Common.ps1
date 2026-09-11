@@ -47,6 +47,8 @@ $script:LhmPreStableLauncherSha256 =
     '79a45f697d40d7f3d9897228d5b6f35ad04974f3a42e4a69eb0f24a29e2c6432'
 $script:LhmPreStableManagedExecutablePath =
     'E:\SQ_HQ\Monitoring\sq-librehwdev\sq-librehw\bin\Release\net10.0-windows\LibreHardwareMonitor.Windows.Forms.exe'
+$script:LhmLegacyRootTaskExecutablePath =
+    'E:\Monitoring\sq-librehw\bin\Release\net10.0-windows\LibreHardwareMonitor.Windows.Forms.exe'
 $script:LhmLegacyShortcutSha256 = @(
     '7f4b2ed9a4841d38f1753cfae8645ab74b2dbb7d42b0c8a4abdffa08b1722fe3',
     '6987e1a9d2992c3519eed9c7d37fd3f278b2ffbd91ae42d7060f3dc21ba86d6f'
@@ -1402,11 +1404,6 @@ function Read-LhmLegacyRecoveryPacket {
             throw "Legacy recovery shortcut record $index has inconsistent absence fields."
         }
     }
-    if (-not $NonLiveTestMode -and
-        @($shortcutRecords | Where-Object { -not [bool]$_.existed }).Count -gt 0) {
-        throw 'Production legacy recovery must preserve both discovered Start Menu shortcuts.'
-    }
-
     $rootInfo = Get-Item -LiteralPath $RecoveryRoot -Force -ErrorAction Stop
     if (-not $rootInfo.PSIsContainer -or
         ($rootInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
@@ -1461,8 +1458,7 @@ function Read-LhmLegacyRecoveryPacket {
     $actions = @($taskXml.SelectNodes('/t:Task/t:Actions/t:Exec', $namespace))
     $triggers = @($taskXml.SelectNodes('/t:Task/t:Triggers/*', $namespace))
     $principals = @($taskXml.SelectNodes('/t:Task/t:Principals/t:Principal', $namespace))
-    $expectedLegacyExecutable =
-        'E:\SQ_HQ\Monitoring\sq-librehwdev\sq-librehw\bin\Release\net10.0-windows\LibreHardwareMonitor.Windows.Forms.exe'
+    $expectedLegacyExecutable = $script:LhmLegacyRootTaskExecutablePath
     if ($actions.Count -ne 1 -or
         $triggers.Count -ne 1 -or
         $triggers[0].LocalName -cne 'LogonTrigger' -or

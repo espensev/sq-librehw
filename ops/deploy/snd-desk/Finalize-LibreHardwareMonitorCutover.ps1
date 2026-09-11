@@ -58,8 +58,7 @@ $runtimeConfigPath = Join-Path $installRoot $script:LhmRuntimeConfigName
 $launcherTargetPath = $script:LhmLauncherTargetPath
 $publicShimPath = Get-LhmProductionPublicShimPath
 $canonicalLauncher = Join-Path $PSScriptRoot 'Start-LibreHardwareMonitor.ps1'
-$legacyExecutablePath =
-    'E:\SQ_HQ\Monitoring\sq-librehwdev\sq-librehw\bin\Release\net10.0-windows\LibreHardwareMonitor.Windows.Forms.exe'
+$legacyExecutablePath = $script:LhmLegacyRootTaskExecutablePath
 $legacyWorkingDirectory = Split-Path -Parent $legacyExecutablePath
 $shortcutPaths = @(
     'C:\Users\Sev\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\LibreHardwareMonitor.Windows.Forms.lnk',
