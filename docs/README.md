@@ -82,6 +82,7 @@ Open gates:
 | `docs\architecture\campaign-control-plane.md` | Campaign authority and provenance |
 | `docs\features\feature-release-packaging.md` | Candidate packaging contract |
 | `docs\features\feature-csv-log-storage-efficiency.md` | Source-only CSV formatting contract |
+| `docs\features\feature-csv-clock-recovery.md` | Automatic CSV time-zone recovery and verification |
 | `docs\features\feature-host-log-management.md` | Log archive and retention contract |
 | `docs\features\feature-live-state-verification.md` | Read-only host verification contract |
 | `docs\features\feature-local-release-system.md` | SND-DESK-only release contract and dated restoration evidence |
