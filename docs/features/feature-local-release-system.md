@@ -1017,6 +1017,50 @@ it does not replace RunW.
 
 The updated authority fixture reproduced rejection by the September pins before
 the fix. The complete local-release fixture then passed in PowerShell 7 and
-Windows PowerShell 5.1. Live Plan recognizes the repaired RunW installation and
-has no blocking issues; the public shim and convergence receipt still need
-alignment before promotion.
+Windows PowerShell 5.1, including 25 launcher-convergence cases per engine.
+Identity-verified launcher Apply and Validate passed at 2026-10-02 18:45 UTC.
+The helper remains SHA-256 `823d2ef3914194fdbdce68939cf59979b3c328ef33fb677be57ff2a5000c1e79`;
+the public shim now matches the canonical pin
+`5ca38a21f048eca89c5cbc79126393567da4a91a182bf7a0ac490ff16fad172b`.
+RunW, its owning receipt, and the exported managed-task XML remain unchanged.
+
+### Merge release candidate and blocked promotion — 2026-10-02
+
+Clean source `cca11b882e42ab7156a216022e12a59c080a74f9` includes the host merge
+and the RunW authority alignment. It produced
+`E:\Monitoring\LibreHW\Candidates\desk-release-20261002-cca11b88`, version
+`0.9.6+cca11b8.2026-10-02`, SHA-256
+`0fe2b392d998f25b20cfa04c27e6ee0caecdb1914362e9f98b164138b461cc5f`.
+Candidate integrity and the exact EXE's pre-UI `--release-smoke` both passed.
+The deterministic suites passed 414 tests with one established opt-in skip;
+both Release x64 frameworks built with zero warnings/errors. Dashboard checks
+passed 339/339 and Node suites passed 18/18.
+
+Installer preview also exposed a pre-existing orphan: the rollback directory
+contained the `d65d2ae` manifest without its executable. The baseline already
+recorded that absence. The exact manifest was hash-verified and preserved as
+`D:\DevHome\tmp\librehw-desk-merge-20261002-67642d22\orphan-rollback-d65d2ae-release.json`
+before removing that lone record from the active rollback slot. No prior
+rollback executable was recovered or claimed.
+
+The subsequent preview passed. Promotion then failed the HTTP health gate and
+automatically restored `fbb3a3ea079b4aab863cac4a59b2bbb0aa812e62`, SHA-256
+`f1788f34e968545898b9d5b60b0b96dfa0fa2cf96b80967d30b6a99f3ca14097`.
+Readback at 19:01 UTC verified one responding exact-path process, no remaining
+release transaction, unchanged runtime data-root configuration, and preserved
+CSV files with continuing writes. The 12 main-checkout deletions remain intact.
+
+The health blocker is local: TCP 8085 belongs to this Codex session's
+`codex.exe`, PID 75788, created at 18:24:51 UTC. The monitor's configured port
+is 8085 and its persisted `runWebServerMenuItem` is false. This run did not
+change the port owner or enable the webserver. The active rollback slot is
+empty after restoration; a complete, independently validated current-release
+recovery pair is preserved under
+`D:\DevHome\tmp\librehw-desk-merge-20261002-67642d22\last-known-good-fbb3a3ea`.
+
+Receipts and failure details are under
+`D:\DevHome\tmp\librehw-desk-merge-20261002-67642d22`; `final-state.json` records
+the verified readback. Next gate: free TCP 8085, enable the monitor's webserver
+and verify its own HTTP response, then retry the guarded candidate preview and
+promotion from the clean merge worktree. New-release live health and attended
+UI acceptance remain open. No remote publication or host mutation occurred.
