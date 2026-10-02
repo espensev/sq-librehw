@@ -108,7 +108,10 @@ public sealed class UiShutdownCoordinatorTests
                 releaseShutdown.Wait();
             });
 
-        Task request = Task.Run(coordinator.Request);
+        Task request = Task.Factory.StartNew(coordinator.Request,
+                                             CancellationToken.None,
+                                             TaskCreationOptions.LongRunning,
+                                             TaskScheduler.Default);
         try
         {
             Assert.True(shutdownEntered.Wait(TimeSpan.FromSeconds(5)));

@@ -4769,7 +4769,7 @@ function Get-Process {
     $emptyOutputCleanupFixtureRoot =
         Join-Path $testRoot 'cleanup-empty-output-repository'
     [System.IO.Directory]::CreateDirectory(
-        (Join-Path $emptyOutputCleanupFixtureRoot 'Aga.Controls\bin')) | Out-Null
+        (Join-Path $emptyOutputCleanupFixtureRoot 'Aga.Controls')) | Out-Null
     foreach ($marker in @(
         'LibreHardwareMonitor.sln',
         'Directory.Build.props',
@@ -4780,6 +4780,26 @@ function Get-Process {
                 -LiteralPath (Join-Path $emptyOutputCleanupFixtureRoot $marker) `
                 -Encoding UTF8
     }
+    # Cleanup targets derive from tracked projects, so the empty output must
+    # belong to a committed project for the summary path to be exercised.
+    '<Project />' |
+        Set-Content `
+            -LiteralPath (Join-Path $emptyOutputCleanupFixtureRoot 'Aga.Controls\Aga.Controls.csproj') `
+            -Encoding UTF8
+    "[Bb]in/`r`n[Oo]bj/`r`n" |
+        Set-Content `
+            -LiteralPath (Join-Path $emptyOutputCleanupFixtureRoot '.gitignore') `
+            -Encoding ASCII
+    & git -C $emptyOutputCleanupFixtureRoot init -q -b main
+    if ($LASTEXITCODE -ne 0) { throw 'Empty-output cleanup fixture Git initialization failed.' }
+    & git -C $emptyOutputCleanupFixtureRoot config user.name 'Cleanup Fixture'
+    & git -C $emptyOutputCleanupFixtureRoot config user.email 'cleanup-fixture@example.invalid'
+    & git -C $emptyOutputCleanupFixtureRoot config core.autocrlf false
+    & git -C $emptyOutputCleanupFixtureRoot add -- .
+    & git -C $emptyOutputCleanupFixtureRoot commit -q -m 'empty-output cleanup fixture'
+    if ($LASTEXITCODE -ne 0) { throw 'Empty-output cleanup fixture Git commit failed.' }
+    [System.IO.Directory]::CreateDirectory(
+        (Join-Path $emptyOutputCleanupFixtureRoot 'Aga.Controls\bin')) | Out-Null
     $emptyOutputCleanupOutput = @(
         & $windowsPowerShell.Source `
             -NoLogo `
@@ -4794,6 +4814,13 @@ function Get-Process {
         $emptyOutputCleanupExitCode -eq 0
     ) (
         'Windows PowerShell 5.1 cleanup of an empty allowed output directory failed: ' +
+        ($emptyOutputCleanupOutput -join "`n")
+    )
+    Assert-True (
+        ($emptyOutputCleanupOutput -join "`n") -match
+            'Path\s*:\s*Aga\.Controls\\bin\s+Files\s*:\s*0\s+Bytes\s*:\s*0\s+Exes\s*:\s*0\s+Status\s*:\s*Planned'
+    ) (
+        'Windows PowerShell 5.1 cleanup did not plan the empty tracked-project output: ' +
         ($emptyOutputCleanupOutput -join "`n")
     )
 
@@ -4830,6 +4857,25 @@ function Get-Process {
                 -LiteralPath (Join-Path $cleanupFixtureRoot $marker) `
                 -Encoding UTF8
     }
+    [System.IO.Directory]::CreateDirectory(
+        (Join-Path $cleanupFixtureRoot 'Aga.Controls')) | Out-Null
+    '<Project />' |
+        Set-Content `
+            -LiteralPath (Join-Path $cleanupFixtureRoot 'Aga.Controls\Aga.Controls.csproj') `
+            -Encoding UTF8
+    "[Bb]in/`r`n[Oo]bj/`r`n" |
+        Set-Content `
+            -LiteralPath (Join-Path $cleanupFixtureRoot '.gitignore') `
+            -Encoding ASCII
+    & git -C $cleanupFixtureRoot init -q -b main
+    if ($LASTEXITCODE -ne 0) { throw 'Cleanup fixture Git initialization failed.' }
+    & git -C $cleanupFixtureRoot config user.name 'Cleanup Fixture'
+    & git -C $cleanupFixtureRoot config user.email 'cleanup-fixture@example.invalid'
+    & git -C $cleanupFixtureRoot config core.autocrlf false
+    & git -C $cleanupFixtureRoot add -- .
+    & git -C $cleanupFixtureRoot commit -q -m 'cleanup fixture'
+    if ($LASTEXITCODE -ne 0) { throw 'Cleanup fixture Git commit failed.' }
+    Remove-Item -LiteralPath (Join-Path $cleanupFixtureRoot 'Aga.Controls') -Recurse -Force
     'outside fixture' |
         Set-Content -LiteralPath $outsideSentinel -Encoding UTF8
     $null = New-Item `

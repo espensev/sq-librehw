@@ -109,7 +109,10 @@ public sealed class NvidiaGroupSnapshotTests
         Assert.Equal(0, Volatile.Read(ref nativeShutdownCount));
         Assert.True(refreshEntered.Wait(TimeSpan.FromSeconds(5)));
 
-        Task closeTask = Task.Run(group.Close);
+        Task closeTask = Task.Factory.StartNew(group.Close,
+                                               CancellationToken.None,
+                                               TaskCreationOptions.LongRunning,
+                                               TaskScheduler.Default);
         try
         {
             await closeTask.WaitAsync(TimeSpan.FromSeconds(3));

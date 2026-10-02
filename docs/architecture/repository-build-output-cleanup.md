@@ -2,7 +2,7 @@
 
 **Status:** cleanup completed on verified `snd-desk`; guarded data-root
 relocation is independently source-verified and live-accepted
-**Updated:** 2026-08-15
+**Updated:** 2026-08-21
 
 **Machine scope:** the runtime, mutable-data, launcher, archive, and cleanup
 evidence below belong to SND-DESK. On SND-HOST this document is historical
@@ -96,6 +96,11 @@ central-build marker files before enumeration. The documented no-argument form
 is regression-tested under Windows PowerShell 5.1. This is intentionally
 stricter than `dotnet clean`, which does not cover every custom/stale
 configuration or runtime-created file.
+
+The standalone command delegates deletion to the release system's shared
+cleanup implementation. Both entry points therefore refuse tracked children,
+non-ignored targets, reparse-backed paths, executables loaded by a process, and
+any CIM process-inventory failure before `ShouldProcess` can remove a tree.
 
 ## Public command chain
 
@@ -213,3 +218,12 @@ must decide whether to recreate it against
 `E:\Data\LibreHardwareMonitor\logs` or retire it. See
 `docs\features\feature-local-release-system.md` for the dated
 restoration evidence.
+
+## Open reporting follow-up
+
+- 2026-10-02 host-merge review: declining an explicit cleanup confirmation
+  leaves the directory intact, but the standalone command labels its returned
+  inventory `Removed`. `Clear-LhmRepositoryBuildOutput` returns the pre-deletion
+  summaries whether `ShouldProcess` approves or declines; the wrapper currently
+  distinguishes only `WhatIf`. The deletion guards remain effective. Confirm a
+  declined-cleanup fixture before changing the reporting contract.

@@ -80,7 +80,14 @@ that is split:
   asserting current-source promotability would be permanently red for a reason
   that is not a defect.
 - **`test` is included.** `Test-LhmReleaseSystem.ps1` is a fixture and creates
-  nothing outside its own temporary state.
+  nothing outside its own temporary state. It launches isolated fixture
+  executables to prove candidate ZIP-smoke behavior; it does not launch a
+  repository-built product EXE or create a real candidate.
+
+The ordinary .NET suites run under `testhost` and load source-built assemblies.
+They do not prove that any copied `LibreHardwareMonitor.Windows.Forms.exe` is a
+candidate or the live executable. That identity is established separately by
+candidate ZIP extraction/smoke and `Show-LhmExecutableIdentity.ps1`.
 
 ### `ci-gates` is self-referential
 
@@ -147,6 +154,11 @@ directory. To return to the baseline's zero-generated-directories state:
 .\eng\Clear-LhmRepositoryBuildOutputs.ps1
 ```
 
+The cleanup target set is derived at runtime as root `bin` plus `bin` and `obj`
+beside every tracked `.csproj`. `Test-NoStaleReferences.ps1` independently
+derives the same set and verifies the command's inventory, so adding or retiring
+a tracked project updates cleanup discovery without a hard-coded path edit.
+
 Do not use `git clean -fdX`. It would delete `data/tasks.json` and
 `data/analysis-cache.json`, the local execution ledger and analysis cache.
 
@@ -188,7 +200,7 @@ reason.
 `.github/workflows/non-deploying-gates.yml` delegates to this runner and
 duplicates no gate command.
 
-`origin` is deliberately unpushed on SND-HOST. The workflow has therefore never
-run on a hosted runner: it is verified by YAML parse and structural inspection
-only. That is a current limitation of the evidence, not a plan to change the
-push policy.
+A branch existing on `origin` is not hosted-run evidence. This workflow runs
+only for pushes to `main` and pull requests targeting `main`; query GitHub for
+the current checks on the exact commit or pull request. YAML parse and
+structural inspection prove the workflow shape locally, not hosted execution.

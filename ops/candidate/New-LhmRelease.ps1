@@ -119,6 +119,11 @@ if ($null -eq $globalJson.sdk -or
     throw 'global.json does not pin a release SDK version.'
 }
 $pinnedSdkVersion = [string]$globalJson.sdk.version
+$sdkRollForwardProperty = $globalJson.sdk.PSObject.Properties['rollForward']
+$sdkRollForward = ''
+if ($null -ne $sdkRollForwardProperty) {
+    $sdkRollForward = [string]$sdkRollForwardProperty.Value
+}
 
 $candidateRoot = Join-Path $releaseRootPath 'candidates'
 $stagingParent = Join-Path $releaseRootPath '.staging'
@@ -181,9 +186,10 @@ try {
         Pop-Location
     }
     $sdkVersion = ([string]$sdkOutput[0]).Trim()
-    if ($sdkVersion.Contains('-') -or $sdkVersion -cne $pinnedSdkVersion) {
-        throw "Release candidates require pinned stable SDK '$pinnedSdkVersion'; resolved '$sdkVersion'."
-    }
+    Assert-LhmReleaseSdkSelection `
+        -PinnedVersion $pinnedSdkVersion `
+        -RollForward $sdkRollForward `
+        -ResolvedVersion $sdkVersion
 
     if (-not $SkipVerification) {
         Invoke-LhmReleaseCommand -FilePath 'git' `
@@ -284,6 +290,14 @@ try {
             $versionArchive.Dispose()
         }
 
+        $smoke = Invoke-LhmReleasePackageSmoke `
+            -ArchivePath $archivePath `
+            -EntryPoint $entryPoint `
+            -TargetFramework $framework `
+            -ExpectedFileVersion ([string]$versionInfo.FileVersion) `
+            -ExpectedProductVersion ([string]$versionInfo.ProductVersion) `
+            -SmokeRoot (Join-Path $runRoot ('smoke-' + $framework))
+
         $packageRecords += [ordered]@{
             targetFramework = $framework
             platform = 'x64'
@@ -296,6 +310,7 @@ try {
             length = [long]$archiveItem.Length
             sha256 = Get-LhmReleaseFileSha256 -Path $archivePath
             files = $payloadFiles
+            smoke = $smoke
         }
     }
 
@@ -307,7 +322,7 @@ try {
     }
     $manifest = [ordered]@{
         schema = 'sq.lhm-release'
-        version = 1
+        version = 2
         releaseId = $ReleaseId
         createdUtc = $createdUtc.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
         baseVersion = $baseVersion

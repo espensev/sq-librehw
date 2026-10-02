@@ -1,7 +1,7 @@
 # Feature Spec: Sensor Workspace
 
-**Status:** deployed on SND-HOST; deterministic and live served-asset smoke verified
-**Updated:** 2026-07-21
+**Status:** deployed baseline on SND-HOST; compact watchlist and collapsible-toolbar refinement in source
+**Updated:** 2026-08-25
 
 ## Problem
 
@@ -83,6 +83,45 @@ Built-in profiles are editable and deletable like other profiles. `Reset
 workspace` restores the four current built-ins and removes local profile
 changes after confirmation. A single remaining profile cannot be deleted.
 
+Workspace density is a viewer preference, not profile data: the dashboard
+state key `workspaceDensity` (`comfortable` default, `compact`) is stored in
+`sq.dashboard.v1` beside the Studio preferences and survives profile import,
+export, and reset. Compact mode hides the hero, layout library, panel builder,
+panels heading, and per-panel action rows, and replaces them with a compact bar
+carrying the active profile name and a density select, so one control always
+switches back. Compact densifies card, table, graph, and sensor-manager
+surfaces and their spacing; Comfortable is unchanged.
+
+### Compact watchlist and toolbar refinement
+
+Compact Workspace prioritizes the first panel as the operator's watchlist
+without adding another profile schema or moving sensors between panels
+implicitly. Its top bar exposes `Choose top sensors`, which targets that first
+panel and opens the existing Sensor Manager directly above the rendered panels
+with search focused. A newly checked sensor from any Sensor Manager target is
+inserted at position one, and
+every selected sensor after the first has a direct `Move to top` action in
+addition to the existing one-step ordering controls. Operators may still choose
+another target panel in the manager.
+
+Compact cards remain cards rather than collapsing into tiny table rows. At a
+roughly half-screen viewport they reflow to one or two substantial columns and
+retain the sensor name, current value, status, and available sparkline. The
+secondary hardware/type and range-source prose is hidden on cards in Compact;
+graph panels retain their numerical scale, units, and range-source labels in
+both densities. Comfortable retains the complete card presentation.
+
+The shared upper toolbar has an explicit `Hide toolbar` action. Its
+`toolbarCollapsed` viewer preference is stored in `sq.dashboard.v1`, defaults
+to expanded for compatibility, and applies across dashboard views. Hiding the
+toolbar removes it from layout and leaves a small in-flow `Show toolbar`
+control that is keyboard reachable, cannot itself be hidden, and cannot cover
+telemetry at high zoom. Hiding closes its open disclosure menus and moves focus
+to the restore control; restoring moves focus back to the hide action. Compact
+retains a visible `h1`, an available polite status region, and non-editable
+panel headings while authoring controls are closed. This changes no Workspace
+profile document, telemetry endpoint, or host setting.
+
 ## Compatibility
 
 The change is confined to embedded HTML/CSS/JS and browser-local storage. It
@@ -109,6 +148,17 @@ owning hardware collection or the deployed `\LibreHardwareMonitor` task.
   desktop and narrow layouts.
 - [x] Pause/polling, stale state, telemetry history, and retired routes keep
   their existing behavior.
+- [x] Workspace density defaults to Comfortable, persists as a dashboard
+  preference, and Compact hides editor chrome behind a reversible bar while
+  densifying panels without changing profile data.
+- [x] Compact exposes first-panel sensor selection before the panels, focuses
+  search, inserts newly selected sensors first, and offers one-click move-to-top.
+- [x] Compact cards remain substantial at split-view widths while omitting
+  secondary catalog prose, and 3-6 first-panel cards fit without page scroll.
+- [x] The shared toolbar can be removed from layout with one action, persists
+  that local viewer choice, and always leaves an accessible restore control.
+- [x] With the toolbar hidden at approximately 700 x 900 CSS pixels, the first
+  Workspace card starts within the top 20 percent of the viewport.
 
 ## Roadmap
 
@@ -116,9 +166,10 @@ owning hardware collection or the deployed `\LibreHardwareMonitor` task.
    against the live task path; the deployed served assets, schema migration,
    Thermal profile, telemetry, and polling endpoints are already verified.
 2. Specify a web Workspace flexibility slice for resizable/reflowing layouts,
-   density and appearance controls, sensor search/grouping, bulk membership
+   further appearance controls, sensor search/grouping, bulk membership
    edits, and graph presentation that remains honest about units and missing
-   values. Native tree, graph, and gadget modernization is owned by
+   values. Density controls shipped 2026-08-22; the slice keeps its remaining
+   scope. Native tree, graph, and gadget modernization is owned by
    `docs/features/feature-native-ui-modernization.md`.
 3. Stabilize and document the bounded profile document plus normalized
    read-only sensor model as inputs to Phase 5 of
@@ -146,6 +197,36 @@ SensorIds, pause, stale telemetry, keyboard focus, and browser-console output.
 
 ## Verification Log
 
+- 2026-10-02 SND-DESK host-merge integration: restricted Compact card metadata
+  hiding so graph scale labels remain visible. An isolated Opera Developer
+  computed-style fixture reproduced the old hidden graph label, then verified
+  visible graph labels in both densities and hidden secondary card prose only
+  in Compact. Dashboard self-test passed 339/339 and Node suites passed 18/18.
+  Full profile-editing and viewport acceptance was not repeated in this check.
+- 2026-08-25 Compact watchlist and toolbar refinement: the markup/model
+  self-test passed 339/339 and the Node state/model suites passed 18/18. The
+  full .NET suite passed 374 tests with one existing opt-in test skipped; both
+  `net10.0-windows` and `net472` Release x64 builds completed with zero
+  warnings and zero errors. Browser acceptance at 701 x 900 CSS pixels placed
+  the first card at 149.33 px (16.6 percent of viewport height) after hiding
+  the toolbar; six approximately 317 x 112 px cards fit in two columns without
+  page scroll. At 351 x 450, cards reflowed to one approximately 287 x 112 px
+  column without horizontal overflow or restore-control overlap. Dark/light,
+  keyboard focus restoration, Escape dismissal, add-first, move-to-top,
+  reload persistence, accessibility, console, and network checks passed. A
+  final 701 x 900 review rerun confirmed the in-flow restore row was fully
+  off-screen rather than overlaying telemetry at scrollY 400, and manual
+  Sensor Manager close/reopen followed by Escape returned focus to its summary.
+  Source-only verification used local fixture data; no candidate, deployment,
+  task, manifest, or live runtime was changed.
+- 2026-08-22 Workspace density: TDD pass added `workspaceDensity` to
+  `sq.dashboard.v1` (normalize/default/merge covered), markup checks for the
+  two density selects and compact bar, and CSS wiring checks. `node --check`
+  passed for `console.js`; `node --test webtests\console.tests.js
+  webtests\workspace.tests.js` passed 18/18; the markup/model self-test passed
+  322/322; both `net10.0-windows` and `net472` Release x64 builds completed
+  with zero warnings and zero errors. Source-only change; no candidate was
+  created and the deployed runtime was not touched.
 - 2026-07-18 SND-DESK -> SND-HOST deployment: both machine identities were
   verified before mutation. Product version
   `0.9.6+ebedd8b-dirty.2026-07-18` was installed under the recreated
