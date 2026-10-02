@@ -98,10 +98,10 @@ $script:ProductionRuntimeExecutablePath =
     'E:\Monitoring\LibreHW\Runtime\LibreHardwareMonitor.Windows.Forms.exe'
 $script:ProductionCentralLauncherSourceRoot = 'D:\Devtools\runW'
 $script:ProductionCentralLauncherSourceCommit =
-    '64472d33d43aeac0493781f1739c8ebe7ae1165b'
+    '112545120784a46cd0e3931e8ec18a66bbfcf169'
 $script:ProductionCentralLauncherArtifactPath = 'D:\Devtools\runW\bin\runw.exe'
 $script:ProductionCentralLauncherArtifactSha256 =
-    '422F4534350A8174712345C972C5618F320A7FDDFFED5BD46368A91EBCDA9E96'
+    '9922B256D045088C13FED1F8C4FBB60F2393075911C1E4817605E663B7CCAD7D'
 $script:ProductionCentralLauncherArtifactLength = [Int64]316928
 $script:ProductionCentralLauncherArtifactVersion = '1.3.1'
 

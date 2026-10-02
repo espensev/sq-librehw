@@ -2370,7 +2370,7 @@ function New-LauncherConvergenceFixture {
         ReceiptPath = $centralLauncherAuthorityReceiptPath
         Source = [ordered]@{
             Root = 'D:\Devtools\runW'
-            Commit = '64472d33d43aeac0493781f1739c8ebe7ae1165b'
+            Commit = '112545120784a46cd0e3931e8ec18a66bbfcf169'
             Dirty = $false
             Inputs = @()
         }
@@ -2831,7 +2831,7 @@ try {
     $commonTextForReceipt = [System.IO.File]::ReadAllText($commonScript)
     Assert-True (
         $commonTextForReceipt -match
-            [regex]::Escape('RunW\install-receipt-v2-1.3.1-64472d3-help-docs.json') -and
+            [regex]::Escape('RunW\install-receipt-v2-1.3.1-1125451-repair-20261002.json') -and
         $commonTextForReceipt -notmatch
             [regex]::Escape('RunW\install-receipt-v2-1.3.1-b5cda6d-relocated.json') -and
         $commonTextForReceipt -notmatch
@@ -2851,8 +2851,8 @@ try {
     foreach ($productionRunWProvenancePin in @(
         'D:\Devtools\runW',
         'D:\Devtools\runW\bin\runw.exe',
-        '64472d33d43aeac0493781f1739c8ebe7ae1165b',
-        '422F4534350A8174712345C972C5618F320A7FDDFFED5BD46368A91EBCDA9E96',
+        '112545120784a46cd0e3931e8ec18a66bbfcf169',
+        '9922B256D045088C13FED1F8C4FBB60F2393075911C1E4817605E663B7CCAD7D',
         '316928',
         '1.3.1'
     )) {

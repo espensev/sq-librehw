@@ -16,7 +16,7 @@ $script:LhmProductionDataRelativePath = 'LibreHardwareMonitor'
 $script:LhmProductionPublicShimName = 'librehw.cmd'
 $script:LhmProductionCentralLauncherRelativePath = 'runw\runw.exe'
 $script:LhmProductionRunWReceiptRelativePath =
-    'RunW\install-receipt-v2-1.3.1-64472d3-help-docs.json'
+    'RunW\install-receipt-v2-1.3.1-1125451-repair-20261002.json'
 $script:LhmManagedTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC'
 $script:LhmProductionHealthUri = 'http://localhost:8085/data.json'
 $script:LhmExpectedMachineId = 'snd-desk'

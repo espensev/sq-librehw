@@ -998,3 +998,25 @@ Resolved for the first install: use the then-current
 logging required by release health. The exact Release config/backup and the
 7,051-byte Debug config are now preserved under the historical archive recorded
 in `docs/architecture/repository-build-output-cleanup.md`.
+
+## RunW repair receipt alignment — 2026-10-02
+
+The current RunW 1.3.1 installation is owned by
+`%SEV_LOCAL_DATA%\RunW\install-receipt-v2-1.3.1-1125451-repair-20261002.json`,
+source commit `112545120784a46cd0e3931e8ec18a66bbfcf169`, SHA-256
+`9922B256D045088C13FED1F8C4FBB60F2393075911C1E4817605E663B7CCAD7D`,
+and length 316928. Its owning receipt-led validator returned `Validated` on
+SND-DESK. The September receipt still describes its historical bytes and must
+remain immutable.
+
+LibreHW's production receipt resolver and convergence pins must consume this
+exact authority together. Existing schema, source cleanliness, destination,
+artifact, length, version, and rollback checks remain required. Convergence
+repairs the app-owned public shim and receipt before installer preview;
+it does not replace RunW.
+
+The updated authority fixture reproduced rejection by the September pins before
+the fix. The complete local-release fixture then passed in PowerShell 7 and
+Windows PowerShell 5.1. Live Plan recognizes the repaired RunW installation and
+has no blocking issues; the public shim and convergence receipt still need
+alignment before promotion.
