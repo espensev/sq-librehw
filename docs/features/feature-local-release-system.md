@@ -5,8 +5,13 @@ launcher actions fail closed to `snd-desk`; the non-live fixture is intentionall
 peer-safe under isolated temporary roots. Do not treat these paths, tasks,
 users, or runtime state as SND-HOST instructions.
 
-**Status:** focused value-axis Shift-wheel zoom and adaptive lane tick spacing
-are installed on SND-DESK, including the earlier startup zoom repair.
+**Status:** merged candidate `cca11b88` is installed on SND-DESK, with
+`fbb3a3ea` retained in the verified rollback slot. The webserver is enabled
+at `http://127.0.0.1:18085/`; future promotion and rollback commands must
+explicitly pass `-HealthUri 'http://127.0.0.1:18085/data.json'` because their
+default remains the historical port 8085.
+Focused value-axis Shift-wheel zoom and adaptive lane tick spacing
+remain installed, including the earlier startup zoom repair.
 The legacy scheduler-root task is retired; the enabled managed task's logon
 trigger is the sole automatic-start authority.
 Launcher convergence and runtime/rollback hashes were rechecked on
@@ -16,7 +21,7 @@ Current Data/Bin authority is persisted `SEV_LOCAL_DATA` / `SEV_LOCAL_BIN`
 (User, then Machine, then Process), with recursive expansion of `%...%`
 templates. The app-owned `librehw` launcher is the sole activation authority.
 Completed migrations and their dated evidence are retained below.
-**Updated:** 2026-09-11
+**Updated:** 2026-10-02
 
 ## Problem
 
@@ -165,7 +170,7 @@ its recovery packet, and idempotent Plan/Apply/Validate proof.
 drift without mutation. `Apply` first requires the installed known-folder v2
 identity for `snd-desk`, validates but never recreates the existing managed
 task, validates the installed central RunW bytes against
-`%SEV_LOCAL_DATA%\RunW\install-receipt-v2-1.3.1-64472d3-help-docs.json`, and transactionally replaces only the
+`%SEV_LOCAL_DATA%\RunW\install-receipt-v2-1.3.1-1125451-repair-20261002.json`, and transactionally replaces only the
 app relay and public CMD. RunW is an authority dependency, not an app-vendored
 deployment or rollback target. The convergence tool retains a typed v2 receipt
 and exact two-file rollback packet under
@@ -1064,3 +1069,63 @@ the verified readback. Next gate: free TCP 8085, enable the monitor's webserver
 and verify its own HTTP response, then retry the guarded candidate preview and
 promotion from the clean merge worktree. New-release live health and attended
 UI acceptance remain open. No remote publication or host mutation occurred.
+
+### Desktop continuation review — 2026-10-02
+
+The continuation review at 19:25 UTC confirmed source `08ff03f6`, candidate
+`cca11b88`, and the installed/recovery `fbb3a3ea` payload hashes. Installer
+WhatIf and launcher Validate passed; both PowerShell engines passed all 25
+launcher convergence fixture cases. CSV logging continued from the exact
+installed process. The review corrected the current RunW authority reference
+above to match the already implemented repair receipt.
+
+The HTTP gate remains blocked: this session owns TCP 8085 (PID 73740),
+and other Codex processes own 8086–8091. The monitor still stores port 8085,
+wildcard listener `+`, and a disabled webserver. Port 18085 was free during
+the check. The operator choice is pending: retain 8085 and free it before
+retry, or select loopback port 18085 and enable the webserver before guarded
+promotion with an explicit matching `-HealthUri`. No live setting, task,
+launcher, or runtime payload was changed during this review.
+
+Fresh receipts are retained under
+`D:\DevHome\tmp\librehw-resume-20261002-1925`; `state.json` records current
+identity, payload validation, preview, launcher, process, port, and CSV checks.
+The reporting follow-up remains deferred in
+[repository-output cleanup](../architecture/repository-build-output-cleanup.md#open-reporting-follow-up).
+
+### Desktop candidate promotion — 2026-10-02
+
+After the operator instructed continuation, the webserver was enabled on
+loopback `127.0.0.1:18085` to avoid the Codex-owned ports. The exact settings
+file was backed up before changing only `listenerIp`, `listenerPort`, and
+`runWebServerMenuItem`. The previous `fbb3a3ea` runtime passed HTTP health on
+the new endpoint before promotion.
+
+Identity-verified installer preview and guarded promotion then passed with
+the explicit matching `-HealthUri`. Installed `cca11b88` matches the candidate
+SHA-256 `0fe2b392d998f25b20cfa04c27e6ee0caecdb1914362e9f98b164138b461cc5f`;
+rollback `fbb3a3ea` matches
+`f1788f34e968545898b9d5b60b0b96dfa0fa2cf96b80967d30b6a99f3ca14097`.
+The release transaction was removed after activation.
+
+Independent readback verified one responding exact-path process, HTTP 200
+from `/`, `/data.json`, and `/metrics`, continuing CSV growth, and launcher
+Validate PASS. Runtime data-root configuration, managed-task XML, app relay,
+public CMD, central RunW executable, and its authority receipt retained their
+baseline hashes. HTTP.sys registers the specific loopback prefix for 18085.
+No firewall, remote runtime, or remote publication was changed.
+
+Evidence is retained under `D:\DevHome\tmp\librehw-promotion-20261002-1933`:
+`baseline.json`, `settings-before.config`, `previous-runtime-health.json`,
+`promotion.log`, `promotion.json`, `launcher-validate.json`, and `live-state.json`.
+Technical deployment health is verified; attended native UI/layout sign-off
+remains separate.
+
+The public `librehw.cmd` activation returned exit code zero after promotion.
+Browser captures show Standard, Studio, and Workspace with live data at
+1440x1000. The mobile check timed out in `Runtime.evaluate` after those
+captures; a fresh DevHome headless instance on port 9002 did not become ready.
+Mobile rendering and complete viewport/profile acceptance are therefore
+unverified. The disposable dashboard tab was closed; existing user tabs and
+browser processes were retained. `public-launcher.json` and
+`browser-coverage.json` retain the results and limits.
