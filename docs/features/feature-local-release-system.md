@@ -5,8 +5,10 @@ launcher actions fail closed to `snd-desk`; the non-live fixture is intentionall
 peer-safe under isolated temporary roots. Do not treat these paths, tasks,
 users, or runtime state as SND-HOST instructions.
 
-**Status:** merged candidate `cca11b88` is installed on SND-DESK, with
-`fbb3a3ea` retained in the verified rollback slot. The webserver is enabled
+**Status:** Corsair discovery repair `cb963503` is installed on SND-DESK, with
+`6a493f3d` retained in the verified rollback slot. General hardware monitoring
+and CSV logging are restored; HX1500i telemetry remains unavailable in the
+installed app and is tracked in the 2026-10-07 record below. The webserver is enabled
 at `http://127.0.0.1:18085/`; future promotion and rollback commands must
 explicitly pass `-HealthUri 'http://127.0.0.1:18085/data.json'` because their
 default remains the historical port 8085.
@@ -21,7 +23,7 @@ Current Data/Bin authority is persisted `SEV_LOCAL_DATA` / `SEV_LOCAL_BIN`
 (User, then Machine, then Process), with recursive expansion of `%...%`
 templates. The app-owned `librehw` launcher is the sole activation authority.
 Completed migrations and their dated evidence are retained below.
-**Updated:** 2026-10-02
+**Updated:** 2026-10-07
 
 ## Problem
 
@@ -1129,3 +1131,44 @@ Mobile rendering and complete viewport/profile acceptance are therefore
 unverified. The disposable dashboard tab was closed; existing user tabs and
 browser processes were retained. `public-launcher.json` and
 `browser-coverage.json` retain the results and limits.
+
+### Corsair PSU discovery repair — 2026-10-07
+
+The installed `cca11b88` process returned an empty hardware tree after a Corsair
+HX1500i vendor-string failure. Commit `6a493f3d` isolates expected PSU discovery
+errors per device. Commit `cb963503` also tolerates up to three stale replies
+during firmware identification and validates reply length before copying.
+The implementation and regression tests are C#; no application PowerShell
+dependency was added.
+
+The final candidate passed Library 107/107, Application 212 with one existing
+opt-in skip, and Contracts 109/109. Both x64 Release targets built with zero
+warnings/errors. Exact-executable smoke, candidate hash validation, installer
+preview, and machine-verified promotion passed with the explicit loopback
+health URI. Installed SHA-256 is
+`26f1d18d00cb465b756f3823177dc5f80ee6c8d94cac451cc7598f01d75e588f`;
+rollback `6a493f3d` matches its prior installed payload. The earlier `cca11b88`
+candidate remains retained in the candidate store.
+
+Live verification found one responding installed process, 50 hardware nodes,
+522 sensors (519 with values), changing readings, and continuing CSV growth.
+The original empty-tree failure is resolved. The stricter PSU acceptance check
+still fails: the installed hardware report records `Can't read product` and
+there are no Corsair sensor nodes. A standalone C# probe captured stale command
+echoes and intermittently obtained valid PSU readings. Holding the shared USB
+sensor mutex did not consistently improve those readings. iCUE and HWiNFO were
+running during these checks; their involvement has not been established by an
+isolation test. The remaining diagnostic gate is a brief HWiNFO close/reopen
+test, pending operator approval to interrupt that separate monitor.
+
+Launcher Validate passed against the source paths already bound in its receipt
+(`D:\DevHome\worktrees\sq-librehw\host-merge-20261002`). Validation from the new
+fix worktree reports only source-path receipt drift; launcher bytes, public
+shim, task, and RunW authority pass. No launcher repair is required by this fix.
+
+Evidence is retained under `D:\DevHome\tmp\librehw-psu-discovery-20261007`:
+`baseline.json`, `protocol-red.log`, `protocol-green.log`, `publish-final.log`,
+`candidate-smoke-final.json`, `install-final.log`, `live-verification.json`,
+`installed-hardware-report.txt`, `psu-mutex-probe.log`, and
+`launcher-verified.json`. The C# probe sources and settings recovery copies
+are retained there for the remaining isolation check.

@@ -261,6 +261,9 @@ dashboard policy, or supported frameworks.
 
 ## Open follow-ups
 
+- SND-DESK HX1500i telemetry remains unavailable in the installed app despite
+  restored monitoring of other hardware. The [local release record](feature-local-release-system.md#corsair-psu-discovery-repair--2026-10-07)
+  contains the remaining external-monitor isolation gate and probe evidence.
 - [x] Promote the verified scrollbar follow-up only with explicit deployment
   approval. It shipped in the verified 2026-07-18 SND-HOST build.
 - [x] Extend keyed DOM reuse and focus preservation to the Standard view
@@ -350,7 +353,7 @@ separate maintainer approval.
   command behind, including an INIT reply to the vendor request. Five new
   regression cases failed before bounded identity reads and payload-length
   validation. All 14 focused cases then passed; the real PSU was discovered in
-  three consecutive probe attempts with temperature readings. Optional-command
+  three consecutive probe attempts, with temperature readings in the first. Optional-command
   behavior remains single-read. Evidence under the same directory:
   `psu-group-probe.log`, `protocol-red.log`, `protocol-green.log`, and
   `psu-probe-fixed.log`.
