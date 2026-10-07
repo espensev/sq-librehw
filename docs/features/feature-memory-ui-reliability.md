@@ -39,8 +39,9 @@ dashboard policy, or supported frameworks.
 
 ## Non-goals
 
-- No changes to `data.json`, CSV columns, Prometheus names/labels/units, sensor
-  IDs, current/min/max semantics, or hardware polling cadence.
+- No changes to `data.json` shape, CSV columns, Prometheus names/labels/units,
+  healthy sensor IDs, min/max semantics, or hardware polling cadence. Failed
+  Corsair readings use the existing unavailable-value representation below.
 - No restored dashboard preview route or new server write capability.
 - No automatic deletion of runtime logs or deployment/configuration changes.
 - No upstream synchronization or unrelated visual redesign.
@@ -78,6 +79,23 @@ dashboard policy, or supported frameworks.
   is reported per device, while busy updates/property reads perform no I/O.
   Every acquired lock is released on success or failure. HID reads and writes
   time out after 250 ms so a stalled device cannot indefinitely hold the lock.
+- Corsair updates immediately invalidate all current raw readings when the
+  shared lock is busy/unavailable or an open/read operation throws, including
+  a failure after partial polling. Min/max values remain intact. Exceptions
+  retain their existing propagation behavior; the next successful poll recovers
+  readings without reopening the hardware group. A rejected command reply
+  invalidates that command's reading rather than retaining its previous value.
+- Corsair Total Output is unavailable whenever any required power rail is
+  unavailable; genuine zero readings still sum to zero. HTTP exposes the
+  existing null/unavailable form and CSV leaves the corresponding cell empty.
+- Corsair access fails closed when the shared mutex cannot be created/opened:
+  discovery reports an access timeout, properties return empty, and updates
+  invalidate readings, all without HID I/O. Other mutex users retain their
+  existing behavior.
+- Each supported Corsair device reserves its enumeration slot before discovery,
+  including when discovery fails. Healthy-device IDs and saved labels remain
+  associated with the same slot on failure and recovery. Unsupported devices
+  consume no slot; general USB enumeration reordering is outside this repair.
 - Process-global Mutex, OpCode, and NVIDIA ML ownership is reference-counted
   across concurrent `Computer` instances. One close or failed acquisition
   cannot release another open instance's lease.
@@ -206,6 +224,16 @@ dashboard policy, or supported frameworks.
   owner for the complete HID transaction, perform no device I/O when busy,
   and release the lock after open/read failures. Reads/writes have bounded
   timeouts. Real HX1500i readings remain complete with HWiNFO and iCUE running.
+- [ ] Seeded Corsair readings become unavailable on the first/repeated lock
+  miss and on open/read/partial-poll exceptions; min/max survive and a successful
+  retry recovers values. Busy/missing locks perform no HID I/O.
+- [ ] Corsair power totals distinguish valid zero, one missing rail, all missing
+  rails, and recovery; expired readings serialize as HTTP null and empty CSV.
+- [ ] Failed-first, failed-middle, multiple-failure and recovered Corsair
+  discovery preserve identifiers and saved labels with unsupported devices
+  excluded from slot numbering.
+- [ ] Missing Corsair mutex handles prevent discovery/update/property I/O;
+  private-mutex recovery and existing lock-release regressions pass.
 - [x] Captured Storage/NVIDIA snapshots remain stable across add, remove,
   driver availability changes, and close; Computer traversals and reports use
   one captured generation per group.
@@ -272,6 +300,20 @@ dashboard policy, or supported frameworks.
 
 ## Open follow-ups
 
+- [ ] Corsair cross-review, 2026-10-07: bound stale-value retention after
+  repeated mutex timeouts; current `Update()` leaves prior readings exposed
+  through CSV and HTTP despite performing no device I/O.
+- [ ] Preserve Corsair device identifier slots when an earlier connected PSU
+  fails discovery; success-count indexing currently transfers saved sensor
+  labels and bindings to a later physical device. Both medium findings have
+  isolated C# reproductions in the [cross-review](../reviews/review-2026-10-07-corsair-psu-crossreview.md).
+- [ ] Keep Corsair Total Output unavailable when any required power rail is
+  unavailable; the existing aggregate substitutes zero and can publish partial
+  or zero watts. This must accompany stale-value invalidation.
+- [ ] Fail closed for Corsair HID access when the shared mutex handle could not
+  be created/opened; the generic null-mutex path currently reports success.
+  The [handoff and issue review](../reviews/review-2026-10-07-handoff-and-open-issues.md)
+  records isolated reproductions, remediation choices, and the deferred queue.
 - [x] SND-DESK HX1500i shared-access repair `07d2d25e` is installed and verified:
   all 17 PSU readings remained valid across 45 samples with HWiNFO and iCUE
   running. See the [local release record](feature-local-release-system.md#corsair-psu-discovery-repair--2026-10-07).
