@@ -153,9 +153,10 @@ public sealed class CorsairPsuDiscoveryTests
 
     public enum Failure { None, VendorReply, ProductReply, ReadIo, ReadTimeout, OpenDenied, Unexpected, StaleIdentityReply, UnsupportedInputCurrent }
 
-    private sealed class TestDevice(string path, Failure failure = Failure.None) : HidDevice
+    internal sealed class TestDevice(string path, Failure failure = Failure.None) : HidDevice
     {
         public Failure Failure { get; set; } = failure;
+        public Action OnAccess { get; set; }
         public int ReplyLength { get; set; } = 65;
         public List<TestStream> Streams { get; } = [];
         public override string DevicePath => path;
@@ -169,6 +170,7 @@ public sealed class CorsairPsuDiscoveryTests
 
         protected override DeviceStream OpenDeviceDirectly(OpenConfiguration configuration)
         {
+            OnAccess?.Invoke();
             if (Failure == Failure.OpenDenied)
                 throw new UnauthorizedAccessException("device access denied");
 
@@ -178,7 +180,7 @@ public sealed class CorsairPsuDiscoveryTests
         }
     }
 
-    private sealed class TestStream(TestDevice device) : HidStream(device)
+    internal sealed class TestStream(TestDevice device) : HidStream(device)
     {
         private readonly byte[] _request = new byte[65];
         private int _readsForCommand;
@@ -191,12 +193,14 @@ public sealed class CorsairPsuDiscoveryTests
 
         public override void Write(byte[] buffer, int offset, int count)
         {
+            device.OnAccess?.Invoke();
             Array.Copy(buffer, offset, _request, 0, count);
             _readsForCommand = 0;
         }
 
         public override int Read(byte[] buffer, int offset, int count)
         {
+            device.OnAccess?.Invoke();
             ReadCount++;
             _readsForCommand++;
             byte command = _request[2];

@@ -71,6 +71,13 @@ dashboard policy, or supported frameworks.
   replies. Other commands retain their single-read behavior so unsupported
   optional commands do not introduce retries. Truncated replies are rejected
   before indexing or copying their payload.
+- Corsair PSU discovery, property reads, and each complete sensor update hold
+  `Global\CorsairLinkReadWriteGuardMutex` before opening the HID stream until
+  after disposing it. This protects rail selection and its dependent reads
+  from cooperating monitors. Acquisition waits at most 500 ms; a busy discovery
+  is reported per device, while busy updates/property reads perform no I/O.
+  Every acquired lock is released on success or failure. HID reads and writes
+  time out after 250 ms so a stalled device cannot indefinitely hold the lock.
 - Process-global Mutex, OpCode, and NVIDIA ML ownership is reference-counted
   across concurrent `Computer` instances. One close or failed acquisition
   cannot release another open instance's lease.
@@ -195,6 +202,10 @@ dashboard policy, or supported frameworks.
 - [x] A stale Corsair identity reply followed by a matching response recovers
   the correct vendor/product; exhausted or truncated responses fail within
   four reads, while unsupported optional commands still use one read.
+- [x] Corsair discovery, polling, and property reads exclude another mutex
+  owner for the complete HID transaction, perform no device I/O when busy,
+  and release the lock after open/read failures. Reads/writes have bounded
+  timeouts. Real HX1500i readings remain complete with HWiNFO and iCUE running.
 - [x] Captured Storage/NVIDIA snapshots remain stable across add, remove,
   driver availability changes, and close; Computer traversals and reports use
   one captured generation per group.
@@ -261,9 +272,9 @@ dashboard policy, or supported frameworks.
 
 ## Open follow-ups
 
-- SND-DESK HX1500i telemetry remains unavailable in the installed app despite
-  restored monitoring of other hardware. The [local release record](feature-local-release-system.md#corsair-psu-discovery-repair--2026-10-07)
-  contains the remaining external-monitor isolation gate and probe evidence.
+- Verify the Corsair shared-access repair in the installed SND-DESK app. The
+  source probe now discovers the HX1500i and reads all 17 sensors while HWiNFO
+  and iCUE remain running. See the [local release record](feature-local-release-system.md#corsair-psu-discovery-repair--2026-10-07).
 - [x] Promote the verified scrollbar follow-up only with explicit deployment
   approval. It shipped in the verified 2026-07-18 SND-HOST build.
 - [x] Extend keyed DOM reuse and focus preservation to the Standard view
@@ -349,6 +360,18 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-10-07 HX1500i shared-access repair: transport traces captured interleaved
+  command replies and wrong-rail readings. Holding the standard
+  `Global\CorsairLinkReadWriteGuardMutex` restored all supported commands in
+  20 probe cycles. Eight isolated concurrency tests failed before the driver
+  acquired this lock; all 22 Corsair cases passed afterward. A C# probe using
+  the real `Computer.Open()` path then completed three discoveries and 30 polls,
+  each with 17/17 values and correct 12V/5V/3.3V rails; HWiNFO, iCUE, and the
+  Corsair service retained their process IDs. Evidence:
+  `D:\DevHome\tmp\librehw-psu-discovery-20261007` (`transport-comparison.log`,
+  `transport-corsair-mutex.log`, `mutex-isolated-red.log`, `mutex-green.log`,
+  `coexist-source.log`). Tests use a unique local mutex to avoid touching other
+  monitors; production uses the standard global name.
 - 2026-10-07 HX1500i protocol follow-up: a direct C# probe captured replies one
   command behind, including an INIT reply to the vendor request. Five new
   regression cases failed before bounded identity reads and payload-length

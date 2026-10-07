@@ -5,6 +5,7 @@
 // All Rights Reserved.
 // Implemented after the Linux kernel driver corsair_psu by Wilken Gottwalt and contributers
 
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using HidSharp;
@@ -13,6 +14,8 @@ namespace LibreHardwareMonitor.Hardware.Psu.Corsair;
 
 internal sealed class CorsairPsu : Hardware
 {
+    private const int MutexTimeout = 500;
+    private const int IoTimeout = 250;
     private readonly List<CompositeSensor> _compositeSensors = [];
     private readonly HidDevice _device;
     private readonly List<PsuSensor> _sensors = [];
@@ -21,13 +24,26 @@ internal sealed class CorsairPsu : Hardware
         : base("Corsair PSU", new Identifier("psu", "corsair", index.ToString()), settings)
     {
         _device = device;
-        using HidStream stream = device.Open();
 
-        UsbApi.Init(stream);
-        UsbApi.FirmwareInfo fwInfo = UsbApi.FwInfo(stream);
-        Name = $"{CultureInfo.InvariantCulture.TextInfo.ToTitleCase(fwInfo.Vendor.ToLowerInvariant())} {fwInfo.Product}";
+        if (!Mutexes.WaitCorsairLink(MutexTimeout))
+            throw new TimeoutException("Timed out waiting for Corsair PSU access.");
 
-        AddSensors(UsbApi.GetOptionalCommands(stream), UsbApi.GetCriticals(stream), settings);
+        try
+        {
+            using HidStream stream = device.Open();
+            stream.ReadTimeout = IoTimeout;
+            stream.WriteTimeout = IoTimeout;
+
+            UsbApi.Init(stream);
+            UsbApi.FirmwareInfo fwInfo = UsbApi.FwInfo(stream);
+            Name = $"{CultureInfo.InvariantCulture.TextInfo.ToTitleCase(fwInfo.Vendor.ToLowerInvariant())} {fwInfo.Product}";
+
+            AddSensors(UsbApi.GetOptionalCommands(stream), UsbApi.GetCriticals(stream), settings);
+        }
+        finally
+        {
+            Mutexes.ReleaseCorsairLink();
+        }
     }
 
     public override HardwareType HardwareType => HardwareType.Psu;
@@ -38,20 +54,46 @@ internal sealed class CorsairPsu : Hardware
         {
             SortedDictionary<string, string> properties = new();
 
-            using HidStream stream = _device.Open();
+            if (!Mutexes.WaitCorsairLink(MutexTimeout))
+                return properties;
 
-            float? mode = UsbApi.GetValue(stream, UsbApi.Command.OCPMODE, 0);
-            if (mode.HasValue)
-                properties.Add("Over-current protection", mode > 1.0 ? "multi-rail" : "single-rail");
+            try
+            {
+                using HidStream stream = _device.Open();
+                stream.ReadTimeout = IoTimeout;
+                stream.WriteTimeout = IoTimeout;
 
-            return properties;
+                float? mode = UsbApi.GetValue(stream, UsbApi.Command.OCPMODE, 0);
+                if (mode.HasValue)
+                    properties.Add("Over-current protection", mode > 1.0 ? "multi-rail" : "single-rail");
+
+                return properties;
+            }
+            finally
+            {
+                Mutexes.ReleaseCorsairLink();
+            }
         }
     }
 
     public override void Update()
     {
-        using HidStream stream = _device.Open();
-        _sensors.ForEach(s => s.Update(stream));
+        if (!Mutexes.WaitCorsairLink(MutexTimeout))
+            return;
+
+        try
+        {
+            // Hold the shared lock across rail selection and all dependent reads.
+            // Opening inside the lock also avoids queueing another monitor's reports.
+            using HidStream stream = _device.Open();
+            stream.ReadTimeout = IoTimeout;
+            stream.WriteTimeout = IoTimeout;
+            _sensors.ForEach(s => s.Update(stream));
+        }
+        finally
+        {
+            Mutexes.ReleaseCorsairLink();
+        }
     }
 
     private void AddSensors(UsbApi.OptionalCommands optionalCommands, UsbApi.Criticals criticals, ISettings settings)
