@@ -51,13 +51,14 @@ public class CorsairPsuGroup : IGroup
         _report.AppendLine();
 
         _hardware = new List<IHardware>();
+        int index = 0;
         foreach (HidDevice dev in devices)
         {
             if (_productIds.Contains(dev.ProductID))
             {
                 try
                 {
-                    var device = new CorsairPsu(dev, settings, _hardware.Count);
+                    var device = new CorsairPsu(dev, settings, index++);
                     _hardware.Add(device);
                     _report.AppendLine($"Device name: {device.Name}");
                 }

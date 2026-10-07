@@ -15,5 +15,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\LibreHardwareMonitorLib\LibreHardwareMonitorLib.csproj" />
+    <Compile Include="..\Fixtures\CorsairPsuTestFixture.cs" Link="Fixtures\CorsairPsuTestFixture.cs" />
   </ItemGroup>
 </Project>

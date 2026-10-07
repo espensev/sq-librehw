@@ -77,7 +77,8 @@ internal static class Mutexes
 
     public static bool WaitCorsairLink(int millisecondsTimeout)
     {
-        return WaitMutex(_corsairLinkMutex, millisecondsTimeout);
+        Mutex mutex = _corsairLinkMutex;
+        return mutex != null && WaitMutex(mutex, millisecondsTimeout);
     }
 
     public static void ReleaseCorsairLink()

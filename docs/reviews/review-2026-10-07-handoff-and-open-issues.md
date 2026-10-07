@@ -10,6 +10,10 @@
 
 **Verdict:** FAIL for remediation readiness of the affected paths. Normal installed PSU telemetry is healthy in the current sample.
 
+**Subsequent source resolution, 2026-10-07:** Corsair findings 5-8 are fixed and
+regression-tested in source. The remaining findings and live release gate stay
+open. See the [current reliability verification](../features/feature-memory-ui-reliability.md#verification-log).
+
 ## Findings
 
 ### High
@@ -60,7 +64,7 @@
 
 - Failed `Computer.Reset()` deliberately closes the old generation before building replacement (`Computer.cs:859`) and closes partial replacement on failure. `ComputerOpenLifetimeTests.cs:336` explicitly asserts empty hardware afterward. Choose between visible failure plus explicit retry and reconstructing hardware; the latter re-probes devices. This is a policy gate, not a missing transactional-Open fix.
 - Transactional Open and partial-reset cleanup already exist; do not reopen them as absent implementation. Option rollback and crash-time history continuity are distinct gaps.
-- The [older sweep](audit-librehw-grand-sweep-20261003.md) and `.audit/crew/librehw-grand-sweep-20261003-1e5346a3/REPORT.md` retain the broader queue, including traversal-freeze findings and 75 then-unconfirmed medium/high candidates. Those counts are historical; this review did not reconfirm that entire audit or resume its workflow.
+- The local older sweep at `E:/Monitoring/sq-librehw/docs/reviews/audit-librehw-grand-sweep-20261003.md` and `.audit/crew/librehw-grand-sweep-20261003-1e5346a3/REPORT.md` retain the broader queue, including traversal-freeze findings and 75 then-unconfirmed medium/high candidates. Those artifacts remain outside this commit; the counts are historical and this review did not reconfirm that entire audit or resume its workflow.
 - `docs/campaign-backlog.md` still leaves Plan-001 attended smoke, Plan-012 criterion 10, and explicitly gated Plan-014 open. Native layout/text-scaling and SND-HOST UI acceptance require their specified checks; a local HTTP read does not close them.
 - `feature-http-server-safety.md:3` still says not promoted and its acceptance combines listener and firewall proof. The installed commit contains later source, but this review did not inspect firewall scope or exercise rejection paths. Reconcile that record during a focused live verification; do not infer full acceptance from healthy loopback HTTP.
 - Optional Corsair input-current detection increments later sensor indices (`CorsairPsu.cs:153-158`); changing that pre-existing identity scheme needs a compatibility decision beyond reserving device slots.

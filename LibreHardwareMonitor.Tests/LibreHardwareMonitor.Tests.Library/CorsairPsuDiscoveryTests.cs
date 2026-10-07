@@ -5,19 +5,23 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text;
 using HidSharp;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Hardware.Psu;
 using LibreHardwareMonitor.Hardware.Psu.Corsair;
 using Xunit;
+using static LibreHardwareMonitor.Tests.CorsairPsuTestFixture;
 
 namespace LibreHardwareMonitor.Tests;
 
-public sealed class CorsairPsuDiscoveryTests
+[Collection("Corsair PSU mutex")]
+public sealed class CorsairPsuDiscoveryTests : IDisposable
 {
+    public CorsairPsuDiscoveryTests() => Mutexes.Open($@"Local\LibreHardwareMonitor.CorsairPsuTests.{Guid.NewGuid():N}");
+
+    public void Dispose() => Mutexes.Close();
+
     [Fact]
     public void FirmwareInfo_MismatchedVendorReply_ReproducesReportedError()
     {
@@ -97,7 +101,7 @@ public sealed class CorsairPsuDiscoveryTests
             Assert.Equal(2, group.Hardware.Count);
             Assert.All(group.Hardware, hardware => Assert.Equal("Corsair HX1500i", hardware.Name));
             Assert.All(group.Hardware, hardware => Assert.NotEmpty(hardware.Sensors));
-            Assert.Equal(["/psu/corsair/0", "/psu/corsair/1"], group.Hardware.Select(hardware => hardware.Identifier.ToString()));
+            Assert.Equal(["/psu/corsair/0", "/psu/corsair/2"], group.Hardware.Select(hardware => hardware.Identifier.ToString()));
             Assert.Contains(failed.DevicePath, group.GetReport());
             Assert.Contains(message, group.GetReport());
             Assert.All(first.Streams.Concat(failed.Streams).Concat(last.Streams), stream => Assert.True(stream.IsDisposed));
@@ -106,6 +110,57 @@ public sealed class CorsairPsuDiscoveryTests
         {
             group.Close();
         }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(5)]
+    public void Discovery_FailureAndRecovery_PreserveSupportedSlotsAndSavedSensorLabels(int failedSlots)
+    {
+        var settings = new TestSettings();
+        TestDevice[] supported = [new("first"), new("middle"), new("last")];
+        var unsupported = new TestDevice("unsupported") { ProductId = 0xffff };
+        HidDevice[] devices = [unsupported, supported[0], unsupported, supported[1], supported[2]];
+        string[] identifiers = ["/psu/corsair/0", "/psu/corsair/1", "/psu/corsair/2"];
+        string[] labels = ["First VRM", "Middle VRM", "Last VRM"];
+
+        var healthy = new CorsairPsuGroup(settings, devices);
+        try
+        {
+            Assert.Equal(identifiers, healthy.Hardware.Select(hardware => hardware.Identifier.ToString()));
+            for (int index = 0; index < supported.Length; index++)
+                VrmSensor(healthy.Hardware[index]).Name = labels[index];
+        }
+        finally { healthy.Close(); }
+
+        for (int index = 0; index < supported.Length; index++)
+            supported[index].Failure = (failedSlots & (1 << index)) != 0 ? Failure.VendorReply : Failure.None;
+
+        var failed = new CorsairPsuGroup(settings, devices);
+        try
+        {
+            int[] workingSlots = Enumerable.Range(0, supported.Length).Where(index => (failedSlots & (1 << index)) == 0).ToArray();
+            Assert.Equal(workingSlots.Select(index => identifiers[index]), failed.Hardware.Select(hardware => hardware.Identifier.ToString()));
+            Assert.Equal(workingSlots.Select(index => labels[index]), failed.Hardware.Select(hardware => VrmSensor(hardware).Name));
+        }
+        finally { failed.Close(); }
+
+        foreach (TestDevice device in supported)
+            device.Failure = Failure.None;
+
+        var recovered = new CorsairPsuGroup(settings, devices);
+        try
+        {
+            Assert.Equal(identifiers, recovered.Hardware.Select(hardware => hardware.Identifier.ToString()));
+            Assert.Equal(labels, recovered.Hardware.Select(hardware => VrmSensor(hardware).Name));
+            Assert.Empty(unsupported.Streams);
+            Assert.All(supported.SelectMany(device => device.Streams), stream => Assert.True(stream.IsDisposed));
+        }
+        finally { recovered.Close(); }
+
+        static ISensor VrmSensor(IHardware hardware) => Assert.Single(hardware.Sensors, sensor => sensor.SensorType == SensorType.Temperature && sensor.Index == 0);
     }
 
     [Fact]
@@ -151,102 +206,6 @@ public sealed class CorsairPsuDiscoveryTests
         Assert.True(Assert.Single(device.Streams).IsDisposed);
     }
 
-    public enum Failure { None, VendorReply, ProductReply, ReadIo, ReadTimeout, OpenDenied, Unexpected, StaleIdentityReply, UnsupportedInputCurrent }
-
-    internal sealed class TestDevice(string path, Failure failure = Failure.None) : HidDevice
-    {
-        public Failure Failure { get; set; } = failure;
-        public Action OnAccess { get; set; }
-        public int ReplyLength { get; set; } = 65;
-        public List<TestStream> Streams { get; } = [];
-        public override string DevicePath => path;
-        public override int VendorID => 0x1b1c;
-        public override int ProductID => 0x1c1f;
-        public override int ReleaseNumberBcd => 0;
-        public override string GetFileSystemName() => path;
-        public override int GetMaxInputReportLength() => 65;
-        public override int GetMaxOutputReportLength() => 65;
-        public override int GetMaxFeatureReportLength() => 0;
-
-        protected override DeviceStream OpenDeviceDirectly(OpenConfiguration configuration)
-        {
-            OnAccess?.Invoke();
-            if (Failure == Failure.OpenDenied)
-                throw new UnauthorizedAccessException("device access denied");
-
-            var stream = new TestStream(this);
-            Streams.Add(stream);
-            return stream;
-        }
-    }
-
-    internal sealed class TestStream(TestDevice device) : HidStream(device)
-    {
-        private readonly byte[] _request = new byte[65];
-        private int _readsForCommand;
-        public bool IsDisposed { get; private set; }
-        public int ReadCount { get; private set; }
-        public override int ReadTimeout { get; set; }
-        public override int WriteTimeout { get; set; }
-        public override void GetFeature(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-        public override void SetFeature(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-
-        public override void Write(byte[] buffer, int offset, int count)
-        {
-            device.OnAccess?.Invoke();
-            Array.Copy(buffer, offset, _request, 0, count);
-            _readsForCommand = 0;
-        }
-
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            device.OnAccess?.Invoke();
-            ReadCount++;
-            _readsForCommand++;
-            byte command = _request[2];
-            if (command == (byte)UsbApi.Command.VEND_STR)
-            {
-                if (device.Failure == Failure.ReadIo)
-                    throw new IOException("device disconnected");
-                if (device.Failure == Failure.ReadTimeout)
-                    throw new TimeoutException("read timed out");
-                if (device.Failure == Failure.Unexpected)
-                    throw new InvalidOperationException("unexpected programming error");
-            }
-
-            var reply = new byte[65];
-            reply[1] = _request[1];
-            reply[2] = command;
-            if (command == (byte)UsbApi.Command.VEND_STR)
-                Encoding.ASCII.GetBytes("CORSAIR").CopyTo(reply, 3);
-            else if (command == (byte)UsbApi.Command.PROD_STR)
-                Encoding.ASCII.GetBytes("HX1500i").CopyTo(reply, 3);
-
-            if ((device.Failure == Failure.VendorReply && command == (byte)UsbApi.Command.VEND_STR) ||
-                (device.Failure == Failure.ProductReply && command == (byte)UsbApi.Command.PROD_STR) ||
-                (device.Failure == Failure.UnsupportedInputCurrent && command == (byte)UsbApi.Command.IN_AMPS))
-                reply[2] = 0;
-
-            if (device.Failure == Failure.StaleIdentityReply && _readsForCommand == 1)
-            {
-                // Replay the previous command echo observed on the live HX1500i.
-                reply[1] = command == (byte)UsbApi.Command.VEND_STR ? (byte)0xfe : (byte)3;
-                reply[2] = command == (byte)UsbApi.Command.VEND_STR ? (byte)3 : (byte)UsbApi.Command.VEND_STR;
-                Encoding.ASCII.GetBytes("STALE").CopyTo(reply, 3);
-            }
-
-            Assert.True(count >= device.ReplyLength);
-            Array.Copy(reply, 0, buffer, offset, device.ReplyLength);
-            return device.ReplyLength;
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            IsDisposed = true;
-            base.Dispose(disposing);
-        }
-    }
-
     private sealed class TestHardware(ISettings settings) : Hardware.Hardware("CPU", new Identifier("test-cpu"), settings)
     {
         public override HardwareType HardwareType => HardwareType.Cpu;
@@ -262,9 +221,11 @@ public sealed class CorsairPsuDiscoveryTests
 
     private sealed class TestSettings : ISettings
     {
-        public bool Contains(string name) => false;
-        public string GetValue(string name, string value) => value;
-        public void SetValue(string name, string value) { }
-        public void Remove(string name) { }
+        private readonly Dictionary<string, string> _values = [];
+
+        public bool Contains(string name) => _values.ContainsKey(name);
+        public string GetValue(string name, string value) => _values.TryGetValue(name, out string stored) ? stored : value;
+        public void SetValue(string name, string value) => _values[name] = value;
+        public void Remove(string name) => _values.Remove(name);
     }
 }

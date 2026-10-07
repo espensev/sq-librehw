@@ -4,6 +4,9 @@
 queue, scrollbar teardown, transactional open, and dynamic-group snapshot fixes
 deployed and live-verified on SND-HOST
 
+**Corsair failure follow-up:** source-verified on 2026-10-07; candidate creation
+and live promotion remain separate. SND-DESK still runs `07d2d25e`.
+
 **Updated:** 2026-10-07
 
 ## Problem and motivation
@@ -224,15 +227,15 @@ dashboard policy, or supported frameworks.
   owner for the complete HID transaction, perform no device I/O when busy,
   and release the lock after open/read failures. Reads/writes have bounded
   timeouts. Real HX1500i readings remain complete with HWiNFO and iCUE running.
-- [ ] Seeded Corsair readings become unavailable on the first/repeated lock
+- [x] Seeded Corsair readings become unavailable on the first/repeated lock
   miss and on open/read/partial-poll exceptions; min/max survive and a successful
   retry recovers values. Busy/missing locks perform no HID I/O.
-- [ ] Corsair power totals distinguish valid zero, one missing rail, all missing
+- [x] Corsair power totals distinguish valid zero, one missing rail, all missing
   rails, and recovery; expired readings serialize as HTTP null and empty CSV.
-- [ ] Failed-first, failed-middle, multiple-failure and recovered Corsair
+- [x] Failed-first, failed-middle, multiple-failure and recovered Corsair
   discovery preserve identifiers and saved labels with unsupported devices
   excluded from slot numbering.
-- [ ] Missing Corsair mutex handles prevent discovery/update/property I/O;
+- [x] Missing Corsair mutex handles prevent discovery/update/property I/O;
   private-mutex recovery and existing lock-release regressions pass.
 - [x] Captured Storage/NVIDIA snapshots remain stable across add, remove,
   driver availability changes, and close; Computer traversals and reports use
@@ -300,20 +303,19 @@ dashboard policy, or supported frameworks.
 
 ## Open follow-ups
 
-- [ ] Corsair cross-review, 2026-10-07: bound stale-value retention after
-  repeated mutex timeouts; current `Update()` leaves prior readings exposed
-  through CSV and HTTP despite performing no device I/O.
-- [ ] Preserve Corsair device identifier slots when an earlier connected PSU
-  fails discovery; success-count indexing currently transfers saved sensor
-  labels and bindings to a later physical device. Both medium findings have
-  isolated C# reproductions in the [cross-review](../reviews/review-2026-10-07-corsair-psu-crossreview.md).
-- [ ] Keep Corsair Total Output unavailable when any required power rail is
-  unavailable; the existing aggregate substitutes zero and can publish partial
-  or zero watts. This must accompany stale-value invalidation.
-- [ ] Fail closed for Corsair HID access when the shared mutex handle could not
-  be created/opened; the generic null-mutex path currently reports success.
-  The [handoff and issue review](../reviews/review-2026-10-07-handoff-and-open-issues.md)
-  records isolated reproductions, remediation choices, and the deferred queue.
+- [x] Source-fixed Corsair stale readings: missed transactions invalidate current
+  readings immediately, preserve extrema, and recover on the next valid poll.
+- [x] Source-fixed Corsair discovery slots: failed devices retain their supported
+  enumeration slot so saved sensor labels stay with the later devices.
+- [x] Source-fixed Corsair Total Output: missing rails propagate null rather than
+  partial or zero watts; valid zero remains valid.
+- [x] Source-fixed Corsair missing-mutex access: no discovery/update/property HID
+  I/O occurs without a handle. The generic policy for other mutexes is unchanged.
+- [ ] After a separately authorized release, verify the repaired Corsair behavior
+  on the real HX1500i with HWiNFO and iCUE. The installed `07d2d25e` still has
+  these failure-path defects. The [cross-review](../reviews/review-2026-10-07-corsair-psu-crossreview.md)
+  retains original reproductions; the [handoff and issue review](../reviews/review-2026-10-07-handoff-and-open-issues.md)
+  retains the broader deferred queue.
 - [x] SND-DESK HX1500i shared-access repair `07d2d25e` is installed and verified:
   all 17 PSU readings remained valid across 45 samples with HWiNFO and iCUE
   running. See the [local release record](feature-local-release-system.md#corsair-psu-discovery-repair--2026-10-07).
@@ -402,6 +404,24 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-10-07 Corsair failure handling, source-only: the expanded suite first
+  failed 20 library cases and one export case against the prior implementation.
+  These covered stale readings, partial exceptions, nullable power totals,
+  missing mutex access, identifier slots and saved labels. After the fixes,
+  the full Release suite passed Library 131/131, Contracts 110/110, and
+  Application 212 with one established opt-in skip (453 passed, one skipped).
+  The 38 Corsair library cases and one Contracts export case are included.
+  The export regression uses the same real Corsair sensors through
+  `HttpServer.WriteDataJson` and `Logger.Log`: populated values, then null JSON
+  and empty CSV cells, then recovered values in the same identifiers/columns.
+  Both WinForms x64 Release targets built with zero warnings/errors; web syntax,
+  self-test 339/339 and focused Node tests 18/18 passed. The `data.json` golden
+  retained SHA-256 `BEBDE807A7F0037827E16CFBC1F41707701F2BEE7232385C3D2EAEBD2261D2F3`.
+  Evidence: `D:\DevHome\tmp\librehw-corsair-failure-fix-20261007`
+  (`red.log`, `full-tests.log`, `build-net10.log`, `build-net472.log`,
+  `web-tests.log`). Fake HID fixtures and isolated local Corsair mutexes exercise
+  failures without probing the physical PSU. No candidate or deployment was
+  created; installed `07d2d25e` remains the separate live implementation.
 - 2026-10-07 HX1500i shared-access repair: transport traces captured interleaved
   command replies and wrong-rail readings. Holding the standard
   `Global\CorsairLinkReadWriteGuardMutex` restored all supported commands in

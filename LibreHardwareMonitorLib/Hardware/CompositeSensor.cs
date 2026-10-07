@@ -11,8 +11,8 @@ namespace LibreHardwareMonitor.Hardware;
 internal class CompositeSensor : Sensor
 {
     private readonly ISensor[] _components;
-    private readonly Func<float, ISensor, float> _reducer;
-    private readonly float _seedValue;
+    private readonly Func<float?, ISensor, float?> _reducer;
+    private readonly float? _seedValue;
 
     public CompositeSensor
     (
@@ -22,7 +22,7 @@ internal class CompositeSensor : Sensor
         Hardware hardware,
         ISettings settings,
         ISensor[] components,
-        Func<float, ISensor, float> reducer,
+        Func<float?, ISensor, float?> reducer,
         float seedValue = .0f)
         : base(name, index, sensorType, hardware, settings)
     {

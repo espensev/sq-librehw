@@ -79,7 +79,10 @@ internal sealed class CorsairPsu : Hardware
     public override void Update()
     {
         if (!Mutexes.WaitCorsairLink(MutexTimeout))
+        {
+            _sensors.ForEach(s => s.Value = null);
             return;
+        }
 
         try
         {
@@ -89,6 +92,11 @@ internal sealed class CorsairPsu : Hardware
             stream.ReadTimeout = IoTimeout;
             stream.WriteTimeout = IoTimeout;
             _sensors.ForEach(s => s.Update(stream));
+        }
+        catch
+        {
+            _sensors.ForEach(s => s.Value = null);
+            throw;
         }
         finally
         {
@@ -199,7 +207,7 @@ internal sealed class CorsairPsu : Hardware
                                                   this,
                                                   settings,
                                                   powerRails,
-                                                  (acc, sensor) => acc + (sensor.Value ?? 0f)));
+                                                  (acc, sensor) => acc + sensor.Value));
 
         ActivateSensor(_compositeSensors[_compositeSensors.Count - 1]);
 

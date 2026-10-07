@@ -6,6 +6,12 @@
 **Standards sources:** `AGENTS.md`, `docs/README.md`, `.codex/skills/project.toml`, `.editorconfig`  
 **Verdict:** FAIL - two medium-severity edge-case defects remain. The normal installed path is working.
 
+**Subsequent source resolution, 2026-10-07:** both findings are fixed and
+regression-tested in source, together with nullable power totals and unavailable
+mutex handling. See the [current reliability verification](../features/feature-memory-ui-reliability.md#verification-log).
+The original findings below describe the reviewed baseline; installed
+`07d2d25e` has not received this follow-up.
+
 ## Findings
 
 ### Medium

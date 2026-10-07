@@ -8,7 +8,7 @@ using System.Threading;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Hardware.Psu.Corsair;
 using Xunit;
-using static LibreHardwareMonitor.Tests.CorsairPsuDiscoveryTests;
+using static LibreHardwareMonitor.Tests.CorsairPsuTestFixture;
 
 namespace LibreHardwareMonitor.Tests;
 
@@ -47,6 +47,70 @@ public sealed class CorsairPsuAccessTests : IDisposable
         {
             hardware.Close();
         }
+    }
+
+    [Theory]
+    [InlineData("discovery")]
+    [InlineData("update")]
+    [InlineData("properties")]
+    public void MissingMutex_PerformsNoDeviceIoAndRecoversWithPrivateMutex(string operation)
+    {
+        var device = new TestDevice("missing-mutex-psu") { NumericValue = 20 };
+        var hardware = new CorsairPsu(device, new Settings(), 0);
+        try
+        {
+            hardware.Update();
+            Assert.All(hardware.Sensors, sensor => Assert.NotNull(sensor.Value));
+            int streamCount = device.Streams.Count;
+            int accessCount = 0;
+            device.OnAccess = () => accessCount++;
+            Mutexes.Close();
+            try
+            {
+                if (operation == "discovery")
+                {
+                    var group = new CorsairPsuGroup(new Settings(), [device]);
+                    try
+                    {
+                        Assert.Empty(group.Hardware);
+                        Assert.Contains("Timed out waiting for Corsair PSU access", group.GetReport());
+                        Assert.Contains(device.DevicePath, group.GetReport());
+                    }
+                    finally { group.Close(); }
+                }
+                else if (operation == "update")
+                {
+                    hardware.Update();
+                    Assert.All(hardware.Sensors, sensor => Assert.Null(sensor.Value));
+                }
+                else
+                    Assert.Empty(hardware.Properties);
+
+                Assert.Equal(0, accessCount);
+                Assert.Equal(streamCount, device.Streams.Count);
+            }
+            finally { Mutexes.Open(_mutexName); }
+
+            device.OnAccess = AssertOtherMonitorCannotEnter;
+            if (operation == "discovery")
+            {
+                var recovered = new CorsairPsuGroup(new Settings(), [device]);
+                try { Assert.Single(recovered.Hardware); }
+                finally { recovered.Close(); }
+            }
+            else if (operation == "update")
+            {
+                hardware.Update();
+                Assert.All(hardware.Sensors, sensor => Assert.NotNull(sensor.Value));
+            }
+            else
+                Assert.NotEmpty(hardware.Properties);
+
+            Assert.Equal(streamCount + 1, device.Streams.Count);
+            Assert.All(device.Streams, stream => Assert.True(stream.IsDisposed));
+            Assert.True(OtherMonitorCanEnter(1000));
+        }
+        finally { hardware.Close(); }
     }
 
     [Theory]
