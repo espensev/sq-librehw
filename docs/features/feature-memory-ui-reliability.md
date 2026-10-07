@@ -61,6 +61,11 @@ dashboard policy, or supported frameworks.
   across construction. A reentrant option change discards that generation and
   rebuilds from the latest flags; continuous churn stops after four attempts,
   cleans the partial generation, and reports a deterministic failure.
+- Corsair PSU discovery isolates protocol, I/O, timeout, and access-denied
+  failures per device. Working PSUs and other hardware groups remain available;
+  the hardware report records the failed device path and reason. Discovery
+  streams are disposed and a later reset/reopen can discover a recovered PSU.
+  Unexpected programming errors retain the transactional failure behavior.
 - Process-global Mutex, OpCode, and NVIDIA ML ownership is reference-counted
   across concurrent `Computer` instances. One close or failed acquisition
   cannot release another open instance's lease.
@@ -179,6 +184,9 @@ dashboard policy, or supported frameworks.
 - [x] A failed `Computer.Open()` closes partial groups/global owners, preserves
   the original failure, leaves no hardware, and can retry without duplicate
   events.
+- [x] A Corsair firmware reply mismatch, device I/O failure, timeout, or access
+  denial preserves working devices and records the failed path/reason; the
+  discovery stream closes and a recovered PSU can appear on the next open.
 - [x] Captured Storage/NVIDIA snapshots remain stable across add, remove,
   driver availability changes, and close; Computer traversals and reports use
   one captured generation per group.
@@ -330,6 +338,15 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-10-07 SND-DESK Corsair discovery regression: the installed monitor served
+  an empty hardware tree after an HX1500i vendor-reply mismatch. A scripted HID
+  stream reproduced the exact `Can't read vendor string` exception; six
+  isolation/recovery cases failed before the fix. All eight focused cases then
+  passed, including the real `Computer.Open()` path and unexpected-error
+  propagation. The Library suite passed 101/101. Evidence:
+  `D:\DevHome\tmp\librehw-psu-discovery-20261007` (`baseline.json`, `red.log`,
+  `green.log`, `library.log`). Candidate and live verification are recorded in
+  [the local release contract](feature-local-release-system.md).
 - 2026-08-02 Plan-011 source-only settings extraction: AP source/integration
   `e58e38d` (stable patch-id `4fd7e493`, blobs `ccccdbd3`/`bb1f0e8b`)
   added the internal settings persistence coordinator and exactly seven facts;
