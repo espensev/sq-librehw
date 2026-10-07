@@ -66,6 +66,11 @@ dashboard policy, or supported frameworks.
   the hardware report records the failed device path and reason. Discovery
   streams are disposed and a later reset/reopen can discover a recovered PSU.
   Unexpected programming errors retain the transactional failure behavior.
+- Corsair vendor/product identification accepts only a complete reply echoing
+  the requested command, reading at most four reports to skip queued stale
+  replies. Other commands retain their single-read behavior so unsupported
+  optional commands do not introduce retries. Truncated replies are rejected
+  before indexing or copying their payload.
 - Process-global Mutex, OpCode, and NVIDIA ML ownership is reference-counted
   across concurrent `Computer` instances. One close or failed acquisition
   cannot release another open instance's lease.
@@ -187,6 +192,9 @@ dashboard policy, or supported frameworks.
 - [x] A Corsair firmware reply mismatch, device I/O failure, timeout, or access
   denial preserves working devices and records the failed path/reason; the
   discovery stream closes and a recovered PSU can appear on the next open.
+- [x] A stale Corsair identity reply followed by a matching response recovers
+  the correct vendor/product; exhausted or truncated responses fail within
+  four reads, while unsupported optional commands still use one read.
 - [x] Captured Storage/NVIDIA snapshots remain stable across add, remove,
   driver availability changes, and close; Computer traversals and reports use
   one captured generation per group.
@@ -338,6 +346,14 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-10-07 HX1500i protocol follow-up: a direct C# probe captured replies one
+  command behind, including an INIT reply to the vendor request. Five new
+  regression cases failed before bounded identity reads and payload-length
+  validation. All 14 focused cases then passed; the real PSU was discovered in
+  three consecutive probe attempts with temperature readings. Optional-command
+  behavior remains single-read. Evidence under the same directory:
+  `psu-group-probe.log`, `protocol-red.log`, `protocol-green.log`, and
+  `psu-probe-fixed.log`.
 - 2026-10-07 SND-DESK Corsair discovery regression: the installed monitor served
   an empty hardware tree after an HX1500i vendor-reply mismatch. A scripted HID
   stream reproduced the exact `Can't read vendor string` exception; six

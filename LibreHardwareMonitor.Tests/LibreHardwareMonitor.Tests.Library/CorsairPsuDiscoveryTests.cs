@@ -30,6 +30,55 @@ public sealed class CorsairPsuDiscoveryTests
         Assert.Contains(device.DevicePath, error.Message);
     }
 
+    [Fact]
+    public void FirmwareInfo_StaleReplies_UsesMatchingIdentityPayload()
+    {
+        var device = new TestDevice("stale-psu", Failure.StaleIdentityReply);
+        using HidStream stream = device.Open();
+
+        UsbApi.FirmwareInfo info = UsbApi.FwInfo(stream);
+
+        Assert.Equal("CORSAIR", info.Vendor);
+        Assert.Equal("HX1500i", info.Product);
+        Assert.Equal(4, Assert.Single(device.Streams).ReadCount);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    [InlineData(18)]
+    public void FirmwareInfo_TruncatedReplies_ReportsBoundedProtocolFailure(int replyLength)
+    {
+        var device = new TestDevice("short-psu") { ReplyLength = replyLength };
+        using HidStream stream = device.Open();
+
+        ProtocolError error = Assert.Throws<ProtocolError>(() => UsbApi.FwInfo(stream));
+
+        Assert.Contains("Can't read vendor string", error.Message);
+        Assert.Equal(4, Assert.Single(device.Streams).ReadCount);
+    }
+
+    [Fact]
+    public void FirmwareInfo_OnlyMismatchedReplies_StopsAtReplyLimit()
+    {
+        var device = new TestDevice("stale-psu", Failure.VendorReply);
+        using HidStream stream = device.Open();
+
+        Assert.Throws<ProtocolError>(() => UsbApi.FwInfo(stream));
+
+        Assert.Equal(4, Assert.Single(device.Streams).ReadCount);
+    }
+
+    [Fact]
+    public void OptionalCommands_UnsupportedReply_DoesNotRetry()
+    {
+        var device = new TestDevice("unsupported-psu", Failure.UnsupportedInputCurrent);
+        using HidStream stream = device.Open();
+
+        Assert.Equal(UsbApi.OptionalCommands.None, UsbApi.GetOptionalCommands(stream));
+        Assert.Equal(1, Assert.Single(device.Streams).ReadCount);
+    }
+
     [Theory]
     [InlineData(Failure.VendorReply, "Can't read vendor string")]
     [InlineData(Failure.ProductReply, "Can't read product")]
@@ -102,11 +151,12 @@ public sealed class CorsairPsuDiscoveryTests
         Assert.True(Assert.Single(device.Streams).IsDisposed);
     }
 
-    public enum Failure { None, VendorReply, ProductReply, ReadIo, ReadTimeout, OpenDenied, Unexpected }
+    public enum Failure { None, VendorReply, ProductReply, ReadIo, ReadTimeout, OpenDenied, Unexpected, StaleIdentityReply, UnsupportedInputCurrent }
 
     private sealed class TestDevice(string path, Failure failure = Failure.None) : HidDevice
     {
         public Failure Failure { get; set; } = failure;
+        public int ReplyLength { get; set; } = 65;
         public List<TestStream> Streams { get; } = [];
         public override string DevicePath => path;
         public override int VendorID => 0x1b1c;
@@ -131,16 +181,24 @@ public sealed class CorsairPsuDiscoveryTests
     private sealed class TestStream(TestDevice device) : HidStream(device)
     {
         private readonly byte[] _request = new byte[65];
+        private int _readsForCommand;
         public bool IsDisposed { get; private set; }
+        public int ReadCount { get; private set; }
         public override int ReadTimeout { get; set; }
         public override int WriteTimeout { get; set; }
         public override void GetFeature(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         public override void SetFeature(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 
-        public override void Write(byte[] buffer, int offset, int count) => Array.Copy(buffer, offset, _request, 0, count);
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            Array.Copy(buffer, offset, _request, 0, count);
+            _readsForCommand = 0;
+        }
 
         public override int Read(byte[] buffer, int offset, int count)
         {
+            ReadCount++;
+            _readsForCommand++;
             byte command = _request[2];
             if (command == (byte)UsbApi.Command.VEND_STR)
             {
@@ -161,12 +219,21 @@ public sealed class CorsairPsuDiscoveryTests
                 Encoding.ASCII.GetBytes("HX1500i").CopyTo(reply, 3);
 
             if ((device.Failure == Failure.VendorReply && command == (byte)UsbApi.Command.VEND_STR) ||
-                (device.Failure == Failure.ProductReply && command == (byte)UsbApi.Command.PROD_STR))
+                (device.Failure == Failure.ProductReply && command == (byte)UsbApi.Command.PROD_STR) ||
+                (device.Failure == Failure.UnsupportedInputCurrent && command == (byte)UsbApi.Command.IN_AMPS))
                 reply[2] = 0;
 
-            Assert.True(count >= reply.Length);
-            Array.Copy(reply, 0, buffer, offset, reply.Length);
-            return reply.Length;
+            if (device.Failure == Failure.StaleIdentityReply && _readsForCommand == 1)
+            {
+                // Replay the previous command echo observed on the live HX1500i.
+                reply[1] = command == (byte)UsbApi.Command.VEND_STR ? (byte)0xfe : (byte)3;
+                reply[2] = command == (byte)UsbApi.Command.VEND_STR ? (byte)3 : (byte)UsbApi.Command.VEND_STR;
+                Encoding.ASCII.GetBytes("STALE").CopyTo(reply, 3);
+            }
+
+            Assert.True(count >= device.ReplyLength);
+            Array.Copy(reply, 0, buffer, offset, device.ReplyLength);
+            return device.ReplyLength;
         }
 
         protected override void Dispose(bool disposing)

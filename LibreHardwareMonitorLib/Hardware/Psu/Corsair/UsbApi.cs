@@ -109,10 +109,11 @@ internal static class UsbApi
 
     public static FirmwareInfo FwInfo(HidStream stream)
     {
-        if (!SendCommand(stream, 3, Command.VEND_STR, 0, out byte[] vendorArr))
+        const int maxIdentityReplies = 4;
+        if (!SendCommand(stream, 3, Command.VEND_STR, 0, out byte[] vendorArr, maxIdentityReplies))
             throw new ProtocolError(stream.Device, "Can't read vendor string");
 
-        if (!SendCommand(stream, 3, Command.PROD_STR, 0, out byte[] productArr))
+        if (!SendCommand(stream, 3, Command.PROD_STR, 0, out byte[] productArr, maxIdentityReplies))
             throw new ProtocolError(stream.Device, "Can't read product");
 
         static string ArrayToString(byte[] ar)
@@ -123,7 +124,7 @@ internal static class UsbApi
         return new FirmwareInfo { Vendor = ArrayToString(vendorArr), Product = ArrayToString(productArr) };
     }
 
-    private static bool SendCommand(HidStream stream, byte length, Command cmd, byte arg, out byte[] replyData)
+    private static bool SendCommand(HidStream stream, byte length, Command cmd, byte arg, out byte[] replyData, int maxReplies = 1)
     {
         /*
          * Corsair protocol for PSUs
@@ -164,11 +165,20 @@ internal static class UsbApi
         cmdBuffer[3] = arg;
 
         stream.Write(cmdBuffer);
-        byte[] reply = stream.Read();
         replyData = new byte[replySize];
-        Array.Copy(reply, 3, replyData, 0, replySize);
+        for (int attempt = 0; attempt < maxReplies; attempt++)
+        {
+            byte[] reply = stream.Read();
+            if (reply.Length < 3 + replySize || reply[1] != length || reply[2] != (byte)cmd)
+                continue;
 
-        return reply[1] == cmdBuffer[1] && reply[2] == cmdBuffer[2];
+            Array.Copy(reply, 3, replyData, 0, replySize);
+            return true;
+        }
+
+        // Identity reads can encounter queued replies from earlier commands. Other
+        // requests keep one read because unsupported optional commands can echo stale data.
+        return false;
     }
 
     private static bool Request(HidStream stream, Command cmd, byte rail, out byte[] data)
