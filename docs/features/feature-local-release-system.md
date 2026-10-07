@@ -5,10 +5,10 @@ launcher actions fail closed to `snd-desk`; the non-live fixture is intentionall
 peer-safe under isolated temporary roots. Do not treat these paths, tasks,
 users, or runtime state as SND-HOST instructions.
 
-**Status:** Corsair discovery repair `cb963503` is installed on SND-DESK, with
-`6a493f3d` retained in the verified rollback slot. General hardware monitoring
-and CSV logging are restored; HX1500i telemetry remains unavailable in the
-installed app and is tracked in the 2026-10-07 record below. The webserver is enabled
+**Status:** Corsair shared-access repair `07d2d25e` is installed on SND-DESK, with
+`cb963503` retained in the verified rollback slot. All 17 HX1500i readings,
+general hardware monitoring, and CSV logging are live-verified with HWiNFO and
+iCUE still running; see the 2026-10-07 record below. The webserver is enabled
 at `http://127.0.0.1:18085/`; future promotion and rollback commands must
 explicitly pass `-HealthUri 'http://127.0.0.1:18085/data.json'` because their
 default remains the historical port 8085.
@@ -1138,28 +1138,38 @@ The installed `cca11b88` process returned an empty hardware tree after a Corsair
 HX1500i vendor-string failure. Commit `6a493f3d` isolates expected PSU discovery
 errors per device. Commit `cb963503` also tolerates up to three stale replies
 during firmware identification and validates reply length before copying.
+These restored other hardware, but the installed PSU report still recorded
+`Can't read product`. User screenshots showed the same PSU reporting readings
+in HWiNFO and iCUE. A transport trace captured interleaved command replies and
+wrong-rail values; the general USB sensor mutex did not protect this device.
+
+Commit `07d2d25e` holds `Global\CorsairLinkReadWriteGuardMutex` across discovery,
+property reads, and each complete poll, opening/closing the HID stream within
+the lock. Lock acquisition and HID I/O are bounded; all exit paths release
+ownership. Twenty guarded transport cycles read every supported command. The
+real C# `Computer.Open()` probe then completed three discoveries and 30 polls
+with 17/17 values and correct rail voltages. No other monitor was stopped;
+the earlier proposed HWiNFO isolation test is no longer needed for this repair.
 The implementation and regression tests are C#; no application PowerShell
 dependency was added.
 
-The final candidate passed Library 107/107, Application 212 with one existing
+The final candidate passed Library 115/115, Application 212 with one existing
 opt-in skip, and Contracts 109/109. Both x64 Release targets built with zero
 warnings/errors. Exact-executable smoke, candidate hash validation, installer
 preview, and machine-verified promotion passed with the explicit loopback
 health URI. Installed SHA-256 is
-`26f1d18d00cb465b756f3823177dc5f80ee6c8d94cac451cc7598f01d75e588f`;
-rollback `6a493f3d` matches its prior installed payload. The earlier `cca11b88`
+`c502fee0cda440eaa59f62de9e90d3834047f703f8897e6d640ff19772f0c97c`;
+rollback `cb963503` matches its prior installed payload. The earlier `cca11b88`
 candidate remains retained in the candidate store.
 
-Live verification found one responding installed process, 50 hardware nodes,
-522 sensors (519 with values), changing readings, and continuing CSV growth.
-The original empty-tree failure is resolved. The stricter PSU acceptance check
-still fails: the installed hardware report records `Can't read product` and
-there are no Corsair sensor nodes. A standalone C# probe captured stale command
-echoes and intermittently obtained valid PSU readings. Holding the shared USB
-sensor mutex did not consistently improve those readings. iCUE and HWiNFO were
-running during these checks; their involvement has not been established by an
-isolation test. The remaining diagnostic gate is a brief HWiNFO close/reopen
-test, pending operator approval to interrupt that separate monitor.
+Live verification found one responding installed process, 54 hardware nodes,
+554 sensors (552 with values), all 17 Corsair readings, changing telemetry,
+and continuing CSV growth. The strict PSU check passed. Another 45 consecutive
+HTTP samples each retained 17/17 readings and correct rail voltages; PSU uptime
+advanced 45 seconds. HWiNFO, iCUE, and Corsair.Service retained the same process
+IDs and start times. The native Save Report output also contains the HX1500i
+and its sensor values, with no Corsair discovery error. This verifies the
+current configuration; apps that bypass the shared mutex can still contend.
 
 Launcher Validate passed against the source paths already bound in its receipt
 (`D:\DevHome\worktrees\sq-librehw\host-merge-20261002`). Validation from the new
@@ -1167,8 +1177,9 @@ fix worktree reports only source-path receipt drift; launcher bytes, public
 shim, task, and RunW authority pass. No launcher repair is required by this fix.
 
 Evidence is retained under `D:\DevHome\tmp\librehw-psu-discovery-20261007`:
-`baseline.json`, `protocol-red.log`, `protocol-green.log`, `publish-final.log`,
-`candidate-smoke-final.json`, `install-final.log`, `live-verification.json`,
-`installed-hardware-report.txt`, `psu-mutex-probe.log`, and
-`launcher-verified.json`. The C# probe sources and settings recovery copies
-are retained there for the remaining isolation check.
+`baseline.json`, `cb963503-live-before-mutex.json`, `transport-comparison.log`,
+`transport-corsair-mutex.log`, `mutex-isolated-red.log`, `mutex-green.log`,
+`coexist-source.log`, `publish-mutex.log`, `candidate-smoke-mutex.json`,
+`install-mutex.log`, `live-verification.json`, `installed-psu-stability.json`,
+`installed-mutex-hardware-report.txt`, and `launcher-mutex-validation.json`.
+The diagnostic C# sources and settings recovery copies remain in that directory.

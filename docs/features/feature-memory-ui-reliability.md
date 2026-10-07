@@ -4,7 +4,7 @@
 queue, scrollbar teardown, transactional open, and dynamic-group snapshot fixes
 deployed and live-verified on SND-HOST
 
-**Updated:** 2026-08-02
+**Updated:** 2026-10-07
 
 ## Problem and motivation
 
@@ -272,9 +272,9 @@ dashboard policy, or supported frameworks.
 
 ## Open follow-ups
 
-- Verify the Corsair shared-access repair in the installed SND-DESK app. The
-  source probe now discovers the HX1500i and reads all 17 sensors while HWiNFO
-  and iCUE remain running. See the [local release record](feature-local-release-system.md#corsair-psu-discovery-repair--2026-10-07).
+- [x] SND-DESK HX1500i shared-access repair `07d2d25e` is installed and verified:
+  all 17 PSU readings remained valid across 45 samples with HWiNFO and iCUE
+  running. See the [local release record](feature-local-release-system.md#corsair-psu-discovery-repair--2026-10-07).
 - [x] Promote the verified scrollbar follow-up only with explicit deployment
   approval. It shipped in the verified 2026-07-18 SND-HOST build.
 - [x] Extend keyed DOM reuse and focus preservation to the Standard view
@@ -371,7 +371,12 @@ separate maintainer approval.
   `D:\DevHome\tmp\librehw-psu-discovery-20261007` (`transport-comparison.log`,
   `transport-corsair-mutex.log`, `mutex-isolated-red.log`, `mutex-green.log`,
   `coexist-source.log`). Tests use a unique local mutex to avoid touching other
-  monitors; production uses the standard global name.
+  monitors; production uses the standard global name. Release gates passed
+  Library 115, Application 212 (one existing skip), and Contracts 109; both x64
+  targets built without warnings/errors. Installed `07d2d25e` passed strict
+  PSU, 45-sample stability, native hardware-report, CSV, hash/rollback, and
+  launcher checks. `installed-psu-stability.json` and
+  `installed-mutex-hardware-report.txt` retain the live results.
 - 2026-10-07 HX1500i protocol follow-up: a direct C# probe captured replies one
   command behind, including an INIT reply to the vendor request. Five new
   regression cases failed before bounded identity reads and payload-length
