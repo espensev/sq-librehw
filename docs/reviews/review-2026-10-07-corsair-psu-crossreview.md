@@ -9,8 +9,8 @@
 **Subsequent source resolution, 2026-10-07:** both findings are fixed and
 regression-tested in source, together with nullable power totals and unavailable
 mutex handling. See the [current reliability verification](../features/feature-memory-ui-reliability.md#verification-log).
-The original findings below describe the reviewed baseline; installed
-`07d2d25e` has not received this follow-up.
+The original findings below describe the reviewed baseline; the follow-up
+`957923fc` was promoted to SND-DESK on 2026-10-08.
 
 ## Findings
 

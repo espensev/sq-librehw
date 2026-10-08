@@ -4,10 +4,11 @@
 queue, scrollbar teardown, transactional open, and dynamic-group snapshot fixes
 deployed and live-verified on SND-HOST
 
-**Corsair failure follow-up:** source-verified on 2026-10-07; candidate creation
-and live promotion remain separate. SND-DESK still runs `07d2d25e`.
+**Corsair failure follow-up:** source-verified on 2026-10-07; candidate
+`957923fc` was promoted to SND-DESK on 2026-10-08 and live-verified with HWiNFO
+and iCUE running. `07d2d25e` holds the rollback slot.
 
-**Updated:** 2026-10-07
+**Updated:** 2026-10-08
 
 ## Problem and motivation
 
@@ -311,9 +312,12 @@ dashboard policy, or supported frameworks.
   partial or zero watts; valid zero remains valid.
 - [x] Source-fixed Corsair missing-mutex access: no discovery/update/property HID
   I/O occurs without a handle. The generic policy for other mutexes is unchanged.
-- [ ] After a separately authorized release, verify the repaired Corsair behavior
-  on the real HX1500i with HWiNFO and iCUE. The installed `07d2d25e` still has
-  these failure-path defects. The [cross-review](../reviews/review-2026-10-07-corsair-psu-crossreview.md)
+- [x] Verified the repaired Corsair behavior on the real HX1500i with HWiNFO and
+  iCUE after the separately authorized 2026-10-08 promotion of `957923fc`:
+  17/17 readings across 45 samples, and the first 606 CSV rows show three
+  whole-row empty PSU gaps with immediate recovery and no partial rows. See the
+  [local release record](feature-local-release-system.md#corsair-failure-path-promotion--2026-10-08).
+  The [cross-review](../reviews/review-2026-10-07-corsair-psu-crossreview.md)
   retains original reproductions; the [handoff and issue review](../reviews/review-2026-10-07-handoff-and-open-issues.md)
   retains the broader deferred queue.
 - [x] SND-DESK HX1500i shared-access repair `07d2d25e` is installed and verified:
@@ -404,6 +408,14 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-10-08 Corsair failure handling, live: candidate `957923fc` was promoted
+  on SND-DESK after an adversarial pre-promotion review found no defect in the
+  diff. Live verification and a 45-sample stability watch passed with 17/17
+  readings and HWiNFO, iCUE, and Corsair.Service running. Over the first 10.5
+  minutes the CSV recorded 606 rows: 603 with complete PSU values and three
+  whole-row empty gaps that recovered on the next tick, with no partial rows;
+  the installed `07d2d25e` baseline showed none because it logged stale values.
+  Evidence: `D:\DevHome\tmp\librehw-corsair-promotion-20261008`.
 - 2026-10-07 Corsair failure handling, source-only: the expanded suite first
   failed 20 library cases and one export case against the prior implementation.
   These covered stale readings, partial exceptions, nullable power totals,
@@ -421,7 +433,8 @@ separate maintainer approval.
   (`red.log`, `full-tests.log`, `build-net10.log`, `build-net472.log`,
   `web-tests.log`). Fake HID fixtures and isolated local Corsair mutexes exercise
   failures without probing the physical PSU. No candidate or deployment was
-  created; installed `07d2d25e` remains the separate live implementation.
+  created; installed `07d2d25e` remained the separate live implementation
+  until the 2026-10-08 promotion.
 - 2026-10-07 HX1500i shared-access repair: transport traces captured interleaved
   command replies and wrong-rail readings. Holding the standard
   `Global\CorsairLinkReadWriteGuardMutex` restored all supported commands in

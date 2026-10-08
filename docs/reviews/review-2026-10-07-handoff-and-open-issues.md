@@ -11,8 +11,8 @@
 **Verdict:** FAIL for remediation readiness of the affected paths. Normal installed PSU telemetry is healthy in the current sample.
 
 **Subsequent source resolution, 2026-10-07:** Corsair findings 5-8 are fixed and
-regression-tested in source. The remaining findings and live release gate stay
-open. See the [current reliability verification](../features/feature-memory-ui-reliability.md#verification-log).
+regression-tested in source, and the live release gate closed on 2026-10-08
+with `957923fc` installed on SND-DESK. The remaining findings stay open. See the [current reliability verification](../features/feature-memory-ui-reliability.md#verification-log).
 
 ## Findings
 
@@ -68,6 +68,13 @@ open. See the [current reliability verification](../features/feature-memory-ui-r
 - `docs/campaign-backlog.md` still leaves Plan-001 attended smoke, Plan-012 criterion 10, and explicitly gated Plan-014 open. Native layout/text-scaling and SND-HOST UI acceptance require their specified checks; a local HTTP read does not close them.
 - `feature-http-server-safety.md:3` still says not promoted and its acceptance combines listener and firewall proof. The installed commit contains later source, but this review did not inspect firewall scope or exercise rejection paths. Reconcile that record during a focused live verification; do not infer full acceptance from healthy loopback HTTP.
 - Optional Corsair input-current detection increments later sensor indices (`CorsairPsu.cs:153-158`); changing that pre-existing identity scheme needs a compatibility decision beyond reserving device slots.
+- The 2026-10-08 install-preconditions audit noted two deploy-tooling items
+  outside the promoted diff: `$script:LhmManagedTaskPrincipalSid` in
+  `LhmLocalRelease.Common.ps1` holds a SID that differs from the live SND-DESK
+  user SID and is used only by the runtime-root move and data-root relocation
+  scripts and their tests; and the installer's launcher call after health
+  acceptance can fail at the foreground step on a contested desktop, which
+  would roll back a healthy release. Neither affected this promotion.
 
 ## Verification and coverage
 
