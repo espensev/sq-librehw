@@ -64,13 +64,16 @@ internal sealed class ApplicationLifecycleCoordinator : IDisposable
 
     internal event Action StateChanged;
 
-    internal event Action<HardwareOptionKind, bool, Exception> OptionFailed;
+    internal event Action<HardwareOptionKind, bool, long, Exception> OptionFailed;
 
     internal event Action<Exception> ResetFailed;
 
     internal bool HasResetWork => _hardwareOperations.HasResetWork;
 
     internal bool IsBusy => _hardwareOperations.IsBusy;
+
+    internal bool IsLatestOptionRequest(HardwareOptionKind option, long sequence) =>
+        _hardwareOperations.IsLatestOptionRequest(option, sequence);
 
     internal bool IsInitializationInProgress
     {
@@ -382,11 +385,12 @@ internal sealed class ApplicationLifecycleCoordinator : IDisposable
     private void HardwareOperations_OptionFailed(
         HardwareOptionKind option,
         bool value,
+        long sequence,
         Exception exception)
     {
         try
         {
-            OptionFailed?.Invoke(option, value, exception);
+            OptionFailed?.Invoke(option, value, sequence, exception);
         }
         catch (Exception callbackException)
         {

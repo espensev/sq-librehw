@@ -15,6 +15,10 @@ physical device-failure acceptance remain separate.
 validated checkpoint survives dirty autosaves and abrupt reopen. Deployment
 remains separate.
 
+**Runtime enables follow-up:** source-verified on 2026-10-19; failed enables
+roll back attempted groups and reconcile UI/settings without automatic retry.
+Failed-disable recovery and deployment remain separate.
+
 **Updated:** 2026-10-19
 
 ## Problem and motivation
@@ -146,6 +150,59 @@ Verification on 2026-10-19:
   existing opt-in live-config test skipped.
 - Release x64 application builds for `net10.0-windows` and `net472`, plus all
   five library targets and package build, passed with zero warnings/errors.
+
+## Runtime hardware-option enable follow-up (2026-10-19)
+
+The first runtime-option transaction slice covers enabling a disabled category
+on an open `Computer`. A later group constructor, registration, or add subscriber
+can fail after earlier groups have been published. The failed attempt must remove
+and close only its newly created groups, attempt all rollback cleanup even when
+cleanup fails, preserve the original failure, and leave the category flag false.
+Previously enabled categories and their device instances remain intact. All
+runtime category enables share this rule, including single-group categories.
+Recursive enable of the same category cannot start another attempt; a lifecycle
+change during publication invalidates the attempt before its flag can commit.
+Rollback ownership never includes a separately enabled category.
+
+The native hardware menu restores the failed enable's checkbox and persisted
+value to the confirmed disabled state without emitting another option request.
+It reports one concise error on the UI thread. A later click or explicit Reset
+is a deliberate retry; failure does not enqueue an automatic retry or Reset.
+An older failure must not overwrite a newer request for the same option, including
+a newer request with the same value. Other queued options still drain normally;
+shutdown drops late UI work.
+
+This slice does not change failed disable or Reset recovery. Removal can close
+devices before an error is reported, so restoring old membership would expose
+closed devices. Reconstruction or committing a disabled state after cleanup
+failure needs a separate decision. No driver probing, release promotion, or
+live-device acceptance is implied by deterministic source verification.
+
+Acceptance and verification use fake group factories and controlled dispatch:
+
+- A later constructor or add subscriber failure rolls back the whole enable,
+  closes each attempted group once, and preserves unrelated categories.
+- Cleanup failures do not hide the original error or prevent remaining cleanup;
+  a deliberate second enable succeeds without duplicate groups/subscriptions.
+- Failed-enable UI/settings reconciliation issues one error, no recursive
+  request, and cannot clobber newer queued intent or run after shutdown.
+- Existing lifecycle serialization, open/reset, supported library targets, and
+  both WinForms targets retain their regression coverage.
+
+Verification on 2026-10-19:
+
+- Seventeen library regressions failed before rollback; four application cases
+  failed before reconciliation. The final new suites passed 20 library and seven
+  application cases. Focused suites passed 45 and 30 tests respectively.
+- Independent `dotnet test LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.slnf -c Release -p:Platform=x64`
+  passed 554 tests (Library 193, Application 247, Contracts 114), with the one
+  established opt-in live-config test skipped. Test artifacts used an isolated
+  temporary output directory.
+- Release x64 application builds for `net10.0-windows` and `net472`, plus all
+  five library targets and package build, passed with zero warnings/errors.
+  Web syntax checks, 339 self-test assertions, and 18 contract tests passed.
+- Independent review accepted the product/spec diff and reran all 27 new cases
+  successfully. Live-device and attended native-UI acceptance remain separate.
 
 ## Required behavior and failure handling
 
@@ -444,12 +501,15 @@ Verification on 2026-10-19:
 - [x] Select rollback-to-confirmed-state for failed hardware-option
   reconciliation. Automatic retry/reset is rejected because it can repeatedly
   probe a failing driver without a fresh operator action.
-- [ ] Make each runtime hardware-option mutation transactional, then implement
-  that rollback policy: retain the prior group membership/backing flag on
-  failure, restore the checkbox and persisted value without recursively queuing
-  another operation, and show one concise UI-thread error. A later click or
-  explicit Reset is the deliberate retry. Checkbox, persisted flag, backing
-  flag, and group membership must never remain contradictory.
+- [x] Make runtime hardware-option enables transactional and restore failed
+  enables' checkbox/settings without recursively queuing another operation;
+  show one concise UI-thread error and preserve newer queued intent. See the
+  [enable follow-up](#runtime-hardware-option-enable-follow-up-2026-10-19).
+- [ ] Define and implement failed disable recovery before extending that policy
+  to every mutation. Removal can already have closed devices when it reports
+  failure; reattaching those instances is invalid. Decide between reconstructing
+  prior groups and committing a disabled state with a cleanup error, then verify
+  consistent checkbox, persisted flag, backing flag, and group membership.
 - [x] Give process-global NVIDIA ML state an explicit multi-`Computer` lease
   contract, including phase-aware release while enumeration is blocked and
   bounded monitor-error recovery.

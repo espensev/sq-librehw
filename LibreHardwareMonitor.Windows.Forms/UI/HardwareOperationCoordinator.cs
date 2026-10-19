@@ -47,6 +47,7 @@ internal sealed class HardwareOperationCoordinator
 
     private readonly Func<HardwareOptionKind, bool, CancellationToken, Task> _applyOptionAsync;
     private readonly CancellationToken _cancellationToken;
+    private readonly Dictionary<HardwareOptionKind, long> _latestOptionSequences = new();
     private readonly Dictionary<HardwareOptionKind, PendingOption> _pendingOptions = new();
     private readonly Func<CancellationToken, Task> _resetAsync;
     private readonly object _sync = new();
@@ -69,7 +70,7 @@ internal sealed class HardwareOperationCoordinator
 
     internal event Action StateChanged;
 
-    internal event Action<HardwareOptionKind, bool, Exception> OptionFailed;
+    internal event Action<HardwareOptionKind, bool, long, Exception> OptionFailed;
 
     internal event Action<Exception> ResetFailed;
 
@@ -100,11 +101,18 @@ internal sealed class HardwareOperationCoordinator
                 return false;
 
             _pendingOptions[option] = new PendingOption(value, ++_sequence);
+            _latestOptionSequences[option] = _sequence;
             drainStart = StartDrainIfIdle();
         }
 
         SignalStateAndStartDrain(drainStart);
         return true;
+    }
+
+    internal bool IsLatestOptionRequest(HardwareOptionKind option, long sequence)
+    {
+        lock (_sync)
+            return _latestOptionSequences.TryGetValue(option, out long latest) && latest == sequence;
     }
 
     internal bool RequestReset()
@@ -146,6 +154,7 @@ internal sealed class HardwareOperationCoordinator
         {
             HardwareOptionKind option = default;
             bool optionValue = false;
+            long optionSequence = 0;
             bool isReset;
 
             lock (_sync)
@@ -155,7 +164,7 @@ internal sealed class HardwareOperationCoordinator
                     StopAfterCancellation();
                     isReset = false;
                 }
-                else if (TryTakeNextOption(out option, out optionValue))
+                else if (TryTakeNextOption(out option, out optionValue, out optionSequence))
                 {
                     isReset = false;
                 }
@@ -215,17 +224,17 @@ internal sealed class HardwareOperationCoordinator
                 }
                 catch (Exception exception)
                 {
-                    RaiseOptionFailed(option, optionValue, exception);
+                    RaiseOptionFailed(option, optionValue, optionSequence, exception);
                 }
             }
         }
     }
 
-    private void RaiseOptionFailed(HardwareOptionKind option, bool value, Exception exception)
+    private void RaiseOptionFailed(HardwareOptionKind option, bool value, long sequence, Exception exception)
     {
         try
         {
-            OptionFailed?.Invoke(option, value, exception);
+            OptionFailed?.Invoke(option, value, sequence, exception);
         }
         catch (Exception callbackException)
         {
@@ -296,10 +305,11 @@ internal sealed class HardwareOperationCoordinator
         RaiseStateChanged();
     }
 
-    private bool TryTakeNextOption(out HardwareOptionKind option, out bool value)
+    private bool TryTakeNextOption(out HardwareOptionKind option, out bool value, out long sequence)
     {
         option = default;
         value = false;
+        sequence = 0;
         PendingOption selected = null;
 
         foreach (KeyValuePair<HardwareOptionKind, PendingOption> candidate in _pendingOptions)
@@ -315,6 +325,7 @@ internal sealed class HardwareOperationCoordinator
             return false;
 
         value = selected.Value;
+        sequence = selected.Sequence;
         _pendingOptions.Remove(option);
         return true;
     }

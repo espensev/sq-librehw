@@ -293,7 +293,7 @@ public sealed class HardwareOperationCoordinatorTests
                 throw resetFailure;
             },
             CancellationToken.None);
-        coordinator.OptionFailed += (option, value, error) => optionFailures.Enqueue((option, value, error));
+        coordinator.OptionFailed += (option, value, _, error) => optionFailures.Enqueue((option, value, error));
         coordinator.ResetFailed += error => resetFailures.Enqueue(error);
 
         Assert.True(coordinator.RequestOption(HardwareOptionKind.Cpu, false));

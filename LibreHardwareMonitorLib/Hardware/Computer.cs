@@ -42,12 +42,14 @@ public class Computer : IComputer
     private readonly object _lock;
     private readonly OpenDependencies _openDependencies;
     private readonly ISettings _settings;
+    private readonly HashSet<string> _enablingCategories = new();
 
     private bool _batteryEnabled;
     private bool _closing;
     private bool _controllerEnabled;
     private bool _cpuEnabled;
     private int _enabledChangeVersion;
+    private int _lifecycleVersion;
     private bool _gpuEnabled;
     private bool _powerMonitorEnabled;
     private bool _memoryEnabled;
@@ -115,12 +117,13 @@ public class Computer : IComputer
         get { return _batteryEnabled; }
         set
         {
-            if (!ShouldApplyEnabledChange(value, ref _batteryEnabled))
+            if (!ShouldApplyEnabledChange(nameof(IsBatteryEnabled), value, ref _batteryEnabled))
                 return;
 
             if (value)
             {
-                _registry.Add(new BatteryGroup(_settings));
+                EnableGroups(nameof(IsBatteryEnabled), ref _batteryEnabled, add => add(CreateRuntimeGroup(() => new BatteryGroup(_settings))));
+                return;
             }
             else
             {
@@ -137,19 +140,23 @@ public class Computer : IComputer
         get { return _controllerEnabled; }
         set
         {
-            if (!ShouldApplyEnabledChange(value, ref _controllerEnabled))
+            if (!ShouldApplyEnabledChange(nameof(IsControllerEnabled), value, ref _controllerEnabled))
                 return;
 
             if (value)
             {
-                _registry.Add(new TBalancerGroup(_settings));
-                _registry.Add(new HeatmasterGroup(_settings));
-                _registry.Add(new AquaComputerGroup(_settings));
-                _registry.Add(new AeroCoolGroup(_settings));
-                _registry.Add(new NzxtGroup(_settings));
-                _registry.Add(new RazerGroup(_settings));
-                _registry.Add(new ArcticGroup(_settings));
-                _registry.Add(new MsiGroup(_settings));
+                EnableGroups(nameof(IsControllerEnabled), ref _controllerEnabled, add =>
+                {
+                    add(CreateRuntimeGroup(() => new TBalancerGroup(_settings)));
+                    add(CreateRuntimeGroup(() => new HeatmasterGroup(_settings)));
+                    add(CreateRuntimeGroup(() => new AquaComputerGroup(_settings)));
+                    add(CreateRuntimeGroup(() => new AeroCoolGroup(_settings)));
+                    add(CreateRuntimeGroup(() => new NzxtGroup(_settings)));
+                    add(CreateRuntimeGroup(() => new RazerGroup(_settings)));
+                    add(CreateRuntimeGroup(() => new ArcticGroup(_settings)));
+                    add(CreateRuntimeGroup(() => new MsiGroup(_settings)));
+                });
+                return;
             }
             else
             {
@@ -173,11 +180,14 @@ public class Computer : IComputer
         get { return _cpuEnabled; }
         set
         {
-            if (!ShouldApplyEnabledChange(value, ref _cpuEnabled))
+            if (!ShouldApplyEnabledChange(nameof(IsCpuEnabled), value, ref _cpuEnabled))
                 return;
 
             if (value)
-                _registry.Add(new CpuGroup(_settings));
+            {
+                EnableGroups(nameof(IsCpuEnabled), ref _cpuEnabled, add => add(CreateRuntimeGroup(() => new CpuGroup(_settings))));
+                return;
+            }
             else
                 _registry.RemoveType<CpuGroup>();
 
@@ -191,16 +201,20 @@ public class Computer : IComputer
         get { return _gpuEnabled; }
         set
         {
-            if (!ShouldApplyEnabledChange(value, ref _gpuEnabled))
+            if (!ShouldApplyEnabledChange(nameof(IsGpuEnabled), value, ref _gpuEnabled))
                 return;
 
             if (value)
             {
-                _registry.Add(new AmdGpuGroup(_settings));
-                _registry.Add(new NvidiaGroup(_settings));
+                EnableGroups(nameof(IsGpuEnabled), ref _gpuEnabled, add =>
+                {
+                    add(CreateRuntimeGroup(() => new AmdGpuGroup(_settings)));
+                    add(CreateRuntimeGroup(() => new NvidiaGroup(_settings)));
 
-                if (_cpuEnabled)
-                    _registry.Add(new IntelGpuGroup(GetIntelCpus(), _settings));
+                    if (_cpuEnabled)
+                        add(CreateRuntimeGroup(() => new IntelGpuGroup(GetIntelCpus(), _settings)));
+                });
+                return;
             }
             else
             {
@@ -219,11 +233,14 @@ public class Computer : IComputer
         get { return _powerMonitorEnabled; }
         set
         {
-            if (!ShouldApplyEnabledChange(value, ref _powerMonitorEnabled))
+            if (!ShouldApplyEnabledChange(nameof(IsPowerMonitorEnabled), value, ref _powerMonitorEnabled))
                 return;
 
             if (value)
-                _registry.Add(new PowerMonitorGroup(_settings));
+            {
+                EnableGroups(nameof(IsPowerMonitorEnabled), ref _powerMonitorEnabled, add => add(CreateRuntimeGroup(() => new PowerMonitorGroup(_settings))));
+                return;
+            }
             else
                 _registry.RemoveType<PowerMonitorGroup>();
 
@@ -237,11 +254,14 @@ public class Computer : IComputer
         get { return _memoryEnabled; }
         set
         {
-            if (!ShouldApplyEnabledChange(value, ref _memoryEnabled))
+            if (!ShouldApplyEnabledChange(nameof(IsMemoryEnabled), value, ref _memoryEnabled))
                 return;
 
             if (value)
-                _registry.Add(new MemoryGroup(_settings));
+            {
+                EnableGroups(nameof(IsMemoryEnabled), ref _memoryEnabled, add => add(CreateRuntimeGroup(() => new MemoryGroup(_settings))));
+                return;
+            }
             else
                 _registry.RemoveType<MemoryGroup>();
 
@@ -255,11 +275,14 @@ public class Computer : IComputer
         get { return _motherboardEnabled; }
         set
         {
-            if (!ShouldApplyEnabledChange(value, ref _motherboardEnabled))
+            if (!ShouldApplyEnabledChange(nameof(IsMotherboardEnabled), value, ref _motherboardEnabled))
                 return;
 
             if (value)
-                _registry.Add(new MotherboardGroup(_smbios, _settings));
+            {
+                EnableGroups(nameof(IsMotherboardEnabled), ref _motherboardEnabled, add => add(CreateRuntimeGroup(() => new MotherboardGroup(_smbios, _settings))));
+                return;
+            }
             else
                 _registry.RemoveType<MotherboardGroup>();
 
@@ -273,11 +296,14 @@ public class Computer : IComputer
         get { return _networkEnabled; }
         set
         {
-            if (!ShouldApplyEnabledChange(value, ref _networkEnabled))
+            if (!ShouldApplyEnabledChange(nameof(IsNetworkEnabled), value, ref _networkEnabled))
                 return;
 
             if (value)
-                _registry.Add(new NetworkGroup(_settings));
+            {
+                EnableGroups(nameof(IsNetworkEnabled), ref _networkEnabled, add => add(CreateRuntimeGroup(() => new NetworkGroup(_settings))));
+                return;
+            }
             else
                 _registry.RemoveType<NetworkGroup>();
 
@@ -291,13 +317,17 @@ public class Computer : IComputer
         get { return _psuEnabled; }
         set
         {
-            if (!ShouldApplyEnabledChange(value, ref _psuEnabled))
+            if (!ShouldApplyEnabledChange(nameof(IsPsuEnabled), value, ref _psuEnabled))
                 return;
 
             if (value)
             {
-                _registry.Add(new CorsairPsuGroup(_settings));
-                _registry.Add(new MsiPsuGroup(_settings));
+                EnableGroups(nameof(IsPsuEnabled), ref _psuEnabled, add =>
+                {
+                    add(CreateRuntimeGroup(() => new CorsairPsuGroup(_settings)));
+                    add(CreateRuntimeGroup(() => new MsiPsuGroup(_settings)));
+                });
+                return;
             }
             else
             {
@@ -315,11 +345,14 @@ public class Computer : IComputer
         get { return _storageEnabled; }
         set
         {
-            if (!ShouldApplyEnabledChange(value, ref _storageEnabled))
+            if (!ShouldApplyEnabledChange(nameof(IsStorageEnabled), value, ref _storageEnabled))
                 return;
 
             if (value)
-                _registry.Add(new StorageGroup(_settings));
+            {
+                EnableGroups(nameof(IsStorageEnabled), ref _storageEnabled, add => add(CreateRuntimeGroup(() => new StorageGroup(_settings))));
+                return;
+            }
             else
                 _registry.RemoveType<StorageGroup>();
 
@@ -327,11 +360,101 @@ public class Computer : IComputer
         }
     }
 
-    private bool ShouldApplyEnabledChange(bool value, ref bool enabled)
+    private void EnableGroups(string option, ref bool enabled, Action<Action<IGroup>> addGroups)
+    {
+        int lifecycleVersion;
+        lock (_lock)
+        {
+            if (enabled || !_enablingCategories.Add(option))
+                return;
+
+            lifecycleVersion = _lifecycleVersion;
+        }
+
+        var attemptedGroups = new List<IGroup>();
+        try
+        {
+            EnsureEnableLifecycle(lifecycleVersion);
+            addGroups(group =>
+            {
+                if (group == null)
+                    return;
+
+                lock (_lock)
+                {
+                    if (_groups.Contains(group))
+                        return;
+                }
+
+                try
+                {
+                    EnsureEnableLifecycle(lifecycleVersion);
+                }
+                catch
+                {
+                    // Construction completed after the owning generation ended.
+                    Exception ignored = null;
+                    HardwareGroupRegistry.CaptureFailure(group.Close, ref ignored);
+                    throw;
+                }
+
+                // Add publishes membership before subscriptions and callbacks,
+                // so own the group even when registration itself throws.
+                attemptedGroups.Add(group);
+                _registry.Add(group);
+                EnsureEnableLifecycle(lifecycleVersion);
+            });
+
+            lock (_lock)
+            {
+                EnsureEnableLifecycle(lifecycleVersion);
+                CommitEnabledChange(true, ref enabled);
+            }
+        }
+        catch
+        {
+            for (int i = attemptedGroups.Count - 1; i >= 0; i--)
+            {
+                try
+                {
+                    _registry.Remove(attemptedGroups[i]);
+                }
+                catch
+                {
+                    // Preserve the enable failure and drain every owned group.
+                }
+            }
+
+            throw;
+        }
+        finally
+        {
+            lock (_lock)
+                _enablingCategories.Remove(option);
+        }
+    }
+
+    private void EnsureEnableLifecycle(int lifecycleVersion)
     {
         lock (_lock)
         {
-            if (value == enabled)
+            if (!_open || _opening || _closing || _resetting || lifecycleVersion != _lifecycleVersion)
+                throw new InvalidOperationException("Hardware lifecycle changed while enabling a category.");
+        }
+    }
+
+    private IGroup CreateRuntimeGroup<T>(Func<T> createGroup) where T : IGroup
+    {
+        return _openDependencies.CreateRuntimeGroup != null
+            ? _openDependencies.CreateRuntimeGroup(typeof(T))
+            : createGroup();
+    }
+
+    private bool ShouldApplyEnabledChange(string option, bool value, ref bool enabled)
+    {
+        lock (_lock)
+        {
+            if (value == enabled || _enablingCategories.Contains(option))
                 return false;
 
             if (!_open || _opening || _closing || _resetting)
@@ -817,6 +940,10 @@ public class Computer : IComputer
                 return;
 
             _closing = true;
+            unchecked
+            {
+                _lifecycleVersion++;
+            }
         }
 
         Exception firstFailure = null;
@@ -853,6 +980,10 @@ public class Computer : IComputer
                     return;
 
                 _resetting = true;
+                unchecked
+                {
+                    _lifecycleVersion++;
+                }
                 resetStarted = true;
             }
 
@@ -970,7 +1101,8 @@ public class Computer : IComputer
             Action closeMutexes,
             Action openOpCode,
             Action closeOpCode,
-            Action<Action<IGroup>> addGroups)
+            Action<Action<IGroup>> addGroups,
+            Func<Type, IGroup> createRuntimeGroup = null)
         {
             CreateSmbios = createSmbios ?? throw new ArgumentNullException(nameof(createSmbios));
             OpenMutexes = openMutexes ?? throw new ArgumentNullException(nameof(openMutexes));
@@ -978,6 +1110,7 @@ public class Computer : IComputer
             OpenOpCode = openOpCode ?? throw new ArgumentNullException(nameof(openOpCode));
             CloseOpCode = closeOpCode ?? throw new ArgumentNullException(nameof(closeOpCode));
             AddGroups = addGroups;
+            CreateRuntimeGroup = createRuntimeGroup;
         }
 
         internal Func<SMBios> CreateSmbios { get; }
@@ -991,6 +1124,8 @@ public class Computer : IComputer
         internal Action CloseOpCode { get; }
 
         internal Action<Action<IGroup>> AddGroups { get; }
+
+        internal Func<Type, IGroup> CreateRuntimeGroup { get; }
     }
 
     internal sealed class SharedOwner

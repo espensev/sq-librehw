@@ -30,6 +30,7 @@ public sealed partial class MainForm : Form
     private bool _closing;
     private readonly UserOption _autoStart;
     private readonly Computer _computer;
+    private readonly HardwareOptionFailurePresenter _hardwareOptionFailurePresenter;
     private readonly Logger _logger;
     private readonly UserRadioGroup _loggingInterval;
     private readonly UserRadioGroup _smartUpdateCycle;
@@ -185,6 +186,12 @@ public sealed partial class MainForm : Form
             SetHardwareOption,
             _computer.Reset,
             CloseHardwareAsync);
+        _hardwareOptionFailurePresenter = new HardwareOptionFailurePresenter(
+            _applicationLifecycle,
+            GetHardwareUserOption,
+            RunOnUiThreadOrDrop,
+            option => MessageBox.Show(this, $"Could not enable {option} sensors.", "Hardware option failed",
+                                      MessageBoxButtons.OK, MessageBoxIcon.Error));
         _applicationLifecycle.StateChanged += HardwareOperations_StateChanged;
         _applicationLifecycle.OptionFailed += HardwareOperations_OptionFailed;
         _applicationLifecycle.ResetFailed += HardwareOperations_ResetFailed;
@@ -707,10 +714,27 @@ public sealed partial class MainForm : Form
     private void HardwareOperations_OptionFailed(
         HardwareOptionKind option,
         bool value,
+        long sequence,
         Exception exception)
     {
         Debug.WriteLine($"Hardware option change failed ({option}={value}): {exception}");
+        _hardwareOptionFailurePresenter.Report(option, value, sequence);
     }
+
+    private UserOption GetHardwareUserOption(HardwareOptionKind option) => option switch
+    {
+        HardwareOptionKind.Motherboard => _readMainboardSensors,
+        HardwareOptionKind.Cpu => _readCpuSensors,
+        HardwareOptionKind.Memory => _readRamSensors,
+        HardwareOptionKind.Gpu => _readGpuSensors,
+        HardwareOptionKind.PowerMonitor => _readPowerMonitorSensors,
+        HardwareOptionKind.Controller => _readFanControllersSensors,
+        HardwareOptionKind.Storage => _readHddSensors,
+        HardwareOptionKind.Network => _readNicSensors,
+        HardwareOptionKind.Psu => _readPsuSensors,
+        HardwareOptionKind.Battery => _readBatterySensors,
+        _ => throw new ArgumentOutOfRangeException(nameof(option), option, null)
+    };
 
     private void HardwareOperations_ResetFailed(Exception exception)
     {

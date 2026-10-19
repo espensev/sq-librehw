@@ -36,16 +36,24 @@ public class UserOption
     public bool Value
     {
         get { return _value; }
-        set
+        set { SetValue(value, notify: true); }
+    }
+
+    internal void SetValueWithoutNotification(bool value)
+    {
+        SetValue(value, notify: false);
+    }
+
+    private void SetValue(bool value, bool notify)
+    {
+        if (_value != value)
         {
-            if (_value != value)
-            {
-                _value = value;
-                if (_name != null)
-                    _settings.SetValue(_name, value);
-                _menuItem.Checked = value;
+            _value = value;
+            if (_name != null)
+                _settings.SetValue(_name, value);
+            _menuItem.Checked = value;
+            if (notify)
                 _changed?.Invoke(this, null);
-            }
         }
     }
 

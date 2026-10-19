@@ -17,7 +17,8 @@ changes and the open-work queue reviewed separately.
 blocker after the fixes below. Existing operational and reliability defects
 remain open; this is not clearance to deploy. Campaign cleanup safety,
 empty CI gate handling, per-device polling isolation, PawnIO platform gating,
-and crash-time history preservation were subsequently repaired and verified below.
+crash-time history preservation, and runtime hardware-option enables were
+subsequently repaired and verified below.
 
 ## Findings and next work
 
@@ -25,7 +26,7 @@ and crash-time history preservation were subsequently repaired and verified belo
 
 | Area | Current evidence | Required next step |
 |---|---|---|
-| Runtime hardware options | `Hardware/Computer.cs:199` adds GPU groups before the backing flag commits; `UI/MainForm.cs:707` only logs apply failures. | Category-level transactions and deliberate UI/settings rollback, including partial enable/disable and retries. |
+| Runtime hardware-option disables | Runtime enables now roll back their attempted groups and reconcile failed-enable UI/settings. Disable removal can close devices before reporting failure. | Define reconstruction versus confirmed disabled state after cleanup failure; do not reattach closed instances. Then implement and verify disable reconciliation. |
 | DIMM discovery retry | `Hardware/Memory/MemoryGroup.cs:193` publishes before notifications; its retry catches subscriber failure as discovery failure. | Separate publication from notification failure and prevent duplicate identities. |
 | Release health and timeout defaults | Install line 17 and Restore line 11 still default to port 8085; the local release spec records explicit 18085. Install/Restore allow 300 seconds while the complete checkout's launcher allows 120. | Bind health checks to validated configuration and reject unsupported timeout values before mutation. |
 | Migration recovery | `Move-LibreHardwareMonitorRuntimeRoot.ps1:647` changes the shim before task retargeting; line 651 sets restoration responsibility only after both. | Independently restore partial binding writes before reusing runtime migration. |
@@ -133,7 +134,35 @@ zero warnings/errors. The source change does not add periodic sample saving.
 Independent review accepted all six changed files and reran seven recovery,
 clear/disable, and window-change cases successfully.
 Live crash acceptance and deployment remain separate. Runtime hardware-option
-transactions are the next source item in the remaining queue.
+enables are covered by the follow-up below; disable recovery remains open.
+
+### Runtime hardware-option enables and master CI (2026-10-19)
+
+The [enable contract](../features/feature-memory-ui-reliability.md#runtime-hardware-option-enable-follow-up-2026-10-19)
+covers all ten categories. Constructor, registration, and add-subscriber failures
+drain only groups owned by that attempt, preserve the original failure, and
+leave the option disabled. Existing categories survive. Same-category recursion
+cannot duplicate groups, and Close/Reset during publication invalidates the
+attempt. Failed-enable UI/settings reconciliation preserves newer request
+identity, issues one error on the UI thread, and never queues an automatic retry.
+
+Twenty new library cases and seven application cases cover these boundaries.
+The library's first 17 cases reproduced the old failure; four application cases
+failed before reconciliation. Focused verification passed 45 library and 30
+application tests. Disable recovery and live hardware acceptance remain separate.
+Independent review accepted the product/spec change and reran all 27 new cases.
+Independent full QA passed 554 tests with one existing opt-in skip, both Windows
+application targets, and all five library targets/package with zero warnings or
+errors. Web verification passed 339 self-test assertions and 18 contract tests.
+
+`fb037bc9` also adds `master` to the general non-deploying workflow's push and
+pull-request triggers while retaining `main`. Trigger assertions reproduced the
+missing coverage; the repaired CI suite passed 101 assertions with two optional
+PyYAML skips. The first hosted run reached all ten included gates: nine passed,
+and the local-release fixture failed because its synthetic `E:` launcher path
+required a drive absent on GitHub's runner. Its correction uses the existing
+temporary launcher target and asserts both generated launcher paths; production
+deployment scripts and gate assertions remain intact.
 
 ### Separate acceptance and policy gates
 
