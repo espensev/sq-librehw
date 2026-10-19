@@ -14,13 +14,11 @@
 # current checks on the exact commit or pull request. Local YAML parse and
 # structural assertions prove workflow shape, not hosted execution.
 #
-# Actions are referenced by version tag rather than by commit SHA. A pinned SHA
-# could not be verified from this machine, and an unverifiable pin is worse than
-# an honest tag.
+# Actions are referenced by version tag rather than by commit SHA.
 #
 # The Node and Python versions match the SND-HOST development host (Node
-# v26.5.1, Python 3.13.14). Their availability on a hosted runner is unverified
-# for the same reason.
+# v26.5.1, Python 3.13.14). Toolchain setup succeeded on the hosted Windows
+# runner in run 39293151243; that run separately exposed a release-fixture defect.
 #
 # This workflow must never gain a deploying, publishing, or host-mutating step.
 
