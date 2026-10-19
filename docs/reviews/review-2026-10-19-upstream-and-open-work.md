@@ -15,19 +15,11 @@ changes and the open-work queue reviewed separately.
 
 **Verdict:** PASS WITH NOTES for source integration. No remaining confirmed merge
 blocker after the fixes below. Existing operational and reliability defects
-remain open; this is not clearance to deploy. Campaign cleanup safety and
-empty CI gate handling were subsequently repaired and fixture-verified below.
+remain open; this is not clearance to deploy. Campaign cleanup safety,
+empty CI gate handling, and per-device polling isolation were subsequently
+repaired and fixture-verified below.
 
 ## Findings and next work
-
-### High priority
-
-1. **[regression] Device exceptions still starve subsequent devices and CSV.**
-   `UI/UpdateVisitor.cs:20` propagates `hardware.Update()` failures;
-   `UI/MainForm.cs:829` then exits before logging at line 832. Later polls still
-   run, so this is repeated starvation, not a stopped timer. Specify per-device
-   failure isolation, unavailable readings, healthy-device continuation and
-   recovery before implementing the broader polling change.
 
 ### Medium priority
 
@@ -88,6 +80,21 @@ Acceptance and regression commands are maintained in the
 [campaign control-plane contract](../architecture/campaign-control-plane.md#merge-and-cleanup-acceptance-2026-10-19)
 and [CI runner documentation](../../eng/ci/README.md#exit-codes).
 No real campaign cleanup, push, deployment, or runtime operation was performed.
+
+### Device polling isolation completed on 2026-10-19
+
+`UI/UpdateVisitor.cs` now isolates recoverable per-device update failures,
+invalidates current built-in readings, and continues children, siblings, later
+devices, and CSV logging. Min/max and completed history remain; pending averages
+and temperature-rate samples reset so recovery starts fresh. Direct library
+callers retain exception behavior, and fatal failures still propagate.
+
+The [reliability contract](../features/feature-memory-ui-reliability.md#device-polling-isolation-follow-up-2026-10-19)
+records behavior and regression commands. The deterministic suites passed 513
+tests with one existing opt-in skip; both application frameworks and all five
+library targets built with zero warnings/errors. Hardware failure acceptance and
+deployment remain separate. PawnIO review/integration is the next listed item;
+its preservation checkpoint remains unaccepted.
 
 ### Separate acceptance and policy gates
 

@@ -23,8 +23,10 @@ public sealed class CorsairExportMutexCollection;
 [Collection("Corsair export mutex")]
 public sealed class CorsairPsuExportTests
 {
-    [Fact]
-    public void MissingMutex_ExportsUnavailableReadingsAndRecoversInSameColumns()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FailedPoll_ExportsUnavailableReadingsAndRecoversInSameColumns(bool throwDuringRead)
     {
         string mutexName = $@"Local\LibreHardwareMonitor.CorsairExportTests.{Guid.NewGuid():N}";
         string directory = Path.Combine(Path.GetTempPath(), "LhmCorsairExport-" + Guid.NewGuid().ToString("N"));
@@ -41,7 +43,8 @@ public sealed class CorsairPsuExportTests
         {
             computer.Open();
             var hardware = Assert.IsType<CorsairPsu>(Assert.Single(computer.Hardware));
-            hardware.Update();
+            var visitor = new UpdateVisitor();
+            computer.Accept(visitor);
             ISensor[] sensors = hardware.Sensors;
             Assert.All(sensors, sensor => Assert.True(sensor.Value > 0));
             var extrema = sensors.ToDictionary(sensor => sensor.Identifier.ToString(), sensor => (sensor.Min, sensor.Max));
@@ -55,16 +58,30 @@ public sealed class CorsairPsuExportTests
             logger.Log();
 
             int streamsBeforeFailure = device.Streams.Count;
-            Mutexes.Close();
-            hardware.Update();
+            if (throwDuringRead)
+            {
+                int accesses = 0;
+                device.OnAccess = () =>
+                {
+                    if (++accesses == 7)
+                        throw new IOException("fixture failure after partial sensor update");
+                };
+            }
+            else
+            {
+                Mutexes.Close();
+            }
+            computer.Accept(visitor);
 
-            Assert.Equal(streamsBeforeFailure, device.Streams.Count);
+            Assert.Equal(streamsBeforeFailure + (throwDuringRead ? 1 : 0), device.Streams.Count);
             AssertJsonReadings(server, sensors, available: false);
             Assert.All(sensors, sensor => Assert.Equal(extrema[sensor.Identifier.ToString()], (sensor.Min, sensor.Max)));
             logger.Log();
 
-            Mutexes.Open(mutexName);
-            hardware.Update();
+            device.OnAccess = null;
+            if (!throwDuringRead)
+                Mutexes.Open(mutexName);
+            computer.Accept(visitor);
             AssertJsonReadings(server, sensors, available: true);
             logger.Log();
 

@@ -39,7 +39,8 @@ Repository remotes:
 | `origin` | `https://github.com/espensev/sq-librehw.git` | same |
 | `librehw-host` | `https://github.com/celine-anime/librehw-host.git` | same; separate peer repository |
 
-Development stays on local `master`. Do not push unless explicitly requested.
+Development stays on `master`. Owner direction on 2026-10-19 authorizes committing
+and pushing validated work, with ordinary merges when needed.
 Use live Git commands for branch, cleanliness, and ahead/behind state.
 
 ## Current boundaries

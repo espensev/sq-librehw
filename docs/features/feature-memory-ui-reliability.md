@@ -8,7 +8,10 @@ deployed and live-verified on SND-HOST
 `957923fc` was promoted to SND-DESK on 2026-10-08 and live-verified with HWiNFO
 and iCUE running. `07d2d25e` holds the rollback slot.
 
-**Updated:** 2026-10-08
+**Device polling follow-up:** source-verified on 2026-10-19; deployment and
+physical device-failure acceptance remain separate.
+
+**Updated:** 2026-10-19
 
 ## Problem and motivation
 
@@ -51,6 +54,52 @@ dashboard policy, or supported frameworks.
 - No upstream synchronization or unrelated visual redesign.
 - No campaign or tracker artifacts are part of the shipped product contract.
 
+## Device polling isolation follow-up (2026-10-19)
+
+The application polling visitor must isolate recoverable managed exceptions
+from each `IHardware.Update()` call. A failed parent does not suppress child
+updates, and a failed child does not suppress siblings or later top-level
+devices. Keep the current traversal lock, single-flight admission, tick cadence,
+CSV startup delay, and UI-thread completion path.
+
+On failure, invalidate the failed device's current built-in sensor readings,
+including partially updated readings, while retaining sensor identity,
+min/max, and completed history. Discard pending history averages and derived
+temperature-rate samples so recovery cannot bridge a failed poll. CSV uses its
+existing empty cell and HTTP/native UI their existing unavailable representation.
+Built-in composites derive availability from their invalidated components.
+The next successful update restores readings without reopening the device;
+rate sensors require their normal fresh warmup.
+
+Expose invalidation on the library `Hardware` base without changing `IHardware`
+or `ISensor`, and keep exception isolation in the application visitor. Direct
+library `Update()` calls retain their exception behavior. Custom `IHardware`
+implementations outside that base own their sensor invalidation. Report failures
+through the existing debug diagnostic channel without accumulating exceptions;
+diagnostic or invalidation failures must not starve later devices. Out-of-memory,
+stack-overflow, and access-violation exceptions retain propagation behavior.
+
+Acceptance requires fixture coverage of partial/repeated failures, parent/child
+and sibling continuation, stable IDs/extrema/history, fresh recovery and rate
+warmup, continued CSV rows, and HTTP unavailable readings. Run the focused
+regressions, the deterministic .NET suites, and both Windows application builds.
+Hardware fault injection, deployment, and live acceptance remain separate.
+
+Verification on 2026-10-19:
+
+- `UpdateVisitorTests` initially reproduced three failures: aborted traversal,
+  retained partial readings, and skipped CSV logging. Seven application
+  regressions now cover continuation, history preservation, recovery, rate
+  warmup, diagnostic/invalidation failures, and fatal-error propagation.
+- `CorsairPsuExportTests` passes both unavailable-mutex and partial-read-exception
+  cases through the application visitor, including composite readings, HTTP null
+  values, CSV empty cells, and recovery in the same columns.
+- `dotnet test LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.slnf -c Release -p:Platform=x64 --no-restore`
+  passed 513 tests (Library 170, Application 229, Contracts 114), with one existing
+  opt-in live-config test skipped.
+- Release application builds for `net10.0-windows` and `net472`, plus the library's
+  five targets and package build, passed with zero warnings/errors.
+
 ## Required behavior and failure handling
 
 ### Memory and persistence
@@ -86,7 +135,8 @@ dashboard policy, or supported frameworks.
 - Corsair updates immediately invalidate all current raw readings when the
   shared lock is busy/unavailable or an open/read operation throws, including
   a failure after partial polling. Min/max values remain intact. Exceptions
-  retain their existing propagation behavior; the next successful poll recovers
+  retain their propagation behavior for direct library callers; the application
+  visitor isolates them per device. The next successful poll recovers
   readings without reopening the hardware group. A rejected command reply
   invalidates that command's reading rather than retaining its previous value.
 - Corsair Total Output is unavailable whenever any required power rail is
