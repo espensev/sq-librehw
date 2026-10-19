@@ -2818,9 +2818,11 @@ try {
         'Runtime migration must define its public-shim generator exactly once.'
     . ([scriptblock]::Create($runtimeShimFunctions[0].Extent.Text))
     $runtimeMigrationShimText = Get-LhmRuntimeMigrationShimText `
-        -LauncherPath 'E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1'
+        -LauncherPath $launcherTarget
     Assert-True (
-        $runtimeMigrationShimText -match '(?i)hidelaunch\.exe' -and
+        $runtimeMigrationShimText -match [regex]::Escape(
+            (Join-Path (Split-Path -Parent $launcherTarget) 'hidelaunch.exe')) -and
+        $runtimeMigrationShimText -match [regex]::Escape($launcherTarget) -and
         $runtimeMigrationShimText -notmatch [regex]::Escape(
             '%SEV_LOCAL_BIN%\runw\runw.exe') -and
         $runtimeMigrationShimText -notmatch '(?i)E:\\SevLocal\\'
