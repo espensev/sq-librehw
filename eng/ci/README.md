@@ -216,6 +216,8 @@ outside the three-suite Windows solution filter.
 duplicates no gate command.
 
 A branch existing on `origin` is not hosted-run evidence. This workflow runs
-only for pushes to `main` and pull requests targeting `main`; query GitHub for
-the current checks on the exact commit or pull request. YAML parse and
-structural inspection prove the workflow shape locally, not hosted execution.
+for pushes to `main` or `master` and pull requests targeting either branch.
+`eng/ci/tests/Test-Workflow.ps1` requires both automatic triggers to retain both
+branches. Query GitHub for the current checks on the exact commit or pull
+request. YAML parse and structural inspection prove the workflow shape locally,
+not hosted execution.

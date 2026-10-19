@@ -10,7 +10,7 @@
 # would defeat that, so the single run step below delegates and nothing else.
 #
 # A branch existing on origin is not hosted-run evidence. This workflow runs
-# only for pushes to main and pull requests targeting main; query GitHub for
+# for pushes to main or master and pull requests targeting either; query GitHub for
 # current checks on the exact commit or pull request. Local YAML parse and
 # structural assertions prove workflow shape, not hosted execution.
 #
@@ -29,9 +29,9 @@ name: Non-deploying gates
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: [main, master]
   push:
-    branches: [main]
+    branches: [main, master]
 
 permissions:
   contents: read

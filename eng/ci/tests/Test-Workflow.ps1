@@ -3,10 +3,9 @@
     Structural regression suite for .github/workflows/non-deploying-gates.yml.
 
 .DESCRIPTION
-    The workflow cannot be verified by running it: origin is deliberately
-    unpushed, so it has never executed on a hosted runner. These assertions are
-    the substitute, and they are deliberately about safety properties rather
-    than about whether the workflow would succeed.
+    These assertions verify the workflow's triggers and safety properties.
+    Hosted execution must be checked separately on the exact commit or pull
+    request; structural checks are not evidence that its gates succeeded.
 
     The safety-critical assertions are text-based so they run whether or not
     PyYAML is installed. The YAML parse adds structural confirmation on top and
@@ -204,6 +203,25 @@ try {
     Assert-Case 'a concurrency group and a job timeout are declared' `
         ($hasConcurrency -and $hasGroup -and $hasTimeout) `
         "concurrency: $hasConcurrency; group: $hasGroup; timeout: $hasTimeout"
+
+    # --- Case 11: both development branches receive automatic checks --------
+    foreach ($eventName in @('push', 'pull_request')) {
+        $eventIndexes = @(for ($i = 0; $i -lt $bodyLines.Count; $i++) {
+            if ($bodyLines[$i] -match "^  ${eventName}:\s*$") { $i }
+        })
+        $branches = @()
+        if ($eventIndexes.Count -eq 1) {
+            $eventBlock = @(Get-Block -Lines $bodyLines -Index $eventIndexes[0])
+            $branchLines = @($eventBlock | Where-Object { $_ -match '^    branches:\s*\[([^\]]+)\]\s*$' })
+            if ($branchLines.Count -eq 1) {
+                $branchList = $branchLines[0] -replace '^    branches:\s*\[([^\]]+)\]\s*$', '$1'
+                $branches = @($branchList.Split(',') | ForEach-Object { $_.Trim() })
+            }
+        }
+        Assert-Case "$eventName targets exactly main and master" `
+            (($eventIndexes.Count -eq 1) -and ($branches.Count -eq 2) -and ($branches -ccontains 'main') -and ($branches -ccontains 'master')) `
+            "branches: $($branches -join ', ')"
+    }
 
     # --- Structural confirmation from the parsed model -----------------------
     if ($null -ne $parsed) {
