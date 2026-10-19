@@ -42,18 +42,8 @@ def candidate_worktree_roots(
         candidate = (root / relative).resolve()
         if candidate.exists():
             roots.add(candidate)
-    for task in state.get("tasks", {}).values():
-        for path_text in (
-            str(task.get("launch", {}).get("worktree_path", "") or ""),
-            str(task.get("agent_result", {}).get("worktree_path", "") or ""),
-        ):
-            if not path_text:
-                continue
-            try:
-                resolved = resolve_recorded_path_fn(path_text)
-            except OSError:
-                continue
-            roots.add(resolved.parent)
+    # Task metadata is evidence to reconcile, never authority to scan or delete
+    # arbitrary parents. Registered external worktrees are found by Git.
     return {r for r in roots if r.exists()}
 
 
@@ -72,7 +62,7 @@ def run_git_runtime(args: list[str], *, root: Path, timeout: int = 30) -> subpro
 def git_worktree_inventory(*, root: Path) -> dict:
     try:
         result = run_git_runtime(["worktree", "list", "--porcelain"], root=root)
-    except OSError as exc:
+    except (OSError, subprocess.SubprocessError) as exc:
         return {"available": False, "error": str(exc), "worktrees": []}
 
     if result.returncode != 0:
@@ -130,9 +120,7 @@ def match_worktree_record(
     for item in inventory.get("worktrees", []):
         item_path = str(item.get("path", "") or "")
         item_branch = str(item.get("branch", "") or "")
-        if normalized_path and item_path == normalized_path:
-            return item
-        if branch and item_branch == branch:
+        if (normalized_path or branch) and (not normalized_path or Path(item_path) == Path(normalized_path)) and (not branch or item_branch == branch):
             return item
     return None
 
@@ -160,40 +148,47 @@ def cleanup_task_worktree(
     branch_text = str(branch_text or "").strip()
     if not path_text and not branch_text:
         return result
-
-    resolved_path: Path | None = None
-    if path_text:
-        try:
-            resolved_path = resolve_recorded_path_fn(path_text)
-        except OSError:
-            resolved_path = (root / path_text).resolve()
-
-    matched = match_worktree_record_fn(path_text, branch_text, inventory)
-    if matched and resolved_path and str(matched.get("path", "")) != str(root.resolve()):
-        remove_result = run_git_runtime_fn(["worktree", "remove", str(resolved_path), "--force"])
-        if remove_result.returncode == 0:
-            result["worktree_removed"] = True
-            inventory.update(git_worktree_inventory_fn())
-        else:
-            detail = (remove_result.stderr or remove_result.stdout or "").strip()
-            warnings.append(f"git worktree remove failed for {path_text}: {detail or 'unknown error'}")
-    elif resolved_path and resolved_path.exists():
-        allowed_roots = candidate_worktree_roots_fn(load_state_fn())
-        if any(r == resolved_path or r in resolved_path.parents for r in allowed_roots):
-            shutil.rmtree(resolved_path, ignore_errors=True)
-            result["worktree_removed"] = True
-
-    if branch_text and inventory.get("available"):
-        refreshed = inventory if result["worktree_removed"] else git_worktree_inventory_fn()
-        branch_still_attached = any(str(item.get("branch", "") or "") == branch_text for item in refreshed.get("worktrees", []))
-        if not branch_still_attached:
-            delete_result = run_git_runtime_fn(["branch", "-D", branch_text])
-            if delete_result.returncode == 0:
-                result["branch_removed"] = True
-            else:
-                detail = (delete_result.stderr or delete_result.stdout or "").strip()
-                if detail:
-                    warnings.append(f"git branch -D {branch_text} failed: {detail}")
+    try:
+        if not path_text or not branch_text:
+            raise ValueError("cleanup requires both recorded path and branch")
+        resolved_path = resolve_recorded_path_fn(path_text)
+        fresh = git_worktree_inventory_fn()
+        if not fresh.get("available") or not fresh.get("worktrees"):
+            raise ValueError("cannot verify current Git worktree inventory")
+        inventory.update(fresh)
+        matched = match_worktree_record_fn(path_text, branch_text, fresh)
+        if not matched or Path(str(matched.get("path", ""))) != resolved_path or matched.get("branch") != branch_text:
+            raise ValueError("recorded path and branch do not match one registered worktree")
+        primary = Path(str(fresh["worktrees"][0]["path"]))
+        if resolved_path in (root.resolve(), primary) or any(key in matched for key in ("locked", "detached", "bare", "prunable")):
+            raise ValueError("primary, current, locked, detached, or unavailable worktree is protected")
+        status = run_git_runtime_fn(["-C", str(resolved_path), "status", "--porcelain=v1", "--untracked-files=all", "--ignored"])
+        if status.returncode != 0 or status.stdout.strip():
+            raise ValueError("worktree is dirty, contains ignored files, or its status is unavailable")
+        head = str(matched.get("head", ""))
+        tip = run_git_runtime_fn(["rev-parse", "--verify", f"refs/heads/{branch_text}"])
+        if not head or tip.returncode != 0 or tip.stdout.strip() != head:
+            raise ValueError("branch tip changed or cannot be verified")
+        ancestor = run_git_runtime_fn(["merge-base", "--is-ancestor", head, "HEAD"])
+        if ancestor.returncode != 0:
+            raise ValueError("worktree commit is not proven merged into destination HEAD")
+        remove_result = run_git_runtime_fn(["worktree", "remove", str(resolved_path)])
+        if remove_result.returncode != 0:
+            raise ValueError(f"git worktree remove failed: {(remove_result.stderr or remove_result.stdout).strip()}")
+        result["worktree_removed"] = True
+        refreshed = git_worktree_inventory_fn()
+        inventory.update(refreshed)
+        if not refreshed.get("available") or any(item.get("branch") == branch_text for item in refreshed.get("worktrees", [])):
+            raise ValueError("cannot prove branch is detached after worktree removal; branch retained")
+        tip = run_git_runtime_fn(["rev-parse", "--verify", f"refs/heads/{branch_text}"])
+        if tip.returncode != 0 or tip.stdout.strip() != head:
+            raise ValueError("branch tip changed after worktree removal; branch retained")
+        delete_result = run_git_runtime_fn(["branch", "-d", "--", branch_text])
+        if delete_result.returncode != 0:
+            raise ValueError(f"git branch -d failed: {(delete_result.stderr or delete_result.stdout).strip()}")
+        result["branch_removed"] = True
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        warnings.append(f"Cleanup retained remaining state for {path_text}: {exc}")
     return result
 
 
@@ -231,15 +226,18 @@ def merge_runtime(
     now = now_iso_fn()
 
     backup_method = "none"
-    if inventory.get("available"):
-        try:
-            stash_result = run_git_runtime_fn(["stash", "push", "-m", f"pre-merge-backup-{plan_id or 'manual'}"])
-            if stash_result.returncode == 0:
-                backup_method = "git_stash"
-        except (OSError, subprocess.CalledProcessError):
-            pass
-    else:
-        backup_method = "file_copy"
+    # Never move user work into an implicit stash. Fail before copying anything
+    # if the destination cannot be proven clean; source worktrees remain intact.
+    try:
+        if not inventory.get("available"):
+            raise ValueError("Git inventory unavailable; merge refused")
+        status = run_git_runtime_fn(["status", "--porcelain=v1", "--untracked-files=all"])
+        if status.returncode != 0 or status.stdout.strip():
+            raise ValueError("Destination is dirty or status unavailable; commit or preserve changes before merging")
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        return {"status": "conflicts", "merged": [], "skipped": [],
+                "conflicts": [{"id": task["id"], "files": [], "reason": str(exc)} for task in candidates],
+                "cleanup": [], "backup_method": backup_method, "detail": str(exc)}
 
     for task in candidates:
         ensure_task_runtime_fields_fn(task)
@@ -286,7 +284,8 @@ def merge_runtime(
             if matched.get("branch"):
                 branch_text = str(matched.get("branch", "") or "")
         else:
-            worktree_root = resolve_recorded_path_fn(worktree_text)
+            conflicts.append({"id": task["id"], "files": files, "reason": "recorded path/branch is not a registered worktree"})
+            continue
         if not worktree_root.exists():
             task["merge"] = {
                 "status": "conflict",
@@ -320,12 +319,12 @@ def merge_runtime(
                 notes.append(f"{rel_path} missing from recorded worktree")
                 continue
             dest = safe_resolve_fn(rel_path)
+            ignored = run_git_runtime_fn(["check-ignore", "--", str(dest)])
+            if ignored.returncode not in (0, 1) or (ignored.returncode == 0 and dest.exists()):
+                task_conflicts.append(rel_path)
+                notes.append(f"{rel_path} is an existing ignored destination or could not be checked")
+                continue
             dest.parent.mkdir(parents=True, exist_ok=True)
-            if backup_method == "file_copy" and dest.exists():
-                try:
-                    shutil.copy2(str(dest), str(dest) + ".bak")
-                except OSError as exc:
-                    notes.append(f"{rel_path} backup failed: {exc}")
             shutil.copy2(source, dest)
             applied_files.append(rel_path)
             owners[rel_path] = {"id": task["id"], "group": group}

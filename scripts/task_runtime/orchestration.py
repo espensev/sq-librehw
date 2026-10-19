@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -164,13 +163,7 @@ def recover_runtime(
                 detail["branch"] = str(matched.get("branch", "") or "")
             orphan_details.append(detail)
             if prune_orphans:
-                if detail["registered"]:
-                    cleanup_task_worktree_fn(path_display, str(detail["branch"] or ""), inventory)
-                else:
-                    try:
-                        shutil.rmtree(child)
-                    except OSError as exc:
-                        detail["cleanup_error"] = str(exc)
+                detail["cleanup"] = cleanup_task_worktree_fn(path_display, str(detail["branch"] or ""), inventory)
 
     save_state_fn(state)
     return {
@@ -178,7 +171,7 @@ def recover_runtime(
         "active": active,
         "orphan_worktrees": orphan_paths,
         "orphan_details": orphan_details,
-        "pruned_orphans": bool(prune_orphans and orphan_paths),
+        "pruned_orphans": any(detail.get("cleanup", {}).get("worktree_removed", False) for detail in orphan_details),
         "git_worktrees_available": bool(inventory.get("available")),
     }
 
