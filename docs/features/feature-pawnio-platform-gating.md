@@ -1,7 +1,7 @@
 # Feature: PawnIO platform gating
 
-**Status:** reviewed implementation on `fix/f-013-pawnio-os-gate`, integrated
-with current `master`; platform verification is in progress before delivery.
+**Status:** source-verified; implementation review and Linux/Windows platform
+acceptance complete. No deployment or physical driver acceptance is claimed.
 **Origin:** grand-sweep finding F-013 (verified high) —
 `.audit/crew/librehw-grand-sweep-20261003-1e5346a3/FINDINGS.md`,
 preserved at
@@ -93,5 +93,11 @@ Record the exact hosted commit and run URL before closing Linux acceptance.
 - Local follow-up verification: 515 deterministic tests passed (Library 172,
   Application 229, Contracts 114), with one existing opt-in skip. Both Windows
   application builds and all five library targets passed with zero warnings/errors.
-  The portable Windows fixture passed, as did 99 CI assertions with two existing
-  optional YAML skips. Real Linux acceptance remains pending the hosted run.
+  The portable Windows fixture passed, as did 99 CI assertions in each of
+  PowerShell 5.1 and 7 with two existing optional YAML skips per engine.
+- Hosted acceptance at `8f4a143cd646275785264ff409fee49e28077598`:
+  [PawnIO portable run 39286347591](https://github.com/espensev/sq-librehw/actions/runs/39286347591)
+  passed its gate on Ubuntu 24.04.5 LTS and Windows. The Linux log confirms real
+  Unix type initialization, unsupported module loading, execute/close behavior,
+  and AMD/Intel/SMU module construction. The Windows log confirms metadata and
+  injected guard coverage. Both gates report one pass, zero failures, exit 0.

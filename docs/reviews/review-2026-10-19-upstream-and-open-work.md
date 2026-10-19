@@ -16,8 +16,8 @@ changes and the open-work queue reviewed separately.
 **Verdict:** PASS WITH NOTES for source integration. No remaining confirmed merge
 blocker after the fixes below. Existing operational and reliability defects
 remain open; this is not clearance to deploy. Campaign cleanup safety,
-empty CI gate handling, and per-device polling isolation were subsequently
-repaired and fixture-verified below.
+empty CI gate handling, per-device polling isolation, and PawnIO platform
+gating were subsequently repaired and verified below.
 
 ## Findings and next work
 
@@ -25,7 +25,6 @@ repaired and fixture-verified below.
 
 | Area | Current evidence | Required next step |
 |---|---|---|
-| PawnIO platform gate (F-013) | `LibreHardwareMonitorLib/PawnIo/PawnIo.cs:25` enters Windows registry code; line 67 opens the Windows device. Existing work is preserved in local checkpoint `1a18c5ab` on `fix/f-013-pawnio-os-gate`; its source and test bytes are unchanged by cleanup. | Finish implementation review, refresh integration and test a real portable process; the checkpoint is not accepted or merged, and injected Unix flags alone do not establish Linux acceptance. |
 | Crash-time history loss | `Hardware/Sensor.cs:473` removes loaded history; `Utilities/PersistentSettings.cs:313` excludes unclaimed histories; dirty autosaves can replace both saved copies. | Preserve and claim validated bounded histories; cover two dirty saves and crash/reopen. |
 | Runtime hardware options | `Hardware/Computer.cs:199` adds GPU groups before the backing flag commits; `UI/MainForm.cs:707` only logs apply failures. | Category-level transactions and deliberate UI/settings rollback, including partial enable/disable and retries. |
 | DIMM discovery retry | `Hardware/Memory/MemoryGroup.cs:193` publishes before notifications; its retry catches subscriber failure as discovery failure. | Separate publication from notification failure and prevent duplicate identities. |
@@ -55,8 +54,9 @@ deletions and must not be merged into `master`.
 
 Generated `.audit` receipts remain unchanged in place and are now explicitly
 ignored as local state. The documentation index points to this current review.
-The PawnIO implementation remains separate in its labeled preservation
-checkpoint. Cleanup does not close any implementation or deployment gate above.
+At cleanup time the PawnIO implementation remained in its labeled preservation
+checkpoint. Its subsequent acceptance is recorded below. Cleanup alone closed
+no implementation or deployment gate.
 
 ### Tooling safety fixes completed on 2026-10-19
 
@@ -93,8 +93,29 @@ The [reliability contract](../features/feature-memory-ui-reliability.md#device-p
 records behavior and regression commands. The deterministic suites passed 513
 tests with one existing opt-in skip; both application frameworks and all five
 library targets built with zero warnings/errors. Hardware failure acceptance and
-deployment remain separate. PawnIO review/integration is the next listed item;
-its preservation checkpoint remains unaccepted.
+deployment remain separate.
+
+### PawnIO platform gate accepted on 2026-10-19
+
+**Review verdict:** PASS for source integration. Reviewed all 11 changed paths
+between `8aae1fbc` and `8f4a143c`, using
+[the PawnIO specification](../features/feature-pawnio-platform-gating.md),
+`AGENTS.md`, the CI runner contract, and the current module callers.
+Both guards precede the unsupported operation and retain Windows lookup order.
+The original missing portable-process evidence is now supplied; the spec's
+inaccurate claim that unloaded `ExecuteHr` clears buffers was corrected to the
+existing zero-return-size/unchanged-buffer behavior. No remaining merge blocker.
+
+The preservation branch was integrated with current `master` without changing
+its PawnIO implementation. Local validation passed 515 deterministic tests
+(one existing opt-in skip), both Windows application builds, all five library
+targets, and 99 CI assertions per PowerShell engine (two optional YAML skips).
+[Hosted run 39286347591](https://github.com/espensev/sq-librehw/actions/runs/39286347591)
+at `8f4a143c` passed the portable gate on real Ubuntu and Windows, including
+real Unix type initialization and AMD/Intel/SMU wrapper construction.
+
+Hardware driver I/O and deployment remain outside this verification. Crash-time
+history preservation is the next item in the remaining queue.
 
 ### Separate acceptance and policy gates
 
