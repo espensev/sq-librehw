@@ -15,21 +15,14 @@ changes and the open-work queue reviewed separately.
 
 **Verdict:** PASS WITH NOTES for source integration. No remaining confirmed merge
 blocker after the fixes below. Existing operational and reliability defects
-remain open; this is not clearance to deploy or run campaign cleanup.
+remain open; this is not clearance to deploy. Campaign cleanup safety and
+empty CI gate handling were subsequently repaired and fixture-verified below.
 
 ## Findings and next work
 
 ### High priority
 
-1. **[regression/standards] Campaign cleanup can discard unrelated work.**
-   `scripts/task_runtime/merge.py:56` lets recorded worktree parents authorize
-   themselves. Lines 173, 183 and 190 force-remove worktrees, recursively delete
-   fallback paths and force-delete branches. Line 236 stashes without a matching
-   restore path. Repair path authority, dirty-work preservation, ancestry checks
-   and recovery before using campaign merge/cleanup. These paths were inspected,
-   never executed.
-
-2. **[regression] Device exceptions still starve subsequent devices and CSV.**
+1. **[regression] Device exceptions still starve subsequent devices and CSV.**
    `UI/UpdateVisitor.cs:20` propagates `hardware.Update()` failures;
    `UI/MainForm.cs:829` then exits before logging at line 832. Later polls still
    run, so this is repeated starvation, not a stopped timer. Specify per-device
@@ -41,7 +34,6 @@ remain open; this is not clearance to deploy or run campaign cleanup.
 | Area | Current evidence | Required next step |
 |---|---|---|
 | PawnIO platform gate (F-013) | `LibreHardwareMonitorLib/PawnIo/PawnIo.cs:25` enters Windows registry code; line 67 opens the Windows device. Existing work is preserved in local checkpoint `1a18c5ab` on `fix/f-013-pawnio-os-gate`; its source and test bytes are unchanged by cleanup. | Finish implementation review, refresh integration and test a real portable process; the checkpoint is not accepted or merged, and injected Unix flags alone do not establish Linux acceptance. |
-| False-success CI gates | `eng/ci/Invoke-LhmGates.ps1:465` skips disallowed keys; line 531 passes the result without requiring a step. | Reject selected gates with no executable allowed command. Current valid configuration does not repair malformed-config behavior. |
 | Crash-time history loss | `Hardware/Sensor.cs:473` removes loaded history; `Utilities/PersistentSettings.cs:313` excludes unclaimed histories; dirty autosaves can replace both saved copies. | Preserve and claim validated bounded histories; cover two dirty saves and crash/reopen. |
 | Runtime hardware options | `Hardware/Computer.cs:199` adds GPU groups before the backing flag commits; `UI/MainForm.cs:707` only logs apply failures. | Category-level transactions and deliberate UI/settings rollback, including partial enable/disable and retries. |
 | DIMM discovery retry | `Hardware/Memory/MemoryGroup.cs:193` publishes before notifications; its retry catches subscriber failure as discovery failure. | Separate publication from notification failure and prevent duplicate identities. |
@@ -49,8 +41,8 @@ remain open; this is not clearance to deploy or run campaign cleanup.
 | Migration recovery | `Move-LibreHardwareMonitorRuntimeRoot.ps1:647` changes the shim before task retargeting; line 651 sets restoration responsibility only after both. | Independently restore partial binding writes before reusing runtime migration. |
 | Authentication transitions | `UI/AuthForm.cs:40` changes `AuthEnabled`; `HttpListenerDispatchService.cs:82` sets the listener scheme only at startup. | Coordinate listener reconfiguration and drain. This is an availability mismatch, not a proven authentication bypass. |
 
-These are current source findings, not newly repeated fault reproductions this
-turn. Existing specs and the October 8 review record earlier reproductions. The
+These remaining source findings were not reproduced again during the tooling
+safety fixes. Existing specs and the October 8 review record earlier reproductions. The
 latter is preserved at
 `archive/pre-cleanup-20261019:docs/reviews/review-2026-10-08-improvement-continuation.md`
 and can be read with `git show` using that revision/path.
@@ -73,6 +65,29 @@ Generated `.audit` receipts remain unchanged in place and are now explicitly
 ignored as local state. The documentation index points to this current review.
 The PawnIO implementation remains separate in its labeled preservation
 checkpoint. Cleanup does not close any implementation or deployment gate above.
+
+### Tooling safety fixes completed on 2026-10-19
+
+- `scripts/task_runtime/merge.py` now refuses dirty destination trees without
+  stashing, requires exact fresh Git worktree identity and merged ancestry for
+  cleanup, preserves ignored/untracked/staged changes, and uses non-forced Git
+  removal. Unregistered paths are retained. Copying files does not prove that
+  the source branch was merged, so source branches remain available for recovery.
+- `scripts/task_runtime/orchestration.py` routes orphan cleanup through those
+  same checks and reports actual removal rather than merely a prune request.
+- `eng/ci/Invoke-LhmGates.ps1` validates the whole selection before execution;
+  gates containing no nonblank allowed command fail with exit 2, including in
+  dry-run mode. Valid partial gates continue to execute their allowed fixture.
+- Regression tests first reproduced forced cleanup, lost local work, recursive
+  orphan removal, and false-success gates. The full campaign suite then passed
+  52 tests, including 17 merge/recovery safety tests using disposable Git repos.
+  The complete CI suite passed in PowerShell 5.1 and 7: 99 assertions per engine,
+  zero failures, and two existing optional YAML checks skipped without PyYAML.
+
+Acceptance and regression commands are maintained in the
+[campaign control-plane contract](../architecture/campaign-control-plane.md#merge-and-cleanup-acceptance-2026-10-19)
+and [CI runner documentation](../../eng/ci/README.md#exit-codes).
+No real campaign cleanup, push, deployment, or runtime operation was performed.
 
 ### Separate acceptance and policy gates
 

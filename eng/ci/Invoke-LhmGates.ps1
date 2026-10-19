@@ -428,6 +428,16 @@ if (-not $List) {
 # Execution
 # ---------------------------------------------------------------------------
 
+# Validate the entire selection before running even the first gate. Otherwise
+# an empty later gate could report success after earlier commands have run.
+foreach ($name in $selected) {
+    $allowed = @($inventory[$name] | Where-Object { $GateClassification[$name].AllowedKeys -contains $_.Key })
+    if ($allowed.Count -eq 0) {
+        Write-Host "Configuration error: gate '$name' has no executable allowed command."
+        exit $ExitConfig
+    }
+}
+
 $gateResults = @()
 $refusedCount = 0
 $failedCount = 0
