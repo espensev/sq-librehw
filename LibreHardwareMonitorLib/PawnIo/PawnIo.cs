@@ -22,23 +22,33 @@ public class PawnIo
 
     static PawnIo()
     {
+        Version = FindInstalledVersion(Software.OperatingSystem.IsUnix);
+    }
+
+    /// <summary>
+    /// Reads the installed PawnIO version from the registry. PawnIO is a Windows driver
+    /// interface, so on Unix the probe is skipped entirely: registry access throws
+    /// <see cref="PlatformNotSupportedException"/> there and would surface as a
+    /// <see cref="TypeInitializationException"/> from every PawnIO module consumer.
+    /// </summary>
+    internal static Version FindInstalledVersion(bool isUnix)
+    {
+        if (isUnix)
+            return null;
+
         using RegistryKey subKey = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO");
 
-        if (Version.TryParse(subKey?.GetValue("DisplayVersion") as string, out Version version))
-        {
-            Version = version;
-        }
-        else
-        {
-            using RegistryKey registryKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        if (Version.TryParse(subKey?.GetValue("DisplayVersion") as string, out Version parsed))
+            return parsed;
 
-            using RegistryKey subKeyWow64 = registryKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO");
+        using RegistryKey registryKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
 
-            if (Version.TryParse(subKeyWow64?.GetValue("DisplayVersion") as string, out version))
-            {
-                Version = version;
-            }
-        }
+        using RegistryKey subKeyWow64 = registryKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO");
+
+        if (Version.TryParse(subKeyWow64?.GetValue("DisplayVersion") as string, out parsed))
+            return parsed;
+
+        return null;
     }
 
     private PawnIo(SafeFileHandle handle) => _handle = handle;
@@ -62,8 +72,19 @@ public class PawnIo
         IsClosed: false
     };
 
-    internal static unsafe PawnIo LoadModuleFromResource(Assembly assembly, string resourceName)
+    internal static PawnIo LoadModuleFromResource(Assembly assembly, string resourceName)
     {
+        return LoadModuleFromResource(assembly, resourceName, Software.OperatingSystem.IsUnix);
+    }
+
+    internal static unsafe PawnIo LoadModuleFromResource(Assembly assembly, string resourceName, bool isUnix)
+    {
+        // Same platform gate as FindInstalledVersion: CreateFile on the PawnIO device
+        // path is a Windows P/Invoke and throws DllNotFoundException on Unix. Fail soft
+        // to a not-loaded instance, exactly like a present-but-unavailable device.
+        if (isUnix)
+            return new PawnIo(null);
+
         SafeFileHandle handle = PInvoke.CreateFile(@"\\?\GLOBALROOT\Device\PawnIO",
                                                    (uint)FileAccess.ReadWrite,
                                                    FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE,
