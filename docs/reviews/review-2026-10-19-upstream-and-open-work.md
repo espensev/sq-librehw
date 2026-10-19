@@ -16,8 +16,8 @@ changes and the open-work queue reviewed separately.
 **Verdict:** PASS WITH NOTES for source integration. No remaining confirmed merge
 blocker after the fixes below. Existing operational and reliability defects
 remain open; this is not clearance to deploy. Campaign cleanup safety,
-empty CI gate handling, per-device polling isolation, and PawnIO platform
-gating were subsequently repaired and verified below.
+empty CI gate handling, per-device polling isolation, PawnIO platform gating,
+and crash-time history preservation were subsequently repaired and verified below.
 
 ## Findings and next work
 
@@ -25,7 +25,6 @@ gating were subsequently repaired and verified below.
 
 | Area | Current evidence | Required next step |
 |---|---|---|
-| Crash-time history loss | `Hardware/Sensor.cs:473` removes loaded history; `Utilities/PersistentSettings.cs:313` excludes unclaimed histories; dirty autosaves can replace both saved copies. | Preserve and claim validated bounded histories; cover two dirty saves and crash/reopen. |
 | Runtime hardware options | `Hardware/Computer.cs:199` adds GPU groups before the backing flag commits; `UI/MainForm.cs:707` only logs apply failures. | Category-level transactions and deliberate UI/settings rollback, including partial enable/disable and retries. |
 | DIMM discovery retry | `Hardware/Memory/MemoryGroup.cs:193` publishes before notifications; its retry catches subscriber failure as discovery failure. | Separate publication from notification failure and prevent duplicate identities. |
 | Release health and timeout defaults | Install line 17 and Restore line 11 still default to port 8085; the local release spec records explicit 18085. Install/Restore allow 300 seconds while the complete checkout's launcher allows 120. | Bind health checks to validated configuration and reject unsupported timeout values before mutation. |
@@ -114,8 +113,27 @@ targets, and 99 CI assertions per PowerShell engine (two optional YAML skips).
 at `8f4a143c` passed the portable gate on real Ubuntu and Windows, including
 real Unix type initialization and AMD/Intel/SMU wrapper construction.
 
-Hardware driver I/O and deployment remain outside this verification. Crash-time
-history preservation is the next item in the remaining queue.
+Hardware driver I/O and deployment remain outside this verification.
+
+### Crash-time history preservation completed on 2026-10-19
+
+`Hardware/Sensor.cs` now claims a validated, normalized bounded checkpoint through
+the existing settings store. Two dirty autosaves preserve it in both primary
+and backup files, and abrupt reopen recovers it without a hardware-close event.
+Rejected and unclaimed histories still disappear; explicit clear/disable and
+window narrowing remove or trim the checkpoint. Clean hardware close refreshes
+it with current-session samples.
+
+The [history preservation contract](../features/feature-memory-ui-reliability.md#crash-time-history-preservation-follow-up-2026-10-19)
+records the acceptance and verification. Three real-file cases first reproduced
+the loss; the repaired focused suites passed 49 tests with one existing opt-in
+skip. Independent full verification passed 527 deterministic tests with that
+same skip, both Windows application builds, and all five library targets with
+zero warnings/errors. The source change does not add periodic sample saving.
+Independent review accepted all six changed files and reran seven recovery,
+clear/disable, and window-change cases successfully.
+Live crash acceptance and deployment remain separate. Runtime hardware-option
+transactions are the next source item in the remaining queue.
 
 ### Separate acceptance and policy gates
 

@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
@@ -16,6 +17,7 @@ using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
 using Xunit;
 using Xunit.Abstractions;
+using HardwareBase = LibreHardwareMonitor.Hardware.Hardware;
 
 namespace LibreHardwareMonitor.Tests;
 
@@ -27,6 +29,7 @@ namespace LibreHardwareMonitor.Tests;
 public sealed class SettingsPersistenceTests : IDisposable
 {
     private const string NicValuesKey = "/nic/%7B7d5637a8-11d0-4671-b0f8-3a4bcbd4f81b%7D/throughput/1/values";
+    private const string SensorValuesKey = "/history-test/temperature/0/values";
     private const string LiveConfigEnvironmentVariable = "LHM_LIVE_CONFIG_PATH";
     private const string LiveConfigExpectedLengthEnvironmentVariable = "LHM_LIVE_CONFIG_EXPECTED_LENGTH";
     private const long DefaultExpectedLiveConfigLength = 307_985_688;
@@ -116,29 +119,182 @@ public sealed class SettingsPersistenceTests : IDisposable
         Assert.Equal(8085, reloaded.GetValue("listenerPort", 0));
     }
 
-    [Fact]
-    public void Save_KeepsSensorHistoryClaimedAndRewrittenThisSession()
+    [Theory]
+    [InlineData("valid")]
+    [InlineData("missing")]
+    [InlineData("corrupt")]
+    public void Save_KeepsValidatedSensorHistoryAcrossRepeatedSavesAndAbruptReopen(string primaryState)
     {
+        DateTime now = new(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        SensorValue[] history =
+        {
+            new(5, now.AddDays(-2)),
+            new(10, now.AddSeconds(-3)),
+            new(float.PositiveInfinity, now.AddSeconds(-2)),
+            new(20, now.AddSeconds(-1)),
+            new(float.NaN, now.AddMilliseconds(-500))
+        };
         string path = ConfigPath("claimed");
-        WriteConfig(path, (NicValuesKey, "b2xk"));
+        string encoded = Sensor.EncodeValuesBounded(history, Sensor.MaxPersistedValuesLength);
+        WriteConfig(path, (SensorValuesKey, encoded), (NicValuesKey, encoded));
 
         PersistentSettings settings = new();
         settings.Load(path);
+        Sensor sensor = CreateHistorySensor(settings, () => now, out _);
+        Assert.Equal(new[] { 10f, 20f }, sensor.Values.Where(value => !float.IsNaN(value.Value)).Select(value => value.Value));
 
-        // Sensor construction reads and removes the entry (Sensor.GetSensorValuesFromSettings).
-        Assert.Equal("b2xk", settings.GetValue(NicValuesKey, null));
-        settings.Remove(NicValuesKey);
+        // New readings stay in memory until clean close; autosave retains the validated checkpoint.
+        for (int i = 0; i < 4; i++)
+            sensor.Value = 99;
 
-        // Hardware close writes a fresh bounded payload (Sensor.SetSensorValuesToSettings).
-        settings.SetValue(NicValuesKey, "bmV3");
+        SaveTwice(settings, path);
 
-        string savedPath = ConfigPath("claimed-saved");
-        settings.Save(savedPath);
+        foreach (string savedPath in new[] { path, path + ".backup" })
+        {
+            PersistentSettings saved = new();
+            saved.Load(savedPath);
+            Assert.False(saved.Contains(NicValuesKey));
+            Assert.True(saved.Contains(SensorValuesKey));
+            string retained = saved.GetValue(SensorValuesKey, null);
+            Assert.InRange(retained.Length, 1, Sensor.MaxPersistedValuesLength);
+            var decoded = DecodeValues(retained);
+            Assert.Equal(new[] { 10f, 20f }, decoded.Take(2).Select(value => value.Value));
+            Assert.Equal(3, decoded.Count);
+            Assert.True(float.IsNaN(decoded[2].Value));
+            Assert.Equal(now, decoded[2].Time);
+        }
+
+        if (primaryState == "missing")
+            File.Delete(path);
+        else if (primaryState == "corrupt")
+            File.WriteAllText(path, "<broken");
+
+        // Simulate abrupt exit: the original hardware's Closing event is never raised.
+        PersistentSettings reloaded = new();
+        reloaded.Load(path);
+        Sensor reopened = CreateHistorySensor(reloaded, () => now.AddMinutes(1), out _);
+
+        Assert.Equal(new[] { 10f, 20f }, reopened.Values.Where(value => !float.IsNaN(value.Value)).Select(value => value.Value));
+        SensorValue marker = Assert.Single(reopened.Values, value => float.IsNaN(value.Value));
+        Assert.Equal(now.AddMinutes(1), marker.Time);
+    }
+
+    [Theory]
+    [InlineData("malformed")]
+    [InlineData("oversized")]
+    [InlineData("expired")]
+    [InlineData("corrupt")]
+    public void Save_RemovesRejectedHistoryFromPrimaryAndBackup(string historyState)
+    {
+        DateTime now = new(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        string encoded = Sensor.EncodeValuesBounded(new[] { new SensorValue(10, now.AddDays(-2)) }, Sensor.MaxPersistedValuesLength);
+        if (historyState == "malformed")
+            encoded = "invalid base64";
+        else if (historyState == "oversized")
+            encoded = new string('A', Sensor.MaxPersistedValuesLength + 1);
+        else if (historyState == "corrupt")
+        {
+            byte[] bytes = Convert.FromBase64String(Sensor.EncodeValuesBounded(new[] { new SensorValue(10, now.AddMinutes(-1)) }, Sensor.MaxPersistedValuesLength));
+            bytes[bytes.Length - 8] ^= 0xff;
+            encoded = Convert.ToBase64String(bytes);
+        }
+
+        string path = ConfigPath("rejected");
+        WriteConfig(path, (SensorValuesKey, encoded));
+        PersistentSettings settings = new();
+        settings.Load(path);
+        Sensor sensor = CreateHistorySensor(settings, () => now, out _);
+        Assert.Empty(sensor.Values);
+        Assert.False(settings.Contains(SensorValuesKey));
+
+        SaveTwice(settings, path);
+
+        foreach (string savedPath in new[] { path, path + ".backup" })
+        {
+            PersistentSettings reloaded = new();
+            reloaded.Load(savedPath);
+            Assert.False(reloaded.Contains(SensorValuesKey));
+            Assert.Empty(CreateHistorySensor(reloaded, () => now, out _).Values);
+        }
+    }
+
+    [Theory]
+    [InlineData("clear")]
+    [InlineData("disable")]
+    [InlineData("disabled-at-construction")]
+    public void Save_DoesNotResurrectClearedOrDisabledHistory(string action)
+    {
+        DateTime now = new(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        string path = ConfigPath("cleared");
+        WriteConfig(path, (SensorValuesKey, Sensor.EncodeValuesBounded(new[] { new SensorValue(10, now.AddMinutes(-1)) }, Sensor.MaxPersistedValuesLength)));
+        PersistentSettings settings = new();
+        settings.Load(path);
+        Sensor sensor = CreateHistorySensor(settings, () => now, out _, action == "disabled-at-construction");
+        if (action == "clear")
+            sensor.ClearValues();
+        else if (action == "disable")
+        {
+            sensor.ValuesTimeWindow = TimeSpan.Zero;
+            sensor.ValuesTimeWindow = TimeSpan.FromDays(1);
+        }
+
+        Assert.Empty(sensor.Values);
+        Assert.False(settings.Contains(SensorValuesKey));
+        SaveTwice(settings, path);
+
+        foreach (string savedPath in new[] { path, path + ".backup" })
+        {
+            PersistentSettings reloaded = new();
+            reloaded.Load(savedPath);
+            Assert.False(reloaded.Contains(SensorValuesKey));
+            Assert.Empty(CreateHistorySensor(reloaded, () => now, out _).Values);
+        }
+    }
+
+    [Fact]
+    public void Save_AfterNarrowingAndWideningWindow_DoesNotResurrectTrimmedHistory()
+    {
+        DateTime now = new(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        string path = ConfigPath("trimmed");
+        SensorValue[] history = { new(10, now.AddHours(-2)), new(20, now.AddMinutes(-5)) };
+        WriteConfig(path, (SensorValuesKey, Sensor.EncodeValuesBounded(history, Sensor.MaxPersistedValuesLength)));
+        PersistentSettings settings = new();
+        settings.Load(path);
+        Sensor sensor = CreateHistorySensor(settings, () => now, out _);
+
+        sensor.ValuesTimeWindow = TimeSpan.FromHours(1);
+        sensor.ValuesTimeWindow = TimeSpan.FromDays(1);
+        SaveTwice(settings, path);
+
+        foreach (string savedPath in new[] { path, path + ".backup" })
+        {
+            PersistentSettings reloaded = new();
+            reloaded.Load(savedPath);
+            Sensor reopened = CreateHistorySensor(reloaded, () => now, out _);
+            Assert.Equal(20f, Assert.Single(reopened.Values, value => !float.IsNaN(value.Value)).Value);
+        }
+    }
+
+    [Fact]
+    public void Save_AfterCleanHardwareClose_RefreshesRetainedHistory()
+    {
+        DateTime now = new(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        string path = ConfigPath("closed");
+        WriteConfig(path, (SensorValuesKey, Sensor.EncodeValuesBounded(new[] { new SensorValue(10, now.AddMinutes(-1)) }, Sensor.MaxPersistedValuesLength)));
+        PersistentSettings settings = new();
+        settings.Load(path);
+        Sensor sensor = CreateHistorySensor(settings, () => now, out TestHardware hardware);
+        now = now.AddSeconds(1);
+        for (int i = 0; i < 4; i++)
+            sensor.Value = 20;
+
+        hardware.Close();
+        SaveTwice(settings, path);
 
         PersistentSettings reloaded = new();
-        reloaded.Load(savedPath);
-
-        Assert.Equal("bmV3", reloaded.GetValue(NicValuesKey, null));
+        reloaded.Load(path);
+        Sensor reopened = CreateHistorySensor(reloaded, () => now, out _);
+        Assert.Equal(new[] { 10f, 20f }, reopened.Values.Where(value => !float.IsNaN(value.Value)).Select(value => value.Value));
     }
 
     [Fact]
@@ -793,6 +949,35 @@ public sealed class SettingsPersistenceTests : IDisposable
             if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
                 Skip = $"Set {LiveConfigEnvironmentVariable} to a copied/live config path to run the opt-in loader harness.";
         }
+    }
+
+    private static Sensor CreateHistorySensor(PersistentSettings settings, Func<DateTime> utcNow, out TestHardware hardware, bool disableHistory = false)
+    {
+        hardware = new TestHardware(settings);
+        return new Sensor("Test Sensor", 0, false, SensorType.Temperature, hardware,
+                          Array.Empty<ParameterDescription>(), settings, disableHistory, utcNow);
+    }
+
+    private static void SaveTwice(PersistentSettings settings, string path)
+    {
+        for (int save = 0; save < 2; save++)
+        {
+            settings.SetValue("listenerPort", 8085 + save);
+            Assert.True(settings.Modified);
+            settings.Save(path);
+            Assert.False(settings.Modified);
+        }
+    }
+
+    private sealed class TestHardware : HardwareBase
+    {
+        public TestHardware(ISettings settings) : base("Test Hardware", new Identifier("history-test"), settings)
+        { }
+
+        public override HardwareType HardwareType => HardwareType.Cpu;
+
+        public override void Update()
+        { }
     }
 
     /// <summary>Mirrors the decoding in Sensor.GetSensorValuesFromSettings.</summary>

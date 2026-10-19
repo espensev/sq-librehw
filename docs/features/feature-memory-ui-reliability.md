@@ -11,6 +11,10 @@ and iCUE running. `07d2d25e` holds the rollback slot.
 **Device polling follow-up:** source-verified on 2026-10-19; deployment and
 physical device-failure acceptance remain separate.
 
+**History preservation follow-up:** source-verified on 2026-10-19; the last
+validated checkpoint survives dirty autosaves and abrupt reopen. Deployment
+remains separate.
+
 **Updated:** 2026-10-19
 
 ## Problem and motivation
@@ -99,6 +103,49 @@ Verification on 2026-10-19:
   opt-in live-config test skipped.
 - Release application builds for `net10.0-windows` and `net472`, plus the library's
   five targets and package build, passed with zero warnings/errors.
+
+## Crash-time history preservation follow-up (2026-10-19)
+
+Claim the last persisted history when a live sensor validates it, keeping a
+normalized bounded snapshot in settings until clean hardware close refreshes
+it. Two or more dirty autosaves must preserve that snapshot in both the primary
+configuration and its backup, so abrupt exit without hardware close does not
+erase the previous session's history. This does not add periodic persistence
+of samples collected during the current session.
+
+Keep the existing encoded-length, decoded-record, time-window, finite-value,
+and payload-integrity checks. Reject malformed, oversized, or wholly expired
+history; normalize partially expired history and session markers. Histories
+never claimed by a present sensor remain eligible for stale-history cleanup.
+Explicit history clearing or disabling must remove the retained snapshot so
+the next save cannot resurrect it. Narrowing the configured window must trim
+an existing snapshot, including when startup applies it after construction;
+widening it later must not recover discarded points. Preserve `ISettings`, the
+settings XML format, current/min/max readings, and both supported application
+frameworks.
+
+Acceptance requires deterministic fixtures using the real `Sensor` and
+`PersistentSettings` save/load paths: two dirty saves followed by reopening
+without hardware close, primary and backup recovery, absent-sensor pruning,
+invalid/expired payload removal, explicit clear/disable, and clean-close
+refresh. Run focused history/settings tests, the deterministic .NET suites,
+both Windows application builds, and all library targets. Live crash testing
+and deployment remain separate.
+
+Verification on 2026-10-19:
+
+- The new real-file regression first failed for valid, missing, and corrupt
+  primary configurations after two dirty saves. It passes with the retained
+  checkpoint, including backup recovery without hardware close.
+- Focused `SettingsPersistenceTests` passed 30 tests with the existing opt-in
+  live-config test skipped; `SensorHistoryTests` passed 19. Coverage includes
+  normalization, stale/invalid/expired removal, explicit clearing/disabling,
+  window narrowing then widening, clean-close refresh, and retained budgets.
+- `dotnet test LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.slnf -c Release -p:Platform=x64 --no-restore`
+  passed 527 tests (Library 173, Application 240, Contracts 114), with one
+  existing opt-in live-config test skipped.
+- Release x64 application builds for `net10.0-windows` and `net472`, plus all
+  five library targets and package build, passed with zero warnings/errors.
 
 ## Required behavior and failure handling
 
@@ -382,8 +429,9 @@ Verification on 2026-10-19:
   SND-HOST; deployment validation covered runtime and HTTP health, not manual UI.
 - [x] Preserve the forced first dashboard snapshot when a persisted-paused page
   starts hidden, so first visibility does not stay blank until Resume.
-- [ ] Preserve the last bounded on-disk sensor histories across autosave until a
-  clean hardware close refreshes `/values`.
+- [x] Source-fixed preservation of the last bounded on-disk sensor histories
+  across autosave until clean hardware close refreshes `/values`; explicit
+  clear/disable and window narrowing update the retained checkpoint.
 - [x] Make `Computer.Open()` transactional: on any group-construction or
   add-event failure, close every partial group/global owner, leave `Hardware`
   empty, preserve the original exception, and permit a clean retry.

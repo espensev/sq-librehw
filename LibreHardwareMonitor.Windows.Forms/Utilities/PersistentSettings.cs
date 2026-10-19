@@ -45,9 +45,9 @@ public class PersistentSettings : ISettings
     private readonly Action<string, byte[], bool> _writeFile;
     private readonly Action<SaveStage> _saveStageObserver;
 
-    // "<sensor>/values" keys loaded from disk that no sensor claimed (via Remove) or refreshed
-    // (via SetValue) during this session. They belong to hardware that is no longer present and
-    // are skipped on Save so stale history cannot accumulate forever.
+    // "<sensor>/values" keys loaded from disk that no sensor claimed or refreshed via SetValue
+    // (or rejected via Remove) during this session. Skip them on Save so stale history from
+    // hardware that is no longer present cannot accumulate forever.
     private readonly HashSet<string> _unclaimedSensorValues = new HashSet<string>();
 
     // Guards _settings, _unclaimedSensorValues, _modified and the transient-load write block so

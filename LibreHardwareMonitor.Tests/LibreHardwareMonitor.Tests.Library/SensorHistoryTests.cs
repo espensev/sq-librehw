@@ -280,7 +280,14 @@ public sealed class SensorHistoryTests
 
         Assert.Equal(new[] { 10f, 20f }, loaded.Take(2).Select(value => value.Value));
         Assert.True(float.IsNaN(loaded[loaded.Length - 1].Value));
-        Assert.False(settings.Contains(SensorValuesKey));
+        string retained = settings.GetValue(SensorValuesKey, null);
+        Assert.NotNull(retained);
+        Assert.InRange(retained.Length, 1, Sensor.MaxPersistedValuesLength);
+        List<float> retainedValues = new();
+        Assert.True(Sensor.TryDecodeSensorValues(Convert.FromBase64String(retained), now, TimeSpan.FromDays(1),
+                                                (value, _) => retainedValues.Add(value), out int recordCount, out _));
+        Assert.Equal(new[] { 10f, 20f }, retainedValues);
+        Assert.Equal(3, recordCount);
 
         for (int i = 0; i < Sensor.MaxHistoryValues; i++)
             RecordAveragedValue(fixture, 1_000 + i);
@@ -289,6 +296,28 @@ public sealed class SensorHistoryTests
         Assert.InRange(decimated.Length, 1, Sensor.MaxHistoryValues);
         Assert.Contains(decimated, value => float.IsNaN(value.Value));
         Assert.Equal(1_000f + Sensor.MaxHistoryValues - 1, decimated[decimated.Length - 1].Value);
+    }
+
+    [Fact]
+    public void PersistedHistory_ClaimsCompactedSnapshotWithinPointAndEncodedBudgets()
+    {
+        DateTime now = new(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        SensorValue[] persisted = new SensorValue[Sensor.MaxHistoryValues * 2];
+        for (int i = 0; i < persisted.Length; i++)
+            persisted[i] = new SensorValue(i % 251, now.AddSeconds(i - persisted.Length));
+
+        TestSettings settings = new();
+        settings.SetValue(SensorValuesKey, Sensor.EncodeValuesBounded(persisted, Sensor.MaxPersistedValuesLength));
+        SensorFixture fixture = CreateFixture(now, settings);
+
+        Assert.InRange(fixture.Sensor.Values.Count(), 1, Sensor.MaxHistoryValues);
+        string retained = settings.GetValue(SensorValuesKey, null);
+        Assert.NotNull(retained);
+        Assert.InRange(retained.Length, 1, Sensor.MaxPersistedValuesLength);
+        Assert.True(Sensor.TryDecodeSensorValues(Convert.FromBase64String(retained), now, TimeSpan.FromDays(1),
+                                                (_, _) => { }, out int recordCount, out int byteCount));
+        Assert.InRange(recordCount, 1, Sensor.MaxHistoryValues);
+        Assert.InRange(byteCount, 1, Sensor.MaxDecodedHistoryBytes);
     }
 
     [Fact]

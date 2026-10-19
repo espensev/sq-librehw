@@ -320,6 +320,7 @@ internal class Sensor : ISensor, ISensorHistoryReader
         {
             lock (_valuesLock)
             {
+                bool refreshPersistedValues = _valuesTimeWindow != value && _settings.Contains(new Identifier(Identifier, "values").ToString());
                 _valuesTimeWindow = value;
                 if (value == TimeSpan.Zero)
                 {
@@ -328,6 +329,8 @@ internal class Sensor : ISensor, ISensorHistoryReader
                 else
                 {
                     RemoveExpiredValues(_utcNow());
+                    if (refreshPersistedValues)
+                        SetSensorValuesToSettings();
                 }
             }
         }
@@ -479,8 +482,9 @@ internal class Sensor : ISensor, ISensorHistoryReader
                 AppendValue(float.NaN, now);
         }
 
-        //remove the value string from the settings to reduce memory usage
-        _settings.Remove(name);
+        // Claim only the validated, normalized history. Autosaves must retain this bounded
+        // checkpoint until clean hardware close refreshes it, including after an abrupt exit.
+        SetSensorValuesToSettings();
     }
 
     internal static bool TryDecodeSensorValues
@@ -774,6 +778,7 @@ internal class Sensor : ISensor, ISensorHistoryReader
 
     private void ClearValuesCore()
     {
+        _settings.Remove(new Identifier(Identifier, "values").ToString());
         bool historyChanged = _values.Count > 0;
         _values.Clear();
         _sum = 0;
