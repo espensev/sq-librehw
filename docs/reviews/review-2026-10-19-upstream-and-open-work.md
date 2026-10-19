@@ -21,17 +21,7 @@ remain open; this is not clearance to deploy or run campaign cleanup.
 
 ### High priority
 
-1. **[standards/regression] Primary checkout remains incomplete.** Its 12
-   pre-existing tracked deletions include the application icon, AuthForm resource,
-   canonical launcher, campaign imports and license files. The application project
-   still requires its icon at `LibreHardwareMonitor.Windows.Forms.csproj:11`;
-   installer `ops/deploy/snd-desk/Install-LibreHardwareMonitorRelease.ps1:122`
-   requires the missing launcher. Deletion ownership is unresolved. This turn
-   preserves those deletions and the separate `docs/README.md` edit and untracked
-   audit files. Resolve ownership before using the primary tree as a build or
-   campaign baseline; the complete integration worktree supplies verified source.
-
-2. **[regression/standards] Campaign cleanup can discard unrelated work.**
+1. **[regression/standards] Campaign cleanup can discard unrelated work.**
    `scripts/task_runtime/merge.py:56` lets recorded worktree parents authorize
    themselves. Lines 173, 183 and 190 force-remove worktrees, recursively delete
    fallback paths and force-delete branches. Line 236 stashes without a matching
@@ -39,7 +29,7 @@ remain open; this is not clearance to deploy or run campaign cleanup.
    and recovery before using campaign merge/cleanup. These paths were inspected,
    never executed.
 
-3. **[regression] Device exceptions still starve subsequent devices and CSV.**
+2. **[regression] Device exceptions still starve subsequent devices and CSV.**
    `UI/UpdateVisitor.cs:20` propagates `hardware.Update()` failures;
    `UI/MainForm.cs:829` then exits before logging at line 832. Later polls still
    run, so this is repeated starvation, not a stopped timer. Specify per-device
@@ -50,7 +40,7 @@ remain open; this is not clearance to deploy or run campaign cleanup.
 
 | Area | Current evidence | Required next step |
 |---|---|---|
-| PawnIO platform gate (F-013) | `LibreHardwareMonitorLib/PawnIo/PawnIo.cs:25` enters Windows registry code; line 67 opens the Windows device. Existing `fix/f-013-pawnio-os-gate` remains at `fd6f106a` with three uncommitted patch/test/spec files. | Finish the preserved lane, refresh integration and test a real portable process; injected Unix flags alone do not establish Linux acceptance. |
+| PawnIO platform gate (F-013) | `LibreHardwareMonitorLib/PawnIo/PawnIo.cs:25` enters Windows registry code; line 67 opens the Windows device. Existing work is preserved in local checkpoint `1a18c5ab` on `fix/f-013-pawnio-os-gate`; its source and test bytes are unchanged by cleanup. | Finish implementation review, refresh integration and test a real portable process; the checkpoint is not accepted or merged, and injected Unix flags alone do not establish Linux acceptance. |
 | False-success CI gates | `eng/ci/Invoke-LhmGates.ps1:465` skips disallowed keys; line 531 passes the result without requiring a step. | Reject selected gates with no executable allowed command. Current valid configuration does not repair malformed-config behavior. |
 | Crash-time history loss | `Hardware/Sensor.cs:473` removes loaded history; `Utilities/PersistentSettings.cs:313` excludes unclaimed histories; dirty autosaves can replace both saved copies. | Preserve and claim validated bounded histories; cover two dirty saves and crash/reopen. |
 | Runtime hardware options | `Hardware/Computer.cs:199` adds GPU groups before the backing flag commits; `UI/MainForm.cs:707` only logs apply failures. | Category-level transactions and deliberate UI/settings rollback, including partial enable/disable and retries. |
@@ -60,12 +50,29 @@ remain open; this is not clearance to deploy or run campaign cleanup.
 | Authentication transitions | `UI/AuthForm.cs:40` changes `AuthEnabled`; `HttpListenerDispatchService.cs:82` sets the listener scheme only at startup. | Coordinate listener reconfiguration and drain. This is an availability mismatch, not a proven authentication bypass. |
 
 These are current source findings, not newly repeated fault reproductions this
-turn. Existing Specs and the October 8 local review record earlier reproductions.
+turn. Existing specs and the October 8 review record earlier reproductions. The
+latter is preserved at
+`archive/pre-cleanup-20261019:docs/reviews/review-2026-10-08-improvement-continuation.md`
+and can be read with `git show` using that revision/path.
 The main-tree corruption discovered here was separate: seven recent commits
 and their dependent objects were missing. Exact-hash recovery restored all
 49 missing objects (7 commits, 26 trees, 16 blobs), preserving original ancestry.
 `git fsck --full` and pack checks pass. The cause of object loss remains unknown;
 no replacement history, reset, or force operation was used.
+
+### Checkout cleanup completed on 2026-10-19
+
+The subsequent user-authorized cleanup restored all 12 missing tracked files
+from `master`, including the icons, AuthForm resource, launcher, campaign
+imports, licenses and Avalonia spec. The original dirty tracked state and both
+historical review drafts are preserved in `0df7941f` on
+`archive/pre-cleanup-20261019`. That archive intentionally records the former
+deletions and must not be merged into `master`.
+
+Generated `.audit` receipts remain unchanged in place and are now explicitly
+ignored as local state. The documentation index points to this current review.
+The PawnIO implementation remains separate in its labeled preservation
+checkpoint. Cleanup does not close any implementation or deployment gate above.
 
 ### Separate acceptance and policy gates
 
@@ -125,6 +132,13 @@ are in the `librehw-upstream-sync-20261019` child of the system temporary
 directory (`[IO.Path]::GetTempPath()`). Receipt files are `exact-object-recovery.json`,
 `recovery-fsck.txt`, `tests-full.log`, framework build logs and `closeout.json`.
 These are execution evidence, not runtime authority.
+
+Cleanup rebuilt both application frameworks from the restored primary checkout:
+zero warnings/errors for `net10.0-windows` and `net472`. Preservation checks
+compare checkpoint blobs, all 12 restored tracked files, the PawnIO source/test
+bytes and all 12 local audit files. The `librehw-cleanup-20261019` child of the
+system temporary directory contains those receipts and build logs;
+`closeout.json` records the final status of all six worktrees.
 
 ## Coverage
 

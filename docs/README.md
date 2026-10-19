@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor documentation
 
 **Status:** current repository map
-**Updated:** 2026-10-02
+**Updated:** 2026-10-19
 
 This file records stable boundaries. Query Git and stack manifests for current
 commits, versions, hashes, processes, and candidate/live state.
@@ -113,6 +113,9 @@ Open gates:
 | `docs\features\feature-graph-lanes.md` | Promoted and live-verified on SND-DESK; lane splits, height, layout, and repaired manual-zoom persistence pass; operator sign-off separate |
 
 Other feature documents contain their own status and acceptance criteria.
+The [current integration and open-work review](reviews/review-2026-10-19-upstream-and-open-work.md)
+records the official upstream merge, completed checkout cleanup, preserved
+unfinished work, and prioritized reliability/tooling follow-ups.
 `data\plans`, rendered campaign plans, `live-tracker.md`, and agent task files
 are campaign-runtime records; do not remove or hand-edit generated plans.
 
