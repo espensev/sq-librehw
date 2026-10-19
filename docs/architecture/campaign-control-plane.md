@@ -122,6 +122,11 @@ The repository-owned overlay is:
   over stale success, and a consistent passed verification is terminal;
 - `scripts/task_runtime/verify.py`: aggregate automated verification never
   claims that individual exit criteria, including attended criteria, passed;
+- `scripts/task_runtime/merge.py` and `scripts/task_runtime/orchestration.py`:
+  merge refuses dirty destinations; cleanup preserves unverified worktrees and
+  branches, including during orphan recovery;
+- `scripts/task_runtime/test_merge.py`: disposable Git worktree tests for
+  dirty-file preservation, ancestry, identity, failed cleanup, and recovery;
 - `scripts/task_runtime/test_execution.py`,
   `scripts/task_runtime/test_verify.py`, and
   `scripts/task_runtime/test_project_config.py`: regression coverage for those
@@ -130,7 +135,7 @@ The repository-owned overlay is:
   acceptance ledger above — plan-to-ledger agreement in both directions,
   verbatim criterion text, the transition rule, and complete waiver records.
 
-There are now four repository-only overlay tests and two overlay
+There are now five repository-only overlay tests and four overlay
 implementations. `test_campaign_history.py` is a repository-only addition: it
 modifies no canonical file and the pinned `scripts/task_manager.py` SHA-256
 above is unchanged by it.
@@ -148,6 +153,9 @@ Normalization-aware Git blob IDs for the reviewed overlay:
 | `test_verify.py` | `6e4cceed443bae055a2d948c8d11a6ebd3cd3d43` |
 | `test_project_config.py` | `24e0c4207b7c18d96460ac39e686937642f1ee95` |
 | `test_campaign_history.py` | `58a37e2c879dd2fce554c5c6ac4efc978572b08e` |
+| `merge.py` | `fe359f4e13f7dce3b8ab2ae9571485b7af6ac1f0` |
+| `orchestration.py` | `836592f659edc45035ff6c5a3bd9bae8b73ae2b2` |
+| `test_merge.py` | `9b7a36a55c117890370f404ffb731169f2365351` |
 
 Recompute a blob ID with `git hash-object <path>` after any edit to the file it
 names. A stale blob ID is a provenance defect, not a formatting detail.
@@ -156,8 +164,8 @@ names. A stale blob ID is a provenance defect, not a formatting detail.
 
 1. Compare the canonical package and repository runtime files.
 2. Copy canonical-matching runtime/analysis modules and shared contract files.
-   Do not overwrite the five repository-owned overlay files. If a canonical
-   update touches either implementation file, three-way review it and retain
+   Do not overwrite the repository-owned overlay files listed above. If a canonical
+   update touches an implementation file, three-way review it and retain
    the safety behavior until the canonical version proves equivalent.
 3. Do not run `init --force`; it may overwrite project-specific configuration.
 4. Review the diff, including any schema or command changes.
@@ -205,3 +213,27 @@ requires updating this file in the same change.
   monitoring state.
 - Worktree cleanup requires exact path validation plus clean-state and
   ancestry/patch-equivalence evidence; branch deletion is a separate decision.
+
+### Merge and cleanup acceptance (2026-10-19)
+
+- Merge refuses unavailable Git inventory or a destination with tracked,
+  staged, or untracked changes before copying files. It never stashes user work.
+  Existing ignored destination files also cannot be overwritten.
+- Recorded paths do not authorize their parent directories. Cleanup requires
+  a fresh Git registration matching both the recorded path and branch, excludes
+  the primary/current worktree and locked/detached entries, and preserves
+  unregistered directories without recursive deletion.
+- Cleanup preserves tracked, staged, untracked, and ignored files and requires
+  the source commit to be an ancestor of destination HEAD. Copying files alone
+  is not ancestry evidence. Remove only with ordinary `git worktree remove`;
+  delete only the verified branch using `git branch -d`, after a fresh inventory
+  proves it detached and its tip is unchanged. Failures retain remaining state
+  and return actionable warnings. Retained source branches provide recovery.
+- Verify with disposable real Git repositories in
+  `python -B -m unittest scripts.task_runtime.test_merge -v`, then the full
+  campaign suite. No real campaign cleanup or runtime operation is required.
+
+Verification on 2026-10-19: the new regressions failed against the previous
+implementation; after repair, all 52 campaign tests passed, including 17
+merge/recovery tests. The complete CI suite passed in PowerShell 5.1 and 7
+(99 assertions each, zero failures, two optional PyYAML-dependent checks skipped).

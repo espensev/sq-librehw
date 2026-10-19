@@ -235,6 +235,40 @@ test = 'powershell.exe -NoProfile -Command Set-Content -Path $secondSentinel -Va
     Assert-Case '-FailFast stops before the second failing gate runs' `
         (($ff.ExitCode -eq 1) -and (-not (Test-Path -LiteralPath $secondSentinel)) -and ($null -ne $secondGate) -and ($secondGate.status -ne 'Passed') -and (@($secondGate.steps).Count -eq 0)) `
         "exit $($ff.ExitCode); sentinel: $(Test-Path -LiteralPath $secondSentinel); summary written: $($null -ne $ffSummary)"
+    # Empty selected gates must fail before any selected command can execute.
+    foreach ($body in @('', "test = '   '", "build = 'Write-Output excluded'", "typo = 'Write-Output unknown'")) {
+        $emptyConfig = Join-Path $temp 'empty.toml'
+        Write-FixtureConfig -Path $emptyConfig -Content "[build-gate.release-candidate]`n$body"
+        foreach ($selection in @(@('-All'), @('-Gate', 'release-candidate'), @('-All', '-DryRun'))) {
+            $empty = Invoke-Runner (@('-ConfigPath', $emptyConfig) + $selection)
+            Assert-Case "empty allowed command set rejected ($body; $selection)" `
+                (($empty.ExitCode -eq 2) -and ((Get-Flat $empty).Contains('noexecutableallowedcommand'))) `
+                "exit $($empty.ExitCode)"
+        }
+    }
+    $preflightConfig = Join-Path $temp 'preflight.toml'
+    $preflightSentinel = Join-Path $temp 'preflight.txt'
+    Write-FixtureConfig -Path $preflightConfig -Content @"
+[build-gate.winforms-net10]
+build = "Set-Content -LiteralPath '$($preflightSentinel.Replace('\', '\\'))' -Value ran"
+[build-gate.release-candidate]
+"@
+    $preflight = Invoke-Runner @('-ConfigPath', $preflightConfig, '-All')
+    Assert-Case 'all selected gates are validated before any command runs' `
+        (($preflight.ExitCode -eq 2) -and (-not (Test-Path -LiteralPath $preflightSentinel)))
+
+    $validConfig = Join-Path $temp 'valid.toml'
+    $validJson = Join-Path $temp 'valid.json'
+    Write-FixtureConfig -Path $validConfig -Content @'
+[build-gate.release-candidate]
+build = 'ops/candidate/New-LhmRelease.ps1'
+test = 'Write-Output fixture-passed'
+'@
+    $valid = Invoke-Runner @('-ConfigPath', $validConfig, '-All', '-JsonSummary', $validJson)
+    $validSummary = Get-Summary $validJson
+    $validGate = $validSummary.gates | Where-Object { $_.name -eq 'release-candidate' }
+    Assert-Case 'partial gate with an allowed command still passes exactly one step' `
+        (($valid.ExitCode -eq 0) -and ($validGate.status -eq 'Passed') -and (@($validGate.steps).Count -eq 1))
 }
 finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue

@@ -4,7 +4,9 @@
 // All Rights Reserved.
 // Implemented after the Linuix kernel driver corsair_psu by Wilken Gottwalt and contributers
 
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using HidSharp;
@@ -38,19 +40,34 @@ public class CorsairPsuGroup : IGroup
     private readonly StringBuilder _report;
 
     public CorsairPsuGroup(ISettings settings)
+        : this(settings, DeviceList.Local.GetHidDevices(_vendorId))
+    {
+    }
+
+    internal CorsairPsuGroup(ISettings settings, IEnumerable<HidDevice> devices)
     {
         _report = new StringBuilder();
         _report.AppendLine("Corsair HXi/RMi series PSU Hardware");
         _report.AppendLine();
 
         _hardware = new List<IHardware>();
-        foreach (HidDevice dev in DeviceList.Local.GetHidDevices(_vendorId))
+        int index = 0;
+        foreach (HidDevice dev in devices)
         {
             if (_productIds.Contains(dev.ProductID))
             {
-                var device = new CorsairPsu(dev, settings, _hardware.Count);
-                _hardware.Add(device);
-                _report.AppendLine($"Device name: {device.Name}");
+                try
+                {
+                    var device = new CorsairPsu(dev, settings, index++);
+                    _hardware.Add(device);
+                    _report.AppendLine($"Device name: {device.Name}");
+                }
+                catch (Exception ex) when (ex is ProtocolError or IOException or TimeoutException or UnauthorizedAccessException)
+                {
+                    // An unavailable PSU must not abort discovery of the remaining hardware.
+                    _report.AppendLine($"Failed to initialize Corsair PSU at {dev.DevicePath}: {ex.Message}");
+                }
+
                 _report.AppendLine();
             }
         }

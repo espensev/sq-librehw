@@ -122,6 +122,13 @@ a sweep is an explicit human step, never something the runner does to itself.
 
 ## Exit codes
 
+Before executing any selected command, the runner requires each selected gate
+to contain at least one nonblank command under an allowed key. Empty tables,
+blank commands, unknown-only keys, and excluded-only commands are configuration
+errors (exit 2), including in `-DryRun`. `-List` remains an inventory operation.
+`eng/ci/tests/Test-GateRunner.ps1` verifies these cases and that a valid partial
+gate still executes its allowed fixture.
+
 | Code | Meaning |
 |---|---|
 | `0` | Every attempted gate passed, or `-List` / `-DryRun` completed. |

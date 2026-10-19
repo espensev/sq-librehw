@@ -1,4 +1,4 @@
-﻿// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 // Copyright (C) LibreHardwareMonitor and Contributors.
 // Partial Copyright (C) Michael Möller <mmoeller@openhardwaremonitor.org> and Contributors.
@@ -8,8 +8,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using DiskInfoToolkit;
-using StorageDeviceDIT = DiskInfoToolkit.StorageDevice;
+using DiskInfoToolkit.Monitoring;
+using StorageDeviceDIT = DiskInfoToolkit.Devices.StorageDevice;
 
 namespace LibreHardwareMonitor.Hardware.Storage;
 

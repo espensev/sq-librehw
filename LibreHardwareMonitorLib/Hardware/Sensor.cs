@@ -233,6 +233,16 @@ internal class Sensor : ISensor, ISensorHistoryReader
         }
     }
 
+    internal virtual void InvalidateValue()
+    {
+        lock (_valuesLock)
+        {
+            _currentValue = null;
+            _sum = 0;
+            _count = 0;
+        }
+    }
+
     protected void ResetPendingHistoryBucket()
     {
         lock (_valuesLock)

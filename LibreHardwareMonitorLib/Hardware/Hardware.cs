@@ -90,6 +90,19 @@ public abstract class Hardware : IHardware
     /// <inheritdoc />
     public abstract void Update();
 
+    /// <summary>
+    /// Marks this device's built-in sensor readings unavailable after a failed update.
+    /// Keeps extrema and completed history; child devices are handled independently.
+    /// </summary>
+    public void InvalidateSensorValues()
+    {
+        foreach (ISensor sensor in Sensors)
+        {
+            if (sensor is Sensor reading)
+                reading.InvalidateValue();
+        }
+    }
+
     /// <inheritdoc />
     public void Accept(IVisitor visitor)
     {

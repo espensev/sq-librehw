@@ -5,9 +5,12 @@ launcher actions fail closed to `snd-desk`; the non-live fixture is intentionall
 peer-safe under isolated temporary roots. Do not treat these paths, tasks,
 users, or runtime state as SND-HOST instructions.
 
-**Status:** merged candidate `cca11b88` is installed on SND-DESK, with
-`fbb3a3ea` retained in the verified rollback slot. The webserver is enabled
-at `http://127.0.0.1:18085/`; future promotion and rollback commands must
+**Status:** Corsair failure-path repair `957923fc` is installed on SND-DESK, with
+`07d2d25e` retained in the verified rollback slot. All 17 HX1500i readings,
+general hardware monitoring, and CSV logging are live-verified with HWiNFO and
+iCUE still running; failed PSU polls now log empty cells for that tick instead
+of stale values. See the 2026-10-08 record below. The webserver is enabled
+at `http://127.0.0.1:18085/`; promotion and rollback commands must
 explicitly pass `-HealthUri 'http://127.0.0.1:18085/data.json'` because their
 default remains the historical port 8085.
 Focused value-axis Shift-wheel zoom and adaptive lane tick spacing
@@ -21,7 +24,7 @@ Current Data/Bin authority is persisted `SEV_LOCAL_DATA` / `SEV_LOCAL_BIN`
 (User, then Machine, then Process), with recursive expansion of `%...%`
 templates. The app-owned `librehw` launcher is the sole activation authority.
 Completed migrations and their dated evidence are retained below.
-**Updated:** 2026-10-02
+**Updated:** 2026-10-08
 
 ## Problem
 
@@ -1129,3 +1132,114 @@ Mobile rendering and complete viewport/profile acceptance are therefore
 unverified. The disposable dashboard tab was closed; existing user tabs and
 browser processes were retained. `public-launcher.json` and
 `browser-coverage.json` retain the results and limits.
+
+### Corsair PSU discovery repair — 2026-10-07
+
+The installed `cca11b88` process returned an empty hardware tree after a Corsair
+HX1500i vendor-string failure. Commit `6a493f3d` isolates expected PSU discovery
+errors per device. Commit `cb963503` also tolerates up to three stale replies
+during firmware identification and validates reply length before copying.
+These restored other hardware, but the installed PSU report still recorded
+`Can't read product`. User screenshots showed the same PSU reporting readings
+in HWiNFO and iCUE. A transport trace captured interleaved command replies and
+wrong-rail values; the general USB sensor mutex did not protect this device.
+
+Commit `07d2d25e` holds `Global\CorsairLinkReadWriteGuardMutex` across discovery,
+property reads, and each complete poll, opening/closing the HID stream within
+the lock. Lock acquisition and HID I/O are bounded; all exit paths release
+ownership. Twenty guarded transport cycles read every supported command. The
+real C# `Computer.Open()` probe then completed three discoveries and 30 polls
+with 17/17 values and correct rail voltages. No other monitor was stopped;
+the earlier proposed HWiNFO isolation test is no longer needed for this repair.
+The implementation and regression tests are C#; no application PowerShell
+dependency was added.
+
+The final candidate passed Library 115/115, Application 212 with one existing
+opt-in skip, and Contracts 109/109. Both x64 Release targets built with zero
+warnings/errors. Exact-executable smoke, candidate hash validation, installer
+preview, and machine-verified promotion passed with the explicit loopback
+health URI. Installed SHA-256 is
+`c502fee0cda440eaa59f62de9e90d3834047f703f8897e6d640ff19772f0c97c`;
+rollback `cb963503` matches its prior installed payload. The earlier `cca11b88`
+candidate remains retained in the candidate store.
+
+Live verification found one responding installed process, 54 hardware nodes,
+554 sensors (552 with values), all 17 Corsair readings, changing telemetry,
+and continuing CSV growth. The strict PSU check passed. Another 45 consecutive
+HTTP samples each retained 17/17 readings and correct rail voltages; PSU uptime
+advanced 45 seconds. HWiNFO, iCUE, and Corsair.Service retained the same process
+IDs and start times. The native Save Report output also contains the HX1500i
+and its sensor values, with no Corsair discovery error. This verifies the
+current configuration; apps that bypass the shared mutex can still contend.
+
+Launcher Validate passed against the source paths already bound in its receipt
+(`D:\DevHome\worktrees\sq-librehw\host-merge-20261002`). Validation from the new
+fix worktree reports only source-path receipt drift; launcher bytes, public
+shim, task, and RunW authority pass. No launcher repair is required by this fix.
+
+Evidence is retained under `D:\DevHome\tmp\librehw-psu-discovery-20261007`:
+`baseline.json`, `cb963503-live-before-mutex.json`, `transport-comparison.log`,
+`transport-corsair-mutex.log`, `mutex-isolated-red.log`, `mutex-green.log`,
+`coexist-source.log`, `publish-mutex.log`, `candidate-smoke-mutex.json`,
+`install-mutex.log`, `live-verification.json`, `installed-psu-stability.json`,
+`installed-mutex-hardware-report.txt`, and `launcher-mutex-validation.json`.
+The diagnostic C# sources and settings recovery copies remain in that directory.
+
+### Corsair failure-path promotion — 2026-10-08
+
+Commit `957923fc` (branch `fix/corsair-psu-discovery-20261007`) was published
+from its clean worktree as candidate `desk-corsair-failure-20261008-957923fc`.
+Release verification passed Library 131/131, Application 212 with the one
+existing opt-in skip, and Contracts 110/110; both x64 Release targets built
+with zero warnings/errors, and the exact-executable smoke reported product
+version `0.9.6+957923f.2026-10-08`. Before promotion a byte-identical copy of
+the installed `07d2d25e` executable (`LibreHardwareMonitor.Windows.Forms - Copy.exe`)
+was found in the install root and moved to the evidence directory, because the
+closed-inventory assert rejects any unexpected entry and would also block
+rollback.
+
+A pre-promotion review of the `07d2d25e..957923fc` diff ran as three
+independent read-only lenses (invalidation and recovery, mutex and I/O
+lifetime, identity and export) plus an install-preconditions audit, with
+adversarial refutation of the two high findings. Of 38 findings none is a
+defect in the promoted change. The audit's hard conditions were met: an
+elevated pwsh 7.6.6 session, the explicit loopback `-HealthUri` with
+`-AllowStopExactProcess` on both preview and promotion, and the exact
+four-entry install root. The refuted stray-copy finding and the elevation
+precondition are recorded in `prepromotion-review.json` and
+`prepromotion-verdict.json`.
+
+The identity-verified preview passed, and the guarded promotion completed in
+4.7 seconds at 06:11 local. Installed SHA-256 is
+`79e4d9efea541ba92c84e73d99906aee0e43a10a7586ccbe1d6ca1df3f9da489`;
+rollback `07d2d25e` matches its prior installed payload
+`c502fee0cda440eaa59f62de9e90d3834047f703f8897e6d640ff19772f0c97c`. The
+earlier `cb963503` rollback payload remains only in the candidate store. No
+release transaction remained after activation.
+
+Live verification found one responding exact-path process, 54 hardware nodes,
+554 sensors (552 with values), all 17 Corsair readings, 241 changing sensors,
+and continuing CSV growth. Another 45 consecutive HTTP samples each retained
+17/17 readings and correct rail voltages; PSU uptime advanced 46 seconds, and
+HWiNFO, iCUE, and Corsair.Service kept their process IDs and start times.
+Launcher Validate reports launcher, central launcher, public shim, and managed
+task current; only the convergence receipt is stale, as on 2026-10-07.
+
+The repaired failure path is now visible in the CSV. Over the installed
+`07d2d25e` build's final 43 minutes, 2583 rows all carried 17 PSU values,
+because missed polls retained stale readings. In the first 10.5 minutes on
+`957923fc`, 606 rows held 603 complete PSU rows and three whole-row empty PSU
+gaps (0.5 percent), each followed by full recovery, with no partial rows. Two
+of the three were consecutive ticks directly after a 3.6 second logging gap,
+consistent with bounded HID timeouts during contention; a separate 3.2 second
+gap logged complete rows. This is the intended fail-visible behavior, not a
+regression; `Count-PsuNullRows.ps1` in the evidence directory can re-measure
+any later window of the daily CSV.
+
+Evidence is retained under `D:\DevHome\tmp\librehw-corsair-promotion-20261008`:
+`baseline.json`, `publish.log`, `candidate-smoke.json`, `stray-move.json`,
+`prepromotion-review.json`, `prepromotion-verdict.json`, `install-preview.log`,
+`install.log`, `install-result.json`, `live-verification.json`,
+`installed-psu-stability.json`, `launcher-validate.log`,
+`psu-null-baseline-installed.json`, `psu-null-soak-candidate.json`, and
+`closeout.json`.

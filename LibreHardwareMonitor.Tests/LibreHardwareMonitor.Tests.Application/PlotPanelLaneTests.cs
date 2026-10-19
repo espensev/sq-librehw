@@ -21,6 +21,39 @@ namespace LibreHardwareMonitor.Tests;
 public sealed class PlotPanelLaneTests
 {
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+#pragma warning disable CS0618 // Exercise the input API used by pinned OxyPlot 2.2.
+    public void MouseDown_CollapsedPlotAreaIsConsumedAndNormalPlotStillReceivesInput(bool collapseWidth)
+    {
+        var settings = new PersistentSettings();
+        using var panel = new PlotPanel(settings, new UnitManager(settings));
+        BindHistory(panel, (new FakeSensor(SensorType.Power, "CPU", 40, 60), null));
+        PlotView view = panel.Controls.OfType<PlotView>().Single();
+        view.Model.PlotMargins = collapseWidth
+            ? new OxyThickness(1000, 0, 1000, 0)
+            : new OxyThickness(0, 400, 0, 400);
+        RenderPlot(view);
+        Assert.True(collapseWidth ? view.Model.PlotArea.Width <= 0 : view.Model.PlotArea.Height <= 0);
+
+        var collapsedClick = new OxyMouseDownEventArgs { Position = new ScreenPoint(10, 10), ChangedButton = OxyMouseButton.Left };
+        view.Model.HandleMouseDown(view, collapsedClick);
+        Assert.True(collapsedClick.Handled);
+
+        view.Model.PlotMargins = new OxyThickness(double.NaN);
+        RenderPlot(view);
+        Assert.True(view.Model.PlotArea.Width > 0 && view.Model.PlotArea.Height > 0);
+        bool delivered = false;
+        view.Model.MouseDown += (_, _) => delivered = true;
+        view.Model.HandleMouseDown(view, new OxyMouseDownEventArgs
+        {
+            Position = view.Model.PlotArea.Center, ChangedButton = OxyMouseButton.Left
+        });
+        Assert.True(delivered);
+    }
+#pragma warning restore CS0618
+
+    [Theory]
     [InlineData(120, false, false)]
     [InlineData(-120, false, false)]
     [InlineData(120, true, false)]

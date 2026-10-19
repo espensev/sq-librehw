@@ -15,6 +15,9 @@ packages/
 __pycache__/
 *.pyc
 
+# Generated local audit crew receipts; retain locally, outside source history.
+/.audit/
+
 # Local campaign runtime/cache. Durable plans and evidence remain tracked.
 /data/tasks.json
 /data/analysis-cache.json

@@ -54,7 +54,7 @@ public partial class InterfacePortForm : Form
         string[] listenerIps = addresses
             .Where(ip => ip.AddressFamily == AddressFamily.InterNetwork)
             .Select(ip => ip.ToString())
-            .Concat(new[] { selectedListenerIp, "0.0.0.0" })
+            .Concat(new[] { IPAddress.Loopback.ToString(), selectedListenerIp, "0.0.0.0" })
             .Where(ip => !string.IsNullOrWhiteSpace(ip) && ip != "?")
             .Distinct(StringComparer.Ordinal)
             .ToArray();

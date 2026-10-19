@@ -4,7 +4,14 @@
 queue, scrollbar teardown, transactional open, and dynamic-group snapshot fixes
 deployed and live-verified on SND-HOST
 
-**Updated:** 2026-08-02
+**Corsair failure follow-up:** source-verified on 2026-10-07; candidate
+`957923fc` was promoted to SND-DESK on 2026-10-08 and live-verified with HWiNFO
+and iCUE running. `07d2d25e` holds the rollback slot.
+
+**Device polling follow-up:** source-verified on 2026-10-19; deployment and
+physical device-failure acceptance remain separate.
+
+**Updated:** 2026-10-19
 
 ## Problem and motivation
 
@@ -39,12 +46,59 @@ dashboard policy, or supported frameworks.
 
 ## Non-goals
 
-- No changes to `data.json`, CSV columns, Prometheus names/labels/units, sensor
-  IDs, current/min/max semantics, or hardware polling cadence.
+- No changes to `data.json` shape, CSV columns, Prometheus names/labels/units,
+  healthy sensor IDs, min/max semantics, or hardware polling cadence. Failed
+  Corsair readings use the existing unavailable-value representation below.
 - No restored dashboard preview route or new server write capability.
 - No automatic deletion of runtime logs or deployment/configuration changes.
 - No upstream synchronization or unrelated visual redesign.
 - No campaign or tracker artifacts are part of the shipped product contract.
+
+## Device polling isolation follow-up (2026-10-19)
+
+The application polling visitor must isolate recoverable managed exceptions
+from each `IHardware.Update()` call. A failed parent does not suppress child
+updates, and a failed child does not suppress siblings or later top-level
+devices. Keep the current traversal lock, single-flight admission, tick cadence,
+CSV startup delay, and UI-thread completion path.
+
+On failure, invalidate the failed device's current built-in sensor readings,
+including partially updated readings, while retaining sensor identity,
+min/max, and completed history. Discard pending history averages and derived
+temperature-rate samples so recovery cannot bridge a failed poll. CSV uses its
+existing empty cell and HTTP/native UI their existing unavailable representation.
+Built-in composites derive availability from their invalidated components.
+The next successful update restores readings without reopening the device;
+rate sensors require their normal fresh warmup.
+
+Expose invalidation on the library `Hardware` base without changing `IHardware`
+or `ISensor`, and keep exception isolation in the application visitor. Direct
+library `Update()` calls retain their exception behavior. Custom `IHardware`
+implementations outside that base own their sensor invalidation. Report failures
+through the existing debug diagnostic channel without accumulating exceptions;
+diagnostic or invalidation failures must not starve later devices. Out-of-memory,
+stack-overflow, and access-violation exceptions retain propagation behavior.
+
+Acceptance requires fixture coverage of partial/repeated failures, parent/child
+and sibling continuation, stable IDs/extrema/history, fresh recovery and rate
+warmup, continued CSV rows, and HTTP unavailable readings. Run the focused
+regressions, the deterministic .NET suites, and both Windows application builds.
+Hardware fault injection, deployment, and live acceptance remain separate.
+
+Verification on 2026-10-19:
+
+- `UpdateVisitorTests` initially reproduced three failures: aborted traversal,
+  retained partial readings, and skipped CSV logging. Seven application
+  regressions now cover continuation, history preservation, recovery, rate
+  warmup, diagnostic/invalidation failures, and fatal-error propagation.
+- `CorsairPsuExportTests` passes both unavailable-mutex and partial-read-exception
+  cases through the application visitor, including composite readings, HTTP null
+  values, CSV empty cells, and recovery in the same columns.
+- `dotnet test LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.slnf -c Release -p:Platform=x64 --no-restore`
+  passed 513 tests (Library 170, Application 229, Contracts 114), with one existing
+  opt-in live-config test skipped.
+- Release application builds for `net10.0-windows` and `net472`, plus the library's
+  five targets and package build, passed with zero warnings/errors.
 
 ## Required behavior and failure handling
 
@@ -61,6 +115,41 @@ dashboard policy, or supported frameworks.
   across construction. A reentrant option change discards that generation and
   rebuilds from the latest flags; continuous churn stops after four attempts,
   cleans the partial generation, and reports a deterministic failure.
+- Corsair PSU discovery isolates protocol, I/O, timeout, and access-denied
+  failures per device. Working PSUs and other hardware groups remain available;
+  the hardware report records the failed device path and reason. Discovery
+  streams are disposed and a later reset/reopen can discover a recovered PSU.
+  Unexpected programming errors retain the transactional failure behavior.
+- Corsair vendor/product identification accepts only a complete reply echoing
+  the requested command, reading at most four reports to skip queued stale
+  replies. Other commands retain their single-read behavior so unsupported
+  optional commands do not introduce retries. Truncated replies are rejected
+  before indexing or copying their payload.
+- Corsair PSU discovery, property reads, and each complete sensor update hold
+  `Global\CorsairLinkReadWriteGuardMutex` before opening the HID stream until
+  after disposing it. This protects rail selection and its dependent reads
+  from cooperating monitors. Acquisition waits at most 500 ms; a busy discovery
+  is reported per device, while busy updates/property reads perform no I/O.
+  Every acquired lock is released on success or failure. HID reads and writes
+  time out after 250 ms so a stalled device cannot indefinitely hold the lock.
+- Corsair updates immediately invalidate all current raw readings when the
+  shared lock is busy/unavailable or an open/read operation throws, including
+  a failure after partial polling. Min/max values remain intact. Exceptions
+  retain their propagation behavior for direct library callers; the application
+  visitor isolates them per device. The next successful poll recovers
+  readings without reopening the hardware group. A rejected command reply
+  invalidates that command's reading rather than retaining its previous value.
+- Corsair Total Output is unavailable whenever any required power rail is
+  unavailable; genuine zero readings still sum to zero. HTTP exposes the
+  existing null/unavailable form and CSV leaves the corresponding cell empty.
+- Corsair access fails closed when the shared mutex cannot be created/opened:
+  discovery reports an access timeout, properties return empty, and updates
+  invalidate readings, all without HID I/O. Other mutex users retain their
+  existing behavior.
+- Each supported Corsair device reserves its enumeration slot before discovery,
+  including when discovery fails. Healthy-device IDs and saved labels remain
+  associated with the same slot on failure and recovery. Unsupported devices
+  consume no slot; general USB enumeration reordering is outside this repair.
 - Process-global Mutex, OpCode, and NVIDIA ML ownership is reference-counted
   across concurrent `Computer` instances. One close or failed acquisition
   cannot release another open instance's lease.
@@ -179,6 +268,26 @@ dashboard policy, or supported frameworks.
 - [x] A failed `Computer.Open()` closes partial groups/global owners, preserves
   the original failure, leaves no hardware, and can retry without duplicate
   events.
+- [x] A Corsair firmware reply mismatch, device I/O failure, timeout, or access
+  denial preserves working devices and records the failed path/reason; the
+  discovery stream closes and a recovered PSU can appear on the next open.
+- [x] A stale Corsair identity reply followed by a matching response recovers
+  the correct vendor/product; exhausted or truncated responses fail within
+  four reads, while unsupported optional commands still use one read.
+- [x] Corsair discovery, polling, and property reads exclude another mutex
+  owner for the complete HID transaction, perform no device I/O when busy,
+  and release the lock after open/read failures. Reads/writes have bounded
+  timeouts. Real HX1500i readings remain complete with HWiNFO and iCUE running.
+- [x] Seeded Corsair readings become unavailable on the first/repeated lock
+  miss and on open/read/partial-poll exceptions; min/max survive and a successful
+  retry recovers values. Busy/missing locks perform no HID I/O.
+- [x] Corsair power totals distinguish valid zero, one missing rail, all missing
+  rails, and recovery; expired readings serialize as HTTP null and empty CSV.
+- [x] Failed-first, failed-middle, multiple-failure and recovered Corsair
+  discovery preserve identifiers and saved labels with unsupported devices
+  excluded from slot numbering.
+- [x] Missing Corsair mutex handles prevent discovery/update/property I/O;
+  private-mutex recovery and existing lock-release regressions pass.
 - [x] Captured Storage/NVIDIA snapshots remain stable across add, remove,
   driver availability changes, and close; Computer traversals and reports use
   one captured generation per group.
@@ -245,6 +354,25 @@ dashboard policy, or supported frameworks.
 
 ## Open follow-ups
 
+- [x] Source-fixed Corsair stale readings: missed transactions invalidate current
+  readings immediately, preserve extrema, and recover on the next valid poll.
+- [x] Source-fixed Corsair discovery slots: failed devices retain their supported
+  enumeration slot so saved sensor labels stay with the later devices.
+- [x] Source-fixed Corsair Total Output: missing rails propagate null rather than
+  partial or zero watts; valid zero remains valid.
+- [x] Source-fixed Corsair missing-mutex access: no discovery/update/property HID
+  I/O occurs without a handle. The generic policy for other mutexes is unchanged.
+- [x] Verified the repaired Corsair behavior on the real HX1500i with HWiNFO and
+  iCUE after the separately authorized 2026-10-08 promotion of `957923fc`:
+  17/17 readings across 45 samples, and the first 606 CSV rows show three
+  whole-row empty PSU gaps with immediate recovery and no partial rows. See the
+  [local release record](feature-local-release-system.md#corsair-failure-path-promotion--2026-10-08).
+  The [cross-review](../reviews/review-2026-10-07-corsair-psu-crossreview.md)
+  retains original reproductions; the [handoff and issue review](../reviews/review-2026-10-07-handoff-and-open-issues.md)
+  retains the broader deferred queue.
+- [x] SND-DESK HX1500i shared-access repair `07d2d25e` is installed and verified:
+  all 17 PSU readings remained valid across 45 samples with HWiNFO and iCUE
+  running. See the [local release record](feature-local-release-system.md#corsair-psu-discovery-repair--2026-10-07).
 - [x] Promote the verified scrollbar follow-up only with explicit deployment
   approval. It shipped in the verified 2026-07-18 SND-HOST build.
 - [x] Extend keyed DOM reuse and focus preservation to the Standard view
@@ -330,6 +458,67 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-10-08 Corsair failure handling, live: candidate `957923fc` was promoted
+  on SND-DESK after an adversarial pre-promotion review found no defect in the
+  diff. Live verification and a 45-sample stability watch passed with 17/17
+  readings and HWiNFO, iCUE, and Corsair.Service running. Over the first 10.5
+  minutes the CSV recorded 606 rows: 603 with complete PSU values and three
+  whole-row empty gaps that recovered on the next tick, with no partial rows;
+  the installed `07d2d25e` baseline showed none because it logged stale values.
+  Evidence: `D:\DevHome\tmp\librehw-corsair-promotion-20261008`.
+- 2026-10-07 Corsair failure handling, source-only: the expanded suite first
+  failed 20 library cases and one export case against the prior implementation.
+  These covered stale readings, partial exceptions, nullable power totals,
+  missing mutex access, identifier slots and saved labels. After the fixes,
+  the full Release suite passed Library 131/131, Contracts 110/110, and
+  Application 212 with one established opt-in skip (453 passed, one skipped).
+  The 38 Corsair library cases and one Contracts export case are included.
+  The export regression uses the same real Corsair sensors through
+  `HttpServer.WriteDataJson` and `Logger.Log`: populated values, then null JSON
+  and empty CSV cells, then recovered values in the same identifiers/columns.
+  Both WinForms x64 Release targets built with zero warnings/errors; web syntax,
+  self-test 339/339 and focused Node tests 18/18 passed. The `data.json` golden
+  retained SHA-256 `BEBDE807A7F0037827E16CFBC1F41707701F2BEE7232385C3D2EAEBD2261D2F3`.
+  Evidence: `D:\DevHome\tmp\librehw-corsair-failure-fix-20261007`
+  (`red.log`, `full-tests.log`, `build-net10.log`, `build-net472.log`,
+  `web-tests.log`). Fake HID fixtures and isolated local Corsair mutexes exercise
+  failures without probing the physical PSU. No candidate or deployment was
+  created; installed `07d2d25e` remained the separate live implementation
+  until the 2026-10-08 promotion.
+- 2026-10-07 HX1500i shared-access repair: transport traces captured interleaved
+  command replies and wrong-rail readings. Holding the standard
+  `Global\CorsairLinkReadWriteGuardMutex` restored all supported commands in
+  20 probe cycles. Eight isolated concurrency tests failed before the driver
+  acquired this lock; all 22 Corsair cases passed afterward. A C# probe using
+  the real `Computer.Open()` path then completed three discoveries and 30 polls,
+  each with 17/17 values and correct 12V/5V/3.3V rails; HWiNFO, iCUE, and the
+  Corsair service retained their process IDs. Evidence:
+  `D:\DevHome\tmp\librehw-psu-discovery-20261007` (`transport-comparison.log`,
+  `transport-corsair-mutex.log`, `mutex-isolated-red.log`, `mutex-green.log`,
+  `coexist-source.log`). Tests use a unique local mutex to avoid touching other
+  monitors; production uses the standard global name. Release gates passed
+  Library 115, Application 212 (one existing skip), and Contracts 109; both x64
+  targets built without warnings/errors. Installed `07d2d25e` passed strict
+  PSU, 45-sample stability, native hardware-report, CSV, hash/rollback, and
+  launcher checks. `installed-psu-stability.json` and
+  `installed-mutex-hardware-report.txt` retain the live results.
+- 2026-10-07 HX1500i protocol follow-up: a direct C# probe captured replies one
+  command behind, including an INIT reply to the vendor request. Five new
+  regression cases failed before bounded identity reads and payload-length
+  validation. All 14 focused cases then passed; the real PSU was discovered in
+  three consecutive probe attempts, with temperature readings in the first. Optional-command
+  behavior remains single-read. Evidence under the same directory:
+  `psu-group-probe.log`, `protocol-red.log`, `protocol-green.log`, and
+  `psu-probe-fixed.log`.
+- 2026-10-07 SND-DESK Corsair discovery regression: the installed monitor served
+  an empty hardware tree after an HX1500i vendor-reply mismatch. A scripted HID
+  stream reproduced the exact `Can't read vendor string` exception; six
+  isolation/recovery cases failed before the fix. All eight focused cases then
+  passed, including the real `Computer.Open()` path and unexpected-error
+  propagation. The Library suite passed 101/101. Evidence:
+  `D:\DevHome\tmp\librehw-psu-discovery-20261007` (`baseline.json`, `red.log`,
+  `green.log`, `library.log`). Candidate and live verification are recorded in
+  [the local release contract](feature-local-release-system.md).
 - 2026-08-02 Plan-011 source-only settings extraction: AP source/integration
   `e58e38d` (stable patch-id `4fd7e493`, blobs `ccccdbd3`/`bb1f0e8b`)
   added the internal settings persistence coordinator and exactly seven facts;

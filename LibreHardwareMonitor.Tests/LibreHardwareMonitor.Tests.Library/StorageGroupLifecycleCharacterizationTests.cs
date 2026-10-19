@@ -7,12 +7,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using DiskInfoToolkit;
+using DiskInfoToolkit.Devices;
+using DiskInfoToolkit.Monitoring;
+using DiskInfoToolkit.Partitions;
 using DiskInfoToolkit.Smart;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Hardware.Storage;
 using Xunit;
-using StorageDeviceDIT = DiskInfoToolkit.StorageDevice;
+using StorageDeviceDIT = DiskInfoToolkit.Devices.StorageDevice;
 using StorageHardware = LibreHardwareMonitor.Hardware.Storage.StorageDevice;
 
 namespace LibreHardwareMonitor.Tests;

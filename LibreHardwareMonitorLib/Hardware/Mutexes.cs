@@ -7,6 +7,7 @@ namespace LibreHardwareMonitor.Hardware;
 
 internal static class Mutexes
 {
+    private static Mutex _corsairLinkMutex;
     private static Mutex _ecMutex;
     private static Mutex _isaBusMutex;
     private static Mutex _pciBusMutex;
@@ -18,6 +19,12 @@ internal static class Mutexes
     /// </summary>
     public static void Open()
     {
+        Open("Global\\CorsairLinkReadWriteGuardMutex");
+    }
+
+    internal static void Open(string corsairMutexName)
+    {
+        _corsairLinkMutex = CreateOrOpenExistingMutex(corsairMutexName);
         _isaBusMutex = CreateOrOpenExistingMutex("Global\\Access_ISABUS.HTP.Method");
         _pciBusMutex = CreateOrOpenExistingMutex("Global\\Access_PCI");
         _ecMutex = CreateOrOpenExistingMutex("Global\\Access_EC");
@@ -59,11 +66,24 @@ internal static class Mutexes
     /// </summary>
     public static void Close()
     {
+        _corsairLinkMutex?.Close();
+        _corsairLinkMutex = null;
         _isaBusMutex?.Close();
         _pciBusMutex?.Close();
         _ecMutex?.Close();
         _razerMutex?.Close();
         _usbSensors?.Close();
+    }
+
+    public static bool WaitCorsairLink(int millisecondsTimeout)
+    {
+        Mutex mutex = _corsairLinkMutex;
+        return mutex != null && WaitMutex(mutex, millisecondsTimeout);
+    }
+
+    public static void ReleaseCorsairLink()
+    {
+        _corsairLinkMutex?.ReleaseMutex();
     }
 
     public static bool WaitIsaBus(int millisecondsTimeout)

@@ -46,6 +46,12 @@ internal sealed class TemperatureRateSensor : Sensor
 
     internal int SampleCount => _samples.Count;
 
+    internal override void InvalidateValue()
+    {
+        _samples.Clear();
+        base.InvalidateValue();
+    }
+
     internal void Observe(float? temperature)
     {
         DateTime now = _utcNow();

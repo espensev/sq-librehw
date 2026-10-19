@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -36,6 +37,36 @@ public sealed class WinFormsUiLifetimeCollection
 [Collection(WinFormsUiLifetimeCollection.Name)]
 public sealed class WinFormsUiLifetimeTests
 {
+    [Theory]
+    [InlineData(float.NaN, 0f)]
+    [InlineData(float.NegativeInfinity, 0f)]
+    [InlineData(-1f, 0f)]
+    [InlineData(float.PositiveInfinity, 1f)]
+    [InlineData(float.MaxValue, 1f)]
+    [InlineData(2f, 1f)]
+    public void GadgetProgress_NonFiniteAndOutOfRangeValuesRenderLikeTheirClampedEndpoint(float progress, float endpoint)
+    {
+        var settings = new PersistentSettings();
+        var computer = new Computer();
+        using var gadget = new SensorGadget(computer, settings, new UnitManager(settings), null,
+            Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        MethodInfo drawProgress = typeof(SensorGadget).GetMethod("DrawProgress", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(drawProgress);
+
+        int[] Render(float value)
+        {
+            using var bitmap = new Bitmap(32, 8);
+            using Graphics graphics = Graphics.FromImage(bitmap);
+            drawProgress.Invoke(gadget, new object[] { graphics, 0f, 0f, 32f, 8f, value });
+            return Enumerable.Range(0, bitmap.Width * bitmap.Height)
+                .Select(i => bitmap.GetPixel(i % bitmap.Width, i / bitmap.Width).ToArgb()).ToArray();
+        }
+
+        int[] expected = Render(endpoint);
+        Assert.Equal(expected, Render(progress));
+        Assert.NotEqual(expected, Render(0.5f));
+    }
+
     [Fact]
     public void HardwareNode_CreatesOnlyPopulatedGroups_AndDetachesSensorEventsOnDispose()
     {

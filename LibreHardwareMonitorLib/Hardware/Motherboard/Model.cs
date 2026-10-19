@@ -379,5 +379,17 @@ public enum Model
     Unknown,
 
     // New models are appended so existing public enum numeric values stay stable.
-    ROG_STRIX_Z370_G_GAMING
+    ROG_STRIX_Z370_G_GAMING,
+    B850I_LIGHTNING_WIFI,
+    B650M_HDV_M_2,
+    ROG_STRIX_B450_F_GAMING,
+    ROG_CROSSHAIR_X870E_HERO_BTF,
+    ROG_STRIX_B850_A_GAMING_WIFI,
+    ROG_STRIX_Z890_E_GAMING_WIFI,
+    ROG_STRIX_X870E_H_GAMING_WIFI7,
+    ROG_STRIX_X870_F_GAMING_WIFI,
+    TUF_GAMING_B850_BTF_WIFI_W,
+    TUF_GAMING_X870_PRO_WIFI7_W_NEO,
+    X870E_UNIFY_X_MAX,
+    EX58_UD5
 }
