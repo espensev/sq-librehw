@@ -64,6 +64,12 @@ $ExitRefused = 3
 # exist in the configuration but are deliberately not run, each with a reason.
 # ---------------------------------------------------------------------------
 $GateClassification = [ordered]@{
+    'pawnio-portable'                = @{
+        Classification = 'included'
+        AllowedKeys    = @('test')
+        ExcludedKeys   = @()
+        Reason         = 'Portable PawnIO guard process; real Unix acceptance on Linux, injected guard fixture on Windows; no driver I/O.'
+    }
     'winforms-net10'                = @{
         Classification = 'included'
         AllowedKeys    = @('build', 'test')

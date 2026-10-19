@@ -21,10 +21,18 @@ public sealed class PawnIoPlatformGateTests
     public void LoadModuleFromResource_OnNonWindows_ReturnsNotLoadedInstance()
     {
         PawnIoModule pawnIo = PawnIoModule.LoadModuleFromResource(typeof(PawnIoModule).Assembly,
-                                                                  "LibreHardwareMonitor.Resources.PawnIo.AMDFamily17.bin",
+                                                                  "missing-resource-must-not-be-read",
                                                                   isUnix: true);
 
         Assert.NotNull(pawnIo);
+        Assert.False(pawnIo.IsLoaded);
+        Assert.Equal(new long[] { 0, 0 }, pawnIo.Execute("fixture", [1], 2));
+        long[] output = [17, 23];
+        Assert.Equal(0, pawnIo.ExecuteHr("fixture", [1], 1, output, 2, out uint returned));
+        Assert.Equal(0u, returned);
+        Assert.Equal(new long[] { 17, 23 }, output);
+        pawnIo.Close();
+        pawnIo.Close();
         Assert.False(pawnIo.IsLoaded);
     }
 }

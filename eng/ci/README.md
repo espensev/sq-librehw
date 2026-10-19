@@ -204,6 +204,14 @@ reason.
 
 ## GitHub Actions
 
+`pawnio-portable.yml` runs the `pawnio-portable` gate on Ubuntu and Windows
+for the PawnIO integration branch, relevant `master` pushes, and pull requests
+targeting `master`. Its standalone net10.0 fixture exercises real Unix static
+initialization and module construction on Linux. Windows executes the injected
+unsupported-platform checks without driver I/O. Acceptance requires the Linux
+job's result, not just a successful local Windows fixture. The fixture is
+outside the three-suite Windows solution filter.
+
 `.github/workflows/non-deploying-gates.yml` delegates to this runner and
 duplicates no gate command.
 

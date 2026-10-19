@@ -63,6 +63,8 @@ Use live Git commands for branch, cleanliness, and ahead/behind state.
 - `ops\deploy\snd-desk` is target-gated to SND-DESK and is not SND-HOST
   deployment authority.
 - Keep `AssemblyVersion` at `0.9.6`; build with `-p:Platform=x64`.
+- [PawnIO platform gating](features/feature-pawnio-platform-gating.md) records
+  unsupported-platform behavior and the separate portable Linux acceptance gate.
 
 ## Executable flow
 

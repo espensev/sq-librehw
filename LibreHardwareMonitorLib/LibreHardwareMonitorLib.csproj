@@ -106,6 +106,7 @@
     <InternalsVisibleTo Include="LibreHardwareMonitor.Tests.Application" />
     <InternalsVisibleTo Include="LibreHardwareMonitor.Tests.Contracts" />
     <InternalsVisibleTo Include="LibreHardwareMonitor.Tests.Attended" />
+    <InternalsVisibleTo Include="LibreHardwareMonitor.Tests.PawnIoPortable" />
   </ItemGroup>
 
   <Import Project="main.nuget.target" Condition="'$(PackMainNuget)' == 'true'" />

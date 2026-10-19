@@ -1,0 +1,49 @@
+name: PawnIO portable
+
+on:
+  push:
+    branches: [master, fix/f-013-pawnio-os-gate]
+    paths:
+      - 'LibreHardwareMonitorLib/**'
+      - 'eng/ci/fixtures/PawnIoPortable/**'
+      - 'eng/ci/Invoke-LhmGates.ps1'
+      - '.codex/skills/project.toml'
+      - 'Directory.*.props'
+      - 'global.json'
+      - '.github/workflows/pawnio-portable.yml'
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Run the portable guard gate
+        shell: pwsh
+        run: ./eng/ci/Invoke-LhmGates.ps1 -Gate pawnio-portable -JsonSummary pawnio-summary.json
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: pawnio-${{ matrix.os }}
+          path: pawnio-summary.json
+          if-no-files-found: warn

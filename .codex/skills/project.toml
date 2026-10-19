@@ -35,6 +35,7 @@ log-ops = ["ops/log-management/"]
 live-verification-ops = ["ops/live-verification/"]
 campaign-control = [".codex/", "agents/", "data/plans/", "live-tracker.md", "scripts/task_manager.py", "scripts/analysis/", "scripts/task_runtime/"]
 ci = ["eng/ci/", ".github/"]
+pawnio-portable = ["eng/ci/fixtures/PawnIoPortable/"]
 docs = ["AGENTS.md", "README.md", "docs/"]
 
 [conflict-zones]
@@ -98,6 +99,9 @@ paths = ["Directory.Build.props", "Directory.Packages.props", "global.json", "Li
 [build-gate.winforms-net10]
 build = "dotnet build LibreHardwareMonitor.Windows.Forms\\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64"
 test = "dotnet test LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.slnf -p:Platform=x64"
+
+[build-gate.pawnio-portable]
+test = "dotnet run --project eng/ci/fixtures/PawnIoPortable/PawnIoPortable.csproj -c Release -p:Platform=x64"
 
 [build-gate.winforms-net472]
 build = "dotnet build LibreHardwareMonitor.Windows.Forms\\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64"
