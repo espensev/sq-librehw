@@ -39,6 +39,14 @@ public sealed class HttpServerLifetimeTests
     }
 
     [Fact]
+    public void ListenerHostResolution_AcceptsLoopbackWithoutInterfaceDiscovery()
+    {
+        Assert.True(HttpListenerDispatchService.TryResolveListenerHost(
+            "127.0.0.1", [], out string effectiveHost));
+        Assert.Equal("127.0.0.1", effectiveHost);
+    }
+
+    [Fact]
     public void ListenerHostResolution_UnsetSentinelResolvesToWildcard()
     {
         Assert.True(HttpListenerDispatchService.TryResolveListenerHost(

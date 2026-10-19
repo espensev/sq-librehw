@@ -5,19 +5,102 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
-using DiskInfoToolkit;
+using DiskInfoToolkit.Devices;
+using DiskInfoToolkit.Monitoring;
+using DiskInfoToolkit.Partitions;
 using DiskInfoToolkit.Smart;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Hardware.Storage;
 using Xunit;
-using StorageDeviceDIT = DiskInfoToolkit.StorageDevice;
+using StorageDeviceDIT = DiskInfoToolkit.Devices.StorageDevice;
 using StorageHardware = LibreHardwareMonitor.Hardware.Storage.StorageDevice;
 
 namespace LibreHardwareMonitor.Tests;
 
 public sealed class StorageGroupLifetimeTests
 {
+    [Theory]
+    [InlineData(SmartAttributeProfile.NVMe, "NVMe disk", 2097153UL, 4194305UL)]
+    [InlineData(SmartAttributeProfile.Samsung, "Samsung disk", 2097152001UL, 4194304001UL)]
+    [InlineData(SmartAttributeProfile.WDC, "WDC disk", 1000UL, 2000UL)]
+    [InlineData(SmartAttributeProfile.WDC, "WDC SA530", 64001UL, 128001UL)]
+    [InlineData(SmartAttributeProfile.Toshiba, "Toshiba THNSNC", 32001UL, 64001UL)]
+    [InlineData(SmartAttributeProfile.Toshiba, "Toshiba disk", 1000UL, 2000UL)]
+    [InlineData(SmartAttributeProfile.Corsair, "Corsair disk", 1000UL, 2000UL)]
+    [InlineData(SmartAttributeProfile.Corsair, "Corsair Voyager GTX", 1024001UL, 2048001UL)]
+    [InlineData(SmartAttributeProfile.SanDisk, "SanDisk X400", 2097152001UL, 4194304001UL)]
+    [InlineData(SmartAttributeProfile.SanDisk, "SanDisk Z400", 1000UL, 2000UL)]
+    public void StorageCounters_PreserveLegacyUnitsIdentifiersAndIntegerPrecision
+    (
+        SmartAttributeProfile profile,
+        string model,
+        ulong readCount,
+        ulong writeCount)
+    {
+        StorageDeviceDIT disk = CreateDisk(42);
+        disk.ProductName = model;
+        disk.TransportKind = StorageTransportKind.Ata;
+        disk.SmartAttributeProfile = profile;
+        disk.SmartAttributes.Add(new SmartAttributeEntry { ID = profile == SmartAttributeProfile.NVMe ? (byte)0xE5 : (byte)0xF2, RawValue = readCount });
+        disk.SmartAttributes.Add(new SmartAttributeEntry { ID = profile == SmartAttributeProfile.NVMe ? (byte)0xE6 : (byte)0xF1, RawValue = writeCount });
+        var hardware = new StorageHardware(disk, new TestSettings());
+
+        foreach (StorageDeviceSensor sensor in hardware.Sensors.OfType<StorageDeviceSensor>())
+            sensor.Update(disk);
+
+        ISensor readSensor = Assert.Single(hardware.Sensors, sensor => sensor.Name == "Data Read");
+        ISensor writeSensor = Assert.Single(hardware.Sensors, sensor => sensor.Name == "Data Written");
+        Assert.Equal("/ata/42/data/21", readSensor.Identifier.ToString());
+        Assert.Equal("/ata/42/data/22", writeSensor.Identifier.ToString());
+        Assert.Equal(1000f, readSensor.Value);
+        Assert.Equal(2000f, writeSensor.Value);
+        hardware.Close();
+    }
+
+    [Fact]
+    public void StorageCapacity_PreservesDecimalGigabytesAndSensorIdentifiers()
+    {
+        StorageDeviceDIT disk = CreateDisk(42);
+        disk.TransportKind = StorageTransportKind.Ata;
+        disk.DiskSizeBytes = 1000000000000UL;
+        disk.Partitions.Add(new StoragePartitionInfo { AvailableFreeSpaceBytes = 250000000000UL });
+        var hardware = new StorageHardware(disk, new TestSettings());
+        typeof(StorageHardware).GetMethod("UpdateSpaceSensors", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(hardware, null);
+
+        ISensor total = Assert.Single(hardware.Sensors, sensor => sensor.Name == "Total Space");
+        ISensor free = Assert.Single(hardware.Sensors, sensor => sensor.Name == "Free Space");
+        ISensor used = Assert.Single(hardware.Sensors, sensor => sensor.Name == "Used Space");
+        Assert.Equal("/ata/42/data/32", total.Identifier.ToString());
+        Assert.Equal("/ata/42/data/31", free.Identifier.ToString());
+        Assert.Equal(1000f, total.Value);
+        Assert.Equal(250f, free.Value);
+        Assert.Equal(75f, used.Value);
+        hardware.Close();
+    }
+
+    [Fact]
+    public void StorageSensors_FirstActualSampleSeedsMinimumAndMaximum()
+    {
+        StorageDeviceDIT disk = CreateDisk(42);
+        disk.SmartAttributeProfile = SmartAttributeProfile.Samsung;
+        disk.SmartAttributes.Add(new SmartAttributeEntry { ID = 0xC2, RawValue = 35 });
+        var hardware = new StorageHardware(disk, new TestSettings());
+        var temperature = Assert.IsType<StorageDeviceSensor>(Assert.Single(hardware.Sensors, sensor => sensor.Name == "Temperature"));
+        Assert.Null(temperature.Value);
+        Assert.Null(temperature.Min);
+        Assert.Null(temperature.Max);
+
+        temperature.Update(disk);
+
+        Assert.Equal(35f, temperature.Value);
+        Assert.Equal(35f, temperature.Min);
+        Assert.Equal(35f, temperature.Max);
+        hardware.Close();
+    }
+
     [Fact]
     public void Close_UnsubscribesExactlyOnceAndReleasesTheGroup()
     {

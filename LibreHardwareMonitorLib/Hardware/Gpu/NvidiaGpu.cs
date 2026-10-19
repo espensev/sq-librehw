@@ -1,4 +1,4 @@
-﻿// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 // Copyright (C) LibreHardwareMonitor and Contributors.
 // Partial Copyright (C) Michael Möller <mmoeller@openhardwaremonitor.org> and Contributors.
@@ -18,6 +18,8 @@ namespace LibreHardwareMonitor.Hardware.Gpu;
 internal sealed class NvidiaGpu : GenericGpu
 {
     private readonly int _adapterIndex;
+    private readonly bool _busIdKnown;
+    private readonly uint _busId;
     private readonly Sensor[] _clocks;
     private readonly int _clockVersion;
     private readonly Sensor[] _controls;
@@ -36,10 +38,17 @@ internal sealed class NvidiaGpu : GenericGpu
     private readonly Sensor[] _loads;
     private readonly Sensor _memoryFree;
     private readonly Sensor _memoryJunctionTemperature;
+    private readonly Sensor[] _memoryTemperatures;
+    private readonly float?[] _memoryTemperatureValues;
     private readonly Sensor _memoryTotal;
     private readonly Sensor _memoryUsed;
     private readonly Sensor _memoryLoad;
-    private readonly NvidiaML.NvmlDevice? _nvmlDevice;
+    private readonly string _nvmlPciBusId;
+    private readonly PawnIo.Nvidia _pawnNvidia;
+    private readonly Sensor[] _hotSpotTemperatures;
+    private readonly float?[] _hotSpotTemperatureValues;
+    private readonly uint _pciBusId;
+    private readonly uint _pciDeviceId;
     private readonly Sensor _pcieThroughputRx;
     private readonly Sensor _pcieThroughputTx;
     private readonly Sensor[] _powers;
@@ -64,6 +73,48 @@ internal sealed class NvidiaGpu : GenericGpu
         0x89DE1043, // Astral 5080 OC
     ];
 
+    // Call while holding NvidiaML.SyncRoot so Close cannot invalidate the handle before its use.
+    private NvidiaML.NvmlDevice? GetNvmlDevice(bool allowIndexWithoutBusId = false)
+    {
+        // NvidiaGroup alone owns the process-wide NVML lease. Polling must not
+        // acquire a lease that the group cannot release.
+        if (!NvidiaML.IsAvailable)
+            return null;
+
+        return ResolveNvmlDevice(_nvmlPciBusId, _busIdKnown, _busId, _adapterIndex,
+                                 allowIndexWithoutBusId, NvidiaML.NvmlDeviceGetHandleByPciBusId,
+                                 NvidiaML.NvmlDeviceGetHandleByIndex, NvidiaML.NvmlDeviceGetPciInfo);
+    }
+
+    internal static NvidiaML.NvmlDevice? ResolveNvmlDevice(
+        string pciBusId, bool busIdKnown, uint busId, int adapterIndex, bool allowIndexWithoutBusId,
+        Func<string, NvidiaML.NvmlDevice?> getByPciBusId,
+        Func<int, NvidiaML.NvmlDevice?> getByIndex,
+        Func<NvidiaML.NvmlDevice, NvidiaML.NvmlPciInfo?> getPciInfo)
+    {
+        if (!string.IsNullOrEmpty(pciBusId))
+            return getByPciBusId(pciBusId);
+
+        // Use an unverified index only once to discover a stable PCI identity.
+        if (!busIdKnown)
+            return allowIndexWithoutBusId ? getByIndex(adapterIndex) : null;
+
+        NvidiaML.NvmlDevice? nvmlDevice = getByPciBusId($"0000:{busId:X2}:00.0");
+
+        if (nvmlDevice.HasValue)
+            return nvmlDevice;
+
+        nvmlDevice = getByIndex(adapterIndex);
+
+        if (!nvmlDevice.HasValue)
+            return null;
+
+        // The NVAPI and NVML indices can refer to different GPUs after a restart.
+        NvidiaML.NvmlPciInfo? pciInfo = getPciInfo(nvmlDevice.Value);
+
+        return pciInfo is { } pci && pci.bus == busId ? nvmlDevice : null;
+    }
+
     public NvidiaGpu(int adapterIndex, NvApi.NvPhysicalGpuHandle handle, NvApi.NvDisplayHandle? displayHandle, ISettings settings)
         : base(GetName(handle),
                new Identifier("gpu-nvidia", adapterIndex.ToString(CultureInfo.InvariantCulture)),
@@ -74,6 +125,9 @@ internal sealed class NvidiaGpu : GenericGpu
         _displayHandle = displayHandle;
 
         bool hasBusId = NvApi.NvAPI_GPU_GetBusId(handle, out uint busId) == NvApi.NvStatus.OK;
+
+        _busIdKnown = hasBusId;
+        _busId = busId;
 
         // Thermal settings.
         NvApi.NvThermalSettings thermalSettings = GetThermalSettings(out NvApi.NvStatus status);
@@ -127,6 +181,54 @@ internal sealed class NvidiaGpu : GenericGpu
         if (!hasAnyThermalSensor)
         {
             _thermalSensorsMask = 0;
+        }
+
+        if (!Software.OperatingSystem.IsUnix &&
+            hasBusId &&
+            NvApi.NvAPI_GPU_GetBusSlotId != null &&
+            NvApi.NvAPI_GPU_GetBusSlotId(handle, out uint busSlotId) == NvApi.NvStatus.OK)
+        {
+            PawnIo.Nvidia pawnNvidia = null;
+
+            try
+            {
+                pawnNvidia = new PawnIo.Nvidia();
+
+                if (pawnNvidia.IsLoaded)
+                {
+                    _pciBusId = busId;
+                    _pciDeviceId = busSlotId;
+                    _hotSpotTemperatureValues = new float?[PawnIo.Nvidia.ThermalChannelCount];
+                    _hotSpotTemperatures = new Sensor[PawnIo.Nvidia.ThermalChannelCount];
+                    _memoryTemperatureValues = new float?[PawnIo.Nvidia.MemoryTemperatureSensorCount];
+                    _memoryTemperatures = new Sensor[PawnIo.Nvidia.MemoryTemperatureSensorCount];
+
+                    int temperatureIndex = (int)thermalSettings.Count + 3;
+
+                    for (int i = 0; i < _hotSpotTemperatures.Length; ++i)
+                    {
+                        _hotSpotTemperatures[i] = new Sensor($"GPU Hot Spot #{i + 1}", temperatureIndex + i, SensorType.Temperature, this, settings);
+                    }
+
+                    temperatureIndex += _hotSpotTemperatures.Length;
+
+                    for (int i = 0; i < _memoryTemperatures.Length; ++i)
+                    {
+                        _memoryTemperatures[i] = new Sensor($"GPU Memory #{i + 1}", temperatureIndex + i, SensorType.Temperature, this, settings);
+                    }
+
+                    _pawnNvidia = pawnNvidia;
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.WriteLine($"{nameof(NvidiaGpu)} PawnIO module initialization failed for '{Name}' ({Identifier}): {e}");
+            }
+
+            if (_pawnNvidia == null)
+            {
+                pawnNvidia?.Close();
+            }
         }
 
         // Clock frequencies.
@@ -351,116 +453,112 @@ internal sealed class NvidiaGpu : GenericGpu
             ActivateSensor(_coreVoltage);
         }
 
-        // NvidiaGroup owns the process-wide NVML lease for every GPU in this
-        // group. A GPU must not acquire an untracked lease of its own.
-        if (NvidiaML.IsAvailable)
+        _powerUsage = new Sensor("GPU Package", 0, SensorType.Power, this, settings);
+        _pcieThroughputRx = new Sensor("GPU PCIe Rx", 0, SensorType.Throughput, this, settings);
+        _pcieThroughputTx = new Sensor("GPU PCIe Tx", 1, SensorType.Throughput, this, settings);
+
+        NvidiaML.NvmlPciInfo? pciInfo = null;
+
+        if (!Software.OperatingSystem.IsUnix)
         {
-            if (hasBusId)
-                _nvmlDevice = NvidiaML.NvmlDeviceGetHandleByPciBusId($" 0000:{busId:X2}:00.0") ?? NvidiaML.NvmlDeviceGetHandleByIndex(_adapterIndex);
-            else
-                _nvmlDevice = NvidiaML.NvmlDeviceGetHandleByIndex(_adapterIndex);
-
-            if (_nvmlDevice.HasValue)
+            lock (NvidiaML.SyncRoot)
             {
-                _powerUsage = new Sensor("GPU Package", 0, SensorType.Power, this, settings);
+                var nvmlDevice = GetNvmlDevice(allowIndexWithoutBusId: true);
 
-                _pcieThroughputRx = new Sensor("GPU PCIe Rx", 0, SensorType.Throughput, this, settings);
-                _pcieThroughputTx = new Sensor("GPU PCIe Tx", 1, SensorType.Throughput, this, settings);
+                if (nvmlDevice.HasValue)
+                    pciInfo = NvidiaML.NvmlDeviceGetPciInfo(nvmlDevice.Value);
+            }
+        }
 
-                if (!Software.OperatingSystem.IsUnix)
+        if (pciInfo is { } pci)
+        {
+            _nvmlPciBusId = pci.busId;
+
+            string[] deviceIds = D3DDisplayDevice.GetDeviceIdentifiers();
+            if (deviceIds != null)
+            {
+                int d3dLoadStartIndex = nextLoadIndex;
+                foreach (string deviceId in deviceIds)
                 {
-                    NvidiaML.NvmlPciInfo? pciInfo = NvidiaML.NvmlDeviceGetPciInfo(_nvmlDevice.Value);
-
-                    if (pciInfo is { } pci)
+                    if (deviceId.IndexOf("VEN_" + pci.pciVendorId.ToString("X"), StringComparison.OrdinalIgnoreCase) != -1 &&
+                        deviceId.IndexOf("DEV_" + pci.pciDeviceId.ToString("X"), StringComparison.OrdinalIgnoreCase) != -1 &&
+                        deviceId.IndexOf("SUBSYS_" + pci.pciSubSystemId.ToString("X"), StringComparison.OrdinalIgnoreCase) != -1)
                     {
-                        string[] deviceIds = D3DDisplayDevice.GetDeviceIdentifiers();
-                        if (deviceIds != null)
+                        bool isMatch = false;
+
+                        string actualDeviceId = D3DDisplayDevice.GetActualDeviceIdentifier(deviceId);
+
+                        try
                         {
-                            int d3dLoadStartIndex = nextLoadIndex;
-                            foreach (string deviceId in deviceIds)
+                            if (Registry.GetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\nvlddmkm\Enum", adapterIndex.ToString(), null) is string adapterPnpId)
                             {
-                                if (deviceId.IndexOf("VEN_" + pci.pciVendorId.ToString("X"), StringComparison.OrdinalIgnoreCase) != -1 &&
-                                    deviceId.IndexOf("DEV_" + pci.pciDeviceId.ToString("X"), StringComparison.OrdinalIgnoreCase) != -1 &&
-                                    deviceId.IndexOf("SUBSYS_" + pci.pciSubSystemId.ToString("X"), StringComparison.OrdinalIgnoreCase) != -1)
+                                if (actualDeviceId.IndexOf(adapterPnpId, StringComparison.OrdinalIgnoreCase) != -1 ||
+                                    adapterPnpId.IndexOf(actualDeviceId, StringComparison.OrdinalIgnoreCase) != -1)
                                 {
-                                    bool isMatch = false;
+                                    isMatch = true;
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // Ignored.
+                        }
 
-                                    string actualDeviceId = D3DDisplayDevice.GetActualDeviceIdentifier(deviceId);
+                        if (!isMatch)
+                        {
+                            try
+                            {
+                                string path = actualDeviceId;
+                                path = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\" + path;
 
-                                    try
+                                if (Registry.GetValue(path, "LocationInformation", null) is string locationInformation)
+                                {
+                                    // For example:
+                                    // @System32\drivers\pci.sys,#65536;PCI bus %1, device %2, function %3;(38,0,0)
+
+                                    int index = locationInformation.IndexOf('(');
+                                    if (index != -1)
                                     {
-                                        if (Registry.GetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\nvlddmkm\Enum", adapterIndex.ToString(), null) is string adapterPnpId)
+                                        index++;
+                                        int secondIndex = locationInformation.IndexOf(',', index);
+                                        if (secondIndex != -1)
                                         {
-                                            if (actualDeviceId.IndexOf(adapterPnpId, StringComparison.OrdinalIgnoreCase) != -1 ||
-                                                adapterPnpId.IndexOf(actualDeviceId, StringComparison.OrdinalIgnoreCase) != -1)
-                                            {
+                                            string bus = locationInformation.Substring(index, secondIndex - index);
+
+                                            if (pci.bus.ToString() == bus)
                                                 isMatch = true;
-                                            }
                                         }
-                                    }
-                                    catch
-                                    {
-                                        // Ignored.
-                                    }
-
-                                    if (!isMatch)
-                                    {
-                                        try
-                                        {
-                                            string path = actualDeviceId;
-                                            path = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\" + path;
-
-                                            if (Registry.GetValue(path, "LocationInformation", null) is string locationInformation)
-                                            {
-                                                // For example:
-                                                // @System32\drivers\pci.sys,#65536;PCI bus %1, device %2, function %3;(38,0,0)
-
-                                                int index = locationInformation.IndexOf('(');
-                                                if (index != -1)
-                                                {
-                                                    index++;
-                                                    int secondIndex = locationInformation.IndexOf(',', index);
-                                                    if (secondIndex != -1)
-                                                    {
-                                                        string bus = locationInformation.Substring(index, secondIndex - index);
-
-                                                        if (pci.bus.ToString() == bus)
-                                                            isMatch = true;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        catch
-                                        {
-                                            // Ignored.
-                                        }
-                                    }
-
-                                    if (isMatch && D3DDisplayDevice.GetDeviceInfoByIdentifier(deviceId, out D3DDisplayDevice.D3DDeviceInfo deviceInfo))
-                                    {
-                                        int smallDataSensorIndex = 3; // There are three normal GPU memory sensors.
-                                        int nextD3dLoadIndex = d3dLoadStartIndex;
-
-                                        _d3dDeviceId = deviceId;
-
-                                        _gpuDedicatedMemoryUsage = new Sensor("D3D Dedicated Memory Used", smallDataSensorIndex++, SensorType.SmallData, this, settings);
-                                        _gpuSharedMemoryUsage = new Sensor("D3D Shared Memory Used", smallDataSensorIndex, SensorType.SmallData, this, settings);
-
-                                        _gpuNodeUsage = new Sensor[deviceInfo.Nodes.Length];
-                                        _gpuNodeUsagePrevValue = new long[deviceInfo.Nodes.Length];
-                                        _gpuNodeUsagePrevTick = new DateTime[deviceInfo.Nodes.Length];
-
-                                        foreach (D3DDisplayDevice.D3DDeviceNodeInfo node in deviceInfo.Nodes.OrderBy(x => x.Name))
-                                        {
-                                            _gpuNodeUsage[node.Id] = new Sensor(node.Name, nextD3dLoadIndex++, SensorType.Load, this, settings);
-                                            _gpuNodeUsagePrevValue[node.Id] = node.RunningTime;
-                                            _gpuNodeUsagePrevTick[node.Id] = node.QueryTime;
-                                        }
-
-                                        nextLoadIndex = nextD3dLoadIndex;
                                     }
                                 }
                             }
+                            catch
+                            {
+                                // Ignored.
+                            }
+                        }
+
+                        if (isMatch && D3DDisplayDevice.GetDeviceInfoByIdentifier(deviceId, out D3DDisplayDevice.D3DDeviceInfo deviceInfo))
+                        {
+                            int smallDataSensorIndex = 3; // There are three normal GPU memory sensors.
+                            int nextD3dLoadIndex = d3dLoadStartIndex;
+
+                            _d3dDeviceId = deviceId;
+
+                            _gpuDedicatedMemoryUsage = new Sensor("D3D Dedicated Memory Used", smallDataSensorIndex++, SensorType.SmallData, this, settings);
+                            _gpuSharedMemoryUsage = new Sensor("D3D Shared Memory Used", smallDataSensorIndex, SensorType.SmallData, this, settings);
+
+                            _gpuNodeUsage = new Sensor[deviceInfo.Nodes.Length];
+                            _gpuNodeUsagePrevValue = new long[deviceInfo.Nodes.Length];
+                            _gpuNodeUsagePrevTick = new DateTime[deviceInfo.Nodes.Length];
+
+                            foreach (D3DDisplayDevice.D3DDeviceNodeInfo node in deviceInfo.Nodes.OrderBy(x => x.Name))
+                            {
+                                _gpuNodeUsage[node.Id] = new Sensor(node.Name, nextD3dLoadIndex++, SensorType.Load, this, settings);
+                                _gpuNodeUsagePrevValue[node.Id] = node.RunningTime;
+                                _gpuNodeUsagePrevTick[node.Id] = node.QueryTime;
+                            }
+
+                            nextLoadIndex = nextD3dLoadIndex;
                         }
                     }
                 }
@@ -580,6 +678,8 @@ internal sealed class NvidiaGpu : GenericGpu
                 }
             }
 
+            float? nvApiHotSpotTemperature = null;
+            _memoryJunctionTemperature.Value = null;
             if (_thermalSensorsMask > 0)
             {
                 NvApi.NvThermalSensors thermalSensors = GetThermalSensors(_thermalSensorsMask, out status);
@@ -589,8 +689,6 @@ internal sealed class NvidiaGpu : GenericGpu
                     // RTX 50xx series
                     if (Name.StartsWith("NVIDIA GeForce RTX 50", StringComparison.OrdinalIgnoreCase))
                     {
-                        _hotSpotTemperature.Value = 0;
-
                         // _temperatures is null when the constructor's GetThermalSettings call failed.
                         if (_temperatures is { Length: > 0 })
                             _temperatures[0].Value = thermalSensors.Temperatures[1] / 256.0f;
@@ -600,37 +698,28 @@ internal sealed class NvidiaGpu : GenericGpu
                     // RTX 40xx series
                     else if (Name.StartsWith("NVIDIA GeForce RTX 40", StringComparison.OrdinalIgnoreCase))
                     {
-                        _hotSpotTemperature.Value = thermalSensors.Temperatures[1] / 256.0f;
+                        nvApiHotSpotTemperature = thermalSensors.Temperatures[1] / 256.0f;
                         _memoryJunctionTemperature.Value = thermalSensors.Temperatures[7] / 256.0f;
                     }
                     else
                     {
-                        _hotSpotTemperature.Value = thermalSensors.Temperatures[1] / 256.0f;
+                        nvApiHotSpotTemperature = thermalSensors.Temperatures[1] / 256.0f;
                         _memoryJunctionTemperature.Value = thermalSensors.Temperatures[9] / 256.0f;
                     }
-                }
-
-                if (status == NvApi.NvStatus.OK && _hotSpotTemperature.Value is float hotSpotTemperature && hotSpotTemperature != 0)
-                {
-                    ActivateSensor(_hotSpotTemperature);
-                    _hotSpotTemperatureRate.Observe(hotSpotTemperature);
-                    if (_hotSpotTemperatureRate.Value.HasValue)
-                        ActivateSensor(_hotSpotTemperatureRate);
-                }
-                else
-                {
-                    _hotSpotTemperatureRate.Observe(null);
                 }
 
                 if (status == NvApi.NvStatus.OK && _memoryJunctionTemperature.Value is float memoryJunctionTemperature && memoryJunctionTemperature != 0)
                     ActivateSensor(_memoryJunctionTemperature);
             }
-            else
-            {
-                _hotSpotTemperature.Value = null;
-                _hotSpotTemperatureRate.Observe(null);
-                _memoryJunctionTemperature.Value = null;
-            }
+
+            PublishHotSpotTemperature(nvApiHotSpotTemperature, UpdateHotSpotTemperatures(),
+                                      _hotSpotTemperature, _hotSpotTemperatureRate);
+            if (_hotSpotTemperature.Value.HasValue)
+                ActivateSensor(_hotSpotTemperature);
+            if (_hotSpotTemperatureRate.Value.HasValue)
+                ActivateSensor(_hotSpotTemperatureRate);
+
+            UpdateMemoryTemperatures();
 
             if (_clocks is { Length: > 0 })
             {
@@ -768,15 +857,15 @@ internal sealed class NvidiaGpu : GenericGpu
 
             if (NvApi.NvAPI_GPU_GetMemoryInfoEx != null || _displayHandle != null)
             {
-                uint free = 0;
-                uint total = 0;
+                ulong free = 0;
+                ulong total = 0;
 
                 //Size in bytes
                 NvApi.NvMemoryInfoEx memoryInfoEx = GetMemoryInfoEx(out status);
                 if (status == NvApi.NvStatus.OK)
                 {
-                    free = (uint)(memoryInfoEx.CurrentAvailableDedicatedVideoMemory / 1024);
-                    total = (uint)(memoryInfoEx.DedicatedVideoMemory / 1024);
+                    free = memoryInfoEx.CurrentAvailableDedicatedVideoMemory;
+                    total = memoryInfoEx.DedicatedVideoMemory;
                 }
                 else
                 {
@@ -784,20 +873,20 @@ internal sealed class NvidiaGpu : GenericGpu
                     NvApi.NvMemoryInfo memoryInfo = GetMemoryInfo(out status);
                     if (status == NvApi.NvStatus.OK)
                     {
-                        free = memoryInfo.CurrentAvailableDedicatedVideoMemory;
-                        total = memoryInfo.DedicatedVideoMemory;
+                        free = memoryInfo.CurrentAvailableDedicatedVideoMemory * 1024UL;
+                        total = memoryInfo.DedicatedVideoMemory * 1024UL;
                     }
                 }
 
                 if (status == NvApi.NvStatus.OK)
                 {
-                    _memoryTotal.Value = total / 1024;
+                    _memoryTotal.Value = total / (1024UL * 1024UL);
                     ActivateSensor(_memoryTotal);
 
-                    _memoryFree.Value = free / 1024;
+                    _memoryFree.Value = free / (1024UL * 1024UL);
                     ActivateSensor(_memoryFree);
 
-                    _memoryUsed.Value = (total - free) / 1024;
+                    _memoryUsed.Value = (total - free) / (1024UL * 1024UL);
                     ActivateSensor(_memoryUsed);
 
                     _memoryLoad.Value = ((float)(total - free) / total) * 100;
@@ -805,30 +894,36 @@ internal sealed class NvidiaGpu : GenericGpu
                 }
             }
 
-            if (NvidiaML.IsAvailable && _nvmlDevice.HasValue)
+            int? powerUsage = null;
+            uint? rx = null;
+            uint? tx = null;
+
+            lock (NvidiaML.SyncRoot)
             {
-                int? result = NvidiaML.NvmlDeviceGetPowerUsage(_nvmlDevice.Value);
-                if (result.HasValue)
-                {
-                    _powerUsage.Value = result.Value / 1000f;
-                    ActivateSensor(_powerUsage);
-                }
+                NvidiaML.NvmlDevice? nvmlDevice = GetNvmlDevice();
 
-                // In MB/s, throughput sensors are passed as in KB/s.
-                uint? rx = NvidiaML.NvmlDeviceGetPcieThroughput(_nvmlDevice.Value, NvidiaML.NvmlPcieUtilCounter.RxBytes);
-                if (rx.HasValue)
+                if (nvmlDevice.HasValue)
                 {
-                    _pcieThroughputRx.Value = rx * 1024;
-                    ActivateSensor(_pcieThroughputRx);
-                }
+                    powerUsage = NvidiaML.NvmlDeviceGetPowerUsage(nvmlDevice.Value);
 
-                uint? tx = NvidiaML.NvmlDeviceGetPcieThroughput(_nvmlDevice.Value, NvidiaML.NvmlPcieUtilCounter.TxBytes);
-                if (tx.HasValue)
-                {
-                    _pcieThroughputTx.Value = tx * 1024;
-                    ActivateSensor(_pcieThroughputTx);
+                    rx = NvidiaML.NvmlDeviceGetPcieThroughput(nvmlDevice.Value, NvidiaML.NvmlPcieUtilCounter.RxBytes);
+                    tx = NvidiaML.NvmlDeviceGetPcieThroughput(nvmlDevice.Value, NvidiaML.NvmlPcieUtilCounter.TxBytes);
                 }
             }
+
+            _powerUsage.Value = powerUsage.HasValue ? powerUsage.Value / 1000f : null;
+
+            if (powerUsage.HasValue)
+                ActivateSensor(_powerUsage);
+
+            // In MB/s, throughput sensors are passed as in KB/s.
+            _pcieThroughputRx.Value = rx * 1024;
+            if (rx.HasValue)
+                ActivateSensor(_pcieThroughputRx);
+
+            _pcieThroughputTx.Value = tx * 1024;
+            if (tx.HasValue)
+                ActivateSensor(_pcieThroughputTx);
 
             // Astral specific
             if (_12VHPwrPinCurrentSensors is { Length: > 0 } && TryReadAstral12VHPwrPinSensors(out ushort[] pinSensorValues))
@@ -854,6 +949,103 @@ internal sealed class NvidiaGpu : GenericGpu
         catch (Exception e)
         {
             Debug.WriteLine($"{nameof(NvidiaGpu)} {nameof(Update)} failed for '{Name}' ({Identifier}): {e}");
+        }
+    }
+
+    internal static void PublishHotSpotTemperature(float? nvApiTemperature, float? pawnTemperature,
+                                                   Sensor temperature, TemperatureRateSensor rate)
+    {
+        // NVAPI reports zero when this channel is unavailable (notably RTX 50xx).
+        // Observe once, after selecting this poll's final fresh sample.
+        temperature.Value = pawnTemperature ?? (nvApiTemperature != 0 ? nvApiTemperature : null);
+        rate.Observe(temperature.Value);
+    }
+
+    internal static float? ReadPawnTemperatures(float?[] values, Func<bool> read,
+                                                Func<bool> wait, Action release)
+    {
+        Array.Clear(values, 0, values.Length);
+        if (!wait())
+            return null;
+
+        bool success = false;
+        try
+        {
+            success = read();
+        }
+        finally
+        {
+            release();
+            if (!success)
+                Array.Clear(values, 0, values.Length);
+        }
+
+        float? maximum = null;
+        foreach (float? value in values)
+        {
+            if (value.HasValue)
+                maximum = maximum.HasValue ? Math.Max(maximum.Value, value.Value) : value.Value;
+        }
+
+        return maximum;
+    }
+
+    private float? UpdateHotSpotTemperatures()
+    {
+        if (_pawnNvidia == null || _hotSpotTemperatures == null)
+        {
+            return null;
+        }
+
+        float? maximum = ReadPawnTemperatures(_hotSpotTemperatureValues,
+            () => _pawnNvidia.TryReadThermalChannels(_pciBusId, _pciDeviceId, 0, _hotSpotTemperatureValues),
+            () => Mutexes.WaitPciBus(10), Mutexes.ReleasePciBus);
+
+        for (int i = 0; i < _hotSpotTemperatures.Length; i++)
+        {
+            Sensor sensor = _hotSpotTemperatures[i];
+            float? value = _hotSpotTemperatureValues[i];
+            sensor.Value = value;
+
+            if (value.HasValue)
+            {
+                ActivateSensor(sensor);
+            }
+            else
+            {
+                DeactivateSensor(sensor);
+            }
+        }
+
+        return maximum;
+    }
+
+    private void UpdateMemoryTemperatures()
+    {
+        if (_pawnNvidia == null || _memoryTemperatures == null)
+        {
+            return;
+        }
+
+        ReadPawnTemperatures(_memoryTemperatureValues,
+            () => _pawnNvidia.TryReadMemoryTemperatures(_pciBusId, _pciDeviceId, 0, _memoryTemperatureValues),
+            () => Mutexes.WaitPciBus(10), Mutexes.ReleasePciBus);
+
+        for (int i = 0; i < _memoryTemperatures.Length; ++i)
+        {
+            Sensor sensor = _memoryTemperatures[i];
+
+            float? value = _memoryTemperatureValues[i];
+            sensor.Value = value;
+
+            if (value.HasValue)
+            {
+                ActivateSensor(sensor);
+            }
+            else
+            {
+                DeactivateSensor(sensor);
+            }
         }
     }
 
@@ -1508,6 +1700,8 @@ internal sealed class NvidiaGpu : GenericGpu
 
     public override void Close()
     {
+        _pawnNvidia?.Close();
+
         if (_fanControls != null)
         {
             for (int i = 0; i < _fanControls.Length; i++)

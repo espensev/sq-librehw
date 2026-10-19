@@ -21,6 +21,43 @@ namespace LibreHardwareMonitor.Tests;
 
 public sealed class SensorSnapshotTests
 {
+    [Theory]
+    [InlineData(SensorType.Data, 12, "GB", "data")]
+    [InlineData(SensorType.SmallData, 13, "MB", "smalldata")]
+    public void CaptureAndDataJson_PreserveLegacyDataOrdinalsIdentifiersAndUnits(
+        SensorType sensorType, int ordinal, string unit, string identifierSegment)
+    {
+        Assert.Equal(ordinal, (int)sensorType);
+        RunWithInvariantCulture(() =>
+        {
+            SnapshotFixture fixture = CreateFixture(
+                new Identifier("memory", "0"), "Memory", HardwareType.Memory,
+                sensorType, 0, "Used", 1.5f, 0.5f, 2.5f);
+
+            SensorSnapshot snapshot = WinFormsNodeSensorSnapshotSource.Capture(fixture.Root);
+            SensorNodeSnapshot sensor = Assert.Single(Assert.Single(Assert.Single(snapshot.Root.Children).Children).Children);
+            Assert.Equal($"/memory/0/{identifierSegment}/0", sensor.SensorId);
+            Assert.Equal(0.5f, sensor.Minimum.Raw);
+            Assert.Equal(1.5f, sensor.Current.Raw);
+            Assert.Equal(2.5f, sensor.Maximum.Raw);
+            Assert.Equal($"0.5 {unit}", sensor.Minimum.Display);
+            Assert.Equal($"1.5 {unit}", sensor.Current.Display);
+            Assert.Equal($"2.5 {unit}", sensor.Maximum.Display);
+
+            Dictionary<string, object> projected = DataJsonProjection.Project(snapshot, new Version(0, 9, 6));
+            for (int depth = 0; depth < 4; depth++)
+                projected = Assert.IsType<Dictionary<string, object>>(Assert.Single(Assert.IsType<List<object>>(projected["Children"])));
+            Assert.Equal(sensorType.ToString(), projected["Type"]);
+            Assert.Equal(sensor.SensorId, projected["SensorId"]);
+            Assert.Equal(0.5f, projected["RawMin"]);
+            Assert.Equal(1.5f, projected["RawValue"]);
+            Assert.Equal(2.5f, projected["RawMax"]);
+            Assert.Equal($"0.5 {unit}", projected["Min"]);
+            Assert.Equal($"1.5 {unit}", projected["Value"]);
+            Assert.Equal($"2.5 {unit}", projected["Max"]);
+        });
+    }
+
     [Fact]
     public void Capture_PreservesProducerOrderKindsIdentityValuesAndLegacyImages()
     {

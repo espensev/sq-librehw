@@ -109,6 +109,10 @@ internal sealed class HttpListenerDispatchService
             return true;
         }
 
+        // Loopback is always local even when interface discovery omits it.
+        if (configuredHost == IPAddress.Loopback.ToString())
+            return true;
+
         if (assignedAddresses == null ||
             !IPAddress.TryParse(configuredHost, out IPAddress configuredAddress) ||
             configuredAddress.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)

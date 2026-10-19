@@ -1,5 +1,8 @@
 # Audited upstream sync — 2026-07-25
 
+Current continuation: [2026-10-19 official integration](feature-upstream-sync-2026-10-19.md)
+and its [open-work review](../reviews/review-2026-10-19-upstream-and-open-work.md).
+
 **Status:** source verified; attended hardware smoke pending
 
 **Upstream range:** `abfc4f5..81e8f83` (17 commits)

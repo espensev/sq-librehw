@@ -143,6 +143,8 @@ internal static class NvidiaML
         private set => _isAvailable = value;
     }
 
+    public static object SyncRoot => _leaseOwner.SyncRoot;
+
     public static bool Initialize() => _leaseOwner.Acquire();
 
     private static bool InitializeCore()
@@ -313,6 +315,8 @@ internal static class NvidiaML
             _initialize = initialize ?? throw new ArgumentNullException(nameof(initialize));
             _shutdown = shutdown ?? throw new ArgumentNullException(nameof(shutdown));
         }
+
+        internal object SyncRoot => _sync;
 
         internal int LeaseCount
         {

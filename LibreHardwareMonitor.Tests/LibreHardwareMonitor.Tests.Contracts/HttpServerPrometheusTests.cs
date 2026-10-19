@@ -26,6 +26,27 @@ public sealed class HttpServerPrometheusTests
 {
     private static readonly DateTime _historyStart = new(2026, 7, 10, 8, 0, 0, DateTimeKind.Utc);
 
+    [Theory]
+    [InlineData(SensorType.Data, "data", "1500000000")]
+    [InlineData(SensorType.SmallData, "smalldata", "1572864")]
+    public void DataMetrics_PreserveLegacyByteConversionAndMetricIdentity(
+        SensorType sensorType, string metricType, string expectedBytes)
+    {
+        FakeHardware hardware = new(new Identifier("metrics", "0"), "Metric CPU", HardwareType.Cpu);
+        HistoryReaderSensor sensor = new(
+            hardware, sensorType, 0, "Used", new SensorValue(1.5f, _historyStart));
+        hardware.AddSensor(sensor);
+        HttpServer server = CreateServer(hardware);
+
+        (string content, _, _) = server.BuildPrometheusResponse(null);
+
+        // Data historically uses decimal GB here; SmallData uses binary MiB.
+        // Freeze the existing wire contract independently of native display labels.
+        Assert.Contains($"# TYPE lhm_cpu_{metricType}_bytes gauge\n", content);
+        Assert.Contains($"\"sensorId\"=\"/{metricType}/0\"", content);
+        Assert.EndsWith($" {expectedBytes}\n", content);
+    }
+
     [Fact]
     public void DefaultMetricsUsesOneValueFromHistoryReaderAndPreservesResponseContract()
     {

@@ -102,7 +102,8 @@ internal class IT87XX : ISuperIO
             Chip.IT8655E or
             Chip.IT8631E or
             Chip.IT8638E or
-            Chip.IT8696E;
+            Chip.IT8696E or
+            Chip.IT8772E;
 
         _hasAlt6thFanReg = chip is Chip.IT8665E or Chip.IT8625E;
 
@@ -268,7 +269,7 @@ internal class IT87XX : ISuperIO
         _gpioCount = chip switch
         {
             Chip.IT8712F or Chip.IT8716F or Chip.IT8718F or Chip.IT8726F => 5,
-            Chip.IT8720F or Chip.IT8721F => 8,
+            Chip.IT8720F or Chip.IT8721F or Chip.IT8772E => 8,
             _ => 0
         };
     }
@@ -579,7 +580,7 @@ internal class IT87XX : ISuperIO
             _initialFanPwmControl[index] = ReadByte(FAN_PWM_CTRL_REG[index], out bool _);
 
             if (index < 3)
-                _initialFanOutputModeEnabled[index] = ReadByte(FAN_MAIN_CTRL_REG, out bool _) != 0; // Save default control reg value.
+                _initialFanOutputModeEnabled[index] = (ReadByte(FAN_MAIN_CTRL_REG, out bool _) & (1 << index)) != 0; // Save default control bit value.
 
             if (_hasExtReg)
                 _initialFanPwmControlExt[index] = ReadByte(FAN_PWM_CTRL_EXT_REG[index], out _);

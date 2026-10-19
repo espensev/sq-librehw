@@ -22,12 +22,12 @@ internal class LpcPort
 
     public ushort ValuePort { get; }
 
-    public byte ReadIoPort(ushort port)
+    public virtual byte ReadIoPort(ushort port)
     {
         return _pawnModule.ReadPort(port);
     }
 
-    public void WriteIoPort(ushort port, byte value)
+    public virtual void WriteIoPort(ushort port, byte value)
     {
         _pawnModule.WritePort(port, value);
     }
