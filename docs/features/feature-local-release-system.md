@@ -10,9 +10,11 @@ users, or runtime state as SND-HOST instructions.
 general hardware monitoring, and CSV logging are live-verified with HWiNFO and
 iCUE still running; failed PSU polls now log empty cells for that tick instead
 of stale values. See the 2026-10-08 record below. The webserver is enabled
-at `http://127.0.0.1:18085/`; promotion and rollback commands must
-explicitly pass `-HealthUri 'http://127.0.0.1:18085/data.json'` because their
-default remains the historical port 8085.
+at `http://127.0.0.1:18085/`; since 2026-10-23 the promotion, rollback,
+cutover, and migration scripts default `-HealthUri` to
+`http://127.0.0.1:18085/data.json` (the historical 8085 default is retired),
+and the managed-task principal SID constant matches the current
+`SND-DESK\Sev` account.
 Focused value-axis Shift-wheel zoom and adaptive lane tick spacing
 remain installed, including the earlier startup zoom repair.
 The legacy scheduler-root task is retired; the enabled managed task's logon
@@ -24,7 +26,7 @@ Current Data/Bin authority is persisted `SEV_LOCAL_DATA` / `SEV_LOCAL_BIN`
 (User, then Machine, then Process), with recursive expansion of `%...%`
 templates. The app-owned `librehw` launcher is the sole activation authority.
 Completed migrations and their dated evidence are retained below.
-**Updated:** 2026-10-08
+**Updated:** 2026-10-23
 
 ## Problem
 

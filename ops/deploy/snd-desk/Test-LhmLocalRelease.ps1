@@ -3816,13 +3816,13 @@ try {
         $script:LhmProductionPublicShimName -ceq 'librehw.cmd' -and
         (Get-LhmPublicShimCentralLauncherToken) -ceq
             '%SEV_LOCAL_BIN%\runw\runw.exe' -and
-        $script:LhmProductionHealthUri -ceq 'http://localhost:8085/data.json' -and
+        $script:LhmProductionHealthUri -ceq 'http://127.0.0.1:18085/data.json' -and
         $script:LhmExpectedInstanceId -ceq
             'ca96d510-7d87-4cec-8e1a-bd8fc3866903' -and
         $script:LhmPreRelocationLauncherSha256 -ceq
             '74148efe09a18cb00047d3c6915153717071c9a5e3c1198193caeb0f0dac63c0' -and
         $script:LhmManagedTaskPrincipalSid -ceq
-            'S-1-5-21-3033086598-3000262358-161002696-1001' -and
+            'S-1-5-21-2646273765-3589720104-2789831482-1001' -and
         $script:LhmManagedTaskPrincipalUserId -ceq 'Sev' -and
         $script:LhmManagedTaskLogonUserId -ceq 'SND-Desk\Sev' -and
         $script:LhmLegacyRootTaskExecutablePath -ceq

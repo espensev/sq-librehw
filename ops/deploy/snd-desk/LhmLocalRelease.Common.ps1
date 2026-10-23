@@ -18,11 +18,13 @@ $script:LhmProductionCentralLauncherRelativePath = 'runw\runw.exe'
 $script:LhmProductionRunWReceiptRelativePath =
     'RunW\install-receipt-v2-1.3.1-1125451-repair-20261002.json'
 $script:LhmManagedTaskPath = '\SevGrp\AdminTask\LibreHW-No-UAC'
-$script:LhmProductionHealthUri = 'http://localhost:8085/data.json'
+$script:LhmProductionHealthUri = 'http://127.0.0.1:18085/data.json'
 $script:LhmExpectedMachineId = 'snd-desk'
 $script:LhmExpectedInstanceId = 'ca96d510-7d87-4cec-8e1a-bd8fc3866903'
+# SID of the SND-DESK\Sev task principal as resolved on 2026-10-23; the earlier
+# value no longer matched the account on this machine.
 $script:LhmManagedTaskPrincipalSid =
-    'S-1-5-21-3033086598-3000262358-161002696-1001'
+    'S-1-5-21-2646273765-3589720104-2789831482-1001'
 $script:LhmManagedTaskPrincipalUserId = 'Sev'
 $script:LhmManagedTaskLogonUserId = 'SND-Desk\Sev'
 $script:LhmManagedTaskRestartCount = 3

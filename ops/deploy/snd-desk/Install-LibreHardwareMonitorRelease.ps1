@@ -14,7 +14,7 @@ param(
 
     [switch] $AllowStopExactProcess,
 
-    [uri] $HealthUri = 'http://localhost:8085/data.json',
+    [uri] $HealthUri = 'http://127.0.0.1:18085/data.json',
 
     [ValidateRange(5, 300)]
     [int] $ActivationTimeoutSeconds = 45,
