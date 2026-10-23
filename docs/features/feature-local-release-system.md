@@ -24,8 +24,9 @@ The legacy scheduler-root task is retired; the enabled managed task's logon
 trigger is the sole automatic-start authority.
 Launcher convergence was rechecked with Validate on 2026-10-23: launcher,
 central launcher, public shim, and managed task are current, and only the
-2026-10-02 convergence receipt is stale because it names a since-removed
-worktree as its source, as already recorded on 2026-10-07 and 2026-10-08.
+2026-10-02 convergence receipt is stale because it names the 2026-10-02 merge
+worktree rather than the primary checkout as its source, as already recorded
+on 2026-10-07 and 2026-10-08.
 Technical graph restart verification passed; operator layout sign-off remains
 separate.
 Current Data/Bin authority is persisted `SEV_LOCAL_DATA` / `SEV_LOCAL_BIN`
@@ -1295,8 +1296,9 @@ HTTP samples each retained 17/17 readings and correct rail voltages; PSU
 uptime advanced 45 seconds, and HWiNFO, iCUE, and Corsair.Service kept their
 process IDs and start times. Launcher Validate reports launcher, central
 launcher, public shim, and managed task current; only the convergence receipt
-is stale, as on 2026-10-08, because the 2026-10-02 receipt names a
-since-removed worktree as its source while every hash still matches.
+is stale, as on 2026-10-08, because the 2026-10-02 receipt names the merge
+worktree it was applied from, not the primary checkout, as its source while
+every hash still matches.
 
 A 10.6-minute soak confirmed the same process still responding with no crash
 event, all nine NVIDIA power readings changing between samples on both GPUs,
