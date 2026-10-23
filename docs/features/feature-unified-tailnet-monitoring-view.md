@@ -3,8 +3,11 @@
 **Machine scope:** SND-DESK presentation and Tailscale Serve configuration.
 SND-HOST remains a read-only dashboard source.
 
-**Status:** deployed and live-verified on SND-DESK
-**Updated:** 2026-09-10
+**Status:** superseded; not live. Checked 2026-10-23: SND-DESK Serve `8443`
+proxies to a dead local port, no `9443` route exists, and the live listener is
+`18085`, not `8085`. The record below is kept as the 2026-09-10 deployment
+history. Successor: [Tailnet Fleet View](feature-tailnet-fleet-view.md).
+**Updated:** 2026-10-23 (status only)
 
 ## Problem and motivation
 
