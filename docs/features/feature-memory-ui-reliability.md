@@ -6,20 +6,23 @@ deployed and live-verified on SND-HOST
 
 **Corsair failure follow-up:** source-verified on 2026-10-07; candidate
 `957923fc` was promoted to SND-DESK on 2026-10-08 and live-verified with HWiNFO
-and iCUE running. `07d2d25e` holds the rollback slot.
+and iCUE running. Since 2026-10-23 `957923fc` holds the rollback slot behind
+master `9e68b348`.
 
-**Device polling follow-up:** source-verified on 2026-10-19; deployment and
-physical device-failure acceptance remain separate.
+**Device polling follow-up:** source-verified on 2026-10-19; deployed to
+SND-DESK on 2026-10-23 within master `9e68b348`. Physical device-failure
+acceptance remains separate.
 
 **History preservation follow-up:** source-verified on 2026-10-19; the last
-validated checkpoint survives dirty autosaves and abrupt reopen. Deployment
-remains separate.
+validated checkpoint survives dirty autosaves and abrupt reopen. Deployed to
+SND-DESK on 2026-10-23 within master `9e68b348`.
 
 **Runtime enables follow-up:** source-verified on 2026-10-19; failed enables
 roll back attempted groups and reconcile UI/settings without automatic retry.
-Failed-disable recovery and deployment remain separate.
+Deployed to SND-DESK on 2026-10-23 within master `9e68b348`; failed-disable
+recovery remains separate.
 
-**Updated:** 2026-10-19
+**Updated:** 2026-10-23
 
 ## Problem and motivation
 
@@ -566,6 +569,16 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-10-23 master promotion, live: master `9e68b348` (67 commits past
+  `957923fc`, including the device-polling isolation, history-preservation,
+  and runtime-enables fixes and the 2026-10-19 upstream integration) was
+  promoted on SND-DESK with `957923fc` in the rollback slot. Live verification,
+  a 45-sample stability watch, and a 10.6-minute soak passed: 613 sensors (41
+  added, none removed), 17/17 PSU readings in all 723 CSV rows with no partial
+  or empty rows, all nine NVIDIA power sensors changing on both GPUs, no crash
+  event, and HWiNFO, iCUE, and Corsair.Service untouched. Evidence:
+  `D:\DevHome\tmp\librehw-master-promotion-20261023`; record in the
+  [local release spec](feature-local-release-system.md#master-promotion--2026-10-23).
 - 2026-10-08 Corsair failure handling, live: candidate `957923fc` was promoted
   on SND-DESK after an adversarial pre-promotion review found no defect in the
   diff. Live verification and a 45-sample stability watch passed with 17/17

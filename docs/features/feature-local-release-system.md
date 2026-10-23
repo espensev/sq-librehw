@@ -5,13 +5,16 @@ launcher actions fail closed to `snd-desk`; the non-live fixture is intentionall
 peer-safe under isolated temporary roots. Do not treat these paths, tasks,
 users, or runtime state as SND-HOST instructions.
 
-**Status:** Corsair failure-path repair `957923fc` is installed on SND-DESK, with
-`07d2d25e` retained in the verified rollback slot. All 17 HX1500i readings,
-general hardware monitoring, and CSV logging are live-verified with HWiNFO and
-iCUE still running; failed PSU polls now log empty cells for that tick instead
-of stale values. See the 2026-10-08 record below. The webserver is enabled
-at `http://127.0.0.1:18085/`; since 2026-10-23 the promotion, rollback,
-cutover, and migration scripts default `-HealthUri` to
+**Status:** Master `9e68b348` is installed on SND-DESK since 2026-10-23, with
+the Corsair failure-path repair `957923fc` retained in the verified rollback
+slot. The promoted tree carries the 2026-10-19 official upstream integration,
+the device-polling isolation, history-preservation, and runtime-enables
+follow-ups, and the 18085 health-gate default. All 17 HX1500i readings, the
+NVIDIA power sensors of both GPUs, general hardware monitoring, and CSV logging
+are live-verified with HWiNFO and iCUE still running; failed PSU polls log
+empty cells for that tick instead of stale values. See the 2026-10-23 record
+below. The webserver is enabled at `http://127.0.0.1:18085/`; since 2026-10-23
+the promotion, rollback, cutover, and migration scripts default `-HealthUri` to
 `http://127.0.0.1:18085/data.json` (the historical 8085 default is retired),
 and the managed-task principal SID constant matches the current
 `SND-DESK\Sev` account.
@@ -19,9 +22,12 @@ Focused value-axis Shift-wheel zoom and adaptive lane tick spacing
 remain installed, including the earlier startup zoom repair.
 The legacy scheduler-root task is retired; the enabled managed task's logon
 trigger is the sole automatic-start authority.
-Launcher convergence and runtime/rollback hashes were rechecked on
-2026-09-11; Validate returned PASS without drift. Technical graph restart
-verification passed; operator layout sign-off remains separate.
+Launcher convergence was rechecked with Validate on 2026-10-23: launcher,
+central launcher, public shim, and managed task are current, and only the
+2026-10-02 convergence receipt is stale because it names a since-removed
+worktree as its source, as already recorded on 2026-10-07 and 2026-10-08.
+Technical graph restart verification passed; operator layout sign-off remains
+separate.
 Current Data/Bin authority is persisted `SEV_LOCAL_DATA` / `SEV_LOCAL_BIN`
 (User, then Machine, then Process), with recursive expansion of `%...%`
 templates. The app-owned `librehw` launcher is the sole activation authority.
@@ -1245,3 +1251,65 @@ Evidence is retained under `D:\DevHome\tmp\librehw-corsair-promotion-20261008`:
 `installed-psu-stability.json`, `launcher-validate.log`,
 `psu-null-baseline-installed.json`, `psu-null-soak-candidate.json`, and
 `closeout.json`.
+
+### Master promotion — 2026-10-23
+
+Commit `9e68b348` (`master`, 67 commits past the installed `957923fc`) was
+published from the clean primary checkout as candidate
+`desk-master-20261023-9e68b348`. Release verification passed Library 193/193,
+Application 247 with the one existing opt-in skip, and Contracts 114/114; both
+x64 Release targets built with zero warnings/errors, and the exact-executable
+smoke reported file version `0.9.6.2492` and product version
+`0.9.6+9e68b34.2026-10-23` with the manifest SHA-256 matching the payload.
+The non-live release fixture passed under Windows PowerShell 5.1 and pwsh 7
+with the new 18085 health pin, and the fork's non-deploying CI gate passed for
+the same commit. The promoted range carries the 2026-10-19 official upstream
+integration (its per-update NVML handle refresh targets the power-usage call
+path in which the previous runtime crashed on 2026-10-19; a ten-minute soak
+cannot settle recurrence), the device-polling isolation, history-preservation,
+and runtime-enables follow-ups, and the health-gate default fix.
+
+Preconditions were rechecked immediately before promotion: an elevated pwsh
+7.6.7 session, a verified `snd-desk` identity, the clean checkout at the
+expected HEAD, the exact four-entry install root without a release
+transaction, one responding exact-path process, the log-management task idle,
+and the .NET 10 Desktop runtime present. The identity-verified `-WhatIf`
+preview reached the promotion ShouldProcess point without error, and the
+guarded promotion (`-AllowStopExactProcess`, explicit loopback `-HealthUri`)
+completed in 3.9 seconds at 18:42 local with the health probe answering 200.
+Installed SHA-256 is
+`0d6e4ece5e80035c46647906519d05d9f7ad7778fc541c93fcbec9688dda7173`; rollback
+`957923fc` matches its prior installed payload
+`79e4d9efea541ba92c84e73d99906aee0e43a10a7586ccbe1d6ca1df3f9da489`. No release
+transaction remained after activation.
+
+Live verification found one responding exact-path process (new PID, started
+18:42:45), 54 hardware nodes, 613 sensors (609 with values), all 17 Corsair
+readings, all nine NVIDIA power sensors across both GPUs, 253 changing
+sensors, continuing CSV growth, and no Application crash event since start.
+Against the pre-promotion baseline of 572 sensors, 41 sensor IDs were added
+and none removed: NVIDIA per-channel hot-spot and memory temperatures (plus a
+hot-spot rate) on both GPUs, and a new embedded-controller node with CPU,
+package, motherboard, VRM, and T-sensor temperatures. Another 45 consecutive
+HTTP samples each retained 17/17 readings and correct rail voltages; PSU
+uptime advanced 45 seconds, and HWiNFO, iCUE, and Corsair.Service kept their
+process IDs and start times. Launcher Validate reports launcher, central
+launcher, public shim, and managed task current; only the convergence receipt
+is stale, as on 2026-10-08, because the 2026-10-02 receipt names a
+since-removed worktree as its source while every hash still matches.
+
+A 10.6-minute soak confirmed the same process still responding with no crash
+event, all nine NVIDIA power readings changing between samples on both GPUs,
+and 723 CSV rows from 18:42:53 to 18:53:14 all carrying 17 PSU values, with no
+partial or empty rows and a maximum row gap of 2.6 seconds. The daily CSV was
+opened by the previous build, so the 41 new sensors join the log only from the
+next daily file.
+
+Evidence is retained under `D:\DevHome\tmp\librehw-master-promotion-20261023`:
+`baseline.json`, `before-data.json`, `release-fixture-ps51.log`,
+`release-fixture-pwsh7.log`, `publish.log`, `candidate-smoke.json`,
+`preview-start.json`, `install-preview.log`, `preview-result.json`,
+`promotion-start.json`, `install.log`, `promotion-result.json`,
+`after-data.json`, `live-verification.json`, `installed-psu-stability.json`,
+`launcher-validate.log`, `closeout.json`, `psu-null-soak.json`, and
+`post-promotion-soak.json`.

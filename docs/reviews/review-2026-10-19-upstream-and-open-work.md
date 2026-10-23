@@ -15,7 +15,10 @@ changes and the open-work queue reviewed separately.
 
 **Verdict:** PASS WITH NOTES for source integration. No remaining confirmed merge
 blocker after the fixes below. Existing operational and reliability defects
-remain open; this is not clearance to deploy. Campaign cleanup safety,
+remain open; this review was not clearance to deploy. Deployment was decided
+separately: master `9e68b348` was promoted to SND-DESK on 2026-10-23 under the
+[local release record](../features/feature-local-release-system.md#master-promotion--2026-10-23).
+Campaign cleanup safety,
 empty CI gate handling, per-device polling isolation, PawnIO platform gating,
 crash-time history preservation, and runtime hardware-option enables were
 subsequently repaired and verified below.
@@ -177,8 +180,9 @@ deployment scripts and gate assertions remain intact.
 - Failed Reset reconstruction and reader-origin/CORS policy remain decisions;
   transactional Open and partial-reset cleanup already exist.
 - Current reliability/release specs record the October 8 Corsair promotion of
-  `957923fc`. The old handoff's claim that the fix is undeployed is stale. This
-  turn did not reverify or alter the installed runtime.
+  `957923fc`. The old handoff's claim that the fix is undeployed is stale. The
+  2026-10-19 turn did not reverify or alter the installed runtime; master
+  `9e68b348` was promoted on 2026-10-23 with `957923fc` in the rollback slot.
 
 ## Integration decisions
 

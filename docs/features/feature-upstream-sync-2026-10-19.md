@@ -1,6 +1,9 @@
 # Official upstream integration - 2026-10-19
 
-**Status:** source verified; live promotion and attended hardware checks remain separate
+**Status:** source verified; promoted to SND-DESK on 2026-10-23 within master
+`9e68b348` and live-verified (see the
+[local release record](feature-local-release-system.md#master-promotion--2026-10-23));
+attended hardware checks remain separate
 
 **Baseline:** local `5ff9d2d29f7373343273943d5954ad4971131a42`; official
 `LibreHardwareMonitor/LibreHardwareMonitor` master
@@ -84,7 +87,11 @@ contracts. AssemblyVersion remains `0.9.6`.
   external data units, collapsed plots, gadget bounds, and explicit loopback.
 - Independent integration review accepted the final source adaptations after
   the AMD and NCT6701D stale-reading corrections. Physical hardware, real Linux,
-  native-driver failure injection and live promotion were not exercised.
+  and native-driver failure injection were not exercised. Live promotion
+  followed on 2026-10-23 within master `9e68b348`: the SND-DESK runtime now
+  exposes 613 sensors (41 added, none removed: NVIDIA per-channel hot-spot and
+  memory temperatures on both GPUs plus an embedded-controller node), all nine
+  NVIDIA power sensors read on both GPUs, and no crash event was logged.
 
 See the [integration and open-work review](../reviews/review-2026-10-19-upstream-and-open-work.md)
 for scope, recovery evidence, remaining work and verification commands.
