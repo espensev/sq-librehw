@@ -114,6 +114,7 @@ Open gates:
 | `docs\features\feature-unified-tailnet-monitoring-view.md` | Deployed SND-DESK main browser view embedding live SND-DESK and SND-HOST dashboards |
 | `eng\ci\README.md` | Non-deploying gate runner |
 | `docs\features\feature-graph-lanes.md` | Promoted and live-verified on SND-DESK; lane splits, height, layout, and repaired manual-zoom persistence pass; operator sign-off separate |
+| `docs\reviews\settled-2026-10-23-smu-and-rapl.md` | Closed Ryzen SMU reply and Intel RAPL claims; do not reopen |
 
 Other feature documents contain their own status and acceptance criteria.
 The [current integration and open-work review](reviews/review-2026-10-19-upstream-and-open-work.md)

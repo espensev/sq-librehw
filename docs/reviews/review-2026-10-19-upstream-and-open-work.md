@@ -20,6 +20,10 @@ empty CI gate handling, per-device polling isolation, PawnIO platform gating,
 crash-time history preservation, and runtime hardware-option enables were
 subsequently repaired and verified below.
 
+### Closed on 2026-10-23 — do not reopen
+
+Ryzen SMU reply handling is not success-only, and this tree does not read or write Intel package or platform power limits. Evidence is in [settled SMU and RAPL claims](settled-2026-10-23-smu-and-rapl.md).
+
 ## Findings and next work
 
 ### Medium priority
