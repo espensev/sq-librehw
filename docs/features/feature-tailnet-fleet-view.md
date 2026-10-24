@@ -1,196 +1,273 @@
 # Feature Spec: Tailnet Fleet View
 
-**Status:** proposed; design options awaiting owner selection, no code changed
-**Updated:** 2026-10-23
+**Status:** Option A selected; phase-1 contract refined, implementation pending
+**Updated:** 2026-10-24
 **Supersedes:** [Unified Tailnet Monitoring View](feature-unified-tailnet-monitoring-view.md)
-(static two-iframe page; its Serve routes are dead and its machine list was
-hardcoded).
 
-## Problem and motivation
+The owner selected Option A on 2026-10-23 UTC and requested this refinement on
+2026-10-24. The first slice is a browser-local machine list and merged telemetry
+in Standard, Studio, and Workspace. Panes, seed tooling, and server aggregation
+are deferred. The interrupted implementation left only
+`webtests/fixture.peer.data.json`; no fleet behavior has been accepted.
 
-Every LibreHardwareMonitor instance in the fork exposes the same dashboard and
-`data.json`, but each is a separate browser origin. The previous unified view
-was a static page outside the product with two hardcoded tailnet URLs, a
-hardcoded listener port, and Tailscale Serve plumbing that has since died.
-The owner wants the multi-machine view to live in this codebase, to use the
-tailnet as the transport and trust boundary, and to let each operator choose
-which machines appear instead of baking names, ports, or a tailnet domain into
-source.
+## Problem and scope
 
-## Goals
+Each LibreHardwareMonitor instance serves its own dashboard and `data.json`.
+The former static unified page hardcoded two endpoints outside the product.
+Operators need to choose their machines inside the web console, see which
+machine owns each reading, and keep monitoring healthy sources when one fails.
 
-- One browser view that shows several machines' telemetry, served by the
-  product's own web server on whichever node the operator opens.
-- Machine list chosen by the operator; no machine names, tailnet domain, or
-  ports in product source or embedded resources.
-- Tailscale provides reachability, HTTPS certificates, MagicDNS names, and
-  access control. The product only needs reachable `data.json` URLs, so the
-  same view works over a LAN or any other HTTPS reverse proxy.
-- Peers stay read-only. Write controls (`/Sensor?action=Set`, min/max resets)
-  never target another machine.
-- `data.json` and `/metrics` wire contracts stay unchanged.
+Phase 1 changes embedded web resources and web tests only. It adds no C# route,
+server-side outbound request, hardware control, authentication change, or
+`data.json`/`metrics` wire change. Machine names, domains, endpoints, and
+ports are operator configuration, never embedded defaults. Reachable HTTPS
+origins with compatible telemetry and CORS can be used, including tailnet peers.
 
-## Non-goals
+Fleet is read-only toward peers. Presentation actions such as alias, pin, hide,
+order, and range override remain browser-local. No hardware-write or reset
+action may dispatch to a peer, even through a direct handler call.
 
-- Tailscale Funnel or any public exposure.
-- Changing SND-DESK HTTPS `443` (owned by Usage Atlas per the old spec).
-- Authenticated peers (see Compatibility).
-- Server-side merging or proxying of peer telemetry in the first phase.
-- A single blended sensor tree that hides which machine a reading came from.
+## Configuration and identity contract
 
-## Design options
+### Machine list
 
-### Option A (recommended): Fleet mode inside the web console
+A `fleet` section in normalized `sq.dashboard.v1` contains `enabled` and
+`sources`. There is one merged layout, so no layout selector or persisted
+layout field is needed. Missing fleet state means disabled with an empty list.
+The local source is implicit, uses relative `data.json`, has reserved key
+`local`, and cannot be removed or have its endpoint edited.
 
-`console.js` learns a list of peer base URLs. The poller fetches the local
-`data.json` (relative, unchanged) and each peer's `<url>/data.json` with
-`Promise.allSettled` and a per-source timeout, then builds one virtual root
-whose children are the machine nodes. `data.json` already has the shape
-`{ Children: [ <machine> ] }` on every node, and both live nodes send
-`Access-Control-Allow-Origin: *`, so no server change is needed.
+The toolbar's **Machines** panel supports enable/disable, add, rename, reorder,
+replace endpoint, remove, and source-list import/export. Disabling fleet stops
+peer requests and hides peer groups, retaining their configuration and browser
+preferences. Local monitoring continues.
 
-- Peer sensors are namespaced in the browser model only: `SensorId`,
-  `HardwareId`, and `ImageURL` are rewritten as `<key>|<SensorId>`,
-  `<key>|<HardwareId>`, and `<url>/<ImageURL>`. Local sensors keep their
-  unprefixed ids so existing hidden, pinned, ordered, and Workspace state
-  keeps working.
-- Standard, Studio, and Workspace render from the same flattened model with a
-  machine grouping level and a per-machine freshness chip. One unreachable
-  peer marks only that machine stale; the page never blanks.
-- Write controls are hidden for peer sensors; the server already rejects
-  cross-origin resets.
-- Includes a **panes** layout (Option B) as a second rendering of the same
-  machine list for operators who want each machine's full dashboard
-  side by side.
+| Field or collection | Contract |
+|---|---|
+| Sources | At most eight peers, plus the implicit local source |
+| `key` | Stable opaque key generated once; 1–32 ASCII characters matching `[a-z0-9][a-z0-9_-]{0,31}`; `local` reserved; unique |
+| `label` | Trimmed nonempty text, at most 80 JavaScript string code units; rendered as text, never HTML |
+| `url` | At most 2048 characters; absolute HTTPS origin only, with an optional trailing slash; no user information, non-root path, query, or fragment |
+| Import | At most 32 KiB of UTF-8; versioned source-list document; all-or-nothing validation |
 
-### Option B: Panes mode only
+Normalize URLs with the URL parser: host casing, default HTTPS port, and trailing
+slash must not create distinct endpoints. Reject duplicate normalized origins
+and the dashboard's own origin. Aliases for the same machine cannot reliably be
+detected; label and URL remain visible in Machines.
 
-Move the old unified page into `Resources/Web` as a fleet layout that renders
-one iframe per configured machine plus standalone links. Cheapest and fully
-independent per pane, but no merged model, no cross-machine Workspace panels,
-and N full dashboards polling in one tab. Peers must keep omitting
-`X-Frame-Options`, which they do today.
+Renaming or reordering preserves the source key and sensor preferences.
+Replacing an endpoint creates a new key, cancels the old source, and clears its
+cached telemetry/history; explain before applying that selections for the old
+source will become unavailable. Never silently bind old selections to another
+endpoint. Removing a source has the same cancellation/cache cleanup behavior.
+Missing peer references in profiles remain identifiable as unavailable, not
+rewritten to the local sensor with the same raw ID.
 
-### Option C (deferred): server-side `/fleet.json` aggregation
+### Import, persistence, and compatibility
 
-`HttpServer.cs` fetches peer `data.json` payloads, merges them, and serves a
-single-origin fleet document. Removes the browser cross-origin dependency and
-would allow authenticated peers, but adds outbound HTTP from the monitoring
-process, a new route surface, credential storage, and golden-test adjacency.
-Keep as a later layer if cross-origin or authentication becomes a blocker.
+The source-list document is
+`{ "schema": "sq.fleet", "version": 1, "sources": [...] }`, containing only
+`key`, `label`, and `url` per source. Export excludes telemetry, credentials,
+Workspace profiles, and the fleet-enabled flag. Import replaces the source list
+only; it preserves the current enabled flag and unrelated dashboard and
+Workspace settings. Display the validated replacement before applying it.
 
-## Configuration: who chooses the machines
+Reject malformed JSON, unknown schema/version/fields, wrong types, excess size
+or count, invalid field lengths, duplicate keys/origins, and an existing key
+mapped to a different origin. No truncation, partial import, or network requests
+occur on rejection. Keys survive an export/import round trip; a removed key
+still referenced by stored preferences must not be rebound to another origin.
+Retain its key-to-origin association while such references exist.
 
-1. **Browser-local list (phase 1, authoritative).** A `fleet` section in the
-   existing normalized `sq.dashboard.v1` state: `enabled`, `layout`
-   (`merged` or `panes`), and `sources` with `key`, `label`, `url`. Edited in a
-   Machines panel in the toolbar and exported or imported as JSON through the
-   same mechanism the Workspace view already uses for profiles.
-2. **Optional seed file (phase 2).** `fleet.json` with schema `sq.fleet.v1`
-   delivered relative to the dashboard, applied only when the browser has no
-   fleet state or when the operator clicks Reload seed. Two delivery routes are
-   possible and neither is chosen yet: a Tailscale Serve path handler for the
-   file on the same HTTPS port as the proxy (to be verified on a scratch port
-   before adoption), or a small read-only `GET /fleet.json` route in
-   `HttpServer.cs` that reads the file from the settings directory and also
-   works on plain HTTP without Tailscale. The second route amends the
-   "routes unchanged" statement in the HTTP server safety spec and needs a
-   wire-contract test.
-3. **Seed generator (ops, Tailscale-aware).** `ops/tailnet/New-LhmFleetSeed.ps1`
-   reads `tailscale status --json`, filters peers by tag or name pattern,
-   builds `https://<node>.<MagicDNSSuffix>:<port>` from the status output,
-   probes `<url>/data.json`, and writes `fleet.json`. JSON does not expand
-   environment variables, so names, suffix, and port are resolved at
-   generation time; the script itself derives paths from
-   `$env:MACHINE_TOOLS_ROOT` and friends and contains no node names.
+Use the same validator for Machines edits and persistence. Absent legacy fleet
+state defaults cleanly; malformed stored fleet state disables peers with a
+visible error without discarding other dashboard settings. Telemetry saves,
+view changes, and reloads preserve the normalized fleet section.
+Source-list import is distinct from Workspace profile import; neither operation
+implicitly imports or replaces the other.
 
-## Tailscale exposure contract
+### Sensor and hardware identity
 
-Each node that should appear runs one Serve route from its own LHM listener
-port to a tailnet-only HTTPS port, for example:
+Keep the incoming tree and raw `SensorId`/`HardwareId` unchanged. The browser
+model carries source key/label, raw identities, and a separate persistence key:
 
-```powershell
-tailscale serve --bg --https=<https-port> http://127.0.0.1:<lhm-listener-port>
-```
+- Local persistence keys remain the existing raw IDs, byte-for-byte.
+- Peer keys use `fleet:<source-key>|<raw-id>`. Source keys cannot contain
+  `|`, so splitting the envelope once is unambiguous.
+- Classification, alarm bands, hardware relationships, and Workspace preset
+  matching use raw identity/type plus source identity, never a prefixed raw ID.
+  Hardware joins, fan/control pairing, network adapters, power-limit selection,
+  and machine summaries stay within one source.
+- Every sensor-keyed cache and preference uses the persistence key, including
+  histories, observed peaks, derived limits, aliases, hidden/pinned/order state,
+  expanded cards, and Workspace references. DOM identity must also be unique.
+- Workspace retains its existing 192-code-unit raw-ID allowance. Validate peer
+  envelopes separately, allowing up to 231 code units
+  (`fleet:` + 32 + `|` + 192), including import/export. Do not truncate IDs
+  or raise the raw-ID limit. Longer raw IDs may be displayed but cannot be added
+  to a Workspace selection; report the limit explicitly. Local profiles and
+  their existing size/count limits stay compatible.
 
-- Proposed convention: the same HTTPS port on every node, so discovery is
-  hostname-only. SND-HOST already serves its dashboard this way on `8443`.
-  SND-DESK's `8443` currently proxies to a dead local port; repointing it is an
-  owner decision recorded in the verification record when made.
-- `ops/tailnet/Enable-LhmTailnetServe.ps1` wraps the command: it refuses to
-  replace a handler that points at a different target unless told to, never
-  runs `tailscale serve reset`, and prints the resulting URL from
-  `tailscale status --json`.
-- Viewing rights are Tailscale ACL grants on that port. The product's Basic
-  authentication stays off for fleet peers.
-- Serve state is machine-local runtime state and must be re-verified after a
-  Tailscale reset or re-enrollment, as the old spec already recorded.
+A virtual root alone is insufficient: today's `rootNode` selects
+`Children[0]` and `flatten` drops machine metadata. Adapt that model boundary
+explicitly so every configured source reaches all three views.
 
-## Compatibility and risk
+## Polling and freshness contract
 
-- **Mixed content.** An HTTPS fleet page cannot fetch `http://` peers. Every
-  peer URL must be HTTPS; the local instance is always fetched relative.
-- **SensorId collisions.** Ids such as `/intelcpu/0/temperature/0` repeat
-  across machines. All browser state keyed by `SensorId` relies on the
-  namespacing rule above; `data.json` itself is never rewritten.
-- **Authenticated peers.** Browsers reject `Access-Control-Allow-Origin: *`
-  together with credentials, so a peer with Basic authentication enabled
-  cannot join fleet mode in Option A. This is a documented limitation, not a
-  fallback to weaker auth: the tailnet ACL is the boundary.
-- **Per-source staleness.** The single body `stale` class becomes per-machine
-  state; the local machine keeps today's behavior.
-- **Golden tests.** `DataJsonGoldenTests` are unaffected while `data.json`
-  stays untouched. Option C would change that.
-- **Frameworks.** Both `net10.0-windows` and `net472` embed `Resources\**`, so
-  one web change ships to both.
-- **Upstream sync.** `Resources/Web` is already fork-owned; this adds no new
-  divergence outside it unless Option C or the seed route is adopted.
-- **Peer versions.** Peers are assumed to run this fork's `data.json` shape
-  (`Children[0]` is the machine node). Upstream LibreHardwareMonitor produces
-  the same root shape, so stock peers should also appear, unverified.
+Each enabled source owns its poll controller, last-good snapshot, active request
+generation, last-success time, error, and ingestion generation. Reuse the
+existing polling lifecycle: selected refresh interval, 15-second timeout,
+at most one request per source, and no overlapping retry or catch-up burst.
+Each source schedules its next attempt independently. A slow or failed peer
+must never delay local or healthy-peer publication behind an all-source batch.
 
-## Acceptance criteria
+A successful sample requires a successful HTTP response, JSON content type,
+parseable JSON, and the expected single-machine `Children` root with a
+traversable sensor tree. Duplicate sensor IDs within one source or malformed
+tree structure reject that sample. Unknown optional fields and a valid empty
+machine tree are allowed. HTTP 200 with HTML is a failure, not health evidence.
+Reject redirects for peer telemetry and send no credentials; authenticated or
+CORS-incompatible peers remain unsupported without weakening their security.
 
-- [ ] Fleet mode renders the local machine plus every configured reachable peer
-      with a visible machine label per group.
-- [ ] One unreachable peer marks only that machine stale; local telemetry
-      keeps updating.
-- [ ] Peer `SensorId`s never collide with local ones in hidden, pinned,
-      ordered, or Workspace state; existing single-machine state is unchanged
-      after upgrade.
-- [ ] Peer images load from the peer origin.
-- [ ] No write control is offered for a peer sensor, and no request other than
-      `GET <url>/data.json` and image fetches is sent to a peer.
-- [ ] The machine list is editable, exportable, and importable in the browser;
-      embedded resources contain no node names, tailnet suffix, or ports.
-- [ ] Panes layout renders one labelled frame per configured machine.
-- [ ] `data.json` and `/metrics` payloads are byte-for-byte unchanged for the
-      local machine; the Contracts suite stays green.
-- [ ] Serve helper refuses to replace a foreign handler without an explicit
-      flag and never resets Serve.
+On success, ingest that source's new sample exactly once using its completion
+timestamp. A successful fetch with unchanged values is still a new sample.
+Repainting, importing settings, another source's success, or displaying a cached
+snapshot must not update its history, motion, peaks, power samples, or derived
+limits. Clear cross-gap derivative baselines after failure, pause, or hidden-tab
+suspension; do not invent intermediate samples or rates across the gap.
 
-## Verification plan
+Fresh ingestion and cache retention are separate inputs: ingest only the fresh
+source subset; retain siblings according to complete source membership.
+Preserve existing telemetry bounds per source (2048 sensor/history/peak keys,
+512 power-sample keys, 90 history points per sensor), within the eight-peer cap.
+Peers reaching their quotas must not evict local history. Removing/replacing
+a source clears its transient and persisted derived telemetry, while user
+selections remain unavailable references.
+
+| Source state | Visible behavior |
+|---|---|
+| Pending | Source label and loading state; no invented readings |
+| Current | Last-good readings and browser last-success time |
+| Stale | Last-good readings marked stale, age and failure reason; no fresh ingestion |
+| Unavailable | No successful sample yet; source label and failure reason remain visible |
+| Paused/suspended | Last-good readings explicitly marked paused; no background polling |
+
+Failure or timeout changes only that source to stale/unavailable. Also show
+stale if no success arrives within the selected interval plus timeout while
+polling is active. Recovery clears the error after one valid new sample.
+Browser receipt time measures transport freshness, not each sensor's hardware
+sampling time. Historical temperature severity may remain visible but must be
+labelled stale, never presented as a current fleet alarm.
+
+Pause, hidden tab, page disposal, fleet disable, source removal, and endpoint
+replacement cancel affected requests/timers and invalidate their generations.
+Ignore late responses even if abort is not honored; cancellation is not a
+transport failure. Resume/visibility restoration starts at most one immediate
+request per active source. Preserve existing explicit refresh and startup
+one-snapshot behavior when paused, with no continuing timer. Disabling/removing
+peers must not stop the local source. Disabling retains preferences but marks
+cached peer readings paused until a new success.
+
+## Rendering and peer request boundary
+
+Standard and Studio group readings by machine; Workspace may select sensors
+across machines, with machine labels on rows, cards, and graph legends.
+Machine labels and freshness remain visible in search, alarms, and expanded
+details. Automatic hero/preset choices and summaries are computed per source
+before presentation; they must not silently combine two machines' hardware.
+When fleet is disabled, preserve today's local layout and selections.
+
+Peer telemetry requests are only `GET <origin>/data.json` with credentials
+omitted and redirects rejected. Use bundled dashboard icons for peer readings;
+do not load peer-supplied `ImageURL` values. This keeps the peer request surface
+to one read-only route and avoids fetching arbitrary image targets.
+There are no peer frames, script/style loads, control/reset requests, or automatic
+peer-page navigation. Request tests exercise dispatch paths as well as UI
+visibility; the server's cross-origin reset check is not the read-only guarantee.
+
+## Deferred work and operational boundary
+
+- **Option B, panes:** separate peer documents need their own read-only,
+  authentication, resource-loading, and lifecycle contract before inclusion.
+- **Seed tooling/delivery:** no `fleet.json` route or `ops/tailnet` helper in
+  phase 1. Future discovery must validate telemetry shape, not just HTTP 200;
+  any server route requires a separate HTTP contract review.
+- **Option C, aggregation:** server outbound HTTP, credentials, and a new route
+  remain a separate design. No implicit fallback when browser access fails.
+- **Live exposure:** use already authorized compatible HTTPS endpoints for
+  acceptance. No common HTTPS port is required; each configured origin includes
+  its port. Serve ownership/port changes and runtime promotion are separate
+  operational steps under the applicable release contract.
+
+The 2026-10-24 takeover review observed desktop HTTPS 8443 proxying to a live
+HTML service at loopback 3847, while host HTTPS 8443 returned telemetry JSON.
+The desktop handler is occupied, not proven abandoned. These are dated
+observations, not reusable configuration: recheck `tailscale serve status --json`,
+backend ownership, response type/shape, and browser CORS before an operational
+decision. Preserve other services' handlers; never reset or repoint Serve as a
+side effect of fleet setup. This specification authorizes no such mutation.
+
+Future tooling must derive machine paths/settings from existing authoritative
+environment variables, resolve endpoints from operator input or live discovery,
+and resolve variables at JSON generation time because JSON does not expand them.
+
+## Acceptance and verification
+
+All items below are implementation gates and remain unchecked.
+
+| ID | Acceptance criterion | Required evidence |
+|---|---|---|
+| A1 | Local plus eight peers render with stable machine attribution in Standard, Studio, and Workspace; disabled mode preserves the local view | Model and browser cases for zero, one, and eight peers, including a valid empty machine |
+| A2 | Repeated raw sensor/hardware IDs across sources cannot collide or change CPU/GPU/network classification, alarm severity, presets, joins, or browser preferences | Peer fixture collision tests; 99-degree CPU remains critical; source-isolated fan/control and power-limit tests |
+| A3 | Healthy sources publish independently; only the failed source becomes stale/unavailable and recovers | Fake-clock tests for slow peer, timeout, HTTP error, HTML, invalid JSON/tree, duplicate IDs, CORS failure, and recovery |
+| A4 | Each valid source sample is ingested once; cached data/redraws never manufacture telemetry or evict sibling history | Unchanged-value success versus cached render; interleaved source successes; no derivative across failure/pause gaps; per-source cache quota isolation |
+| A5 | Cancellation and stale-response suppression hold across lifecycle changes | Async tests for pause/refresh, hidden/resume, disable, remove, endpoint replacement, disposal, and late completion after abort |
+| A6 | Machine edits/import/export obey all bounds and retain unrelated state; keys never silently rebind | Boundary and round-trip tests, duplicate canonical URLs, rejected atomic imports, rename/reorder, endpoint replacement, retained missing references, reload/telemetry-save preservation |
+| A7 | Existing local Workspace IDs/profiles remain valid; maximum peer envelopes survive profile import/export | 192-character raw local and peer IDs, 231-character peer envelope, explicit over-limit rejection, unchanged profile count/size caps |
+| A8 | Peer traffic is read-only by construction | Mock dispatch and browser network trace: only credential-free data.json GETs; no peer writes, images, frames, redirects, or scripts |
+| A9 | Local server wire contracts and both supported framework builds remain intact | Contracts suite and both Windows builds; compare deterministic contract fixtures, not changing live readings |
+
+Run from the source repository for the implementation gate:
 
 ```powershell
 node webtests\selftest.node.js
+node --test webtests\console.tests.js webtests\workspace.tests.js
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Contracts\LibreHardwareMonitor.Tests.Contracts.csproj -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
 ```
 
-- Extend `webtests/fixture.data.json` with a second machine fixture and add
-  merge, namespace, image-rebase, and per-source staleness assertions to
-  `webtests/console.tests.js`.
-- Manual: run the Serve helper on the local node, open the fleet page over the
-  tailnet in the isolated DevHome browser, add a peer, confirm both machine
-  groups update, stop the peer's Serve route, confirm only that group goes
-  stale.
-- Production Serve changes and runtime promotion follow the local release
-  contract and the installed verifier identity check; this spec grants neither.
+Preserve the existing local fixture and use the interrupted peer fixture for
+collision cases. Add deterministic clock/transport fixtures to the existing
+web suites; the synchronous selftest alone does not run async polling tests.
 
-## Open decisions
+Browser acceptance uses the isolated DevHome browser and temporary source
+servers/proxies with representative fixtures. Exercise add/edit/remove,
+keyboard access and validation, reload, all three views, mixed-source Workspace
+panels, failure/recovery, pause/visibility, and network request boundaries.
+Simulate faults through test fixtures; do not stop live Serve routes.
+Final tailnet acceptance requires compatible authorized endpoints, successful
+browser CORS, labelled fresh/stale evidence, and the separate release process.
+No admin or hardware access is needed for the browser model/tests; native
+framework builds and installed-runtime acceptance remain distinct.
 
-1. Which option to build first: A (recommended), B, or C.
-2. Whether to repurpose SND-DESK `8443` for the LHM listener or pick another
-   shared HTTPS port on every node.
-3. Seed delivery route for phase 2: Serve path handler or HttpServer route.
+## Implementation order and current evidence
+
+1. Implement configuration/identity normalization and per-source polling/
+   ingestion with A2–A7 tests before broad UI changes.
+2. Integrate Machines and all three views, then satisfy A1/A8 browser checks.
+3. Run the full verification commands above and record evidence against A1–A9
+   before candidate/release work.
+
+The 2026-10-24 baseline passed 339 synchronous assertions and 18 Node tests
+before this documentation refinement. Those results cover the existing local
+dashboard, not fleet acceptance. This revision changes only the contract and
+its documentation links; no implementation or live verification is claimed.
+
+Refinement verification: two independent document reviews found no blocking
+issues. Relative Markdown links, referenced test/build paths, A1–A9 coverage,
+the unchanged peer-fixture hash, and `git diff --check` passed. Product tests
+and builds were not rerun for this documentation-only change.
+
+Remaining operational decisions are desktop endpoint ownership/port and later
+release promotion. They do not block phase-1 fixture-based implementation.

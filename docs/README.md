@@ -1,7 +1,7 @@
 # SQ LibreHardwareMonitor documentation
 
 **Status:** current repository map
-**Updated:** 2026-10-19
+**Updated:** 2026-10-24
 
 This file records stable boundaries. Query Git and stack manifests for current
 commits, versions, hashes, processes, and candidate/live state.
@@ -111,7 +111,8 @@ Open gates:
 | `docs\features\feature-live-state-verification.md` | Read-only host verification contract |
 | `docs\features\feature-http-server-safety.md` | Direct HTTP listener fail-closed and exposure contract |
 | `docs\features\feature-local-release-system.md` | SND-DESK local staging, promotion, and rollback contract |
-| `docs\features\feature-unified-tailnet-monitoring-view.md` | Deployed SND-DESK main browser view embedding live SND-DESK and SND-HOST dashboards |
+| `docs\features\feature-tailnet-fleet-view.md` | Selected Option A: browser-local merged fleet contract and implementation gates; implementation pending |
+| `docs\features\feature-unified-tailnet-monitoring-view.md` | Superseded static unified view; historical operational evidence only |
 | `eng\ci\README.md` | Non-deploying gate runner |
 | `docs\features\feature-graph-lanes.md` | Promoted and live-verified on SND-DESK; lane splits, height, layout, and repaired manual-zoom persistence pass; operator sign-off separate |
 | `docs\reviews\settled-2026-10-23-smu-and-rapl.md` | Closed Ryzen SMU reply and Intel RAPL claims; do not reopen |
