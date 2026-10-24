@@ -1,20 +1,21 @@
 // SQ Fleet - browser-local source configuration and persistence identity.
 (function (root, factory) {
   'use strict';
-  const api = factory(root);
+  const identity = typeof module === 'object' && module.exports ? require('./identity.js') : root.SQSensorIdentity;
+  const api = factory(root, identity);
   if (root) root.SQFleet = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
-})(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this), function (root) {
+})(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this), function (root, Identity) {
   'use strict';
 
   const SCHEMA = 'sq.fleet';
   const VERSION = 1;
   const LIMITS = Object.freeze({sources:8, keyLength:32, labelLength:80, urlLength:2048,
-    documentBytes:32 * 1024, rawIdLength:192, retainedOrigins:4096});
-  const KEY = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+    documentBytes:32 * 1024, rawIdLength:Identity.RAW_ID_LIMIT, retainedOrigins:4096});
   const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-  const peerKey = value => typeof value === 'string' && KEY.test(value) && value !== 'local';
+  const peerKey = Identity.isPeerKey;
+  const {parseIdentity, isWorkspaceId} = Identity;
 
   class FleetError extends Error {
     constructor(code, message) { super(message); this.name = 'FleetError'; this.code = code; }
@@ -192,18 +193,7 @@
   function persistenceKey(sourceKey, rawId) {
     if (typeof rawId !== 'string' || !rawId || (sourceKey !== 'local' && !peerKey(sourceKey)))
       fail('invalid-identity', 'A sensor identity needs a source key and nonempty raw ID.');
-    return sourceKey === 'local' ? rawId : 'fleet:' + sourceKey + '|' + rawId;
-  }
-  function parseIdentity(id) {
-    if (typeof id !== 'string' || !id) return null;
-    if (!id.startsWith('fleet:')) return {sourceKey:'local', rawId:id};
-    const separator = id.indexOf('|', 6);
-    const sourceKey = id.slice(6, separator), rawId = id.slice(separator + 1);
-    return separator >= 0 && peerKey(sourceKey) && rawId ? {sourceKey,rawId} : null;
-  }
-  function isWorkspaceId(id) {
-    const identity = parseIdentity(id);
-    return identity !== null && identity.rawId.length <= LIMITS.rawIdLength;
+    return Identity.persistenceKey(sourceKey, rawId);
   }
 
   return Object.freeze({SCHEMA, VERSION, LIMITS, FleetError, defaults, canonicalOrigin,

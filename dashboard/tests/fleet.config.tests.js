@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const modelPath = path.join(__dirname, '../LibreHardwareMonitor.Windows.Forms/Resources/Web/fleet.js');
+const modelPath = path.join(__dirname, '../web/fleet.js');
 const F = require(modelPath);
 const source = (key = 'peer', url = 'https://peer.example', label = 'Peer') => ({key, label, url});
 const fleet = sources => ({enabled:true, sources:sources || [source()]});
@@ -148,7 +148,9 @@ test('identity envelopes preserve raw IDs and enforce the separate Workspace raw
 
 test('browser UMD uses the page origin and runs the edit/export/import lifecycle without Node globals', () => {
   const window = {location:{origin:'https://dashboard.example'},crypto:{getRandomValues:xs => xs.fill(7)}};
-  vm.runInNewContext(fs.readFileSync(modelPath,'utf8'), {window,URL,Uint8Array});
+  const context = vm.createContext({window,URL,Uint8Array});
+  vm.runInContext(fs.readFileSync(path.join(path.dirname(modelPath),'identity.js'),'utf8'), context);
+  vm.runInContext(fs.readFileSync(modelPath,'utf8'), context);
   const B = window.SQFleet;
   assert.throws(() => B.addSource(B.defaults(),{label:'Self',url:'https://dashboard.example'}));
   const added = B.addSource(B.defaults(),{label:'Peer',url:'https://PEER.example:443/'});

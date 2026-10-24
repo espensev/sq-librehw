@@ -8,7 +8,7 @@
 })(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this), function (root) {
   'use strict';
 
-  const Fleet = root?.SQFleet || (typeof require === 'function' ? require('./fleet.js') : null);
+  const Identity = root?.SQSensorIdentity || (typeof require === 'function' ? require('./identity.js') : null);
   const STORAGE_KEY = 'sq.workspace.v1';
   const STATE_SCHEMA = 'sq.workspace';
   const PROFILE_SCHEMA = 'sq.workspace.profile';
@@ -23,7 +23,7 @@
     sensorIdsPerPanel: 24,
     nameLength: 80,
     localIdLength: 96,
-    sensorIdLength: 192,
+    sensorIdLength: Identity.RAW_ID_LIMIT,
     profileDocumentBytes: 256 * 1024,
     stateBytes: 3 * 1024 * 1024
   });
@@ -128,7 +128,7 @@
     const seen = new Set();
     const ids = [];
     for (const candidate of value) {
-      if (!Fleet.isWorkspaceId(candidate) || seen.has(candidate)) continue;
+      if (!Identity.isWorkspaceId(candidate) || seen.has(candidate)) continue;
       seen.add(candidate);
       ids.push(candidate);
       if (ids.length === LIMITS.sensorIdsPerPanel) break;
@@ -352,7 +352,7 @@
   function sensorIdOf(sensor) {
     if (!sensor) return null;
     const id = typeof sensor.id === 'string' ? sensor.id : sensor.SensorId;
-    return Fleet.isWorkspaceId(id) ? id : null;
+    return Identity.isWorkspaceId(id) ? id : null;
   }
 
   function semanticClassOf(sensor) {
@@ -392,7 +392,7 @@
     const sources = new Map();
     sensors.forEach(sensor => {
       if (!sensor) return;
-      const key = sensor.sourceKey || Fleet.parseIdentity(sensor.id || sensor.SensorId)?.sourceKey || 'local';
+      const key = sensor.sourceKey || Identity.parseIdentity(sensor.id || sensor.SensorId)?.sourceKey || 'local';
       if (!sources.has(key)) sources.set(key, []);
       sources.get(key).push(sensor);
     });
@@ -580,7 +580,7 @@
   }
 
   function requireSensorIds(ids) {
-    if (Array.isArray(ids) && ids.some(id => !Fleet.isWorkspaceId(id)))
+    if (Array.isArray(ids) && ids.some(id => !Identity.isWorkspaceId(id)))
       throw new WorkspaceError('sensor-id-too-long',
         'Sensor IDs must contain 1–192 characters; peer IDs also require a valid fleet source envelope.');
   }

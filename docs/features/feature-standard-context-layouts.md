@@ -146,10 +146,10 @@ confined to embedded HTML/CSS/JS and browser-local storage; `net472` and
 ## Verification
 
 ```powershell
-node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js
-node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\workspace.js
-node webtests\selftest.node.js
-node --test webtests\console.tests.js webtests\workspace.tests.js
+node --check dashboard\web\console.js
+node --check dashboard\web\workspace.js
+node dashboard\tests\selftest.node.js
+node --test dashboard\tests\console.tests.js dashboard\tests\workspace.tests.js
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64

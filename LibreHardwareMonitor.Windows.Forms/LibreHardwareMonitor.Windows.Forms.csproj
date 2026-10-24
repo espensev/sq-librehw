@@ -97,6 +97,11 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\**" />
+    <!-- Dashboard source is owned separately; keep the existing HTTP/resource contract. -->
+    <EmbeddedResource Include="..\dashboard\web\**\*">
+      <Link>Resources\Web\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <LogicalName>$([System.String]::Copy('$(AssemblyName).Resources.Web.%(RecursiveDir)%(Filename)%(Extension)').Replace('\', '.').Replace('/', '.'))</LogicalName>
+    </EmbeddedResource>
     <None Include="Resources\app.net472.manifest" />
     <None Include="Resources\app.manifest" />
     <None Include="Resources\icon.ico" />

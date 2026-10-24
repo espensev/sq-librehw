@@ -2,13 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const web = path.join(__dirname, '../LibreHardwareMonitor.Windows.Forms/Resources/Web');
+const web = path.join(__dirname, '../web');
 const F = require(path.join(web, 'fleet.js'));
 const W = require(path.join(web, 'workspace.js'));
 const P = require(path.join(web, 'fleet-poller.js'));
-const modelWindow = {SQ_NO_BOOT:true, SQFleet:F, location:{origin:'https://dashboard.example'}};
-Function('window', fs.readFileSync(path.join(web, 'console.js'), 'utf8'))(modelWindow);
-const S = modelWindow.SQ;
+const pageOrigin = 'https://dashboard.example';
+const S = require(path.join(web, 'model.js')).create({pageOrigin});
 const peer = {key:'peer', label:'Peer', url:'https://peer.example'};
 const local = {key:'local', label:'Local'};
 const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture.data.json')));
@@ -215,7 +214,7 @@ test('coordinator successes feed real model caches, persist removals and recover
   const storage = memoryStorage(runtime.dashboard), requests = [];
   const flush = async () => { for (let i = 0; i < 16; i++) await Promise.resolve(); };
   const response = data => ({ok:true, headers:{get:() => 'application/json'}, json:async () => data});
-  const controller = P.create({fleet:runtime.dashboard.fleet, pageOrigin:modelWindow.location.origin,
+  const controller = P.create({fleet:runtime.dashboard.fleet, pageOrigin:pageOrigin,
     paused:true, fetch:(url, init) => new Promise(resolve => requests.push({url, init, resolve})),
     onSample:(source, data, receipt) => {
       const result = S.ingestSourceTelemetry(runtime, source, data, receipt);

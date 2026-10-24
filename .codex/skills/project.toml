@@ -28,7 +28,7 @@ dotnet-tests = ["LibreHardwareMonitor.Tests/"]
 avalonia-core = ["experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/"]
 avalonia-app = ["experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/"]
 avalonia-tests = ["experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/", "experiments/avalonia-fixture-explorer/Test-AvaloniaSpike.ps1"]
-web-contracts = ["LibreHardwareMonitor.Windows.Forms/Resources/Web/", "webtests/"]
+web-contracts = ["dashboard/"]
 candidate-ops = ["ops/candidate/"]
 snd-desk-deploy-ops = ["ops/deploy/snd-desk/"]
 log-ops = ["ops/log-management/"]
@@ -74,10 +74,10 @@ files = ["docs/**/*.md", "agents/*.md", "data/plans/*.json"]
 
 [smart-test.mappings]
 "LibreHardwareMonitorLib/**/*.cs" = ["LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Library/**/*.cs", "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/**/*.cs"]
-"LibreHardwareMonitor.Windows.Forms/Utilities/HttpListenerDispatchService.cs" = ["LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/**/*.cs", "webtests/*.js"]
-"LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs" = ["LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/**/*.cs", "webtests/*.js"]
+"LibreHardwareMonitor.Windows.Forms/Utilities/HttpListenerDispatchService.cs" = ["LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/**/*.cs", "dashboard/tests/*.js"]
+"LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs" = ["LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/**/*.cs", "dashboard/tests/*.js"]
 "LibreHardwareMonitor.Windows.Forms/**/*.cs" = ["LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Application/**/*.cs", "LibreHardwareMonitor.Tests/LibreHardwareMonitor.Tests.Contracts/**/*.cs"]
-"LibreHardwareMonitor.Windows.Forms/Resources/Web/*.js" = ["webtests/*.js"]
+"dashboard/web/*.js" = ["dashboard/tests/*.js"]
 "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Core/**/*.cs" = ["experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/**/*.cs"]
 "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike/**/*.cs" = ["experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.Tests/**/*.cs"]
 "ops/candidate/*.ps1" = ["ops/candidate/Test-LhmReleaseSystem.ps1"]
@@ -112,8 +112,8 @@ test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File experiments\\ava
 
 [build-gate.web-dashboard]
 build = ""
-verify = "node webtests\\selftest.node.js"
-test = "node --test webtests\\console.tests.js webtests\\workspace.tests.js webtests\\fleet.config.tests.js webtests\\fleet.polling.tests.js webtests\\fleet.model.tests.js"
+verify = "node dashboard\\tests\\selftest.node.js"
+test = "node --test dashboard\\tests\\console.tests.js dashboard\\tests\\workspace.tests.js dashboard\\tests\\fleet.config.tests.js dashboard\\tests\\fleet.polling.tests.js dashboard\\tests\\fleet.model.tests.js dashboard\\tests\\model.boundary.tests.js"
 
 [build-gate.log-management]
 build = ""

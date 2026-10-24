@@ -73,7 +73,7 @@ format and order the new type.
 
 ```powershell
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf -p:Platform=x64
-node --test webtests\workspace.tests.js webtests\console.tests.js
+node --test dashboard\tests\workspace.tests.js dashboard\tests\console.tests.js
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
 ```

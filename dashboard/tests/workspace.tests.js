@@ -5,14 +5,9 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const MODEL_PATH = path.join(__dirname,
-  '../LibreHardwareMonitor.Windows.Forms/Resources/Web/workspace.js');
-const CONSOLE_PATH = path.join(__dirname,
-  '../LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js');
+  '../web/workspace.js');
 const W = require(MODEL_PATH);
-const consoleWindow = {SQ_NO_BOOT:true,
-  SQFleet:require('../LibreHardwareMonitor.Windows.Forms/Resources/Web/fleet.js')};
-Function('window', fs.readFileSync(CONSOLE_PATH, 'utf8'))(consoleWindow);
-const S = consoleWindow.SQ;
+const S = require('../web/model.js').create();
 
 function sensor(id, cls, type, extra) {
   return Object.assign({id, cls, type, text:id.split('/').pop(), hw:cls, raw:1, value:'1'}, extra);
@@ -466,7 +461,7 @@ test('browser global attaches before console boot without CommonJS globals', () 
   const source = fs.readFileSync(MODEL_PATH, 'utf8');
   const context = {window:{}};
   vm.createContext(context);
-  vm.runInContext(fs.readFileSync(path.join(path.dirname(MODEL_PATH), 'fleet.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(path.dirname(MODEL_PATH), 'identity.js'), 'utf8'), context);
   vm.runInContext(source, context);
   assert.equal(typeof context.window.SQWorkspace.createDefaults, 'function');
 });

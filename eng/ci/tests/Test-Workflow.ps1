@@ -157,7 +157,7 @@ try {
         "run blocks: $($runBlocks.Count); delegating: $($delegating.Count)"
 
     # --- Case 7: no gate command is duplicated inline ------------------------
-    $inlinePatterns = @('dotnet build', 'dotnet test', 'node webtests', 'node --test', 'python -m unittest')
+    $inlinePatterns = @('dotnet build', 'dotnet test', 'node dashboard', 'node webtests', 'node --test', 'python -m unittest')
     $duplicated = @()
     foreach ($block in $runBlocks) {
         foreach ($pattern in $inlinePatterns) {

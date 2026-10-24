@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
 using Xunit;
 
@@ -8,6 +9,31 @@ namespace LibreHardwareMonitor.Tests;
 
 public class WebDashboardRetirementTests
 {
+    [Fact]
+    public void DashboardEntryPoint_AllRelativeAssetsAreEmbeddedUnderStableNames()
+    {
+        string html = ReadResource("LibreHardwareMonitor.Windows.Forms.Resources.Web.index.html");
+        string[] assets = Regex.Matches(html, "(?:src|href)=\"([^\"]+)\"")
+            .Cast<Match>().Select(match => match.Groups[1].Value)
+            .Where(path => !path.StartsWith("/", StringComparison.Ordinal) && !path.Contains(':'))
+            .Distinct().ToArray();
+
+        Assert.Contains("model.js", assets);
+        Assert.Contains("identity.js", assets);
+        Assert.Contains("polling.js", assets);
+        Assert.Contains("console.js", assets);
+        foreach (string asset in assets)
+        {
+            Assert.True(HttpServer.TryMapStableWebResource("/" + asset, out string resource, out _));
+            Assert.NotEmpty(ReadResource("LibreHardwareMonitor.Windows.Forms.Resources." + resource));
+        }
+
+        string[] names = typeof(HttpServer).Assembly.GetManifestResourceNames();
+        Assert.DoesNotContain(names, name => name.Contains(".tests.", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(names, name => name.Contains("fixture.data.json", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("LibreHardwareMonitor.Windows.Forms.Resources.Web.images.toggle-collapse-dark.png", names);
+    }
+
     [Fact]
     public void RootDashboard_ExposesStandardAndStudioAndNoPreviewLink()
     {

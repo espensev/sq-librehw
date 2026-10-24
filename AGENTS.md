@@ -38,6 +38,8 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
   structural phases, non-negotiable boundaries, standing prohibitions,
   preserved branch evidence, open quarantine decisions, and exit gates. Read
   before resuming the structural baseline or starting another campaign.
+- `dashboard/README.md` and `docs/architecture/dashboard-extraction.md`: frontend
+  ownership, direct Node tests, fixture development, and stable embedded resources.
 - `docs/campaign-backlog.md`: the sequenced campaign queue — what to run next,
   its entry conditions, ownership, and exit criteria.
 - `docs/campaign-playbook.md`: how to actually run a campaign here, including

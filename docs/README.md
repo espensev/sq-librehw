@@ -101,6 +101,7 @@ Open gates:
 | Document | Purpose |
 |---|---|
 | `docs\architecture\refactor-roadmap.md` | Structural continuation and phase gates |
+| `docs\architecture\dashboard-extraction.md` | Dashboard source ownership and extraction acceptance |
 | `docs\campaign-backlog.md` | Sequenced campaign queue |
 | `docs\campaign-playbook.md` | Campaign procedure |
 | `docs\campaign-history.md` | Per-criterion acceptance ledger |
@@ -130,7 +131,8 @@ are campaign-runtime records; do not remove or hand-edit generated plans.
 |---|---|
 | Hardware library | `LibreHardwareMonitorLib` |
 | Windows application | `LibreHardwareMonitor.Windows.Forms` |
-| Automated tests | `LibreHardwareMonitor.Tests` and `webtests` |
+| Browser dashboard source and frontend workflow | `dashboard` |
+| Automated tests | `LibreHardwareMonitor.Tests` and `dashboard/tests` |
 | Candidate tooling | `ops\candidate` |
 | Live-state verifier | `ops\live-verification` |
 | Log tooling | `ops\log-management` |

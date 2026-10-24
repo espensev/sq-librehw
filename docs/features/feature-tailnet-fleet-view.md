@@ -12,6 +12,12 @@ polling, and ingestion models with regression tests. The interrupted peer
 fixture is retained unchanged and now used by those tests. Browser boot still
 uses the existing local poller; fleet UI and end-to-end acceptance are pending.
 
+Frontend source and tests now belong to `dashboard/`; the Windows application
+embeds the same assets under stable resource names. The
+[dashboard extraction plan](../architecture/dashboard-extraction.md) owns this
+structural move and the later independent-hosting decisions. `model.js` owns
+the `SQ` model functions described below; `console.js` composes the three views.
+
 ## Problem and scope
 
 Each LibreHardwareMonitor instance serves its own dashboard and `data.json`.
@@ -235,8 +241,8 @@ unchecked. A9 source contract/build verification passes for this foundation.
 Run from the source repository for the implementation gate:
 
 ```powershell
-node webtests\selftest.node.js
-node --test webtests\console.tests.js webtests\workspace.tests.js webtests\fleet.config.tests.js webtests\fleet.polling.tests.js webtests\fleet.model.tests.js
+node dashboard\tests\selftest.node.js
+node --test dashboard/tests/*.tests.js
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Contracts\LibreHardwareMonitor.Tests.Contracts.csproj -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
@@ -276,7 +282,7 @@ framework builds and installed-runtime acceptance remain distinct.
   It is loaded as a browser module but is not yet the dashboard's boot poller.
   A transport that ignores abort retains request ownership until settlement;
   its timeout is reported and late data discarded while siblings continue.
-- `console.js` projects source-aware identities without changing wire nodes,
+- `model.js` projects source-aware identities without changing wire nodes,
   partitions every telemetry bound by configured source, and separates fresh
   source ingestion from full membership retention. Trends retain displayed
   history while refusing derivatives across a gap.

@@ -1,20 +1,17 @@
-// Headless mirror of console.test.html. Evals console.js with a window shim
-// (SQ_NO_BOOT skips the DOM bootstrap) and runs the shared assertion module.
+// Shared model assertions and markup contracts, without evaluating DOM boot.
 const fs = require('fs');
 const path = require('path');
-const ROOT = path.resolve(__dirname, '..');
-global.window = { SQ_NO_BOOT: true,
-  SQFleet:require(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/Web/fleet.js')) };
-const consoleJs = fs.readFileSync(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js'), 'utf8');
-const workspaceJs = fs.readFileSync(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/Web/workspace.js'), 'utf8');
-Function('window', 'module', workspaceJs)(global.window, undefined);
-eval(consoleJs);
+const WEB = path.resolve(__dirname, '../web');
+const read = name => fs.readFileSync(path.join(WEB, name), 'utf8');
+const S = require('../web/model.js').create();
+const dashboardJs = ['model.js','polling.js','console.js'].map(read).join('\n');
+const workspaceJs = read('workspace.js');
 const runConsoleTests = require('./console.tests.js');
 const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture.data.json'), 'utf8'));
 const storage = value => { let slot = value; return { getItem: () => slot, setItem: (k, v) => { slot = v; } }; };
-const { pass, fail, log } = runConsoleTests(global.window.SQ, data, storage);
-const indexHtml = fs.readFileSync(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/Web/index.html'), 'utf8');
-const consoleCss = fs.readFileSync(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/Web/console.css'), 'utf8');
+const { pass, fail, log } = runConsoleTests(S, data, storage);
+const indexHtml = read('index.html');
+const consoleCss = read('console.css');
 const menuChecks = [
   ['root menu retired card-truth preview link', !indexHtml.includes('href="/dash/cardtruth/"')],
   ['root menu links data.json', indexHtml.includes('href="/data.json"')],
@@ -42,18 +39,18 @@ const menuChecks = [
     '.workspace-trend-grid','.workspace-sensor-choice','@media (max-width:640px)'
   ].every(token => consoleCss.includes(token))],
   ['Workspace remains presentation-only', !workspaceJs.includes('/Sensor?action=Set')
-    && !consoleJs.includes('/Sensor?action=Set')],
+    && !dashboardJs.includes('/Sensor?action=Set')],
   ['Workspace export materializes a copy without replacing local adaptive state',
-    consoleJs.includes('Workspace.materializeProfile(state.workspace, profile.id, state.allSensors)')
-      && consoleJs.includes('Workspace.exportProfile(materialized, exactProfile.id, true)')
-      && !consoleJs.includes('state.workspace = Workspace.save(storage, materialized)')],
+    dashboardJs.includes('Workspace.materializeProfile(state.workspace, profile.id, state.allSensors)')
+      && dashboardJs.includes('Workspace.exportProfile(materialized, exactProfile.id, true)')
+      && !dashboardJs.includes('state.workspace = Workspace.save(storage, materialized)')],
   ['Workspace edits report storage fallback and restore keyboard focus',
-    consoleJs.includes('Workspace.saveResult(storage, next)')
-      && consoleJs.includes('this change is temporary for this page')
-      && consoleJs.includes('captureWorkspaceFocus()')
-      && consoleJs.includes('restoreWorkspaceFocus(focus)')
-      && consoleJs.includes("workspaceAddPanel:'workspacePanelTitle'")
-      && consoleJs.includes("workspaceProfileDuplicate:'workspaceProfileSelect'")],
+    dashboardJs.includes('Workspace.saveResult(storage, next)')
+      && dashboardJs.includes('this change is temporary for this page')
+      && dashboardJs.includes('captureWorkspaceFocus()')
+      && dashboardJs.includes('restoreWorkspaceFocus(focus)')
+      && dashboardJs.includes("workspaceAddPanel:'workspacePanelTitle'")
+      && dashboardJs.includes("workspaceProfileDuplicate:'workspaceProfileSelect'")],
   ['root has Workspace density controls', [
     'workspaceDensity','workspaceDensityCompact','workspaceCompactBar','workspaceCompactProfile'
   ].every(id => indexHtml.includes(`id="${id}"`))],
@@ -108,48 +105,48 @@ const menuChecks = [
     'workspace-panel-title-display',
     '[data-workspace-authoring="closed"] .workspace-panel-title{display:none}',
     '[data-workspace-authoring="closed"] .workspace-panel-title-display{display:block}'
-  ].every(token => consoleJs.includes(token) || consoleCss.includes(token))],
+  ].every(token => dashboardJs.includes(token) || consoleCss.includes(token))],
   ['generated Workspace panel fields expose stable id and name attributes', [
     'id="workspace-panel-title-input-',
     'name="workspacePanelTitle"',
     'id="workspace-panel-type-',
     'name="workspacePanelType"'
-  ].every(token => consoleJs.includes(token))],
-  ['console wires workspace density', consoleJs.includes("setAttribute('data-workspace-density', cfg.workspaceDensity)")
-    && consoleJs.includes('cleanWorkspaceDensity')
-    && consoleJs.includes("$('#workspaceDensity').onchange")
-    && consoleJs.includes("$('#workspaceDensityCompact').onchange")
-    && consoleJs.includes("$('#workspaceCompactProfile').textContent")],
+  ].every(token => dashboardJs.includes(token))],
+  ['console wires workspace density', dashboardJs.includes("setAttribute('data-workspace-density', cfg.workspaceDensity)")
+    && dashboardJs.includes('cleanWorkspaceDensity')
+    && dashboardJs.includes("$('#workspaceDensity').onchange")
+    && dashboardJs.includes("$('#workspaceDensityCompact').onchange")
+    && dashboardJs.includes("$('#workspaceCompactProfile').textContent")],
   ['console wires transient Workspace authoring without storage',
-    consoleJs.includes('let workspaceAuthoringOpen = false')
-      && consoleJs.includes("setAttribute('data-workspace-authoring', authoring.state)")
-      && consoleJs.includes("setAttribute('aria-expanded', String(authoring.expanded))")
-      && consoleJs.includes("$('#workspaceAuthoringToggle').onclick")
-      && consoleJs.includes('workspaceAuthoringOpen = !workspaceAuthoringOpen')
-      && !consoleJs.includes('workspaceAuthoringOpen:')],
+    dashboardJs.includes('let workspaceAuthoringOpen = false')
+      && dashboardJs.includes("setAttribute('data-workspace-authoring', authoring.state)")
+      && dashboardJs.includes("setAttribute('aria-expanded', String(authoring.expanded))")
+      && dashboardJs.includes("$('#workspaceAuthoringToggle').onclick")
+      && dashboardJs.includes('workspaceAuthoringOpen = !workspaceAuthoringOpen')
+      && !dashboardJs.includes('workspaceAuthoringOpen:')],
   ['console persists toolbar collapse and restores focus safely',
-    consoleJs.includes("setAttribute('data-toolbar', cfg.toolbarCollapsed ? 'collapsed' : 'expanded')")
-      && consoleJs.includes("$('#toolbarCollapse').onclick")
-      && consoleJs.includes("$('#toolbarRestore').onclick")
-      && consoleJs.includes("$('#toolbarCollapse').focus()")
-      && consoleJs.includes("$('#toolbarRestore').focus()")
-      && consoleJs.includes("querySelectorAll('#dashboardHeader details[open]')")],
+    dashboardJs.includes("setAttribute('data-toolbar', cfg.toolbarCollapsed ? 'collapsed' : 'expanded')")
+      && dashboardJs.includes("$('#toolbarCollapse').onclick")
+      && dashboardJs.includes("$('#toolbarRestore').onclick")
+      && dashboardJs.includes("$('#toolbarCollapse').focus()")
+      && dashboardJs.includes("$('#toolbarRestore').focus()")
+      && dashboardJs.includes("querySelectorAll('#dashboardHeader details[open]')")],
   ['console opens top sensor selection on the first panel and offers one-click move-to-top',
-    consoleJs.includes("$('#workspaceChooseSensors').onclick")
-      && consoleJs.includes('profile?.panels[0]?.id')
-      && consoleJs.includes('data-workspace-act="sensor-top"')
-      && consoleJs.includes("button.dataset.workspaceAct === 'sensor-top' ? 0")
-      && consoleJs.includes("event.key !== 'Escape'")
-      && consoleJs.includes("$('#workspaceChooseSensors').focus()")
-      && consoleJs.includes('if (!manager.open) workspaceSensorReturnFocus = null')
-      && consoleJs.includes('const focusTarget = workspaceSensorReturnFocus')],
+    dashboardJs.includes("$('#workspaceChooseSensors').onclick")
+      && dashboardJs.includes('profile?.panels[0]?.id')
+      && dashboardJs.includes('data-workspace-act="sensor-top"')
+      && dashboardJs.includes("button.dataset.workspaceAct === 'sensor-top' ? 0")
+      && dashboardJs.includes("event.key !== 'Escape'")
+      && dashboardJs.includes("$('#workspaceChooseSensors').focus()")
+      && dashboardJs.includes('if (!manager.open) workspaceSensorReturnFocus = null')
+      && dashboardJs.includes('const focusTarget = workspaceSensorReturnFocus')],
   ['Workspace poll rendering does not churn its live region',
-    consoleJs.includes("status.textContent === message && status.className === 'is-' + nextTone")
-      && consoleJs.includes('paintWorkspaceControls(false)')],
+    dashboardJs.includes("status.textContent === message && status.className === 'is-' + nextTone")
+      && dashboardJs.includes('paintWorkspaceControls(false)')],
   ['Workspace graph labels use the same scale as their plotted bounds',
-    consoleJs.includes('const scale = SQ.graphScaleFor(range, history)')
-      && consoleJs.includes('sparkAreaSVG(sensor, scale ? [scale.lo, scale.hi] : null)')
-      && consoleJs.includes('SQ.graphScaleText(scale, sensor)')],
+    dashboardJs.includes('const scale = SQ.graphScaleFor(range, history)')
+      && dashboardJs.includes('sparkAreaSVG(sensor, scale ? [scale.lo, scale.hi] : null)')
+      && dashboardJs.includes('SQ.graphScaleText(scale, sensor)')],
   ['root has Studio view regions', ['studioView','studioHealth','studioAlertStatus','studioFocus','studioSystems','studioNetwork'].every(id => indexHtml.includes(`id="${id}"`)) && indexHtml.includes('class="studio-atmosphere"')],
   ['root has transition-only Studio alert status', indexHtml.includes('id="studioAlertStatus"') && indexHtml.includes('role="status"') && indexHtml.includes('aria-atomic="true"')],
   ['root has Studio customization controls', [
@@ -176,39 +173,39 @@ const menuChecks = [
   ].every(token => consoleCss.includes(token))],
   ['Studio replaces the shared active-control green token', consoleCss.includes('--lime:var(--studio-ok)')],
   ['cached rerenders preserve stale telemetry status',
-    consoleJs.includes('function render(data, freshTelemetry = false)')
-      && consoleJs.includes('if (freshTelemetry && !state.paused)')
-      && consoleJs.includes('render(data, true)')],
+    dashboardJs.includes('function render(data, freshTelemetry = false)')
+      && dashboardJs.includes('if (freshTelemetry && !state.paused)')
+      && dashboardJs.includes('render(data, true)')],
   ['cached rerenders cannot ingest or persist telemetry',
-    consoleJs.includes('SQ.ingestTelemetry(state, allSensors, freshTelemetry)')
-      && consoleJs.includes('if (!freshTelemetry) return {ingested:false, samplesChanged:false}')
-      && consoleJs.includes('if (ingestion.ingested && ingestion.samplesChanged')],
+    dashboardJs.includes('SQ.ingestTelemetry(state, allSensors, freshTelemetry)')
+      && dashboardJs.includes('if (!freshTelemetry) return {ingested:false, samplesChanged:false}')
+      && dashboardJs.includes('if (ingestion.ingested && ingestion.samplesChanged')],
   ['polling is completion-driven, cancellable, and visibility-aware',
-    consoleJs.includes('SQ.createPollController')
-      && consoleJs.includes("document.addEventListener('visibilitychange'")
-      && consoleJs.includes("window.addEventListener('pagehide'")
-      && !consoleJs.includes('setInterval(tick')],
+    dashboardJs.includes('window.SQPolling.create')
+      && dashboardJs.includes("document.addEventListener('visibilitychange'")
+      && dashboardJs.includes("window.addEventListener('pagehide'")
+      && !dashboardJs.includes('setInterval(tick')],
   ['dashboard storage is isolated behind safe fallback',
-    consoleJs.includes('SQ.createSafeStorage')
-      && consoleJs.includes('const storage = SQ.createSafeStorage(() => window.localStorage)')],
+    dashboardJs.includes('SQ.createSafeStorage')
+      && dashboardJs.includes('const storage = SQ.createSafeStorage(() => window.localStorage)')],
   ['Studio stable regions skip unchanged DOM replacement',
-    consoleJs.includes('function syncKeyedRegion')
-      && ['syncKeyedRegion(focusHost','syncKeyedRegion(systems','syncKeyedRegion(network'].every(token => consoleJs.includes(token))],
+    dashboardJs.includes('function syncKeyedRegion')
+      && ['syncKeyedRegion(focusHost','syncKeyedRegion(systems','syncKeyedRegion(network'].every(token => dashboardJs.includes(token))],
   ['Standard keyed regions preserve exact focus context',
-    consoleJs.includes('function captureStandardFocus(element)')
-      && consoleJs.includes('.xp-overlay[data-sid], .rowxp[data-sid], .panel[data-key]')
-      && consoleJs.includes("host?.closest?.('#pinned, #pfd, #panels, #netPanels')")
-      && consoleJs.includes('element.dataset?.mv')
-      && consoleJs.includes('el.dataset.sid = s.id')
-      && consoleJs.includes('focus.element?.isConnected')
-      && consoleJs.includes('restoreStandardFocus(standardFocus)')],
+    dashboardJs.includes('function captureStandardFocus(element)')
+      && dashboardJs.includes('.xp-overlay[data-sid], .rowxp[data-sid], .panel[data-key]')
+      && dashboardJs.includes("host?.closest?.('#pinned, #pfd, #panels, #netPanels')")
+      && dashboardJs.includes('element.dataset?.mv')
+      && dashboardJs.includes('el.dataset.sid = s.id')
+      && dashboardJs.includes('focus.element?.isConnected')
+      && dashboardJs.includes('restoreStandardFocus(standardFocus)')],
   ['Standard keyed signatures cover controls, ranges, and bounded arc progress',
-    consoleJs.includes('SQ.isPinned(state.dashboard, s.id), state.primaryIds.has(s.id)')
-      && consoleJs.includes('SQ.rangeRenderSignature(range), SQ.rangeRenderSignature(gaugeRange)')
-      && consoleJs.includes('SMOOTH_FRACTIONS.get(s.id) ?? null')
-      && consoleJs.includes('expanded ? SQ.rangeRenderSignature(SQ.rangeFor(s, state.limits, state.dashboard)) : null')
-      && consoleJs.includes("effects.spark ? SQ.historyFor(s.id).map")
-      && consoleJs.includes('control ? [control.raw, control.value] : null')],
+    dashboardJs.includes('SQ.isPinned(state.dashboard, s.id), state.primaryIds.has(s.id)')
+      && dashboardJs.includes('SQ.rangeRenderSignature(range), SQ.rangeRenderSignature(gaugeRange)')
+      && dashboardJs.includes('SQ.smoothedFraction(s.id)')
+      && dashboardJs.includes('expanded ? SQ.rangeRenderSignature(SQ.rangeFor(s, state.limits, state.dashboard)) : null')
+      && dashboardJs.includes("effects.spark ? SQ.historyFor(s.id).map")
+      && dashboardJs.includes('control ? [control.raw, control.value] : null')],
   ['poll rate and stateful controls expose accessible state',
     indexHtml.includes('<label class="rate" for="rate">')
       && indexHtml.includes('aria-describedby="ratev"')
@@ -224,8 +221,8 @@ const menuChecks = [
     '<option value="storage">Storage</option>'].every(s => indexHtml.includes(s))],
   ['context CSS covers the disabled state', consoleCss.includes('.dash-context')],
   ['console wires context switching',
-    consoleJs.includes('SQ.switchDashboardContext') && consoleJs.includes("$('#dashContext')")
-      && consoleJs.includes('paintDashContext')],
+    dashboardJs.includes('SQ.switchDashboardContext') && dashboardJs.includes("$('#dashContext')")
+      && dashboardJs.includes('paintDashContext')],
 ];
 for (const [name, ok] of menuChecks) log.push(`${ok ? 'ok  ' : 'FAIL'}  ${name}  got=${ok} want=true`);
 const totalPass = pass + menuChecks.filter(([, ok]) => ok).length;

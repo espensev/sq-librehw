@@ -784,19 +784,12 @@
     if (require.main === module) {
       const test = require('node:test');
       const assert = require('node:assert/strict');
-      const fs = require('node:fs');
-      const path = require('node:path');
-      const source = fs.readFileSync(path.join(__dirname,
-        '../LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js'), 'utf8');
-      const modelWindow = {SQ_NO_BOOT:true,
-        SQFleet:require('../LibreHardwareMonitor.Windows.Forms/Resources/Web/fleet.js')};
-      Function('window', source)(modelWindow);
-      const S = modelWindow.SQ;
+      const Polling = require('../web/polling.js');
 
       test('polling is single-flight, abortable, and ignores cancelled generations', async () => {
-        assert.equal(typeof S.createPollController, 'function');
+        assert.equal(typeof Polling.create, 'function');
         const pending = [], painted = [], errors = [];
-        const poller = S.createPollController({
+        const poller = Polling.create({
           intervalMs:60000,
           timeoutMs:60000,
           request:signal => new Promise(resolve => pending.push({signal, resolve})),
@@ -824,7 +817,7 @@
 
       test('visibility and rate changes cancel work; timeout reports an error', async () => {
         const pending = [], errors = [];
-        const poller = S.createPollController({
+        const poller = Polling.create({
           intervalMs:60000,
           timeoutMs:15,
           request:signal => new Promise((resolve, reject) => {
@@ -853,7 +846,7 @@
 
       test('a persisted paused dashboard gets one snapshot and no recurring poll', async () => {
         let requests = 0, paints = 0;
-        const poller = S.createPollController({
+        const poller = Polling.create({
           paused:true,
           intervalMs:10,
           timeoutMs:1000,
@@ -868,7 +861,7 @@
 
       test('a hidden persisted paused dashboard takes its forced snapshot on first visibility', async () => {
         let requests = 0, paints = 0;
-        const poller = S.createPollController({
+        const poller = Polling.create({
           paused:true,
           hidden:true,
           intervalMs:10,
@@ -891,7 +884,7 @@
 
       test('a hidden paused dashboard retries its forced snapshot after visibility cancellation', async () => {
         const pending = [], painted = [];
-        const poller = S.createPollController({
+        const poller = Polling.create({
           paused:true,
           hidden:true,
           intervalMs:10,
@@ -923,7 +916,7 @@
 
       test('a paused dashboard retries its forced snapshot after a rate change', async () => {
         const pending = [], painted = [];
-        const poller = S.createPollController({
+        const poller = Polling.create({
           paused:true,
           intervalMs:10,
           timeoutMs:1000,

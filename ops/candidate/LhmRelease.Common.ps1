@@ -199,8 +199,8 @@ function Get-LhmReleaseVerificationCommands {
         'git diff --check',
         'node --check console.js',
         'node --check workspace.js',
-        'node webtests/selftest.node.js',
-        'node --test console.tests.js workspace.tests.js',
+        'node dashboard/tests/selftest.node.js',
+        'node --test dashboard/tests/*.tests.js',
         'dotnet test LibreHardwareMonitor.Tests.slnf (x64)')) {
         $commands.Add($command)
     }

@@ -2,14 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const P = require('../LibreHardwareMonitor.Windows.Forms/Resources/Web/fleet-poller.js');
+const P = require('../web/fleet-poller.js');
 const vm = require('node:vm');
 
 test('browser origin remains the default when poller options omit pageOrigin', () => {
   const window = {location:{origin:'https://self.example'}, AbortController, fetch:() => {}};
   const context = vm.createContext({window, URL, setTimeout, clearTimeout});
-  const web = path.join(__dirname, '../LibreHardwareMonitor.Windows.Forms/Resources/Web');
-  for (const name of ['fleet.js','fleet-poller.js'])
+  const web = path.join(__dirname, '../web');
+  for (const name of ['identity.js','fleet.js','fleet-poller.js'])
     vm.runInContext(fs.readFileSync(path.join(web, name), 'utf8'), context);
   const self = {enabled:true, sources:[{key:'self', label:'Self', url:'https://self.example'}]};
   assert.throws(() => window.SQFleetPoller.create({fleet:self}), /local source/);

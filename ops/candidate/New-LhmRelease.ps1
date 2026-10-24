@@ -197,19 +197,19 @@ try {
             -WorkingDirectory $repositoryRoot `
             -Description 'Git diff hygiene'
         Invoke-LhmReleaseCommand -FilePath $NodePath `
-            -ArgumentList @('--check', 'LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js') `
+            -ArgumentList @('--check', 'dashboard\web\console.js') `
             -WorkingDirectory $repositoryRoot `
             -Description 'console.js syntax'
         Invoke-LhmReleaseCommand -FilePath $NodePath `
-            -ArgumentList @('--check', 'LibreHardwareMonitor.Windows.Forms\Resources\Web\workspace.js') `
+            -ArgumentList @('--check', 'dashboard\web\workspace.js') `
             -WorkingDirectory $repositoryRoot `
             -Description 'workspace.js syntax'
         Invoke-LhmReleaseCommand -FilePath $NodePath `
-            -ArgumentList @('webtests\selftest.node.js') `
+            -ArgumentList @('dashboard\tests\selftest.node.js') `
             -WorkingDirectory $repositoryRoot `
             -Description 'dashboard self-test'
         Invoke-LhmReleaseCommand -FilePath $NodePath `
-            -ArgumentList @('--test', 'webtests\console.tests.js', 'webtests\workspace.tests.js') `
+            -ArgumentList @('--test', 'dashboard\tests\console.tests.js', 'dashboard\tests\workspace.tests.js', 'dashboard\tests\fleet.config.tests.js', 'dashboard\tests\fleet.polling.tests.js', 'dashboard\tests\fleet.model.tests.js', 'dashboard\tests\model.boundary.tests.js') `
             -WorkingDirectory $repositoryRoot `
             -Description 'focused web tests'
 

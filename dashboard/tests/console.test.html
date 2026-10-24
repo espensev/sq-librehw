@@ -1,13 +1,14 @@
 <!doctype html><meta charset="utf-8"><title>SQ console self-test</title>
 <body><pre id="out">running…</pre>
-<script>window.SQ_NO_BOOT = true;</script>
-<script src="/LibreHardwareMonitor.Windows.Forms/Resources/Web/fleet.js"></script>
-<script src="/LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js"></script>
-<script src="/webtests/console.tests.js"></script>
+<script src="/dashboard/web/identity.js"></script>
+<script src="/dashboard/web/fleet.js"></script>
+<script src="/dashboard/web/model.js"></script>
+<script>window.SQ = window.SQModel.create({pageOrigin:window.location.origin});</script>
+<script src="/dashboard/tests/console.tests.js"></script>
 <script>
 (async () => {
   const out = document.getElementById('out');
-  const data = await (await fetch('/webtests/fixture.data.json', {cache:'no-store'})).json();
+  const data = await (await fetch('/dashboard/tests/fixture.data.json', {cache:'no-store'})).json();
   const storage = value => { let slot = value; return { getItem: () => slot, setItem: (k, v) => { slot = v; } }; };
   const { pass, fail, log } = window.runConsoleTests(window.SQ, data, storage);
   console.log(`SELFTEST ${fail === 0 ? 'PASS' : 'FAIL'} ${pass}/${pass+fail}`);

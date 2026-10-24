@@ -91,8 +91,8 @@ Upstream-sync risk stays limited to this fork's existing web-resource surface.
 ## Verification
 
 ```powershell
-node --check LibreHardwareMonitor.Windows.Forms\Resources\Web\console.js
-node webtests\selftest.node.js
+node --check dashboard\web\console.js
+node dashboard\tests\selftest.node.js
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
