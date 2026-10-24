@@ -1,6 +1,7 @@
 // SQ Telemetry Console - pure model layer. Consumes the unchanged data.json.
 (function () {
   const SQ = {};
+  const Fleet = window.SQFleet;
   const DASHBOARD_STORAGE_KEY = 'sq.dashboard.v1';
   const SENSOR_MOTION = new Map();
   const SENSOR_HISTORY = new Map();
@@ -48,14 +49,21 @@
     return 'other';
   };
 
-  SQ.flatten = function (root) {
+  SQ.flatten = function (root, source) {
     const out = [];
     (function walk(node, hw, hwid) {
       if (node.HardwareId !== undefined) { hw = node.Text; hwid = node.HardwareId; }
       if (node.SensorId !== undefined) {
-        out.push({ hw, hwid, cls: SQ.classOf(node.SensorId), type: node.Type, text: node.Text,
+        const sensor = { hw, hwid, cls: SQ.classOf(node.SensorId), type: node.Type, text: node.Text,
           value: node.Value, min: node.Min, max: node.Max, raw: node.RawValue,
-          rawMin: node.RawMin, rawMax: node.RawMax, id: node.SensorId });
+          rawMin: node.RawMin, rawMax: node.RawMax, id: node.SensorId };
+        if (source) {
+          Object.assign(sensor, {sourceKey:source.key, sourceLabel:source.label,
+            rawId:node.SensorId, rawHardwareId:hwid,
+            id:Fleet.persistenceKey(source.key, node.SensorId),
+            hwid:Fleet.persistenceKey(source.key, hwid === undefined ? 'hw:' + hw : hwid)});
+        }
+        out.push(sensor);
       }
       (node.Children || []).forEach(c => walk(c, hw, hwid));
     })(root, root.Text, undefined);
@@ -150,20 +158,34 @@
       });
     return out;
   }
-  function keepNewestKeys(value, maxKeys) {
-    const keys = Object.keys(value);
-    for (let i = 0; i < keys.length - maxKeys; i++) delete value[keys[i]];
+  function sourceOfKey(key) {
+    return Fleet.parseIdentity(key)?.sourceKey;
+  }
+  function configuredSources(dashboard) {
+    return new Set(['local', ...(dashboard?.fleet?.sources || []).map(s => s.key)]);
+  }
+  function keepNewestKeys(value, maxKeys, sources = new Set(['local'])) {
+    const groups = new Map();
+    Object.keys(value).forEach(key => {
+      const source = sourceOfKey(key);
+      if (!sources.has(source)) { delete value[key]; return; }
+      if (!groups.has(source)) groups.set(source, []);
+      groups.get(source).push(key);
+    });
+    groups.forEach(keys => {
+      for (let i = 0; i < keys.length - maxKeys; i++) delete value[keys[i]];
+    });
     return value;
   }
-  function cleanNumberMap(value) {
+  function cleanNumberMap(value, sources) {
     const out = {};
     if (value && typeof value === 'object' && !Array.isArray(value))
       Object.keys(value).forEach(k => { const n = Number(value[k]); if (k && Number.isFinite(n)) out[k] = n; });
-    return keepNewestKeys(out, SENSOR_STATE_MAX_KEYS);
+    return keepNewestKeys(out, SENSOR_STATE_MAX_KEYS, sources);
   }
   // Persisted watt/percent ratios used to derive GPU power limits. Each hwid
   // keeps a bounded ring of finite, idle-gated ratios; never blocks rendering.
-  function cleanPowerSamples(value) {
+  function cleanPowerSamples(value, sources) {
     const out = {};
     if (value && typeof value === 'object' && !Array.isArray(value))
       Object.keys(value).forEach(k => {
@@ -171,7 +193,7 @@
         const xs = value[k].filter(x => Number.isFinite(x) && x > 0).slice(-SQ.POWER_LIMIT_MAX_SAMPLES);
         if (xs.length) out[k] = xs;
       });
-    return keepNewestKeys(out, POWER_STATE_MAX_KEYS);
+    return keepNewestKeys(out, POWER_STATE_MAX_KEYS, sources);
   }
   function cleanOrderMap(value) {
     const out = {};
@@ -182,6 +204,9 @@
   SQ.defaultDashboardState = function () {
     return {
       version: 1,
+      fleet: Fleet.defaults(),
+      fleetOrigins: {},
+      fleetError: null,
       hiddenSensorIds: [],
       pinnedCards: [],
       panelOrder: [],
@@ -219,8 +244,15 @@
   SQ.normalizeDashboardState = function (value) {
     const base = SQ.defaultDashboardState();
     if (!value || typeof value !== 'object') return base;
+    const fleetState = Fleet.normalize(value.fleet, {
+      pageOrigin:window.location?.origin, knownOrigins:value.fleetOrigins
+    });
+    const sources = configuredSources({fleet:fleetState.fleet});
     return {
       version: 1,
+      fleet: fleetState.fleet,
+      fleetOrigins: fleetState.origins,
+      fleetError: fleetState.error || (typeof value.fleetError === 'string' ? value.fleetError.slice(0, 240) : null),
       hiddenSensorIds: cleanStringList(value.hiddenSensorIds),
       pinnedCards: cleanPinnedCards(value.pinnedCards),
       panelOrder: cleanStringList(value.panelOrder),
@@ -244,8 +276,8 @@
       collapsedPanels: cleanCollapsedMap(value.collapsedPanels),
       cardStyle: cleanCardStyleMap(value.cardStyle),
       rangeOverrides: cleanRangeOverrides(value.rangeOverrides),
-      observedMax: cleanNumberMap(value.observedMax),
-      powerLimitSamples: cleanPowerSamples(value.powerLimitSamples),
+      observedMax: cleanNumberMap(value.observedMax, sources),
+      powerLimitSamples: cleanPowerSamples(value.powerLimitSamples, sources),
       sensorAliases: cleanAliasMap(value.sensorAliases),
       primaryCards: cleanStringList(value.primaryCards),
       primaryCardsCustomized: value.primaryCardsCustomized === true,
@@ -256,6 +288,35 @@
     };
   };
   SQ.normalizeViewTheme = cleanViewTheme;
+  SQ.fleetSourceOptions = function (dashboard, contexts, workspace) {
+    const references = new Set();
+    const add = id => {
+      const identity = Fleet.parseIdentity(id);
+      if (identity && identity.sourceKey !== 'local') references.add(id);
+    };
+    const layout = value => {
+      if (!value) return;
+      for (const name of ['hiddenSensorIds','panelOrder','pinnedOrder','primaryCards','cardOrder','netAdapterOrder','hiddenNetAdapters'])
+        if (Array.isArray(value[name])) value[name].forEach(add);
+      if (Array.isArray(value.pinnedCards)) value.pinnedCards.forEach(card => add(typeof card === 'string' ? card : card?.id));
+      for (const name of ['collapsedPanels','cardStyle','rangeOverrides','sensorAliases','rowOrder'])
+        Object.keys(value[name] || {}).forEach(add);
+      Object.values(value.rowOrder || {}).forEach(ids => { if (Array.isArray(ids)) ids.forEach(add); });
+    };
+    layout(dashboard);
+    Object.values(contexts?.saved || {}).forEach(layout);
+    (workspace?.profiles || []).forEach(profile =>
+      (profile.panels || []).forEach(panel => (panel.sensorIds || []).forEach(add)));
+    const referenceIds = [...references];
+    return {pageOrigin:window.location?.origin, referenceIds,
+      knownOrigins:Fleet.retainOrigins(dashboard.fleetOrigins, dashboard.fleet.sources, referenceIds)};
+  };
+  SQ.applyFleetState = function (dashboard, nextFleet, contexts, workspace) {
+    const options = SQ.fleetSourceOptions(dashboard, contexts, workspace);
+    const fleet = Fleet.validateFleet(nextFleet, options);
+    return SQ.normalizeDashboardState({...dashboard, fleet, fleetError:null,
+      fleetOrigins:Fleet.retainOrigins(options.knownOrigins, fleet.sources, options.referenceIds)});
+  };
   SQ.createSafeStorage = function (storageOrProvider) {
     const memory = new Map();
     const removed = new Set();
@@ -338,26 +399,27 @@
     } catch {}
     return state;
   };
-  function mergeNumberMaxMap(a, b) {
-    const out = Object.assign({}, cleanNumberMap(a));
-    const next = cleanNumberMap(b);
+  function mergeNumberMaxMap(a, b, sources) {
+    const out = Object.assign({}, cleanNumberMap(a, sources));
+    const next = cleanNumberMap(b, sources);
     Object.keys(next).forEach(k => { if (!Number.isFinite(out[k]) || next[k] > out[k]) out[k] = next[k]; });
-    return keepNewestKeys(out, SENSOR_STATE_MAX_KEYS);
+    return keepNewestKeys(out, SENSOR_STATE_MAX_KEYS, sources);
   }
-  function mergePowerSampleMap(a, b) {
-    const aa = cleanPowerSamples(a), bb = cleanPowerSamples(b), out = Object.assign({}, aa);
+  function mergePowerSampleMap(a, b, sources) {
+    const aa = cleanPowerSamples(a, sources), bb = cleanPowerSamples(b, sources), out = Object.assign({}, aa);
     Object.keys(bb).forEach(k => {
       const current = out[k] || [];
       out[k] = (bb[k].length > current.length ? bb[k] : current).slice(-SQ.POWER_LIMIT_MAX_SAMPLES);
     });
-    return keepNewestKeys(out, POWER_STATE_MAX_KEYS);
+    return keepNewestKeys(out, POWER_STATE_MAX_KEYS, sources);
   }
   SQ.mergeTelemetryState = function (persisted, telemetry) {
     const base = SQ.normalizeDashboardState(persisted);
     const t = SQ.normalizeDashboardState(telemetry);
     const merged = SQ.normalizeDashboardState(base);
-    merged.observedMax = mergeNumberMaxMap(base.observedMax, t.observedMax);
-    merged.powerLimitSamples = mergePowerSampleMap(base.powerLimitSamples, t.powerLimitSamples);
+    const sources = configuredSources(base);
+    merged.observedMax = mergeNumberMaxMap(base.observedMax, t.observedMax, sources);
+    merged.powerLimitSamples = mergePowerSampleMap(base.powerLimitSamples, t.powerLimitSamples, sources);
     return merged;
   };
   SQ.saveTelemetryState = function (storage, telemetry, removals) {
@@ -489,7 +551,7 @@
     if (!s) return '';
     const alias = SQ.sensorAlias(state, s.id);
     const val = s.value != null ? s.value : '';
-    return `${s.hw || ''} ${s.text || ''} ${alias} ${s.type || ''} ${val} ${s.id || ''}`.toLowerCase();
+    return `${s.sourceLabel || ''} ${s.hw || ''} ${s.text || ''} ${alias} ${s.type || ''} ${val} ${s.id || ''}`.toLowerCase();
   };
   SQ.sensorVisibility = function (s, state) {
     if (SQ.isSensorHidden(s, state)) return 'hidden';
@@ -523,7 +585,7 @@
   };
   SQ.panelKey = function (hw, sensors) {
     const hwid = sensors && sensors.find(s => s.hwid)?.hwid;
-    return hwid || ('hw:' + hw);
+    return hwid || Fleet.persistenceKey(sensors?.[0]?.sourceKey || 'local', 'hw:' + hw);
   };
   SQ.mergeOrder = function (saved, keys) {
     const set = new Set(keys);
@@ -701,9 +763,7 @@
     sensors.forEach(s => {
       if (!s.id || s.raw == null || !Number.isFinite(s.raw)) return;
       const h = SENSOR_HISTORY.get(s.id) || [];
-      const last = h[h.length - 1];
-      if (!last || last.raw !== s.raw || t - last.t > 250)
-        h.push({ t, raw: s.raw });
+      h.push({ t, raw: s.raw });
       while (h.length > MAX_HISTORY_POINTS) h.shift();
       SENSOR_HISTORY.set(s.id, h);
     });
@@ -711,9 +771,20 @@
   SQ.historyFor = function (id) {
     return SENSOR_HISTORY.get(id) || [];
   };
-  function pruneOwnedKeys(keys, activeKeys, lastSeen, maxKeys, remove, now) {
+  function pruneOwnedKeys(keys, activeKeys, lastSeen, maxKeys, remove, now, sources) {
+    const groups = new Map();
+    keys.forEach(key => {
+      const source = sourceOfKey(key);
+      if (!sources.has(source)) { remove(key); lastSeen.delete(key); return; }
+      if (!groups.has(source)) groups.set(source, []);
+      groups.get(source).push(key);
+    });
     const owned = new Set(keys);
     [...lastSeen.keys()].forEach(key => { if (!owned.has(key)) lastSeen.delete(key); });
+    groups.forEach(group => pruneSourceKeys(group, activeKeys, lastSeen, maxKeys, remove, now));
+  }
+  function pruneSourceKeys(keys, activeKeys, lastSeen, maxKeys, remove, now) {
+    const owned = new Set(keys);
     activeKeys.forEach(key => { if (owned.has(key)) lastSeen.set(key, now); });
     keys.forEach(key => {
       if (activeKeys.has(key)) return;
@@ -734,7 +805,7 @@
       lastSeen.delete(key);
     });
   }
-  function pruneTransientSensorState(sensors, now) {
+  function pruneTransientSensorState(sensors, now, sources) {
     const active = new Set((Array.isArray(sensors) ? sensors : []).map(s => s && s.id).filter(Boolean));
     const keys = [...new Set([...SENSOR_MOTION.keys(), ...SENSOR_HISTORY.keys(),
       ...SMOOTH_FRACTIONS.keys(), ...TREND_DIRS.keys()])];
@@ -743,24 +814,25 @@
       SENSOR_HISTORY.delete(key);
       SMOOTH_FRACTIONS.delete(key);
       TREND_DIRS.delete(key);
-    }, now);
+    }, now, sources);
   }
-  function prunePersistedMap(value, active, lastSeen, maxKeys, now) {
+  function prunePersistedMap(value, active, lastSeen, maxKeys, now, sources) {
     const map = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const keys = Object.keys(map);
-    pruneOwnedKeys(keys, active, lastSeen, maxKeys, key => { delete map[key]; }, now);
+    pruneOwnedKeys(keys, active, lastSeen, maxKeys, key => { delete map[key]; }, now, sources);
     return map;
   }
   SQ.pruneTelemetryState = function (sensors, dashboard, now) {
     const t = Number.isFinite(now) ? now : Date.now();
     const list = Array.isArray(sensors) ? sensors : [];
+    const sources = configuredSources(dashboard);
     const activeSensors = new Set(list.map(s => s && s.id).filter(Boolean));
     const activeHardware = new Set(list.map(s => s && s.hwid).filter(Boolean));
     dashboard.observedMax = prunePersistedMap(dashboard.observedMax, activeSensors,
-      OBSERVED_LAST_SEEN, SENSOR_STATE_MAX_KEYS, t);
+      OBSERVED_LAST_SEEN, SENSOR_STATE_MAX_KEYS, t, sources);
     dashboard.powerLimitSamples = prunePersistedMap(dashboard.powerLimitSamples, activeHardware,
-      POWER_LAST_SEEN, POWER_STATE_MAX_KEYS, t);
-    pruneTransientSensorState(list, t);
+      POWER_LAST_SEEN, POWER_STATE_MAX_KEYS, t, sources);
+    pruneTransientSensorState(list, t, sources);
     return dashboard;
   };
   SQ.telemetryCacheSizes = function () {
@@ -785,11 +857,22 @@
     clock: { unit: 'MHz/s',   db: 15,   scale: 1 }
   };
   SQ.resetSensorTrends = function () { TREND_DIRS.clear(); };
+  SQ.resetSourceDerivatives = function (sourceKey) {
+    SENSOR_HISTORY.forEach((history, id) => {
+      if (sourceOfKey(id) !== sourceKey) return;
+      // Preserve the displayed trace, but never infer a rate across a gap.
+      if (history.length) history[history.length - 1].gapAfter = true;
+      TREND_DIRS.delete(id);
+    });
+  };
   SQ.trendFor = function (id, kind, now) {
     const band = SQ.TRENDBANDS[kind];
     if (!band) return null;
     const t = Number.isFinite(now) ? now : Date.now();
-    const win = SENSOR_HISTORY.get(id)?.filter(p => t - p.t <= 30000 && Number.isFinite(p.raw)) || [];
+    const history = SENSOR_HISTORY.get(id) || [];
+    let start = 0;
+    history.forEach((point, index) => { if (point.gapAfter) start = index + 1; });
+    const win = history.slice(start).filter(p => t - p.t <= 30000 && Number.isFinite(p.raw));
     if (win.length < 3) { TREND_DIRS.delete(id); return null; }
     const mid = Math.floor(win.length / 2);
     const mean = a => a.reduce((s, p) => s + p.raw, 0) / a.length;
@@ -909,11 +992,12 @@
     }
     return true;
   };
-  SQ.ingestTelemetry = function (runtime, sensors, freshTelemetry, now) {
+  SQ.ingestTelemetry = function (runtime, sensors, freshTelemetry, now, retainedSensors) {
     if (!freshTelemetry) return {ingested:false, samplesChanged:false};
     const list = Array.isArray(sensors) ? sensors : [];
     const t = Number.isFinite(now) ? now : Date.now();
     const dashboard = runtime.dashboard || SQ.defaultDashboardState();
+    ensureSavedTelemetryKeys(runtime, dashboard);
     const priorSamples = dashboard.powerLimitSamples;
     const priorObservedKeys = Object.keys(dashboard.observedMax || {});
     const priorPowerKeys = Object.keys(dashboard.powerLimitSamples || {});
@@ -921,20 +1005,73 @@
     SQ.trackSensorHistory(list, t);
     dashboard.observedMax = SQ.mergeObservedPeaks(list, dashboard.observedMax);
     dashboard.powerLimitSamples = SQ.trackPowerSamples(list, dashboard.powerLimitSamples);
-    SQ.pruneTelemetryState(list, dashboard, t);
+    SQ.pruneTelemetryState(retainedSensors || list, dashboard, t);
     runtime.dashboard = dashboard;
     runtime.tickCount = (runtime.tickCount || 0) + 1;
     const removedObserved = priorObservedKeys.filter(key => !(key in dashboard.observedMax));
     const removedPower = priorPowerKeys.filter(key => !(key in dashboard.powerLimitSamples));
     const pending = runtime.telemetryRemovals || {observedMax:[], powerLimitSamples:[]};
     pending.observedMax = [...new Set(pending.observedMax.concat(removedObserved))]
-      .filter(key => !(key in dashboard.observedMax)).slice(-SENSOR_STATE_MAX_KEYS);
+      .filter(key => runtime.telemetrySavedKeys.observedMax.has(key) && !(key in dashboard.observedMax));
     pending.powerLimitSamples = [...new Set(pending.powerLimitSamples.concat(removedPower))]
-      .filter(key => !(key in dashboard.powerLimitSamples)).slice(-POWER_STATE_MAX_KEYS);
+      .filter(key => runtime.telemetrySavedKeys.powerLimitSamples.has(key) && !(key in dashboard.powerLimitSamples));
     runtime.telemetryRemovals = pending;
     return {ingested:true,
       samplesChanged:!SQ.shallowEqualArrays(dashboard.powerLimitSamples, priorSamples),
       removals:pending};
+  };
+  function ensureSavedTelemetryKeys(runtime, dashboard) {
+    runtime.telemetrySavedKeys ||= {
+      observedMax:new Set(Object.keys(dashboard.observedMax || {})),
+      powerLimitSamples:new Set(Object.keys(dashboard.powerLimitSamples || {}))
+    };
+  }
+  // Acknowledge only after writing the dashboard. Removal queues contain at
+  // most the bounded keys in that saved snapshot, never unsaved sensor churn.
+  SQ.acknowledgeTelemetrySave = function (runtime) {
+    runtime.telemetrySavedKeys = null;
+    ensureSavedTelemetryKeys(runtime, runtime.dashboard);
+    runtime.telemetryRemovals = {observedMax:[], powerLimitSamples:[]};
+  };
+  // Called only for validated coordinator successes; rendering consumes the
+  // stored sensors and never advances source generations or telemetry.
+  SQ.ingestSourceTelemetry = function (runtime, source, data, sample) {
+    if (!configuredSources(runtime.dashboard).has(source.key))
+      throw new Error('Telemetry source is not configured.');
+    if (!Number.isFinite(sample?.completedAt) || !Number.isSafeInteger(sample?.generation) || sample.generation < 1)
+      throw new Error('Telemetry sample requires a generation and completion time.');
+    runtime.sourceGenerations ||= new Map();
+    if ((runtime.sourceGenerations.get(source.key) || 0) >= sample.generation)
+      return {ingested:false, samplesChanged:false};
+    const sensors = SQ.flatten(data.Children[0], source);
+    runtime.sourceSensors ||= new Map();
+    runtime.sourceSensors.set(source.key, sensors);
+    const retained = [...runtime.sourceSensors.values()].flat();
+    const result = SQ.ingestTelemetry(runtime, sensors, true, sample.completedAt, retained);
+    runtime.sourceGenerations.set(source.key, sample.generation);
+    return result;
+  };
+  SQ.removeSourceTelemetry = function (runtime, sourceKey) {
+    if (sourceKey === 'local') throw new Error('The local source cannot be removed.');
+    runtime.sourceSensors?.delete(sourceKey);
+    ensureSavedTelemetryKeys(runtime, runtime.dashboard);
+    // The coordinator invalidates removed requests; retain no per-source
+    // generations once that source has left the bounded active collection.
+    runtime.sourceGenerations?.delete(sourceKey);
+    const pending = runtime.telemetryRemovals || {observedMax:[], powerLimitSamples:[]};
+    for (const name of ['observedMax', 'powerLimitSamples']) {
+      const map = runtime.dashboard[name] || {};
+      const removed = Object.keys(map).filter(key => sourceOfKey(key) === sourceKey);
+      removed.forEach(key => { delete map[key]; });
+      pending[name] = [...new Set(pending[name].concat(removed))]
+        .filter(key => runtime.telemetrySavedKeys[name].has(key));
+    }
+    for (const map of [SENSOR_MOTION, SENSOR_HISTORY, SMOOTH_FRACTIONS, TREND_DIRS,
+      TRANSIENT_LAST_SEEN, OBSERVED_LAST_SEEN, POWER_LAST_SEEN]) {
+      for (const key of map.keys()) if (sourceOfKey(key) === sourceKey) map.delete(key);
+    }
+    runtime.telemetryRemovals = pending;
+    return {removals:pending};
   };
   // Derive an approximate power-limit ceiling for a GPU hwid from accumulated
   // samples. Returns a finite watt ceiling (already bucketed to 25 W) or null.
@@ -1053,6 +1190,13 @@
   };
 
   SQ.pickHero = function (sensors, limits) {
+    const groups = new Map();
+    sensors.forEach(sensor => {
+      const key = sensor.sourceKey || 'local';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(sensor);
+    });
+    if (groups.size > 1) return [...groups.values()].flatMap(group => SQ.pickHero(group, limits));
     const H = [], find = p => sensors.find(p);
     const add = (s, label, opts) => { if (s) H.push(Object.assign({ s, label, status: SQ.statusOf(s, limits) }, opts || {})); };
     if (sensors.some(s => s.cls === 'cpu')) {
@@ -1084,7 +1228,7 @@
   };
 
   SQ.netAdapterKey = function (s) {
-    return (s && s.hwid) || ('hw:' + ((s && s.hw) || ''));
+    return (s && s.hwid) || Fleet.persistenceKey(s?.sourceKey || 'local', 'hw:' + (s?.hw || ''));
   };
   SQ.buildNetAdapters = function (sensors) {
     if (!Array.isArray(sensors)) return [];
@@ -1111,7 +1255,7 @@
     const byId = new Map();
     sensors.forEach(s => {
       if (s.cls === 'nic') return;
-      const key = s.hwid || ('hw:' + s.hw);
+      const key = SQ.panelKey(s.hw, [s]);
       if (!byId.has(key)) byId.set(key, { hw: s.hw, ss: [], key });
       byId.get(key).ss.push(s);
     });
@@ -1389,12 +1533,12 @@
     }
     function saveDashboard() {
       state.dashboard = SQ.saveDashboardState(storage, state.dashboard);
-      state.telemetryRemovals = {observedMax:[], powerLimitSamples:[]};
+      SQ.acknowledgeTelemetrySave(state);
       paintGraphs();
     }
     function saveTelemetryDashboard(ingestion) {
       state.dashboard = SQ.saveTelemetryState(storage, state.dashboard, ingestion?.removals);
-      state.telemetryRemovals = {observedMax:[], powerLimitSamples:[]};
+      SQ.acknowledgeTelemetrySave(state);
       paintGraphs();
     }
     function rerender() {
@@ -1527,7 +1671,9 @@
       // Throttled persistence so peaks/derived limits survive reloads without
       // per-tick localStorage writes. Power samples (needed to derive a limit)
       // flush more often than peaks (which only grow).
-      if (ingestion.ingested && ingestion.samplesChanged && state.tickCount % 5 === 0) saveTelemetryDashboard(ingestion);
+      if (ingestion.ingested && (ingestion.removals.observedMax.length || ingestion.removals.powerLimitSamples.length))
+        saveTelemetryDashboard(ingestion);
+      else if (ingestion.ingested && ingestion.samplesChanged && state.tickCount % 5 === 0) saveTelemetryDashboard(ingestion);
       else if (ingestion.ingested && state.tickCount % 30 === 0) saveTelemetryDashboard(ingestion);
     }
 
@@ -2935,9 +3081,14 @@
       const profile = activeWorkspaceProfile();
       const panel = workspacePanel(profile, state.workspaceSensorTargetId);
       if (!profile || !panel) return;
-      commitWorkspace(Workspace.togglePanelSensor(state.workspace, profile.id, panel.id,
-        event.target.dataset.workspaceSensor, event.target.checked, state.allSensors),
-        event.target.checked ? 'Sensor added to the panel.' : 'Sensor removed from the panel.', 'ok');
+      try {
+        commitWorkspace(Workspace.togglePanelSensor(state.workspace, profile.id, panel.id,
+          event.target.dataset.workspaceSensor, event.target.checked, state.allSensors),
+          event.target.checked ? 'Sensor added to the panel.' : 'Sensor removed from the panel.', 'ok');
+      } catch (error) {
+        event.target.checked = !event.target.checked;
+        announceWorkspace(error.message, 'error');
+      }
     });
     $('#workspaceSensorList').addEventListener('click', event => {
       if (!Workspace) return;

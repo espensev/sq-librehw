@@ -3,7 +3,8 @@
 const fs = require('fs');
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
-global.window = { SQ_NO_BOOT: true };
+global.window = { SQ_NO_BOOT: true,
+  SQFleet:require(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/Web/fleet.js')) };
 const consoleJs = fs.readFileSync(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js'), 'utf8');
 const workspaceJs = fs.readFileSync(path.join(ROOT, 'LibreHardwareMonitor.Windows.Forms/Resources/Web/workspace.js'), 'utf8');
 Function('window', 'module', workspaceJs)(global.window, undefined);

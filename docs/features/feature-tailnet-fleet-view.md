@@ -1,14 +1,16 @@
 # Feature Spec: Tailnet Fleet View
 
-**Status:** Option A selected; phase-1 contract refined, implementation pending
+**Status:** Option A foundation implemented; Machines and fleet rendering pending
 **Updated:** 2026-10-24
 **Supersedes:** [Unified Tailnet Monitoring View](feature-unified-tailnet-monitoring-view.md)
 
 The owner selected Option A on 2026-10-23 UTC and requested this refinement on
 2026-10-24. The first slice is a browser-local machine list and merged telemetry
 in Standard, Studio, and Workspace. Panes, seed tooling, and server aggregation
-are deferred. The interrupted implementation left only
-`webtests/fixture.peer.data.json`; no fleet behavior has been accepted.
+are deferred. The first implementation step supplies configuration, identity,
+polling, and ingestion models with regression tests. The interrupted peer
+fixture is retained unchanged and now used by those tests. Browser boot still
+uses the existing local poller; fleet UI and end-to-end acceptance are pending.
 
 ## Problem and scope
 
@@ -17,7 +19,8 @@ The former static unified page hardcoded two endpoints outside the product.
 Operators need to choose their machines inside the web console, see which
 machine owns each reading, and keep monitoring healthy sources when one fails.
 
-Phase 1 changes embedded web resources and web tests only. It adds no C# route,
+Phase 1 changes embedded web resources, web tests, and their verification
+registration. It adds no C# route,
 server-side outbound request, hardware control, authentication change, or
 `data.json`/`metrics` wire change. Machine names, domains, endpoints, and
 ports are operator configuration, never embedded defaults. Reachable HTTPS
@@ -213,7 +216,9 @@ and resolve variables at JSON generation time because JSON does not expand them.
 
 ## Acceptance and verification
 
-All items below are implementation gates and remain unchecked.
+These are full feature gates. A2–A7 have foundation evidence below; their
+remaining UI integration is unchecked. A1/A8 browser fleet acceptance remains
+unchecked. A9 source contract/build verification passes for this foundation.
 
 | ID | Acceptance criterion | Required evidence |
 |---|---|---|
@@ -231,7 +236,7 @@ Run from the source repository for the implementation gate:
 
 ```powershell
 node webtests\selftest.node.js
-node --test webtests\console.tests.js webtests\workspace.tests.js
+node --test webtests\console.tests.js webtests\workspace.tests.js webtests\fleet.config.tests.js webtests\fleet.polling.tests.js webtests\fleet.model.tests.js
 dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.Contracts\LibreHardwareMonitor.Tests.Contracts.csproj -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
@@ -253,21 +258,60 @@ framework builds and installed-runtime acceptance remain distinct.
 
 ## Implementation order and current evidence
 
-1. Implement configuration/identity normalization and per-source polling/
-   ingestion with A2–A7 tests before broad UI changes.
-2. Integrate Machines and all three views, then satisfy A1/A8 browser checks.
+1. Completed: configuration/identity normalization and per-source polling/
+   ingestion with deterministic foundation tests for A2–A7.
+2. Next: integrate Machines and all three views, then satisfy A1/A8 browser checks.
 3. Run the full verification commands above and record evidence against A1–A9
    before candidate/release work.
 
-The 2026-10-24 baseline passed 339 synchronous assertions and 18 Node tests
-before this documentation refinement. Those results cover the existing local
-dashboard, not fleet acceptance. This revision changes only the contract and
-its documentation links; no implementation or live verification is claimed.
+### Foundation implementation (2026-10-24)
 
-Refinement verification: two independent document reviews found no blocking
-issues. Relative Markdown links, referenced test/build paths, A1–A9 coverage,
-the unchanged peer-fixture hash, and `git diff --check` passed. Product tests
-and builds were not rerun for this documentation-only change.
+- `fleet.js` owns strict source validation, canonical origins, bounded atomic
+  imports, immutable edits, origin associations, and identity envelopes.
+  `fleetOrigins` and `fleetError` accompany `fleet` in dashboard storage.
+  The association registry fails closed at 4096 entries; explicit pruning
+  requires complete preference references.
+- `fleet-poller.js` owns independent source requests, admission, receipts,
+  statuses, monotonic generations, cancellation, and gap/removal callbacks.
+  It is loaded as a browser module but is not yet the dashboard's boot poller.
+  A transport that ignores abort retains request ownership until settlement;
+  its timeout is reported and late data discarded while siblings continue.
+- `console.js` projects source-aware identities without changing wire nodes,
+  partitions every telemetry bound by configured source, and separates fresh
+  source ingestion from full membership retention. Trends retain displayed
+  history while refusing derivatives across a gap.
+- `workspace.js` accepts raw IDs up to 192 and peer envelopes up to 231,
+  rejects invalid explicit edits, and selects presets within each source
+  before sharing the existing 24-sensor panel allowance.
+- The three fleet suites are registered in
+  `.codex/skills/project.toml` alongside the existing web suites.
+
+Machines integration must use `SQ.fleetSourceOptions` with the active
+dashboard, parked Standard contexts, and Workspace state when validating
+edits/imports. It collects missing references and prevents unknown keys from
+being rebound. Apply changes through `SQ.applyFleetState`, save the dashboard,
+call `SQ.acknowledgeTelemetrySave`, and then configure the poll coordinator.
+This order prevents a telemetry save from restoring the previous source list.
+Successful coordinator callbacks call `SQ.ingestSourceTelemetry`; gap callbacks
+call `SQ.resetSourceDerivatives`; removal callbacks call
+`SQ.removeSourceTelemetry`. After telemetry persistence, acknowledge the save
+so deletion queues remain bounded by the last saved keys.
+
+Verification: 339 synchronous assertions and 60 Node tests pass. The latter
+include 10 configuration, 21 polling, 11 model integration, and 18 existing
+polling/Workspace tests. Server Contracts pass 114/114. Both Release x64
+Windows Forms builds (`net10.0-windows`, `net472`) pass without warnings or
+errors. Two independent source reviews found no remaining blocking findings
+after fixes to generation reuse, deletion queues, null preset entries,
+browser-origin fallback, and suspension status.
+
+An isolated Opera fixture smoke loaded all modules and exercised the existing
+local Standard, Studio, and Workspace views with successful resource and
+telemetry responses. The real-HTTP Node fixture tests use ephemeral loopback
+servers. Neither check establishes HTTPS peer CORS, Machines controls, merged
+fleet rendering, or installed-runtime acceptance. Those remain next-slice and
+release gates. The peer fixture retains SHA256
+`8FC42562E6ADCBD168C5AD8EDD54DB64F885B86B9242A20C7803F09AC74BBB3B`.
 
 Remaining operational decisions are desktop endpoint ownership/port and later
 release promotion. They do not block phase-1 fixture-based implementation.

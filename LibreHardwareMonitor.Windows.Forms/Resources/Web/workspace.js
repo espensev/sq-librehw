@@ -8,6 +8,7 @@
 })(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this), function (root) {
   'use strict';
 
+  const Fleet = root?.SQFleet || (typeof require === 'function' ? require('./fleet.js') : null);
   const STORAGE_KEY = 'sq.workspace.v1';
   const STATE_SCHEMA = 'sq.workspace';
   const PROFILE_SCHEMA = 'sq.workspace.profile';
@@ -127,8 +128,7 @@
     const seen = new Set();
     const ids = [];
     for (const candidate of value) {
-      if (typeof candidate !== 'string' || candidate.length === 0 ||
-          candidate.length > LIMITS.sensorIdLength || seen.has(candidate)) continue;
+      if (!Fleet.isWorkspaceId(candidate) || seen.has(candidate)) continue;
       seen.add(candidate);
       ids.push(candidate);
       if (ids.length === LIMITS.sensorIdsPerPanel) break;
@@ -352,7 +352,7 @@
   function sensorIdOf(sensor) {
     if (!sensor) return null;
     const id = typeof sensor.id === 'string' ? sensor.id : sensor.SensorId;
-    return typeof id === 'string' && id.length > 0 && id.length <= LIMITS.sensorIdLength ? id : null;
+    return Fleet.isWorkspaceId(id) ? id : null;
   }
 
   function semanticClassOf(sensor) {
@@ -389,6 +389,27 @@
   function resolvePreset(presetId, sensors) {
     const definition = PRESETS[presetId];
     if (!definition || !Array.isArray(sensors)) return [];
+    const sources = new Map();
+    sensors.forEach(sensor => {
+      if (!sensor) return;
+      const key = sensor.sourceKey || Fleet.parseIdentity(sensor.id || sensor.SensorId)?.sourceKey || 'local';
+      if (!sources.has(key)) sources.set(key, []);
+      sources.get(key).push(sensor);
+    });
+    if (sources.size > 1) {
+      // Select within each machine first, then share the existing panel budget.
+      const selections = [...sources.values()].map(group => resolvePreset(presetId, group));
+      const result = [];
+      for (let i = 0; result.length < LIMITS.sensorIdsPerPanel; i++) {
+        let appended = false;
+        for (const selection of selections) {
+          if (selection[i]) { result.push(selection[i]); appended = true; }
+          if (result.length === LIMITS.sensorIdsPerPanel) break;
+        }
+        if (!appended) break;
+      }
+      return result;
+    }
 
     const seen = new Set();
     const buckets = new Map();
@@ -558,7 +579,14 @@
     });
   }
 
+  function requireSensorIds(ids) {
+    if (Array.isArray(ids) && ids.some(id => !Fleet.isWorkspaceId(id)))
+      throw new WorkspaceError('sensor-id-too-long',
+        'Sensor IDs must contain 1–192 characters; peer IDs also require a valid fleet source envelope.');
+  }
+
   function updatePanel(value, profileId, panelId, patch, sensors) {
+    if (patch && hasOwn(patch, 'sensorIds')) requireSensorIds(patch.sensorIds);
     if (!isObject(patch)) return normalizeState(value);
     return replacePanel(value, profileId, panelId, panel => {
       const next = clonePanel(panel);
@@ -603,6 +631,7 @@
   }
 
   function setPanelSensorIds(value, profileId, panelId, sensorIds) {
+    requireSensorIds(sensorIds);
     return replacePanel(value, profileId, panelId, panel => ({
       ...panel,
       preset: null,
@@ -634,7 +663,7 @@
 
   function togglePanelSensor(value, profileId, panelId, sensorId, selected, sensors) {
     const state = normalizeState(value);
-    if (typeof sensorId !== 'string' || sensorId.length === 0 || sensorId.length > LIMITS.sensorIdLength) return state;
+    requireSensorIds([sensorId]);
     const profile = state.profiles.find(item => item.id === profileId);
     const panel = profile && profile.panels.find(item => item.id === panelId);
     if (!panel) return state;
@@ -721,9 +750,7 @@
         throw new WorkspaceError('invalid-panel', 'Every imported panel must be an object.');
       if (Array.isArray(panel.sensorIds) && panel.sensorIds.length > LIMITS.sensorIdsPerPanel)
         throw new WorkspaceError('too-many-sensors', 'An imported panel contains too many sensors.');
-      if (Array.isArray(panel.sensorIds) && panel.sensorIds.some(id =>
-        typeof id === 'string' && id.length > LIMITS.sensorIdLength))
-        throw new WorkspaceError('sensor-id-too-long', 'An imported SensorId exceeds the size limit.');
+      requireSensorIds(panel.sensorIds);
     }
 
     const panelIds = new Set();

@@ -788,7 +788,8 @@
       const path = require('node:path');
       const source = fs.readFileSync(path.join(__dirname,
         '../LibreHardwareMonitor.Windows.Forms/Resources/Web/console.js'), 'utf8');
-      const modelWindow = {SQ_NO_BOOT:true};
+      const modelWindow = {SQ_NO_BOOT:true,
+        SQFleet:require('../LibreHardwareMonitor.Windows.Forms/Resources/Web/fleet.js')};
       Function('window', source)(modelWindow);
       const S = modelWindow.SQ;
 

@@ -1,0 +1,113 @@
+{
+  "id": 0,
+  "Version": "0.9.6",
+  "Text": "Sensor",
+  "ImageURL": "",
+  "Children": [
+    {
+      "id": 1,
+      "Text": "PEER-NODE",
+      "ImageURL": "images_icon/computer.png",
+      "Children": [
+        {
+          "id": 2,
+          "Text": "AMD Ryzen 7 7800X3D",
+          "ImageURL": "images_icon/cpu.png",
+          "HardwareId": "/amdcpu/0",
+          "Children": [
+            {
+              "id": 3,
+              "Text": "Temperatures",
+              "ImageURL": "images_icon/temperature.png",
+              "Children": [
+                { "id": 4, "Text": "Core (Tctl/Tdie)", "ImageURL": "images/transparent.png", "Type": "Temperature", "SensorId": "/amdcpu/0/temperature/2", "Value": "71.2 °C", "Min": "48.0 °C", "Max": "84.5 °C", "RawValue": 71.2, "RawMin": 48.0, "RawMax": 84.5, "Children": [] }
+              ]
+            },
+            {
+              "id": 5,
+              "Text": "Load",
+              "ImageURL": "images_icon/load.png",
+              "Children": [
+                { "id": 6, "Text": "CPU Total", "ImageURL": "images/transparent.png", "Type": "Load", "SensorId": "/amdcpu/0/load/0", "Value": "41.7 %", "Min": "2.1 %", "Max": "100.0 %", "RawValue": 41.7, "RawMin": 2.1, "RawMax": 100.0, "Children": [] }
+              ]
+            },
+            {
+              "id": 7,
+              "Text": "Powers",
+              "ImageURL": "images_icon/power.png",
+              "Children": [
+                { "id": 8, "Text": "Package", "ImageURL": "images/transparent.png", "Type": "Power", "SensorId": "/amdcpu/0/power/0", "Value": "68.4 W", "Min": "21.3 W", "Max": "121.9 W", "RawValue": 68.4, "RawMin": 21.3, "RawMax": 121.9, "Children": [] }
+              ]
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "Text": "NVIDIA GeForce RTX 4070",
+          "ImageURL": "images_icon/nvidia.png",
+          "HardwareId": "/gpu-nvidia/0",
+          "Children": [
+            {
+              "id": 10,
+              "Text": "Temperatures",
+              "ImageURL": "images_icon/temperature.png",
+              "Children": [
+                { "id": 11, "Text": "GPU Core", "ImageURL": "images/transparent.png", "Type": "Temperature", "SensorId": "/gpu-nvidia/0/temperature/0", "Value": "58.0 °C", "Min": "33.0 °C", "Max": "74.0 °C", "RawValue": 58.0, "RawMin": 33.0, "RawMax": 74.0, "Children": [] }
+              ]
+            },
+            {
+              "id": 12,
+              "Text": "Load",
+              "ImageURL": "images_icon/load.png",
+              "Children": [
+                { "id": 13, "Text": "GPU Core", "ImageURL": "images/transparent.png", "Type": "Load", "SensorId": "/gpu-nvidia/0/load/0", "Value": "63.0 %", "Min": "0.0 %", "Max": "99.0 %", "RawValue": 63.0, "RawMin": 0.0, "RawMax": 99.0, "Children": [] }
+              ]
+            },
+            {
+              "id": 14,
+              "Text": "Powers",
+              "ImageURL": "images_icon/power.png",
+              "Children": [
+                { "id": 15, "Text": "GPU Package", "ImageURL": "images/transparent.png", "Type": "Power", "SensorId": "/gpu-nvidia/0/power/0", "Value": "142.6 W", "Min": "18.2 W", "Max": "201.4 W", "RawValue": 142.6, "RawMin": 18.2, "RawMax": 201.4, "Children": [] }
+              ]
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "Text": "Samsung SSD 990 PRO 2TB",
+          "ImageURL": "images_icon/hdd.png",
+          "HardwareId": "/nvme/2",
+          "Children": [
+            {
+              "id": 17,
+              "Text": "Temperatures",
+              "ImageURL": "images_icon/temperature.png",
+              "Children": [
+                { "id": 18, "Text": "Temperature", "ImageURL": "images/transparent.png", "Type": "Temperature", "SensorId": "/nvme/2/temperature/0", "Value": "44.0 °C", "Min": "29.0 °C", "Max": "61.0 °C", "RawValue": 44.0, "RawMin": 29.0, "RawMax": 61.0, "Children": [] },
+                { "id": 19, "Text": "Temperature #2", "ImageURL": "images/transparent.png", "Type": "Temperature", "SensorId": "/nvme/2/temperature/2", "Value": "47.0 °C", "Min": "31.0 °C", "Max": "66.0 °C", "RawValue": 47.0, "RawMin": 31.0, "RawMax": 66.0, "Children": [] }
+              ]
+            }
+          ]
+        },
+        {
+          "id": 20,
+          "Text": "Ethernet",
+          "ImageURL": "images_icon/nic.png",
+          "HardwareId": "/nic/%7B260FD2B9-EB93-4F29-8E62-42C700BB7B85%7D",
+          "Children": [
+            {
+              "id": 21,
+              "Text": "Throughput",
+              "ImageURL": "images_icon/throughput.png",
+              "Children": [
+                { "id": 22, "Text": "Upload Speed", "ImageURL": "images/transparent.png", "Type": "Throughput", "SensorId": "/nic/%7B260FD2B9-EB93-4F29-8E62-42C700BB7B85%7D/throughput/7", "Value": "12.4 KB/s", "Min": "0.0 KB/s", "Max": "3.1 MB/s", "RawValue": 12697.6, "RawMin": 0, "RawMax": 3250585.6, "Children": [] },
+                { "id": 23, "Text": "Download Speed", "ImageURL": "images/transparent.png", "Type": "Throughput", "SensorId": "/nic/%7B260FD2B9-EB93-4F29-8E62-42C700BB7B85%7D/throughput/8", "Value": "88.0 KB/s", "Min": "0.0 KB/s", "Max": "11.9 MB/s", "RawValue": 90112, "RawMin": 0, "RawMax": 12477988, "Children": [] }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
