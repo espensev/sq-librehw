@@ -161,6 +161,11 @@ section{margin-top:30px}
 .ticon{width:14px;height:14px;color:var(--tc);flex:none;opacity:.9}
 .chip-state{display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:999px;font-family:var(--mono);
   font-size:9px;font-weight:700;letter-spacing:.09em;border:1px solid currentColor}
+.machine{display:inline-block;margin-right:6px;padding:0 5px;border-radius:999px;font:700 9px var(--mono);letter-spacing:.08em;
+  text-transform:uppercase;color:var(--cy);border:1px solid color-mix(in srgb,var(--cy) 35%,var(--line-soft));vertical-align:middle;
+  max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip-state.stale{color:var(--warn);text-transform:uppercase;margin-left:4px}
+[data-source-status="stale"]{opacity:.72;filter:saturate(.7)}
 .readout .big .v{color:var(--tc)}
 .readout .big .ceil{font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:6px;white-space:nowrap}
 .readout .meta{display:flex;gap:6px;align-items:baseline;min-height:16px;margin-top:5px}

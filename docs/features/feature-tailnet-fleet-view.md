@@ -1,16 +1,19 @@
 # Feature Spec: Tailnet Fleet View
 
-**Status:** Option A foundation implemented; Machines and fleet rendering pending
-**Updated:** 2026-10-24
+**Status:** Option A phase 1 implemented in source and browser-verified against fixtures and one live peer; not yet promoted to the installed runtime
+**Updated:** 2026-10-25
 **Supersedes:** [Unified Tailnet Monitoring View](feature-unified-tailnet-monitoring-view.md)
 
 The owner selected Option A on 2026-10-23 UTC and requested this refinement on
 2026-10-24. The first slice is a browser-local machine list and merged telemetry
 in Standard, Studio, and Workspace. Panes, seed tooling, and server aggregation
-are deferred. The first implementation step supplies configuration, identity,
-polling, and ingestion models with regression tests. The interrupted peer
-fixture is retained unchanged and now used by those tests. Browser boot still
-uses the existing local poller; fleet UI and end-to-end acceptance are pending.
+are deferred. The first implementation step supplied configuration, identity,
+polling, and ingestion models with regression tests; the second (2026-10-25)
+made the fleet poller the dashboard's boot poller, added the Machines panel,
+and rendered per-machine attribution and freshness in all three views. The
+interrupted peer fixture is retained unchanged and used by those tests.
+Installed-runtime promotion and the tailnet listener port remain separate
+operational steps.
 
 Frontend source and tests now belong to `dashboard/`; the Windows application
 embeds the same assets under stable resource names. The
@@ -222,9 +225,10 @@ and resolve variables at JSON generation time because JSON does not expand them.
 
 ## Acceptance and verification
 
-These are full feature gates. A2–A7 have foundation evidence below; their
-remaining UI integration is unchecked. A1/A8 browser fleet acceptance remains
-unchecked. A9 source contract/build verification passes for this foundation.
+These are full feature gates. A2–A7 have deterministic Node evidence; A1, A3,
+A5 and A8 additionally have browser evidence from the 2026-10-25 acceptance
+run below; A9 passes for the phase-1 source. Installed-runtime acceptance is a
+release gate and is not claimed here.
 
 | ID | Acceptance criterion | Required evidence |
 |---|---|---|
@@ -264,11 +268,13 @@ framework builds and installed-runtime acceptance remain distinct.
 
 ## Implementation order and current evidence
 
-1. Completed: configuration/identity normalization and per-source polling/
-   ingestion with deterministic foundation tests for A2–A7.
-2. Next: integrate Machines and all three views, then satisfy A1/A8 browser checks.
-3. Run the full verification commands above and record evidence against A1–A9
-   before candidate/release work.
+1. Completed (2026-10-24): configuration/identity normalization and per-source
+   polling/ingestion with deterministic foundation tests for A2–A7.
+2. Completed (2026-10-25): fleet session integration, Machines panel, and
+   per-machine rendering in all three views, with A1/A3/A5/A8 browser evidence.
+3. Next: decide the snd-desk tailnet listener port, then candidate/release
+   promotion under the local release contract and installed-runtime acceptance
+   against authorized peers.
 
 ### Foundation implementation (2026-10-24)
 
@@ -279,7 +285,7 @@ framework builds and installed-runtime acceptance remain distinct.
   requires complete preference references.
 - `fleet-poller.js` owns independent source requests, admission, receipts,
   statuses, monotonic generations, cancellation, and gap/removal callbacks.
-  It is loaded as a browser module but is not yet the dashboard's boot poller.
+  Since 2026-10-25 it is the dashboard's boot poller (see below).
   A transport that ignores abort retains request ownership until settlement;
   its timeout is reported and late data discarded while siblings continue.
 - `model.js` projects source-aware identities without changing wire nodes,
@@ -319,5 +325,77 @@ fleet rendering, or installed-runtime acceptance. Those remain next-slice and
 release gates. The peer fixture retains SHA256
 `8FC42562E6ADCBD168C5AD8EDD54DB64F885B86B9242A20C7803F09AC74BBB3B`.
 
-Remaining operational decisions are desktop endpoint ownership/port and later
-release promotion. They do not block phase-1 fixture-based implementation.
+### Fleet session and rendering (2026-10-25)
+
+- `console.js` boots on `SQFleetPoller`. `onSample` passes each validated
+  sample once to `SQ.ingestSourceTelemetry` (the local source is labelled with
+  the telemetry root name), persists on a local-sample cadence (removals
+  immediately, changed power samples every fifth local sample, peaks every
+  thirtieth), then repaints. `onGap` calls `SQ.resetSourceDerivatives`;
+  `onRemove` calls `SQ.removeSourceTelemetry` and flushes the removals.
+  `onState` stores the source states, repaints the freshness header and
+  Machines rows, and triggers a full repaint only when a status changed.
+  Repaints are paint-only over `SQ.composeSensors`, which follows the
+  configured order with local first and omits peers while the fleet is
+  disabled without discarding their retained telemetry. A paint exception is
+  logged and never reaches the poller's failure path. `polling.js` stays
+  embedded for the asset contract but no longer drives boot.
+- The toolbar **Machines** panel offers enable/disable, add, rename, reorder,
+  replace endpoint, remove, and `sq.fleet` import/export. Each edit validates
+  through `SQ.fleetSourceOptions` (active dashboard, parked contexts, Workspace
+  profiles), then applies via `SQ.applyFleetState`, saves, acknowledges the
+  telemetry save, and only then calls `configure` on the poller. Replace and
+  remove explain the identity consequence before applying; import previews the
+  validated list. Stored fleet errors and edit rejections are shown in a live
+  region. Each row shows status, age, and failure reason.
+- Attribution: when the fleet is active, cards, panels, Studio cards/systems/
+  alerts, Workspace heads/tables/sensor lists, the Sensors popover, and the
+  thermal placard carry the machine label (telemetry root name for local, the
+  configured label for peers). Panels group by machine before hardware class.
+  Readings from a stale source keep their severity but are labelled stale,
+  dimmed, and excluded from current alarms, Studio alerts, and the placard.
+  Search in the Sensors popover and the Workspace sensor manager matches the
+  machine label. With the fleet disabled the layout is the single-machine one.
+
+Verification (source `619dda7e` and the rendering commit on top of it):
+
+- `node dashboard/tests/selftest.node.js`: 342/342. `node --test
+  dashboard/tests/*.tests.js`: 72/72, including the new `fleet.view` suite
+  (composition order, zero/one/eight peers, valid empty machine, status map,
+  stale alarm gating, machine labels, summary, machine-first grouping).
+- Server Contracts 115/115; Release x64 `net10.0-windows` and `net472` builds
+  with zero warnings or errors.
+- Browser acceptance in the isolated DevHome headless lane (CDP; network and
+  console traced; evidence under `librehw-fleet-acceptance-20261025` in the
+  DevHome tmp folder): `dashboard/tests/serve-fixture.cjs` served the page on
+  loopback HTTP plus eight HTTPS peer fixtures (self-signed certificate in the
+  scratchpad, accepted via CDP; each peer serves `GET /data.json` only with
+  CORS `*`, distinct machine names, and a fault-mode control route).
+  - A1: eight peers added through the Machines UI; a ninth is rejected.
+    Standard rendered 70 primary cards (14 local plus 7 per peer) and 36
+    panels in machine order; Studio 36 attributed systems; Workspace 24 cards
+    with 48 attributed heads and the machine selectable in its sensor manager.
+    Disabling returned the view to 14 cards and 12 panels with no machine tags
+    while keeping all eight sources.
+  - A2: every peer card reused a raw ID present locally; all 70 persistence
+    keys were unique and classifications unchanged (Node suites cover the
+    99-degree CPU and control pairing cases).
+  - A3/A5: HTML, 503, invalid tree, and duplicate-ID faults marked only those
+    four peers stale with their reasons while the other sources stayed
+    current; 28 cards and 12 panels were labelled stale and no placard was
+    raised; one valid sample each recovered them. Pause issued no requests
+    for five seconds and marked peers paused; resume issued one request per
+    source.
+  - A6: removing a peer referenced by a Workspace profile kept its key-origin
+    tombstone and the profile reference, shown as unavailable in Workspace.
+  - A8: the trace contained only `GET <origin>/data.json` to peers (136
+    requests), no redirects, no non-GET requests, no other peer paths.
+  - Live peer: from the loopback fixture page the authorized tailnet host's
+    HTTPS 8443 telemetry rendered as a second machine (12 hero cards, 497
+    rows, 200-row popover search, two machines in Studio) with browser CORS
+    succeeding and only `GET /data.json` issued to it.
+- Not exercised: the installed runtime, keyboard-only operation of the
+  Machines form, and hidden-tab visibility beyond the Node suite.
+
+Remaining operational decisions are the desktop listener port and release
+promotion. They do not block phase-1 source work.

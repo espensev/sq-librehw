@@ -23,6 +23,18 @@ assets with recorded local telemetry, needs no .NET build or hardware access,
 and stops with Ctrl+C. It does not proxy live machines. An optional numeric
 port can be supplied as the first argument.
 
+For fleet acceptance it can also host up to eight HTTPS peer fixtures:
+
+```powershell
+node tests/serve-fixture.cjs 0 --peers 8 --cert <cert.pem> --key <key.pem>
+```
+
+Each peer answers only `GET /data.json` (CORS `*`) from the recorded peer
+fixture with a distinct machine name. `GET /__peers` on the dashboard host
+lists them and `GET /__peer?index=N&mode=ok|error|html|invalid|slow|duplicate`
+switches a peer into a fault mode. Supply a throwaway self-signed certificate
+and accept it in the isolated browser; nothing is installed system-wide.
+
 There is no frontend compilation step. The Windows project includes `web/`
 as embedded resources while excluding this README, tests, and fixtures. From
 the repository root, verify that integration with:
@@ -33,7 +45,8 @@ dotnet build LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.For
 dotnet build LibreHardwareMonitor.Windows.Forms/LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
 ```
 
-The embedded page still monitors its local source. Machines controls and merged
-fleet rendering follow the [fleet specification](../docs/features/feature-tailnet-fleet-view.md).
+The embedded page boots on the fleet poller: its local source is implicit and
+the toolbar Machines panel adds up to eight HTTPS peers, rendered with machine
+attribution under the [fleet specification](../docs/features/feature-tailnet-fleet-view.md).
 Independent production hosting needs an explicit source-binding and browser
 preference-migration contract; see the [extraction plan](../docs/architecture/dashboard-extraction.md).

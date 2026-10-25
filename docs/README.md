@@ -112,7 +112,7 @@ Open gates:
 | `docs\features\feature-live-state-verification.md` | Read-only host verification contract |
 | `docs\features\feature-http-server-safety.md` | Direct HTTP listener fail-closed and exposure contract |
 | `docs\features\feature-local-release-system.md` | SND-DESK local staging, promotion, and rollback contract |
-| `docs\features\feature-tailnet-fleet-view.md` | Option A foundation implemented and tested; Machines and merged fleet rendering are next |
+| `docs\features\feature-tailnet-fleet-view.md` | Option A phase 1 in source: fleet poller boot, Machines panel, per-machine rendering, browser-verified; listener port and runtime promotion pending |
 | `docs\features\feature-unified-tailnet-monitoring-view.md` | Superseded static unified view; historical operational evidence only |
 | `eng\ci\README.md` | Non-deploying gate runner |
 | `docs\features\feature-graph-lanes.md` | Promoted and live-verified on SND-DESK; lane splits, height, layout, and repaired manual-zoom persistence pass; operator sign-off separate |

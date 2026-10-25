@@ -90,10 +90,11 @@ Acceptance requires:
 
 ## Follow-on sequence
 
-1. Complete the fleet session integration: one owner for configuration commits,
-   source receipts, ingestion, persistence, cancellation, and gap/removal
-   handling. Then add Machines and per-source rendering under
-   [the fleet contract](../features/feature-tailnet-fleet-view.md).
+1. Done 2026-10-25: the fleet session integration (one owner in `console.js`
+   for configuration commits, source receipts, ingestion, persistence,
+   cancellation, and gap/removal handling), the Machines panel, and per-source
+   rendering under [the fleet contract](../features/feature-tailnet-fleet-view.md).
+   `polling.js` remains embedded for the asset contract but no longer drives boot.
 2. Specify independent hosting. Make source membership explicit rather than
    treating the page origin as a machine; preserve or explicitly migrate local
    references, source-origin associations, dashboard contexts, and Workspace

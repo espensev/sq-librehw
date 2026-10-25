@@ -60,6 +60,27 @@
   function esc(v) {
     return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   }
+  // Machine attribution and freshness labels. Shown only while the fleet is
+  // active so the single-machine layout stays byte-for-byte familiar.
+  function sensorSourceStatus(s) {
+    return state.staleSources.has(SQ.sensorSourceKey(s)) ? 'stale' : 'current';
+  }
+  function machineName(s) {
+    return SQ.machineLabel(s, state.dashboard, state.hostLabel);
+  }
+  function machinePrefix(s) {
+    return SQ.fleetActive(state.dashboard) ? machineName(s) + ' · ' : '';
+  }
+  function machineTag(s) {
+    return SQ.fleetActive(state.dashboard) ? `<span class="machine" title="Machine">${esc(machineName(s))}</span>` : '';
+  }
+  function staleChip(s) {
+    return sensorSourceStatus(s) === 'stale'
+      ? '<span class="chip-state stale" title="Last reading from this machine is no longer current">stale</span>' : '';
+  }
+  function fleetSummaryText() {
+    return SQ.fleetSummary(state.dashboard, state.sourceStates).text;
+  }
   function isInlineEditTarget(el) {
     return !!(el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') && el.closest('.xp, .rowxp'));
   }
@@ -413,6 +434,7 @@
     cell.style.setProperty('--tc', `var(--t-${kind})`);
     cell.dataset.key = h.s.id;
     cell.dataset.sid = h.s.id;
+    cell.dataset.sourceStatus = sensorSourceStatus(h.s);
     cell.tabIndex = 0;
     cell.setAttribute('aria-expanded', state.expanded.has('c:' + h.s.id) ? 'true' : 'false');
     const source = (h.s.hw || '').split(' ').slice(0, 3).join(' ');
@@ -422,8 +444,8 @@
       ctlCluster(h.s.id, label, { hide: showHide });
     cell.innerHTML =
       `<div class="chead"><div class="ktext">
-         <div class="k"><span class="name">${esc(label)}</span>${chip}</div>
-         <div class="k2"><span class="src">${esc(source)}</span>${tIcon(kind)}</div>
+         <div class="k"><span class="name">${esc(label)}</span>${chip}${staleChip(h.s)}</div>
+         <div class="k2"><span class="src">${machineTag(h.s)}${esc(source)}</span>${tIcon(kind)}</div>
        </div><div class="cell-ctl">${ctlHtml}</div></div>
        <div class="body">${arc}<div class="readout">
          <div class="big"><span class="v">${esc(n)}</span><span class="u">${esc(u)}</span>${ceil}${ctrl ? `<span class="vcmd" title="commanded ${esc(ctrl.value)}">· ${esc(ctrl.value)}</span>` : ''}</div>
@@ -478,7 +500,7 @@
         <h3>${crit ? 'Thermal Alert' : 'Thermal Watch'}</h3>
         <span class="tag">${flagged.length} over band</span></div>
       <ul>${flagged.map(s => `<li><span class="glyph-stat g-${s.status}">${STGLYPH[s.status]}</span>
-        <span class="who">${esc(s.text)} <small>${esc(s.hw)}</small></span>
+        <span class="who">${esc(s.text)} <small>${esc(machinePrefix(s))}${esc(s.hw)}</small></span>
         <span class="val g-${s.status}">${esc(s.value)}</span></li>`).join('')}</ul></div>`;
   }
   function studioCardsFor(sensors, limits) {
@@ -501,9 +523,11 @@
     article.className = `studio-focus-card s-${status}`;
     article.style.setProperty('--tc', `var(--studio-${kind})`);
     article.dataset.sid = h.s.id;
+    article.dataset.sourceStatus = sensorSourceStatus(h.s);
+    const stale = sensorSourceStatus(h.s) === 'stale';
     article.innerHTML = `<div class="studio-card-head">
-        <div><span>${esc(h.s.hw || 'Sensor')}</span><h3>${esc(label)}</h3></div>
-        <div class="studio-card-actions"><span class="studio-status g-${status}">${STLABEL[status]}</span>
+        <div><span>${esc(machinePrefix(h.s))}${esc(h.s.hw || 'Sensor')}</span><h3>${esc(label)}</h3></div>
+        <div class="studio-card-actions"><span class="studio-status g-${status}">${stale ? 'STALE · ' : ''}${STLABEL[status]}</span>
         <button class="studio-star" data-studio-act="primary-remove" data-id="${esc(h.s.id)}"
           aria-label="Remove ${esc(label)} from focus" title="Remove from focus">&#9733;</button></div>
       </div>
@@ -533,7 +557,8 @@
     sorted.forEach(s => { if (readings.length < 4 && !readings.includes(s)) readings.push(s); });
     const article = document.createElement('article');
     article.className = `studio-system-card s-${worst}`;
-    article.innerHTML = `<div class="studio-system-head"><div><span>${esc(CLASSLABEL[cls] || 'SYSTEM')}</span>
+    article.dataset.sourceStatus = sensorSourceStatus(item.ss[0]);
+    article.innerHTML = `<div class="studio-system-head"><div><span>${esc(machinePrefix(item.ss[0]))}${esc(CLASSLABEL[cls] || 'SYSTEM')}${sensorSourceStatus(item.ss[0]) === 'stale' ? ' · stale' : ''}</span>
         <h3>${esc(item.label || item.hw)}</h3></div><span class="lamp s-${worst}" title="${STLABEL[worst]}"></span></div>
       <div class="studio-readings">${readings.map(s => `<div><span>${esc(SQ.sensorDisplayText(s, state.dashboard, s.text))}</span>
         <strong class="g-${s.status}">${esc(s.raw == null ? '—' : (s.value ?? '—'))}</strong></div>`).join('')}</div>`;
@@ -541,7 +566,7 @@
   }
   function sensorRenderSignature(s) {
     return [s.id, s.hwid, s.cls, s.type, s.raw, s.rawMin, s.rawMax, s.value, s.min, s.max, s.status, s.text, s.hw,
-      SQ.sensorAlias(state.dashboard, s.id)].join('\u001f');
+      SQ.sensorAlias(state.dashboard, s.id), machinePrefix(s), sensorSourceStatus(s)].join('\u001f');
   }
   function standardCardSignature(h) {
     const s = h.s;
@@ -643,8 +668,12 @@
     const crit = flagged.filter(s => s.status === 'crit').length;
     const warn = flagged.length - crit;
     const unavailable = sensors.filter(s => s.raw == null).length;
+    const fleet = SQ.fleetSummary(state.dashboard, state.sourceStates);
+    const fleetPill = fleet.peers
+      ? `<span class="studio-health-pill ${fleet.stale || fleet.unavailable ? 'warn' : ''}"><b>${fleet.peers + 1}</b> machines${fleet.stale ? ` · ${fleet.stale} stale` : ''}${fleet.unavailable ? ` · ${fleet.unavailable} unavailable` : ''}</span>`
+      : '';
     $('#studioHost').textContent = host;
-    $('#studioSummary').textContent = `${sensors.length} visible readings · ${unavailable} unavailable · ${focus.length} focus cards · read-only telemetry`;
+    $('#studioSummary').textContent = `${sensors.length} visible readings · ${unavailable} unavailable · ${focus.length} focus cards · read-only telemetry${fleet.text ? ' · ' + fleet.text : ''}`;
     setStableHtml($('#studioHealth'), `${flagged.length
       ? `<span class="studio-health-pill ${crit ? 'crit' : 'warn'}"><b>${flagged.length}</b> needs attention</span>`
       : unavailable
@@ -653,12 +682,12 @@
       <span class="studio-health-pill"><b>${crit}</b> critical</span>
       <span class="studio-health-pill"><b>${warn}</b> watch</span>
       <span class="studio-health-pill"><b>${unavailable}</b> unavailable</span>
-      <span class="studio-health-pill"><b>${state.dashboard.pinnedCards.length}</b> pinned</span>`);
+      <span class="studio-health-pill"><b>${state.dashboard.pinnedCards.length}</b> pinned</span>${fleetPill}`);
 
     const alerts = $('#studioAlerts');
     alerts.style.display = flagged.length ? '' : 'none';
     setStableHtml(alerts, flagged.length ? `<div><span>Attention</span><b>${crit ? 'Critical telemetry' : 'Watch telemetry'}</b></div>
-      <ul>${flagged.slice(0, 4).map(s => `<li><span>${esc(SQ.sensorDisplayText(s, state.dashboard, s.text))}</span>
+      <ul>${flagged.slice(0, 4).map(s => `<li><span>${esc(machinePrefix(s))}${esc(SQ.sensorDisplayText(s, state.dashboard, s.text))}</span>
         <strong class="g-${s.status}">${esc(s.value ?? '—')}</strong></li>`).join('')}</ul>` : '');
     const alertSignature = flagged.map(s => `${s.id}:${s.status}`).join('|');
     if (alertSignature !== state.studioAlertSignature) {
@@ -690,7 +719,7 @@
     const visibleNetworkItems = state.dashboard.studioShowNetwork ? networkItems : [];
     syncKeyedRegion(network, visibleNetworkItems, item => item.key,
       item => JSON.stringify([item.label, item.ss.map(sensorRenderSignature)]), studioSystemEl);
-    $('#studioFootLeft').textContent = `LibreHardwareMonitor ${version} · ${host} · ${state.rate}s poll`;
+    $('#studioFootLeft').textContent = `LibreHardwareMonitor ${version} · ${host} · ${state.rate}s poll${fleet.text ? ' · ' + fleet.text : ''}`;
   }
   function activeWorkspaceProfile() {
     if (!Workspace || !state.workspace || !Array.isArray(state.workspace.profiles)) return null;
@@ -860,9 +889,10 @@
   function workspaceSensorHeadMarkup(sensor) {
     const label = SQ.sensorDisplayText(sensor, state.dashboard, sensor.text);
     const raw = label !== sensor.text ? ' · raw ' + sensor.text : '';
-    const statusLabel = STLABEL[sensor.status] || 'Unavailable';
+    const stale = sensorSourceStatus(sensor) === 'stale';
+    const statusLabel = (stale ? 'Stale · ' : '') + (STLABEL[sensor.status] || 'Unavailable');
     return '<div class="workspace-sensor-head"><div class="workspace-sensor-copy"><strong>' + esc(label) + '</strong>' +
-      '<span>' + esc(sensor.hw || 'Sensor') + ' · ' + esc(sensor.type || 'Unknown') + esc(raw) +
+      '<span>' + esc(machinePrefix(sensor)) + esc(sensor.hw || 'Sensor') + ' · ' + esc(sensor.type || 'Unknown') + esc(raw) +
       '</span></div><div class="workspace-sensor-state"><span class="lamp s-' + esc(sensor.status || 'off') +
       '" aria-hidden="true"></span><span>' + esc(statusLabel) + '</span></div></div>';
   }
@@ -902,7 +932,8 @@
       '</tr></thead><tbody>' + sensors.map(sensor => {
         const label = SQ.sensorDisplayText(sensor, state.dashboard, sensor.text);
         return '<tr class="' + workspaceStatusClass(sensor) + '"><td><strong>' + esc(label) +
-          '</strong><br><code>' + esc(sensor.id) + '</code></td><td>' + esc(sensor.hw || '—') +
+          '</strong><br><code>' + esc(sensor.id) + '</code></td><td>' + esc(machinePrefix(sensor)) + esc(sensor.hw || '—') +
+          (sensorSourceStatus(sensor) === 'stale' ? ' <small>(stale)</small>' : '') +
           '</td><td>' + esc(sensor.type || '—') + '</td><td>' + esc(sensor.min == null || sensor.min === '' ? '—' : sensor.min) +
           '</td><td>' + esc(sensor.max == null || sensor.max === '' ? '—' : sensor.max) + '</td><td>' + workspaceReadingMarkup(sensor) +
           '</td></tr>';
@@ -1009,7 +1040,8 @@
     const selectedCount = profile.panels.reduce((count, panel) =>
       count + Workspace.resolvePanel(panel, sensors).sensorIds.length, 0);
     const presetCount = profile.panels.filter(panel => panel.preset).length;
-    $('#workspaceFootLeft').textContent = `LibreHardwareMonitor ${version} · ${host} · ${state.rate}s poll · ${selectedCount} panel entries`;
+    const fleet = fleetSummaryText();
+    $('#workspaceFootLeft').textContent = `LibreHardwareMonitor ${version} · ${host} · ${state.rate}s poll · ${selectedCount} panel entries${fleet ? ' · ' + fleet : ''}`;
     if (!state.workspaceNotice || state.workspaceNotice.until <= Date.now()) {
       state.workspaceNotice = null;
       paintWorkspaceStatus(`${profile.name} · ${profile.panels.length} panels · ${selectedCount} entries${presetCount ? ` · ${presetCount} adaptive presets` : ''} · ${sensors.length} live sensors`,
@@ -1049,14 +1081,14 @@
       if (!filter) return true;
       const sensor = row.sensor;
       const text = sensor
-        ? [SQ.sensorDisplayText(sensor, state.dashboard, sensor.text), sensor.text, sensor.hw, sensor.type, row.id].join(' ')
-        : ['unavailable', row.id].join(' ');
+        ? [machinePrefix(sensor), SQ.sensorDisplayText(sensor, state.dashboard, sensor.text), sensor.text, sensor.hw, sensor.type, row.id].join(' ')
+        : ['unavailable', machinePrefix({id:row.id}), row.id].join(' ');
       return text.toLowerCase().includes(filter);
     });
     const signature = JSON.stringify([
       profile.id, panel.id, panel.preset, resolved.sensorIds, filter,
       rows.map(row => row.sensor
-        ? [row.id, row.sensor.text, row.sensor.hw, row.sensor.type, SQ.sensorAlias(state.dashboard, row.id)]
+        ? [row.id, row.sensor.text, row.sensor.hw, row.sensor.type, SQ.sensorAlias(state.dashboard, row.id), machinePrefix(row.sensor)]
         : [row.id, null])
     ]);
     if (signature === state.workspaceSensorSignature) return;
@@ -1066,7 +1098,7 @@
       const sensor = row.sensor;
       const index = selected.get(row.id);
       const label = sensor ? SQ.sensorDisplayText(sensor, state.dashboard, sensor.text) : 'Unavailable SensorId';
-      const detail = sensor ? (sensor.hw || 'Sensor') + ' · ' + (sensor.type || 'Unknown') : 'Saved membership · hardware not present';
+      const detail = sensor ? machinePrefix(sensor) + (sensor.hw || 'Sensor') + ' · ' + (sensor.type || 'Unknown') : 'Saved membership · hardware not present';
       return '<div class="workspace-sensor-choice' + (sensor ? '' : ' workspace-missing') + '">' +
         '<input type="checkbox" data-workspace-sensor="' + esc(row.id) + '"' +
         (row.selected ? ' checked' : '') + (!row.selected && full ? ' disabled' : '') +
@@ -1124,6 +1156,7 @@
     const startCollapsed = SQ.isPanelCollapsed(state.dashboard, item.key, hw, collapsed);
     const p = document.createElement('div'); p.className = 'panel' + (startCollapsed ? ' collapsed' : '');
     p.dataset.key = item.key;
+    p.dataset.sourceStatus = sensorSourceStatus(ss[0]);
     const temps = ss.filter(s => s.type === 'Temperature' && s.raw != null && !SQ.isLimitSensor(s)).sort((a,b)=>b.raw-a.raw);
     const head = temps[0] ? temps[0].value : (ss.find(s => s.type === 'Load')?.value ?? '');
     const h = document.createElement('div'); h.className = 'panel-head';
@@ -1132,7 +1165,7 @@
       : '';
     h.innerHTML = `<span class="panel-move"><button class="ctl" data-mv="up" aria-label="Move ${esc(label)} up" title="Move up">&#9650;</button><button class="ctl" data-mv="down" aria-label="Move ${esc(label)} down" title="Move down">&#9660;</button>${netHide}</span>` +
       `<button class="grip" aria-label="Drag to reorder ${esc(label)}" title="Drag to reorder">&#8942;&#8942;</button>` +
-      `<span class="lamp s-${worst}"></span><span class="nm">${esc(label)}</span>` +
+      `<span class="lamp s-${worst}"></span><span class="nm">${esc(label)}</span>${machineTag(ss[0])}${staleChip(ss[0])}` +
       `<span class="cls">${CLASSLABEL[cls] || ''}</span>` +
       `<span class="head-stat">${esc(head)}<span class="chev">&#9656;</span></span>`;
     h.querySelectorAll('.panel-move .ctl').forEach(b => b.onclick = e => {
@@ -1208,7 +1241,8 @@
     const pinnedIds = new Set(state.dashboard.pinnedCards.map(c => c.id));
     const hiddenNetKeys = new Set(state.dashboard.hiddenNetAdapters);
     const hiddenAdapters = SQ.buildNetAdapters(state.allSensors).filter(a => hiddenNetKeys.has(a.key));
-    const sig = (state.sensorsFilter || '') + '|' +
+    const fleetOn = SQ.fleetActive(state.dashboard);
+    const sig = (fleetOn ? 'fleet|' : '') + (state.sensorsFilter || '') + '|' +
       rows.map(r => `${r.id}:${r.visibility}:${pinnedIds.has(r.id) ? 1 : 0}:${state.primaryIds.has(r.id) ? 1 : 0}`).join(',') +
       '|net:' + hiddenAdapters.map(a => a.key).join(',');
     if (sig === state.sensorsSig) return;
@@ -1219,7 +1253,7 @@
       const primary = state.primaryIds.has(r.id);
       const alias = r.label !== r.rawLabel ? ` · ${esc(r.rawLabel)}` : '';
       return `<div class="sensor-choice ${hidden ? 'is-hidden' : ''}">
-        <div><b>${esc(r.label)}</b><span>${esc(r.hw)} · ${esc(r.type)} · ${esc(r.value)}${alias}</span><code>${esc(r.id)}</code></div>
+        <div><b>${esc(r.label)}</b><span>${fleetOn ? esc(r.machine || machineName({id:r.id})) + ' · ' : ''}${esc(r.hw)} · ${esc(r.type)} · ${esc(r.value)}${alias}</span><code>${esc(r.id)}</code></div>
         <span class="vis-chip vis-${r.visibility}">${r.visibility}</span>
         ${r.visibility === 'visible' ? `<button class="iconbtn" data-action="${primary ? 'primary-remove' : 'primary-add'}" data-id="${esc(r.id)}">${primary ? 'Remove primary' : 'Make primary'}</button>` : ''}
         <button class="iconbtn" data-action="${pinned ? 'unpin' : 'pin'}" data-id="${esc(r.id)}">${pinned ? 'Unpin' : 'Pin'}</button>

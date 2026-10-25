@@ -66,7 +66,7 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
 - `docs/features/feature-host-log-management.md`: deployed host-neutral CSV archive, retention, and task-install package.
 - `docs/features/feature-csv-log-storage-efficiency.md`: source-only compact CSV numeric formatting with a non-zero significant-digit floor; not yet a candidate or live behavior.
 - `docs/features/feature-host-operator-utilities.md`: planned portable thermal snapshot and report-only log evidence analyzer.
-- `docs/features/feature-tailnet-fleet-view.md`: Option A configuration, identity, polling, and ingestion foundation with regression tests. Machines and merged fleet rendering are next; panes, seeds, and live Serve changes are separate.
+- `docs/features/feature-tailnet-fleet-view.md`: Option A phase 1 in source: fleet poller boot, Machines panel, per-machine rendering with regression tests and browser evidence. Listener port, runtime promotion, panes, seeds, and live Serve changes are separate.
 - `docs/features/feature-live-state-verification.md`: read-only, manifest-driven live-state verifier for the SND-HOST operational stack; report-only, no deployment authority.
 - `docs/features/feature-native-ui-modernization.md`: phased native tree, graphics, graph, and Gadget 2.0 roadmap; implementation not started.
 - `docs/features/feature-local-release-system.md`: SND-DESK-only shallow runtime,
