@@ -113,7 +113,7 @@ test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File experiments\\ava
 [build-gate.web-dashboard]
 build = ""
 verify = "node dashboard\\tests\\selftest.node.js"
-test = "node --test dashboard\\tests\\console.tests.js dashboard\\tests\\workspace.tests.js dashboard\\tests\\fleet.config.tests.js dashboard\\tests\\fleet.polling.tests.js dashboard\\tests\\fleet.model.tests.js dashboard\\tests\\model.boundary.tests.js"
+test = "node --test dashboard\\tests\\console.tests.js dashboard\\tests\\workspace.tests.js dashboard\\tests\\fleet.config.tests.js dashboard\\tests\\fleet.polling.tests.js dashboard\\tests\\fleet.model.tests.js dashboard\\tests\\fleet.view.tests.js dashboard\\tests\\model.boundary.tests.js"
 
 [build-gate.log-management]
 build = ""

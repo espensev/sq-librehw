@@ -587,7 +587,9 @@
           hw: s.hw || '',
           type: s.type || '',
           value: s.value != null ? s.value : '—',
-          visibility: vis
+          visibility: vis,
+          sourceKey: SQ.sensorSourceKey(s),
+          machine: s.sourceLabel || ''
         }));
     };
     SQ.panelKey = function (hw, sensors) {
@@ -1282,20 +1284,135 @@
         else group[0].label = group[0].hw;
       });
       const order = ['cpu','gpu','igpu','mem','dimm','nvme','disk','mb','other'];
+      // Machines group first (in composed source order), then hardware class.
+      const sourceRank = new Map();
+      sensors.forEach(s => {
+        const key = SQ.sensorSourceKey(s);
+        if (!sourceRank.has(key)) sourceRank.set(key, sourceRank.size);
+      });
       const items = [...byId.values()].map((item, index) =>
-        ({ hw: item.hw, label: item.label, ss: item.ss, key: item.key, collapsed: false, index }))
+        ({ hw: item.hw, label: item.label, ss: item.ss, key: item.key, collapsed: false, index,
+          sourceKey: SQ.sensorSourceKey(item.ss[0]) }))
         .sort((a,b) => {
+          const as = sourceRank.get(a.sourceKey) ?? 99, bs = sourceRank.get(b.sourceKey) ?? 99;
           const ai = order.indexOf(a.ss[0].cls), bi = order.indexOf(b.ss[0].cls);
-          return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.index - b.index;
+          return as - bs || (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.index - b.index;
         }).map((item, index) => Object.assign(item, { index }));
       const cfg = state ? SQ.normalizeDashboardState(state) : null;
       const hiddenNet = new Set(cfg ? cfg.hiddenNetAdapters : []);
       let adapters = SQ.buildNetAdapters(sensors)
         .filter(a => a.active && !hiddenNet.has(a.key))
-        .map((a, i) => ({ hw: a.hw, label: a.label, ss: a.ss, key: a.key, collapsed: true, net: true, index: i }));
+        .map((a, i) => ({ hw: a.hw, label: a.label, ss: a.ss, key: a.key, collapsed: true, net: true, index: i,
+          sourceKey: SQ.sensorSourceKey(a.ss[0]) }));
       adapters = SQ.applyOrder(adapters, cfg ? cfg.netAdapterOrder : [], a => a.key);
       adapters.forEach(a => { a.index = items.length; items.push(a); });
       return items;
+    };
+
+    // --- Fleet session: composition, source status, and machine attribution ---
+    // The viewer keeps one sensor list per source (runtime.sourceSensors). The
+    // merged view follows the configured order with local first; disabling the
+    // fleet hides peers without discarding their retained telemetry.
+    SQ.sourceOrder = function (dashboard) {
+      const cfg = SQ.normalizeDashboardState(dashboard);
+      return ['local', ...cfg.fleet.sources.map(source => source.key)];
+    };
+    SQ.activeSourceKeys = function (dashboard) {
+      const cfg = SQ.normalizeDashboardState(dashboard);
+      return cfg.fleet.enabled ? SQ.sourceOrder(cfg) : ['local'];
+    };
+    SQ.composeSensors = function (runtime, dashboard) {
+      const sensors = runtime?.sourceSensors;
+      if (!(sensors instanceof Map)) return [];
+      return SQ.activeSourceKeys(dashboard).flatMap(key => sensors.get(key) || []);
+    };
+    SQ.hasTelemetry = function (runtime) {
+      return runtime?.sourceSensors instanceof Map && runtime.sourceSensors.size > 0;
+    };
+    SQ.fleetActive = function (dashboard) {
+      const cfg = SQ.normalizeDashboardState(dashboard);
+      return cfg.fleet.enabled && cfg.fleet.sources.length > 0;
+    };
+    const SOURCE_STATUSES = ['pending', 'current', 'stale', 'unavailable', 'paused'];
+    SQ.sourceStatusMap = function (states) {
+      const map = new Map();
+      (Array.isArray(states) ? states : []).forEach(item => {
+        const key = item?.source?.key;
+        if (typeof key !== 'string' || !key) return;
+        map.set(key, {key, label:item.source.label, url:item.source.url ?? null,
+          status:SOURCE_STATUSES.includes(item.status) ? item.status : 'pending',
+          lastSuccess:Number.isFinite(item.lastSuccess) ? item.lastSuccess : null,
+          error:typeof item.error === 'string' && item.error ? item.error : null,
+          hasData:item.lastGood != null});
+      });
+      return map;
+    };
+    // Only a stale source keeps showing readings that are no longer current.
+    // Pending/unavailable sources have nothing to show; paused applies to the
+    // local source too and keeps today's presentation.
+    SQ.staleSourceKeys = function (states) {
+      const keys = new Set();
+      SQ.sourceStatusMap(states).forEach((item, key) => { if (item.status === 'stale') keys.add(key); });
+      return keys;
+    };
+    SQ.sensorSourceKey = function (sensor) {
+      return sensor?.sourceKey || sourceOfKey(sensor?.id) || 'local';
+    };
+    SQ.isStaleSensor = function (sensor, staleKeys) {
+      return staleKeys instanceof Set && staleKeys.has(SQ.sensorSourceKey(sensor));
+    };
+    SQ.currentAlarms = function (sensors, staleKeys) {
+      if (!Array.isArray(sensors)) return [];
+      return sensors.filter(s => s && s.status !== 'info' && s.status !== 'off' && !SQ.isStaleSensor(s, staleKeys));
+    };
+    SQ.machineLabel = function (sensorOrKey, dashboard, hostLabel) {
+      const key = typeof sensorOrKey === 'string' ? sensorOrKey : SQ.sensorSourceKey(sensorOrKey);
+      if (key === 'local') {
+        const own = typeof hostLabel === 'string' && hostLabel.trim() ? hostLabel.trim() : null;
+        return own || (sensorOrKey && typeof sensorOrKey === 'object' && sensorOrKey.sourceLabel) || 'Local';
+      }
+      const cfg = SQ.normalizeDashboardState(dashboard);
+      const source = cfg.fleet.sources.find(item => item.key === key);
+      return source ? source.label : (sensorOrKey && typeof sensorOrKey === 'object' && sensorOrKey.sourceLabel) || key;
+    };
+    SQ.sourceAgeText = function (lastSuccess, now) {
+      if (!Number.isFinite(lastSuccess)) return 'no sample yet';
+      const t = Number.isFinite(now) ? now : Date.now();
+      const seconds = Math.max(0, Math.round((t - lastSuccess) / 1000));
+      if (seconds < 60) return seconds + 's ago';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return minutes + 'm ago';
+      return Math.floor(minutes / 60) + 'h ago';
+    };
+    SQ.sourceStatusText = function (item, now) {
+      if (!item) return 'unknown';
+      switch (item.status) {
+        case 'current': return 'current · ' + SQ.sourceAgeText(item.lastSuccess, now);
+        case 'stale': return 'stale · ' + SQ.sourceAgeText(item.lastSuccess, now) + (item.error ? ' · ' + item.error : '');
+        case 'unavailable': return 'unavailable' + (item.error ? ' · ' + item.error : '');
+        case 'paused': return item.hasData ? 'paused · last ' + SQ.sourceAgeText(item.lastSuccess, now) : 'paused';
+        default: return 'connecting…';
+      }
+    };
+    SQ.fleetSummary = function (dashboard, states) {
+      const cfg = SQ.normalizeDashboardState(dashboard);
+      const statuses = SQ.sourceStatusMap(states);
+      const peers = cfg.fleet.enabled ? cfg.fleet.sources : [];
+      const counts = {peers:peers.length, current:0, stale:0, unavailable:0, pending:0, paused:0};
+      peers.forEach(source => {
+        const status = statuses.get(source.key)?.status || 'pending';
+        counts[status] = (counts[status] || 0) + 1;
+      });
+      const parts = [];
+      if (counts.peers) {
+        parts.push(`${counts.peers} peer${counts.peers === 1 ? '' : 's'}`);
+        if (counts.current) parts.push(`${counts.current} current`);
+        if (counts.stale) parts.push(`${counts.stale} stale`);
+        if (counts.unavailable) parts.push(`${counts.unavailable} unavailable`);
+        if (counts.pending) parts.push(`${counts.pending} connecting`);
+        if (counts.paused) parts.push(`${counts.paused} paused`);
+      }
+      return Object.assign(counts, {text:parts.join(' · ')});
     };
 
     return SQ;

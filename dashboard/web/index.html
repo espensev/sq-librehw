@@ -51,6 +51,25 @@
         </div>
       </div>
     </details>
+    <details class="machines-menu" id="machinesMenu">
+      <summary class="btn" id="machinesSummary">Machines <span class="count" id="machinesCount"></span></summary>
+      <div class="machines-panel" aria-label="Fleet machines">
+        <div class="machines-tools">
+          <label class="machines-enable"><input type="checkbox" id="fleetEnabled"> Monitor peer machines</label>
+          <button class="iconbtn" id="fleetImport" type="button">Import list</button>
+          <button class="iconbtn" id="fleetExport" type="button">Export list</button>
+          <input id="fleetImportFile" type="file" accept="application/json,.json" hidden>
+        </div>
+        <p class="machines-error" id="fleetError" role="status" aria-live="polite" aria-atomic="true" hidden></p>
+        <div class="machines-list" id="machinesList"></div>
+        <form class="machines-add" id="fleetAddForm">
+          <label>Label<input id="fleetAddLabel" name="fleetAddLabel" type="text" maxlength="80" autocomplete="off" required placeholder="Machine name"></label>
+          <label>HTTPS origin<input id="fleetAddUrl" name="fleetAddUrl" type="text" inputmode="url" maxlength="2048" autocomplete="off" required placeholder="https://host.example:8443"></label>
+          <button class="iconbtn" type="submit">Add machine</button>
+        </form>
+        <p class="machines-note" id="machinesNote">Peers are read with credential-free GET data.json only. Up to eight HTTPS origins.</p>
+      </div>
+    </details>
   </div>
 </div></header>
 <button class="btn toolbar-restore" id="toolbarRestore" type="button"

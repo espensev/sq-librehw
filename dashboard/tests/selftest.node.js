@@ -5,6 +5,7 @@ const WEB = path.resolve(__dirname, '../web');
 const read = name => fs.readFileSync(path.join(WEB, name), 'utf8');
 const S = require('../web/model.js').create();
 const dashboardJs = ['model.js','polling.js','console.js'].map(read).join('\n');
+const fleetPollerJs = read('fleet-poller.js');
 const workspaceJs = read('workspace.js');
 const runConsoleTests = require('./console.tests.js');
 const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture.data.json'), 'utf8'));
@@ -172,19 +173,43 @@ const menuChecks = [
     'data-view-theme="cardTruth"][data-studio-canvas="plain"] header'
   ].every(token => consoleCss.includes(token))],
   ['Studio replaces the shared active-control green token', consoleCss.includes('--lime:var(--studio-ok)')],
-  ['cached rerenders preserve stale telemetry status',
-    dashboardJs.includes('function render(data, freshTelemetry = false)')
-      && dashboardJs.includes('if (freshTelemetry && !state.paused)')
-      && dashboardJs.includes('render(data, true)')],
-  ['cached rerenders cannot ingest or persist telemetry',
-    dashboardJs.includes('SQ.ingestTelemetry(state, allSensors, freshTelemetry)')
+  ['repaints are paint-only and read stored per-source sensors',
+    dashboardJs.includes('function render() {')
+      && dashboardJs.includes('const allSensors = SQ.composeSensors(state, state.dashboard)')
+      && !dashboardJs.includes('SQ.ingestTelemetry(state, allSensors')
+      && dashboardJs.includes('if (SQ.hasTelemetry(state)) paint()')],
+  ['fresh samples ingest once in the poller seam and persist with a local cadence',
+    dashboardJs.includes('const ingestion = SQ.ingestSourceTelemetry(state, machine, data, receipt)')
+      && dashboardJs.includes('persistTelemetry(ingestion, isLocal)')
       && dashboardJs.includes('if (!freshTelemetry) return {ingested:false, samplesChanged:false}')
-      && dashboardJs.includes('if (ingestion.ingested && ingestion.samplesChanged')],
-  ['polling is completion-driven, cancellable, and visibility-aware',
-    dashboardJs.includes('window.SQPolling.create')
+      && dashboardJs.includes('if ((state.samplesDirty && state.localTicks % 5 === 0) || state.localTicks % 30 === 0)')],
+  ['fleet polling is the boot poller: per source, cancellable, and visibility-aware',
+    dashboardJs.includes('window.SQFleetPoller.create')
+      && !dashboardJs.includes('window.SQPolling.create')
+      && dashboardJs.includes('onGap:source => SQ.resetSourceDerivatives(source.key)')
+      && dashboardJs.includes('SQ.removeSourceTelemetry(state, source.key)')
       && dashboardJs.includes("document.addEventListener('visibilitychange'")
       && dashboardJs.includes("window.addEventListener('pagehide'")
       && !dashboardJs.includes('setInterval(tick')],
+  ['Machines edits apply, save, acknowledge, then configure polling',
+    (() => {
+      const apply = dashboardJs.indexOf('state.dashboard = SQ.applyFleetState(state.dashboard, nextFleet, state.contexts, state.workspace)');
+      const save = dashboardJs.indexOf('saveDashboard();                              // persists and acknowledges');
+      const configure = dashboardJs.indexOf('poller.configure(state.dashboard.fleet)');
+      return apply >= 0 && save > apply && configure > save
+        && dashboardJs.includes('SQ.acknowledgeTelemetrySave(state)');
+    })()],
+  ['Machines panel exists with enable, list, add, import and export controls',
+    ['machinesMenu','machinesCount','fleetEnabled','fleetImport','fleetExport','fleetImportFile',
+      'fleetError','machinesList','fleetAddForm','fleetAddLabel','fleetAddUrl','machinesNote']
+      .every(id => indexHtml.includes(`id="${id}"`))
+      && indexHtml.includes('id="fleetError" role="status" aria-live="polite"')
+      && indexHtml.indexOf('<script src="fleet-poller.js"></script>') < indexHtml.indexOf('<script src="console.js"></script>')
+      && consoleCss.includes('.machines-panel') && consoleCss.includes('.machine-row')],
+  ['peer configuration never dispatches hardware writes or loads peer-supplied images',
+    !dashboardJs.includes('ImageURL') && !dashboardJs.includes('/Sensor?action=Set')
+      && fleetPollerJs.includes("credentials:'omit', redirect:'error'")
+      && fleetPollerJs.includes("value.source.url + '/data.json'")],
   ['dashboard storage is isolated behind safe fallback',
     dashboardJs.includes('SQ.createSafeStorage')
       && dashboardJs.includes('const storage = SQ.createSafeStorage(() => window.localStorage)')],

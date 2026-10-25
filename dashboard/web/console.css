@@ -362,6 +362,41 @@ footer .legend span{display:inline-flex;align-items:center;gap:6px}
 .vis-chip.vis-visible{opacity:.6}
 .net-restore{margin-top:10px;padding-top:10px;border-top:1px solid var(--line-soft)}
 .net-restore-head{font:700 9px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 8px}
+
+/* --- Masthead Machines popover (fleet) --- */
+.machines-menu{position:relative}
+.machines-menu>summary{list-style:none;cursor:pointer}
+.machines-menu>summary::-webkit-details-marker{display:none}
+.machines-menu[open]>summary{border-color:var(--cy);color:var(--cy)}
+.machines-menu .count{display:inline-block;min-width:16px;padding:0 5px;margin-left:5px;border-radius:999px;
+  background:color-mix(in srgb,var(--cy) 18%,var(--panel-2));color:var(--cy);font:600 10px var(--mono);text-align:center}
+.machines-menu .count:empty{display:none}
+.machines-panel{position:absolute;top:calc(100% + 8px);right:0;z-index:40;width:min(520px,92vw);
+  max-height:min(70vh,600px);overflow:auto;padding:10px;border:1px solid var(--line);border-radius:10px;
+  background:var(--panel);box-shadow:0 12px 32px -8px rgba(0,0,0,.5);display:grid;gap:10px}
+.machines-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.machines-enable{flex:1 1 auto;display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--ink)}
+.machines-error{margin:0;padding:8px 10px;border-radius:6px;font-family:var(--mono);font-size:11px;
+  border:1px solid color-mix(in srgb,var(--crit) 40%,var(--line));color:var(--crit)}
+.machines-error[data-tone="ok"]{border-color:color-mix(in srgb,var(--ok) 40%,var(--line));color:var(--ok)}
+.machines-list{display:grid;gap:8px}
+.machine-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:center;padding:8px 10px;
+  border:1px solid var(--line-soft);border-radius:8px;background:var(--panel-2)}
+.machine-row .machine-main{min-width:0;display:grid;gap:3px}
+.machine-row .machine-main b{font-size:12.5px}
+.machine-row .machine-main span,.machine-row .machine-main code{display:block;font-family:var(--mono);font-size:10px;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.machine-row .machine-label{width:100%;min-width:0;font-size:12.5px}
+.machine-status{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.machine-row.is-stale .machine-status{color:var(--warn)}
+.machine-row.is-unavailable .machine-status{color:var(--crit)}
+.machine-actions{grid-column:1 / -1;display:flex;gap:6px;flex-wrap:wrap}
+.machines-add{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;gap:8px;align-items:end;
+  padding-top:8px;border-top:1px solid var(--line-soft)}
+.machines-add label{display:grid;gap:4px;font:700 9px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.machines-add input{min-width:0;width:100%}
+.machines-note{margin:0;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+@media (max-width:640px){.machines-add{grid-template-columns:1fr}}
 @media (max-width:640px){
   .sensors-panel{left:0;right:auto;width:calc(100vw - 32px);max-height:min(62vh,560px)}
   .sensors-tools{display:grid;grid-template-columns:1fr}

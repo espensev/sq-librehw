@@ -91,7 +91,7 @@
     const popRows = S.sensorPopoverRows(sensors, popState, '');
     eq('sensorPopoverRows returns rows', popRows.length > 0, true);
     eq('sensorPopoverRows row shape', Object.keys(popRows[0]).sort(),
-      ['hw','id','label','rawLabel','type','value','visibility']);
+      ['hw','id','label','machine','rawLabel','sourceKey','type','value','visibility']);
     eq('sensorPopoverRows hidden sorted before visible',
       popRows.findIndex(r => r.visibility === 'hidden') < popRows.findIndex(r => r.visibility === 'visible'), true);
     const loadRows = S.sensorPopoverRows(sensors, popState, 'load');

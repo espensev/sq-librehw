@@ -37,6 +37,13 @@
     workspaceSensorSignature: null,
     workspaceNotice: null,
     lastData: null,
+    hostLabel: null,
+    sourceStates: [],
+    sourceStatusSignature: null,
+    staleSources: new Set(),
+    localTicks: 0,
+    samplesDirty: false,
+    fleetNotice: null,
     allSensors: [],
     visibleSensors: [],
     panelItems: [],
@@ -125,9 +132,14 @@
     SQ.acknowledgeTelemetrySave(state);
     paintGraphs();
   }
+  // Repaints never ingest telemetry: they read the per-source sensors that the
+  // poller's onSample seam stored through SQ.ingestSourceTelemetry.
+  function paint() {
+    try { render(); } catch (error) { console.error('Dashboard paint failed', error); }
+  }
   function rerender() {
     if (state.dragging) return;
-    if (state.lastData) render(state.lastData);
+    if (SQ.hasTelemetry(state)) paint();
   }
   function commitDashboard() {
     saveDashboard();
@@ -204,17 +216,15 @@
     state.dashboard = SQ.resetPrimaryCards(state.dashboard);
     commitDashboard();
   }
-  function render(data, freshTelemetry = false) {
-    state.lastData = data;
+  function render() {
     const ae = document.activeElement;
     if (state.inlineEditing || Date.now() < state.inlineEditingUntil || isInlineEditTarget(ae))
       return;   // an inline detail edit is in progress; don't clobber it on poll.
-    const root = rootNode(data);
-    const host = root.Text || 'Sensor';
-    const allSensors = SQ.flatten(root);
-    // Cached rerenders (Studio preferences, order, expand/collapse) are paint
-    // only. All telemetry mutation lives behind this fresh-data seam.
-    const ingestion = SQ.ingestTelemetry(state, allSensors, freshTelemetry);
+    const host = state.hostLabel || 'Sensor';
+    const version = state.lastData?.Version ?? '—';
+    // Paint only. Fresh samples are ingested exactly once in the poller's
+    // onSample seam; this composes the stored per-source sensors in order.
+    const allSensors = SQ.composeSensors(state, state.dashboard);
     allSensors.forEach(sensor => {
       sensor.presetType = SQ.isLimitSensor(sensor) || SQ.isStaticDriveAuxTemp(sensor) || SQ.isStaticMbTemp(sensor)
         ? 'Auxiliary'
@@ -227,16 +237,19 @@
     state.visibleSensors = sensors;
     state.primaryIds = new Set(SQ.primaryCardIds(sensors, state.dashboard));
     state.limits = limits;
+    state.staleSources = SQ.staleSourceKeys(state.sourceStates);
 
-    const alarm = sensors.filter(s => s.status !== 'info' && s.status !== 'off');
+    // Readings from a stale machine stay visible and labelled, but they are
+    // never a current fleet alarm.
+    const alarm = SQ.currentAlarms(sensors, state.staleSources);
     if (state.dashboard.viewTheme === 'workspace') {
       const workspaceLimits = SQ.deriveLimits(allSensors);
       allSensors.forEach(s => s.status = SQ.statusOf(s, workspaceLimits));
       state.limits = workspaceLimits;
-      renderWorkspace(host, allSensors, workspaceLimits, data.Version);
+      renderWorkspace(host, allSensors, workspaceLimits, version);
     } else if (state.dashboard.viewTheme === 'cardTruth') {
       state.panelItems = SQ.buildPanelItems(sensors, state.dashboard);
-      renderStudio(host, sensors, limits, alarm, data.Version);
+      renderStudio(host, sensors, limits, alarm, version);
     } else {
       const standardFocus = captureStandardFocus(ae);
       renderPinnedCards(sensors, limits);
@@ -246,19 +259,30 @@
       restoreStandardFocus(standardFocus);
     }
     renderSensorsPopover();
+    renderMachinesPanel();
     $('#host').textContent = host;
-    $('#foot-left').textContent = `LibreHardwareMonitor ${data.Version} · host ${host} · GET /data.json · ${state.rate}s poll`;
-    if (freshTelemetry && !state.paused) {
-      $('#freshtxt').textContent = 'updated ' + new Date().toLocaleTimeString();
-      $('#freshdot').className = 'lamp s-ok';
-    }
-    // Throttled persistence so peaks/derived limits survive reloads without
-    // per-tick localStorage writes. Power samples (needed to derive a limit)
-    // flush more often than peaks (which only grow).
-    if (ingestion.ingested && (ingestion.removals.observedMax.length || ingestion.removals.powerLimitSamples.length))
+    const summary = SQ.fleetSummary(state.dashboard, state.sourceStates).text;
+    $('#foot-left').textContent = `LibreHardwareMonitor ${version} · host ${host} · GET /data.json · ${state.rate}s poll${summary ? ' · ' + summary : ''}`;
+  }
+  // Throttled persistence so peaks/derived limits survive reloads without
+  // per-tick localStorage writes. Removals flush immediately; power samples
+  // (needed to derive a limit) flush more often than peaks (which only grow).
+  // The cadence counts local samples so adding peers does not multiply writes.
+  function persistTelemetry(ingestion, isLocal) {
+    if (!ingestion || !ingestion.ingested) return;
+    if (ingestion.samplesChanged) state.samplesDirty = true;
+    const removals = ingestion.removals || {observedMax:[], powerLimitSamples:[]};
+    if (removals.observedMax.length || removals.powerLimitSamples.length) {
       saveTelemetryDashboard(ingestion);
-    else if (ingestion.ingested && ingestion.samplesChanged && state.tickCount % 5 === 0) saveTelemetryDashboard(ingestion);
-    else if (ingestion.ingested && state.tickCount % 30 === 0) saveTelemetryDashboard(ingestion);
+      state.samplesDirty = false;
+      return;
+    }
+    if (!isLocal) return;
+    state.localTicks++;
+    if ((state.samplesDirty && state.localTicks % 5 === 0) || state.localTicks % 30 === 0) {
+      saveTelemetryDashboard(ingestion);
+      state.samplesDirty = false;
+    }
   }
 
   function arcSVG(id, frac) {
@@ -326,7 +350,8 @@
         <div><span>label</span><b>${esc(SQ.sensorDisplayText(s, state.dashboard, opts.fallbackLabel))}</b></div>
         <div><span>raw label</span><b>${esc(s.text)}</b></div>
         <div><span>source</span><b>${esc(s.hw || '—')}</b></div>
-        <div><span>hardware id</span><b>${esc(s.hwid || '—')}</b></div>
+        <div><span>machine</span><b>${esc(SQ.machineLabel(s, state.dashboard, state.hostLabel))}</b></div>
+        <div><span>hardware id</span><b>${esc((s.sourceKey ? s.rawHardwareId : s.hwid) || '—')}</b></div>
         <div><span>type</span><b>${esc(SQ.displayType(s))}</b></div>
         <div><span>current</span><b class="num">${esc(value)}</b></div>
         <div><span>raw min/max</span><b class="num">${esc(rawMin)} / ${esc(rawMax)}</b></div>
@@ -1215,25 +1240,235 @@
     btn.classList.toggle('active', state.dashboard.graphsEnabled);
   }
 
-  const poller = window.SQPolling.create({
+  // --- Machines panel: browser-local fleet configuration ---------------------
+  // Every edit is validated against the active dashboard, parked Standard
+  // contexts, and Workspace profiles so a key with saved references can never
+  // be rebound to another origin. Apply, save, acknowledge, then configure.
+  const Fleet = window.SQFleet;
+  const STATUS_LAMP = {current:'ok', stale:'warn', unavailable:'crit', paused:'off', pending:'info'};
+  function fleetOptions() {
+    return SQ.fleetSourceOptions(state.dashboard, state.contexts, state.workspace);
+  }
+  function showFleetNotice(message, tone) {
+    state.fleetNotice = message ? {message, tone:tone || 'error'} : null;
+    paintFleetNotice();
+  }
+  function paintFleetNotice() {
+    const el = $('#fleetError');
+    if (!el) return;
+    const stored = state.dashboard.fleetError;
+    const notice = state.fleetNotice ||
+      (stored ? {message:'Stored machine list was invalid; peers are disabled until it is corrected. ' + stored, tone:'error'} : null);
+    el.hidden = !notice;
+    el.textContent = notice ? notice.message : '';
+    el.dataset.tone = notice ? notice.tone : '';
+  }
+  function commitFleet(nextFleet, message) {
+    try {
+      state.dashboard = SQ.applyFleetState(state.dashboard, nextFleet, state.contexts, state.workspace);
+    } catch (error) {
+      showFleetNotice(error?.message || 'Invalid machine configuration.', 'error');
+      return false;
+    }
+    saveDashboard();                              // persists and acknowledges the telemetry save
+    poller.configure(state.dashboard.fleet);      // only then does polling follow the new list
+    showFleetNotice(message || null, 'ok');
+    renderMachinesPanel(true);
+    rerender();
+    return true;
+  }
+  function fleetEdit(operation, message) {
+    try { return commitFleet(operation(fleetOptions()), message); }
+    catch (error) {
+      showFleetNotice(error?.message || 'Invalid machine configuration.', 'error');
+      return false;
+    }
+  }
+  function machineRowMarkup(source, statuses, now, index, count) {
+    const status = statuses.get(source.key) || {status:'pending'};
+    const local = source.key === 'local';
+    const statusText = !local && !state.dashboard.fleet.enabled ? 'peer monitoring off' : SQ.sourceStatusText(status, now);
+    const label = local ? (state.hostLabel || 'This machine') : source.label;
+    const main = local
+      ? `<b>${esc(label)}</b><span>local · GET data.json</span>`
+      : `<input class="machine-label" data-fleet-act="rename" data-key="${esc(source.key)}" value="${esc(source.label)}" maxlength="80" aria-label="Label for ${esc(source.label)}"><code>${esc(source.url)}</code>`;
+    const actions = local ? '' : `<div class="machine-actions">
+        <button class="iconbtn" data-fleet-act="up" data-key="${esc(source.key)}" aria-label="Move ${esc(label)} earlier"${index === 0 ? ' disabled' : ''}>&#9650;</button>
+        <button class="iconbtn" data-fleet-act="down" data-key="${esc(source.key)}" aria-label="Move ${esc(label)} later"${index === count - 1 ? ' disabled' : ''}>&#9660;</button>
+        <button class="iconbtn" data-fleet-act="replace" data-key="${esc(source.key)}">Replace endpoint</button>
+        <button class="iconbtn workspace-danger" data-fleet-act="remove" data-key="${esc(source.key)}">Remove</button>
+      </div>`;
+    return `<div class="machine-row is-${esc(status.status)}" data-key="${esc(source.key)}">
+      <div class="machine-main">${main}</div>
+      <span class="machine-status" title="${esc(status.error || '')}"><span class="lamp s-${STATUS_LAMP[status.status] || 'info'}" aria-hidden="true"></span>${esc(statusText)}</span>
+      ${actions}
+    </div>`;
+  }
+  function renderMachinesPanel(force) {
+    const fleet = state.dashboard.fleet;
+    const countEl = $('#machinesCount');
+    if (countEl) countEl.textContent = fleet.enabled && fleet.sources.length ? String(fleet.sources.length) : '';
+    const enabled = $('#fleetEnabled');
+    if (enabled && document.activeElement !== enabled) enabled.checked = fleet.enabled;
+    paintFleetNotice();
+    const menu = $('#machinesMenu'), list = $('#machinesList');
+    if (!menu || !list || !menu.open) { state.machinesSig = null; return; }
+    if (!force && list.contains(document.activeElement) && document.activeElement.matches('input')) return;
+    const statuses = SQ.sourceStatusMap(state.sourceStates);
+    const now = Date.now();
+    const rows = [{key:'local'}, ...fleet.sources];
+    const sig = JSON.stringify([fleet.enabled, state.hostLabel, rows.map(s => [s.key, s.label, s.url]),
+      rows.map(s => { const st = statuses.get(s.key); return st ? [st.status, SQ.sourceStatusText(st, now)] : null; })]);
+    if (!force && sig === state.machinesSig) return;
+    state.machinesSig = sig;
+    list.innerHTML = rows.map((s, i) => machineRowMarkup(s, statuses, now, i - 1, fleet.sources.length)).join('');
+    $('#fleetAddForm').hidden = fleet.sources.length >= Fleet.LIMITS.sources;
+    $('#fleetExport').disabled = !fleet.sources.length;
+    $('#machinesNote').textContent = fleet.enabled
+      ? 'Peers are read with credential-free GET data.json only. Up to eight HTTPS origins; labels are shown as text.'
+      : 'Peer monitoring is off. The list and its preferences are kept; enable it to resume read-only polling.';
+  }
+  function downloadJson(name, json) {
+    const blob = new Blob([json], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+  $('#machinesMenu').addEventListener('toggle', () => { if ($('#machinesMenu').open) renderMachinesPanel(true); });
+  $('#fleetEnabled').onchange = e => {
+    commitFleet({enabled:e.target.checked, sources:state.dashboard.fleet.sources},
+      e.target.checked ? 'Peer monitoring enabled.' : 'Peer monitoring paused; the machine list is kept.');
+  };
+  $('#fleetAddForm').onsubmit = e => {
+    e.preventDefault();
+    const label = $('#fleetAddLabel').value.trim(), url = $('#fleetAddUrl').value.trim();
+    if (fleetEdit(options => Fleet.addSource(state.dashboard.fleet, {label, url}, options), `Added ${label}.`)) {
+      $('#fleetAddLabel').value = '';
+      $('#fleetAddUrl').value = '';
+      $('#fleetAddLabel').focus();
+    }
+  };
+  $('#machinesList').addEventListener('change', e => {
+    const input = e.target.closest('input[data-fleet-act="rename"]');
+    if (!input) return;
+    const key = input.dataset.key;
+    if (!fleetEdit(options => Fleet.renameSource(state.dashboard.fleet, key, input.value, options), 'Machine renamed.'))
+      input.value = state.dashboard.fleet.sources.find(s => s.key === key)?.label ?? input.value;
+  });
+  $('#machinesList').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.matches('input[data-fleet-act="rename"]')) { e.preventDefault(); e.target.blur(); }
+  });
+  $('#machinesList').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-fleet-act]');
+    if (!btn) return;
+    const key = btn.dataset.key;
+    const source = state.dashboard.fleet.sources.find(s => s.key === key);
+    if (!source) return;
+    const index = state.dashboard.fleet.sources.indexOf(source);
+    switch (btn.dataset.fleetAct) {
+      case 'up':
+      case 'down':
+        fleetEdit(options => Fleet.moveSource(state.dashboard.fleet, key,
+          index + (btn.dataset.fleetAct === 'up' ? -1 : 1), options), 'Machine order saved.');
+        break;
+      case 'replace': {
+        const url = window.prompt(`New HTTPS origin for “${source.label}”.\n\nReplacing the endpoint gives this machine a new identity: its cached readings and history are cleared, and pins, aliases, hidden state and Workspace selections for the old endpoint become unavailable references.`, source.url);
+        if (url == null) return;
+        fleetEdit(options => Fleet.replaceSource(state.dashboard.fleet, key, url.trim(), options), `Endpoint replaced for ${source.label}.`);
+        break;
+      }
+      case 'remove':
+        if (!window.confirm(`Remove “${source.label}”?\n\nIts cached readings and history are cleared. Pins, aliases, hidden state and Workspace selections for it remain as unavailable references and are never rebound to another machine.`)) return;
+        fleetEdit(options => Fleet.removeSource(state.dashboard.fleet, key, options), `Removed ${source.label}.`);
+        break;
+    }
+  });
+  $('#fleetImport').onclick = () => $('#fleetImportFile').click();
+  $('#fleetImportFile').onchange = async event => {
+    const input = event.currentTarget;
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      if (file.size > Fleet.LIMITS.documentBytes) {
+        showFleetNotice('Import rejected: the machine list exceeds 32 KiB.', 'error');
+        return;
+      }
+      const text = await file.text();
+      const next = Fleet.importSources(text, state.dashboard.fleet, fleetOptions());
+      const preview = next.sources.length ? next.sources.map(s => `• ${s.label} — ${s.url}`).join('\n') : '(no peers)';
+      const count = next.sources.length;
+      if (!window.confirm(`Replace the machine list with ${count} machine${count === 1 ? '' : 's'}?\n\n${preview}\n\nPeer monitoring stays ${state.dashboard.fleet.enabled ? 'enabled' : 'disabled'}; Workspace profiles and other settings are unchanged.`)) return;
+      commitFleet(next, 'Machine list imported.');
+    } catch (error) {
+      showFleetNotice('Import rejected: ' + (error?.message || 'the file could not be read.'), 'error');
+    } finally {
+      input.value = '';
+    }
+  };
+  $('#fleetExport').onclick = () => {
+    try {
+      downloadJson('sq-fleet-sources.json', Fleet.exportSources(state.dashboard.fleet, fleetOptions()));
+      showFleetNotice('Machine list exported: keys, labels and origins only.', 'ok');
+    } catch (error) {
+      showFleetNotice('Export failed: ' + (error?.message || 'unknown error'), 'error');
+    }
+  };
+
+  // Freshness is per source. The header lamp follows the local machine; the
+  // text adds the peer summary when the fleet is enabled.
+  function paintFreshness() {
+    const local = SQ.sourceStatusMap(state.sourceStates).get('local');
+    let cls = 's-ok', text = 'live';
+    if (state.paused) { cls = 's-off'; text = 'paused'; }
+    else if (!local || local.status === 'pending') { cls = 's-info'; text = 'connecting'; }
+    else if (local.status === 'current') text = 'updated ' + new Date(local.lastSuccess).toLocaleTimeString();
+    else if (local.status === 'stale') { cls = 's-warn'; text = 'stale - retrying'; }
+    else if (local.status === 'unavailable') { cls = 's-warn'; text = 'unavailable - retrying'; }
+    else if (local.status === 'paused') { cls = 's-info'; text = 'resuming'; } // cached until the next fresh sample
+    const summary = SQ.fleetSummary(state.dashboard, state.sourceStates);
+    if (summary.peers) text += ' · ' + summary.text;
+    $('#freshdot').className = 'lamp ' + cls;
+    $('#freshtxt').textContent = text;
+    document.body.classList.toggle('stale',
+      !state.paused && !!local && (local.status === 'stale' || local.status === 'unavailable'));
+  }
+  // One independent request lifecycle per configured source. Peer requests are
+  // credential-free GET data.json only (see fleet-poller.js); nothing else is
+  // fetched from a peer origin.
+  const poller = window.SQFleetPoller.create({
+    fleet:state.dashboard.fleet,
+    pageOrigin:window.location?.origin,
     intervalMs:state.rate * 1000,
     timeoutMs:15000,
     paused:state.paused,
     hidden:document.hidden === true,
-    request:async signal => {
-      const r = await fetch('data.json', {cache:'no-store', signal});
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
+    onSample:(source, data, receipt) => {
+      const isLocal = source.key === 'local';
+      const machine = isLocal ? {key:'local', label:rootNode(data).Text || 'Local'} : source;
+      if (isLocal) { state.lastData = data; state.hostLabel = machine.label; }
+      const ingestion = SQ.ingestSourceTelemetry(state, machine, data, receipt);
+      persistTelemetry(ingestion, isLocal);
+      if (!state.dragging) paint(); // a drag keeps its DOM; the sample is already ingested
     },
-    onData:data => {
-      if (state.dragging) return; // drag started during fetch; do not replace its DOM
-      render(data, true);
-      document.body.classList.remove('stale');
+    onGap:source => SQ.resetSourceDerivatives(source.key),
+    onRemove:source => {
+      saveTelemetryDashboard(SQ.removeSourceTelemetry(state, source.key));
+      if (!state.dragging) paint();
     },
-    onError:() => {
-      $('#freshdot').className = 'lamp s-warn';
-      $('#freshtxt').textContent = 'stale - retrying';
-      document.body.classList.add('stale');
+    onState:states => {
+      state.sourceStates = states;
+      paintFreshness();
+      renderMachinesPanel();
+      const signature = states.map(item => item.source.key + ':' + item.status).join(',');
+      if (signature !== state.sourceStatusSignature) {
+        state.sourceStatusSignature = signature;
+        rerender();
+      }
     }
   });
   document.addEventListener('visibilitychange', () => poller.setHidden(document.hidden === true));
@@ -1694,8 +1929,7 @@
   const pause = $('#pause');
   function paintPause() { pause.textContent = state.paused ? 'Resume' : 'Pause';
     pause.setAttribute('aria-pressed', state.paused ? 'true' : 'false');
-    $('#freshdot').className = 'lamp ' + (state.paused ? 's-off' : 's-ok');
-    $('#freshtxt').textContent = state.paused ? 'paused' : 'live'; }
+    paintFreshness(); }
   pause.onclick = () => {
     state.paused = !state.paused;
     state.dashboard.paused = state.paused;
@@ -1734,14 +1968,14 @@
   });
   // Escape / click-outside close for disclosure menus.
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') document.querySelectorAll('details.page-menu[open], details.sensors-menu[open], details.studio-customize[open], details.workspace-sensor-manager[open]').forEach(d => { d.open = false; });
+    if (e.key === 'Escape') document.querySelectorAll('details.page-menu[open], details.sensors-menu[open], details.machines-menu[open], details.studio-customize[open], details.workspace-sensor-manager[open]').forEach(d => { d.open = false; });
   });
   // Capture phase: this must observe e.target BEFORE the #sensorsList action
   // handler (bubble phase) rebuilds the list and detaches the clicked button —
   // otherwise the orphaned target reads as "outside" and closes the popover on
   // every Pin/Hide/Show click.
   document.addEventListener('click', e => {
-    document.querySelectorAll('details.page-menu[open], details.sensors-menu[open], details.studio-customize[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
+    document.querySelectorAll('details.page-menu[open], details.sensors-menu[open], details.machines-menu[open], details.studio-customize[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
   }, true);
   // Capture phase, and deliberately blind to clicks on any card/row/control
   // surface: card-to-card switching belongs to toggleExpand's single-open
