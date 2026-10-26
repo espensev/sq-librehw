@@ -37,6 +37,22 @@ internal sealed class SettingsPersistenceCoordinator
 
     internal void Save(bool autoSave)
     {
+        SaveCore(autoSave, retainUnclaimedSensorValues: false);
+    }
+
+    /// <summary>
+    /// Forced save for the Windows session-end checkpoint. Session end can arrive before hardware
+    /// discovery has constructed every sensor, so this save keeps loaded sensor history that no
+    /// sensor has claimed yet instead of dropping it as departed hardware. Failures are thrown as
+    /// for a final save.
+    /// </summary>
+    internal void SaveCheckpoint()
+    {
+        SaveCore(autoSave: false, retainUnclaimedSensorValues: true);
+    }
+
+    private void SaveCore(bool autoSave, bool retainUnclaimedSensorValues)
+    {
         _projectCurrentState();
 
         if (autoSave && !_settings.Modified)
@@ -47,7 +63,7 @@ internal sealed class SettingsPersistenceCoordinator
             RuntimePaths.EnsureSafeMutableFile(_fileName, "The runtime settings file");
             RuntimePaths.EnsureSafeMutableFile(_fileName + ".backup", "The runtime settings backup");
             RuntimePaths.EnsureSafeMutableFile(_fileName + ".new", "The runtime settings staging file");
-            _settings.Save(_fileName);
+            _settings.Save(_fileName, retainUnclaimedSensorValues);
         }
         catch (Exception exception) when (exception is IOException ||
                                            exception is UnauthorizedAccessException)

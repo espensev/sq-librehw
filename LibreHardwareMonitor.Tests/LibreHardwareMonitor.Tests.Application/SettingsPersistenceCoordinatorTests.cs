@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Windows.Forms.UI;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
 using Xunit;
@@ -129,6 +130,43 @@ public sealed class SettingsPersistenceCoordinatorTests : IDisposable
         Assert.Equal(new[] { "project", "write" }, events);
         Assert.True(File.Exists(path));
         Assert.False(settings.Modified);
+    }
+
+    [Fact]
+    public void Checkpoint_KeepsUnclaimedSensorHistoryThatAFinalSaveDrops()
+    {
+        const string historyKey = "/checkpoint-test/temperature/0/values";
+        string path = ConfigPath("checkpoint");
+        PersistentSettings seed = new();
+        seed.SetValue(historyKey, Sensor.EncodeValuesBounded(
+            new[] { new SensorValue(10, new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc)) },
+            Sensor.MaxPersistedValuesLength));
+        seed.Save(path);
+
+        // After a load, no sensor has claimed the history until hardware discovery constructs one.
+        PersistentSettings settings = new();
+        settings.Load(path);
+        List<string> events = new();
+        SettingsPersistenceCoordinator coordinator = new(
+            settings,
+            path,
+            () => events.Add("project"),
+            _ => events.Add("report"));
+
+        coordinator.SaveCheckpoint();
+
+        Assert.Equal(new[] { "project" }, events);
+        Assert.True(settings.Contains(historyKey));
+        PersistentSettings checkpointed = new();
+        checkpointed.Load(path);
+        Assert.True(checkpointed.Contains(historyKey));
+
+        coordinator.Save(autoSave: false);
+
+        Assert.False(settings.Contains(historyKey));
+        PersistentSettings finalSaved = new();
+        finalSaved.Load(path);
+        Assert.False(finalSaved.Contains(historyKey));
     }
 
     [Fact]

@@ -103,6 +103,7 @@ public sealed partial class MainForm : Form
     private readonly ApplicationLifecycleCoordinator _applicationLifecycle;
     private readonly System.Windows.Forms.Timer _autoSaveTimer;
     private readonly UiShutdownCoordinator _shutdownCoordinator;
+    private readonly Action _sessionEndCheckpoint;
     private readonly int _uiThreadId;
 
     private bool IsShutdownPending =>
@@ -585,10 +586,10 @@ public sealed partial class MainForm : Form
         _autoSaveTimer = new System.Windows.Forms.Timer { Interval = AutoSaveIntervalMilliseconds };
         _autoSaveTimer.Tick += AutoSaveTimer_Tick;
 
-        // SystemEvents invokes SessionEnded on its monitoring thread. Invoke the request on the form
-        // thread so settings projection never reads controls concurrently with FormClosing or
-        // autosave, and so the logoff handler does not return before the final save completes. The
-        // coordinator still allows FormClosing to win if it starts before the callback is dispatched.
+        // Every shutdown request (Exit, FormClosing, WM_ENDSESSION and SessionEnded) runs the body on
+        // the form thread, so settings projection never reads controls concurrently with autosave.
+        // SessionEnded is raised on this thread through the synchronization context captured below.
+        _sessionEndCheckpoint = SaveSessionEndCheckpoint;
         _shutdownCoordinator = new UiShutdownCoordinator(
             () => Environment.CurrentManagedThreadId == _uiThreadId,
             action => BeginInvoke(action),
@@ -1421,23 +1422,43 @@ public sealed partial class MainForm : Form
 
     private void SystemEvents_SessionEnded(object sender, Microsoft.Win32.SessionEndedEventArgs eventArgs)
     {
+        // SystemEvents raises this through the synchronization context captured when the constructor
+        // subscribed, so it runs synchronously on the UI thread while the SystemEvents window handles
+        // WM_ENDSESSION. It runs on the SystemEvents thread only when it cannot be marshalled, for
+        // example because the UI thread is gone; the form's own WM_ENDSESSION handling (WndProc)
+        // covers the live case.
+        if (Environment.CurrentManagedThreadId != _uiThreadId)
+            return;
+
         try
         {
-            Task shutdown = _shutdownCoordinator.RequestAsync();
-            if (Environment.CurrentManagedThreadId != _uiThreadId)
-                shutdown.GetAwaiter().GetResult();
-        }
-        catch (ObjectDisposedException)
-        {
-            // FormClosing already completed while the system event was being dispatched.
-        }
-        catch (InvalidOperationException) when (IsDisposed || Disposing || !IsHandleCreated)
-        {
-            // The control handle was destroyed before the synchronous UI handoff completed.
+            _shutdownCoordinator.RequestAfterCheckpoint(_sessionEndCheckpoint);
         }
         catch (Exception ex)
         {
             Debug.WriteLine("Session-end shutdown failed: " + ex);
+        }
+    }
+
+    private void SaveSessionEndCheckpoint()
+    {
+        // Windows may terminate the process as soon as WM_ENDSESSION returns, before the asynchronous
+        // shutdown reaches its final save. Persist the current state synchronously first. This forced
+        // write uses no dialogs (SaveConfiguration's MessageBoxes would block inside WM_ENDSESSION).
+        // The current session's samples reach settings only when hardware closes or a sensor's history
+        // window changes, so this checkpoint keeps the history already held in settings. That includes
+        // history no sensor has claimed yet, because session end can arrive while hardware discovery
+        // is still running. The normal final save still follows if the process survives.
+        if (_presentation == null || _settings == null)
+            return;
+
+        try
+        {
+            _settingsPersistenceCoordinator.SaveCheckpoint();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine("Session-end settings checkpoint failed: " + ex);
         }
     }
 
@@ -1865,6 +1886,7 @@ public sealed partial class MainForm : Form
 
     private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
     {
+        // Windows session end is answered in WndProc and never raises FormClosing here.
         e.Cancel = true;
         CloseApplication();
     }
@@ -2318,6 +2340,18 @@ public sealed partial class MainForm : Form
         const int WM_WININICHANGE = 0x001A;
         const int SC_MINIMIZE = 0xF020;
         const int SC_CLOSE = 0xF060;
+
+        // Session-end messages never reach base.WndProc: Form would raise FormClosing for the query
+        // (MainForm_FormClosing cancels it and starts teardown), and would leave CloseReason stuck at
+        // WindowsShutDown if the session end is then cancelled. Nor does a WM_CLOSE once shutdown is
+        // running: the shutdown body has detached MainForm_FormClosing, so Form would close the
+        // window and Program would exit the message loop before hardware close and the final save.
+        if (_shutdownCoordinator != null &&
+            _shutdownCoordinator.TryHandleShutdownMessage(m.Msg, m.WParam, _sessionEndCheckpoint, out IntPtr shutdownResult))
+        {
+            m.Result = shutdownResult;
+            return;
+        }
 
         if (_minimizeToTray.Value && m.Msg == WM_SYSCOMMAND && m.WParam.ToInt64() == SC_MINIMIZE)
         {

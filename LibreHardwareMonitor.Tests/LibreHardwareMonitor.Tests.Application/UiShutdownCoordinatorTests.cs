@@ -303,6 +303,229 @@ public sealed class UiShutdownCoordinatorTests
         Assert.True(coordinator.IsShutdownRequested);
     }
 
+    [Fact]
+    public void QueryEndSession_AnswersTrueWithoutCheckpointOrShutdown()
+    {
+        int checkpointCount = 0;
+        int shutdownCount = 0;
+        var coordinator = new UiShutdownCoordinator(
+            () => true,
+            _ => throw new InvalidOperationException("UI dispatch is not expected"),
+            () => Interlocked.Increment(ref shutdownCount));
+
+        Assert.True(coordinator.TryHandleShutdownMessage(
+            UiShutdownCoordinator.WM_QUERYENDSESSION,
+            IntPtr.Zero,
+            () => checkpointCount++,
+            out IntPtr result));
+
+        Assert.Equal((IntPtr)1, result);
+        Assert.Equal(0, checkpointCount);
+        Assert.Equal(0, Volatile.Read(ref shutdownCount));
+        Assert.False(coordinator.IsShutdownRequested);
+    }
+
+    [Fact]
+    public void CancelledEndSession_LeavesApplicationRunning()
+    {
+        int checkpointCount = 0;
+        int shutdownCount = 0;
+        var coordinator = new UiShutdownCoordinator(
+            () => true,
+            _ => throw new InvalidOperationException("UI dispatch is not expected"),
+            () => Interlocked.Increment(ref shutdownCount));
+
+        Assert.True(coordinator.TryHandleShutdownMessage(
+            UiShutdownCoordinator.WM_QUERYENDSESSION, IntPtr.Zero, () => checkpointCount++, out _));
+        Assert.True(coordinator.TryHandleShutdownMessage(
+            UiShutdownCoordinator.WM_ENDSESSION, IntPtr.Zero, () => checkpointCount++, out IntPtr result));
+
+        Assert.Equal(IntPtr.Zero, result);
+        Assert.Equal(0, checkpointCount);
+        Assert.Equal(0, Volatile.Read(ref shutdownCount));
+        Assert.False(coordinator.IsShutdownRequested);
+    }
+
+    [Fact]
+    public void EndingSession_RunsCheckpointBeforeShutdownBody()
+    {
+        var order = new ConcurrentQueue<string>();
+        var releaseShutdown = NewCompletionSource();
+        var coordinator = new UiShutdownCoordinator(
+            () => true,
+            _ => throw new InvalidOperationException("UI dispatch is not expected"),
+            async () =>
+            {
+                order.Enqueue("shutdown");
+                await releaseShutdown.Task;
+            });
+
+        Assert.True(coordinator.TryHandleShutdownMessage(
+            UiShutdownCoordinator.WM_ENDSESSION,
+            (IntPtr)1,
+            () => order.Enqueue("checkpoint"),
+            out IntPtr result));
+
+        // The handler returns while the asynchronous body is still pending, as WM_ENDSESSION must.
+        Assert.Equal(IntPtr.Zero, result);
+        Assert.Equal(new[] { "checkpoint", "shutdown" }, order.ToArray());
+        Assert.True(coordinator.IsShutdownRequested);
+        releaseShutdown.TrySetResult(null);
+    }
+
+    [Fact]
+    public void FormAndSessionEndedNotifications_CheckpointAndShutDownOnce()
+    {
+        int checkpointCount = 0;
+        int shutdownCount = 0;
+        var releaseShutdown = NewCompletionSource();
+        var coordinator = new UiShutdownCoordinator(
+            () => true,
+            _ => throw new InvalidOperationException("UI dispatch is not expected"),
+            async () =>
+            {
+                Interlocked.Increment(ref shutdownCount);
+                await releaseShutdown.Task;
+            });
+
+        // The form's WM_ENDSESSION and SystemEvents.SessionEnded may arrive in either order.
+        Assert.True(coordinator.TryHandleShutdownMessage(
+            UiShutdownCoordinator.WM_ENDSESSION, (IntPtr)1, () => checkpointCount++, out _));
+        coordinator.RequestAfterCheckpoint(() => checkpointCount++);
+        Assert.True(coordinator.TryHandleShutdownMessage(
+            UiShutdownCoordinator.WM_ENDSESSION, (IntPtr)1, () => checkpointCount++, out _));
+
+        Assert.Equal(1, checkpointCount);
+        Assert.Equal(1, Volatile.Read(ref shutdownCount));
+        releaseShutdown.TrySetResult(null);
+    }
+
+    [Fact]
+    public void EndingSession_DuringRunningShutdown_CheckpointsOnce()
+    {
+        int checkpointCount = 0;
+        int shutdownCount = 0;
+        var releaseShutdown = NewCompletionSource();
+        var coordinator = new UiShutdownCoordinator(
+            () => true,
+            _ => throw new InvalidOperationException("UI dispatch is not expected"),
+            async () =>
+            {
+                Interlocked.Increment(ref shutdownCount);
+                await releaseShutdown.Task;
+            });
+
+        // A user Exit is still awaiting server stop or hardware close when the session ends. Its
+        // final save sits behind those awaits, so the session end still writes the checkpoint.
+        Task userExit = coordinator.RequestAsync();
+        Assert.True(coordinator.TryHandleShutdownMessage(
+            UiShutdownCoordinator.WM_ENDSESSION, (IntPtr)1, () => checkpointCount++, out _));
+        coordinator.RequestAfterCheckpoint(() => checkpointCount++);
+
+        Assert.Equal(1, checkpointCount);
+        Assert.Equal(1, Volatile.Read(ref shutdownCount));
+        Assert.False(userExit.IsCompleted);
+        releaseShutdown.TrySetResult(null);
+    }
+
+    [Fact]
+    public async Task EndingSession_AfterShutdownCompleted_SkipsCheckpoint()
+    {
+        int checkpointCount = 0;
+        var coordinator = new UiShutdownCoordinator(
+            () => true,
+            _ => throw new InvalidOperationException("UI dispatch is not expected"),
+            () => { });
+
+        await coordinator.RequestAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(coordinator.TryHandleShutdownMessage(
+            UiShutdownCoordinator.WM_ENDSESSION, (IntPtr)1, () => checkpointCount++, out _));
+
+        Assert.Equal(0, checkpointCount);
+    }
+
+    [Fact]
+    public void CloseMessage_IsSwallowedOnlyOnceShutdownIsRequested()
+    {
+        var releaseShutdown = NewCompletionSource();
+        var coordinator = new UiShutdownCoordinator(
+            () => true,
+            _ => throw new InvalidOperationException("UI dispatch is not expected"),
+            () => releaseShutdown.Task);
+
+        Assert.False(coordinator.TryHandleShutdownMessage(
+            UiShutdownCoordinator.WM_CLOSE, IntPtr.Zero, () => { }, out _));
+
+        // Restart Manager sends WM_CLOSE right after a confirmed WM_ENDSESSION returns.
+        Assert.True(coordinator.TryHandleShutdownMessage(
+            UiShutdownCoordinator.WM_ENDSESSION, (IntPtr)1, () => { }, out _));
+        Assert.True(coordinator.TryHandleShutdownMessage(
+            UiShutdownCoordinator.WM_CLOSE, IntPtr.Zero, () => { }, out IntPtr result));
+
+        Assert.Equal(IntPtr.Zero, result);
+        releaseShutdown.TrySetResult(null);
+    }
+
+    [Fact]
+    public void ThrowingCheckpoint_StillStartsShutdown()
+    {
+        var checkpointFailure = new InvalidOperationException("checkpoint failed");
+        int shutdownCount = 0;
+        var coordinator = new UiShutdownCoordinator(
+            () => true,
+            _ => throw new InvalidOperationException("UI dispatch is not expected"),
+            () => Interlocked.Increment(ref shutdownCount));
+
+        InvalidOperationException observed = Assert.Throws<InvalidOperationException>(
+            () => coordinator.RequestAfterCheckpoint(() => throw checkpointFailure));
+
+        Assert.Same(checkpointFailure, observed);
+        Assert.Equal(1, Volatile.Read(ref shutdownCount));
+    }
+
+    [Fact]
+    public void BackgroundCheckpointRequest_NeverRunsCheckpointOffUiThread()
+    {
+        bool isOnUiThread = false;
+        var queued = new ConcurrentQueue<Action>();
+        int checkpointCount = 0;
+        int shutdownCount = 0;
+        var coordinator = new UiShutdownCoordinator(
+            () => isOnUiThread,
+            action => queued.Enqueue(action),
+            () => Interlocked.Increment(ref shutdownCount));
+
+        coordinator.RequestAfterCheckpoint(() => checkpointCount++);
+        Assert.Equal(0, checkpointCount);
+        Assert.Single(queued);
+
+        // The UI thread can still checkpoint before it runs the queued body.
+        isOnUiThread = true;
+        coordinator.RequestAfterCheckpoint(() => checkpointCount++);
+        Assert.Equal(1, checkpointCount);
+        Assert.Equal(1, Volatile.Read(ref shutdownCount));
+
+        Assert.True(queued.TryDequeue(out Action delayed));
+        delayed();
+        Assert.Equal(1, Volatile.Read(ref shutdownCount));
+    }
+
+    [Theory]
+    [InlineData(0x0010)] // WM_CLOSE before shutdown
+    [InlineData(0x0112)] // WM_SYSCOMMAND
+    [InlineData(0x001A)] // WM_WININICHANGE
+    public void OtherMessages_AreLeftToTheCaller(int msg)
+    {
+        var coordinator = new UiShutdownCoordinator(
+            () => true,
+            _ => throw new InvalidOperationException("UI dispatch is not expected"),
+            () => throw new InvalidOperationException("shutdown is not expected"));
+
+        Assert.False(coordinator.TryHandleShutdownMessage(
+            msg, (IntPtr)1, () => throw new InvalidOperationException("checkpoint is not expected"), out _));
+        Assert.False(coordinator.IsShutdownRequested);
+    }
+
     private static TaskCompletionSource<object> NewCompletionSource()
     {
         return new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);

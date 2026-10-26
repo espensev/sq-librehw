@@ -298,6 +298,30 @@ Verification on 2026-10-19:
 
 - Session end, form close, and autosave converge on one UI-thread, exactly-once
   shutdown path; static `SystemEvents` handlers are detached.
+- Windows session end follows the documented protocol. `MainForm.WndProc`
+  answers `WM_QUERYENDSESSION` TRUE with no side effects, so it never vetoes and
+  never starts teardown on a query, and ignores a cancelled `WM_ENDSESSION`
+  (wParam FALSE). A confirmed end writes one forced, dialog-free settings
+  checkpoint synchronously and then starts the ordered teardown before the
+  message returns, because Windows may terminate the process at any point after
+  that. The checkpoint also runs when a user Exit teardown is already in
+  progress, because that teardown's final save still sits behind its awaits.
+  Session end can arrive while hardware discovery (or the PawnIO prompt) is
+  still running, before sensors have claimed their loaded history, so the
+  checkpoint keeps unclaimed `<sensor>/values` history instead of dropping it as
+  departed hardware; the next ordinary save still drops what stays unclaimed.
+  Neither message reaches `Form.WndProc`, so a cancelled end cannot leave
+  `CloseReason.WindowsShutDown` behind. Once shutdown is requested, `WM_CLOSE` is
+  swallowed too: Restart Manager sends it right after `WM_ENDSESSION` returns,
+  and Form would otherwise close the window and end the message loop before
+  hardware close and the final save. The teardown still exits the application
+  when it finishes. The trade-off: if a teardown stalls (for example in a hung
+  driver close), non-forced close requests such as `taskkill` without `/F` or
+  a non-forced Restart Manager shutdown no longer end the process; forced
+  termination and a real session end still do. `SystemEvents.SessionEnded` is
+  raised on the UI thread through the subscriber's synchronization context and
+  takes the same once-only path. At a real logoff or power-off, hardware close and the post-close final
+  save still run only if Windows lets the process live long enough.
 - Hardware callbacks marshal through a captured live UI dispatcher and are
   discarded after closing begins. A missing/destroyed handle is not permission
   for background UI mutation.
@@ -519,6 +543,18 @@ Verification on 2026-10-19:
 - [ ] Decide whether failed `Computer.Reset()` must reconstruct the last known
   group set. The current failure path closes every partial replacement and
   leaves no mixed generation, but already-closed prior groups cannot be restored.
+- [ ] Live-verify the session-end protocol after the next promotion: at a real
+  restart the settings file's LastWriteTime lands within seconds of the User32
+  1074 event, and Winsrv 10001 stops naming the executable in sessions where the
+  window was shown. Task result `0x80070004` is still expected, because every
+  logon-task application on the machine ends with it at session end.
+- [ ] Keep unclaimed `<sensor>/values` history in every save until hardware
+  discovery has finished a successful `Computer.Open`, not only in the
+  session-end checkpoint. Today an autosave during a long PawnIO prompt, or the
+  teardown's final save after a cancelled or failed open, drops every loaded
+  history. One new route came with the session-end protocol: a Restart Manager
+  shutdown while the PawnIO prompt is pending now runs the teardown to its final
+  save, which overwrites the checkpoint that kept the history.
 - [ ] Optional confidence gate: run a 60-minute current-commit live soak.
 
 ## Verification plan
@@ -569,6 +605,20 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-10-26 session-end protocol, source-only: event logs from 10-19 to 10-24
+  showed that the `MainForm_FormClosing` veto only occurred after the window had
+  been shown and caused no measurable delay. Task result `0x80070004` is shared
+  by every logon-task application at session end. The real defect was that the
+  settings file was never written at any of the five checkable shutdowns. The
+  fix was reviewed by a three-lens panel with per-finding verifiers and an
+  independent critic. A Restart Manager probe found that `WM_CLOSE` arrives
+  about 1 ms after `WM_ENDSESSION` returns. The critic reproduced history loss
+  from a checkpoint saved during discovery, and both findings were fixed with
+  regression tests. Six coordinator and persistence mutations each failed at
+  least one test. `eng\ci\Invoke-LhmGates.ps1 -All` passed 10 gates (`ci-gates`
+  is self-skipped): Application 266 passed with one opt-in skip, Library 193,
+  Contracts 115, and both x64 Release targets built clean. Not yet promoted or
+  observed at a real shutdown; see the open follow-up.
 - 2026-10-23 master promotion, live: master `9e68b348` (67 commits past
   `957923fc`, including the device-polling isolation, history-preservation,
   and runtime-enables fixes and the 2026-10-19 upstream integration) was

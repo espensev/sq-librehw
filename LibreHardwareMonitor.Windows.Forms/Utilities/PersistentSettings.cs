@@ -280,6 +280,17 @@ public class PersistentSettings : ISettings
 
     public void Save(string fileName)
     {
+        Save(fileName, retainUnclaimedSensorValues: false);
+    }
+
+    /// <summary>
+    /// Saves the settings. With <paramref name="retainUnclaimedSensorValues"/> set, loaded sensor
+    /// history that no live sensor has claimed yet is written and kept instead of being dropped as
+    /// history of departed hardware. A save that can run before hardware discovery has constructed
+    /// every sensor must use it; a later ordinary save still drops whatever stays unclaimed.
+    /// </summary>
+    public void Save(string fileName, bool retainUnclaimedSensorValues)
+    {
         _saveStageObserver?.Invoke(SaveStage.Entered);
 
         // Serialize the snapshot as well as the file swap. If two saves overlap, the later caller
@@ -310,7 +321,7 @@ public class PersistentSettings : ISettings
                 {
                     // Sensor history that was loaded but never claimed by a live sensor this
                     // session belongs to hardware that is gone; omit it from the snapshot.
-                    if (_unclaimedSensorValues.Contains(keyValuePair.Key))
+                    if (!retainUnclaimedSensorValues && _unclaimedSensorValues.Contains(keyValuePair.Key))
                     {
                         staleSensorValues.Add(keyValuePair.Key);
                         continue;

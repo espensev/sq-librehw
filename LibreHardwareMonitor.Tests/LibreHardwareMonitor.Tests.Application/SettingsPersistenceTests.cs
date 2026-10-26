@@ -119,6 +119,38 @@ public sealed class SettingsPersistenceTests : IDisposable
         Assert.Equal(8085, reloaded.GetValue("listenerPort", 0));
     }
 
+    [Fact]
+    public void RetainingSave_BeforeDiscovery_KeepsUnclaimedHistoryForLaterSensors()
+    {
+        DateTime now = new(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        string path = ConfigPath("checkpoint");
+        string encoded = Sensor.EncodeValuesBounded(new[] { new SensorValue(10, now.AddMinutes(-1)) }, Sensor.MaxPersistedValuesLength);
+        WriteConfig(path, (SensorValuesKey, encoded), (NicValuesKey, encoded));
+
+        PersistentSettings settings = new();
+        settings.Load(path);
+
+        // A session-end checkpoint lands before hardware discovery has constructed any sensor.
+        settings.Save(path, retainUnclaimedSensorValues: true);
+
+        PersistentSettings checkpointed = new();
+        checkpointed.Load(path);
+        Assert.True(checkpointed.Contains(SensorValuesKey));
+        Assert.True(checkpointed.Contains(NicValuesKey));
+
+        // Discovery then constructs the sensor, which still finds its history.
+        Sensor sensor = CreateHistorySensor(settings, () => now, out _);
+        Assert.Equal(new[] { 10f }, sensor.Values.Where(value => !float.IsNaN(value.Value)).Select(value => value.Value));
+
+        // An ordinary save still drops the history that stayed unclaimed.
+        settings.Save(path);
+
+        PersistentSettings saved = new();
+        saved.Load(path);
+        Assert.True(saved.Contains(SensorValuesKey));
+        Assert.False(saved.Contains(NicValuesKey));
+    }
+
     [Theory]
     [InlineData("valid")]
     [InlineData("missing")]
