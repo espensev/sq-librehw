@@ -8,7 +8,9 @@
 
 **Standards:** `AGENTS.md`, `.codex/skills/project.toml`, owner environment and complete-delivery rules
 
-**Verdict:** PASS WITH NOTES after the source corrections below; host environment enrollment remains open.
+**Verdict:** PASS after the source corrections below. The later owner clarification
+removes the proposed host environment enrollment: local variable names are not
+shared prerequisites.
 
 ## Findings and resolution
 
@@ -50,7 +52,7 @@
 - Original hosted runs `40575375474` and `40575379222`: verified successful on
   `caab381f`; these are baseline evidence, not acceptance of the integration.
 
-## Coverage and remaining work
+## Coverage and portability clarification
 
 All ten files in Claude's final documentation/gate changes were reviewed;
 ledger classifications were sampled while path coverage was checked mechanically.
@@ -58,9 +60,10 @@ Logger and live-verifier behavior and their regression cases were reviewed.
 Historical Phase 7 scope is preserved and explicitly requires reconciliation
 with the later dashboard extraction before any campaign starts.
 
-SND-HOST is missing all three `MACHINE_*_ROOT` values at Process, User, and
-Machine scope. Its installed identity verifier returned the expected
-`snd-host` instance, and `LHM_RELEASE_ROOT` plus `manifests/layout.json` provided
-the existing checkout authority. Environment enrollment belongs to its owning
-configuration workflow. Live promotion, listener changes, crash tasks, and
-launcher Apply remain separate from this source integration.
+The absence of `MACHINE_*_ROOT` on SND-HOST is not a defect or open enrollment
+task. Owner clarification on 2026-10-27 requires shared workflows to accept each
+machine's own configuration and explicit paths. The existing interfaces already
+support this; the path conventions are documented in `docs/README.md`.
+SND-HOST's identity and checkout were verified using its existing local authority.
+Live promotion, listener changes, crash tasks, and launcher Apply remain separate
+from this source integration.

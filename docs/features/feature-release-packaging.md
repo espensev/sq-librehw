@@ -112,26 +112,26 @@ runtime-data configuration is safe.
 `New-LhmRelease.ps1` resolves the release root in this order:
 
 1. explicit `-ReleaseRoot`;
-2. `LHM_RELEASE_ROOT`;
+2. optional `LHM_RELEASE_ROOT`;
 3. the `<repository-directory-name>-releases` sibling of the repository
    (a checkout named `sq-librehw` yields `sq-librehw-releases`; a checkout
    named `main` yields `main-releases`). This fallback follows the directory
-   name, not the machine or Git remote name. The configured SND-HOST
-   `LHM_RELEASE_ROOT` selects the stack's release store before this fallback.
+   name, not the machine or Git remote name.
+
+No global variable convention is required. A caller using a different local
+configuration or variable name passes its resolved path to `-ReleaseRoot`;
+there is no need to create or rename an environment variable.
 
 All paths are resolved before mutation. The release root is rejected when it is
 the repository, is inside the repository, contains the repository, or resolves
 through a reparse-point alias to any of those relationships. The script also
 rejects a candidate or staging path that escapes the resolved release root.
 
-The generic sibling fallback is portable, but it is not the SND-HOST promotion
-location. On SND-HOST,
-release and verification commands use an explicit root, or a machine-local
-`LHM_RELEASE_ROOT`, of
-`E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\releases`. The live runtime
-remains separate at
-`E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\deployments\current`; neither
-path is inside `D:\DevHome\workspaces\librehw-host`.
+For an existing operational stack, select the candidate store from that
+installation's configuration instead of assuming the sibling fallback is its
+promotion location. The candidate store and live runtime remain separate from
+the source checkout. `-StackRoot` independently selects the stack for live-state
+verification; a release-root path does not establish the stack's location.
 
 The external layout is:
 
@@ -369,7 +369,7 @@ pwsh -NoProfile -File ops\candidate\Test-LhmReleaseSystem.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\New-LhmRelease.ps1 -ReleaseRoot <external-release-root>
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseCandidate.ps1 -Latest -ReleaseRoot <external-release-root>
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseCandidate.ps1 -Latest -RequirePromotable -RequireCurrentSource -ReleaseRoot <external-release-root>
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Show-LhmExecutableIdentity.ps1 -Path <exact-exe> -StackRoot E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack -Json
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Show-LhmExecutableIdentity.ps1 -Path '<exact-exe>' -StackRoot '<stack-root>' -Json
 
 if (Get-ChildItem -Recurse -Directory -Force | Where-Object Name -in @('bin', 'obj')) { throw 'Repository output was repopulated.' }
 git diff --check

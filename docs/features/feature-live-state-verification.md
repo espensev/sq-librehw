@@ -1,12 +1,11 @@
 # Feature Spec: Live State Verification
 
 **Status:** implemented; report-only
-**Updated:** 2026-09-28
+**Updated:** 2026-10-27
 
 ## Problem
 
-The SND-HOST stack runbook
-(`E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\docs\OPERATIONS.md`) defines a
+The SND-HOST stack runbook (`docs/OPERATIONS.md` inside its stack) defines a
 live-verification gate — exact-path process, task states, endpoint health, CSV
 growth, payload hash — that has so far been executed as hand-typed commands.
 Hand-typed verification drifts, skips steps under time pressure, and leaves no
@@ -25,8 +24,9 @@ stack's own manifests and reports whether the live deployment matches them.
 
 ## Behavior contract
 
-- Input is an explicit `-StackRoot`; the script contains no machine-specific
-  path. All expectations come from the stack's `manifests\layout.json`,
+- Input is an explicit `-StackRoot`; the script requires no DevHome or other
+  machine-wide variable naming scheme. Resolve the argument from the target's
+  own configuration. All expectations come from the stack's `manifests\layout.json`,
   `manifests\consumers.json`, and `manifests\channels\live.json`.
 - Refresh the invoking PowerShell process's .NET time-zone cache before any
   clock observations, including when called from a long-running session.
@@ -162,11 +162,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\live-verification\Te
 pwsh -NoProfile -File ops\live-verification\Test-LhmLiveStateSystem.ps1
 ```
 
-Live usage on SND-HOST (read-only; safe at any time):
+Live usage (read-only; replace the placeholder with the selected stack's root):
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\live-verification\Test-LhmLiveState.ps1 `
-  -StackRoot 'E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack'
+  -StackRoot '<stack-root>'
 ```
 
 ## Verification log

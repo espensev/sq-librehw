@@ -6,9 +6,34 @@
 This file records stable boundaries. Query Git and stack manifests for current
 commits, versions, hashes, processes, and candidate/live state.
 
-## Machines
+## Path and machine configuration
 
-One product, one source history, two machines. `origin`
+The shared repository requires no machine-wide environment-variable naming
+scheme. Resolve source paths from the Git checkout or script location. Supply
+deployment paths through the tool's explicit arguments and the selected
+installation's configuration or manifests.
+
+| Task | Portable input | Optional convenience |
+|---|---|---|
+| Locate source | Git checkout or script location | A machine's own checkout shortcut |
+| Create or validate candidates | `-ReleaseRoot` | `LHM_RELEASE_ROOT`; otherwise the documented checkout-sibling fallback |
+| Verify a deployment | `-StackRoot`, then its layout, consumer, and live manifests | Any locally configured path passed to the argument |
+| Select runtime data | Valid `librehw.runtime.json` (`schema`, `dataRoot`, `managedStartupTaskPath`) | `LIBREHARDWAREMONITOR_DATA_ROOT`; without either, the executable directory |
+| Run log management | Required `-ConfigPath` with the installation's paths and settings | Any locally selected configuration path passed to that argument |
+
+Callers may use their own variable names when passing these arguments. A
+missing optional variable is not an enrollment defect. Do not infer a stack
+root from the candidate directory or create global variables just to match
+another machine. Validate the selected paths and target identity using the
+tool's contract and the target's operational policy.
+
+`MACHINE_*_ROOT` and `SEV_LOCAL_*` are SND-DESK conventions used by its local
+adapters and inventory. Other machines need not define them. Windows/platform
+requirements and the SND-DESK-only deployment boundary still apply.
+
+## Current installations
+
+The two current installations use one product and source history. `origin`
 (`https://github.com/espensev/sq-librehw.git`, branch `master`) is the only
 development remote. `librehw-host`
 (`https://github.com/celine-anime/librehw-host.git`, branch `main`) is the
@@ -20,22 +45,20 @@ official source; the [upstream divergence ledger](architecture/upstream-divergen
 lists every file that differs from it. Verify the local machine identity before
 any operational write; a peer's paths never establish local authority.
 
-Resolve paths on the machine that owns them. The table uses paths relative
-to `MACHINE_TOOLS_ROOT`, except for the source checkout marked as code-root
-relative. In PowerShell use `Join-Path` with the named root. SND-HOST's legacy
-locations are inventory, not proof that its role-root variables are configured.
+The table identifies each installation's configuration authority. These
+machine-specific arrangements are not prerequisites for a new installation.
 
 | | SND-DESK | SND-HOST |
 |---|---|---|
 | Role | development checkout and its own live runtime | peer operational stack |
-| Source checkout | `Monitoring\sq-librehw` | `DevHome\workspaces\librehw-host\checkouts\main`, relative to `MACHINE_CODE_ROOT` |
+| Source checkout | `sq-app.json`: `root`, resolved locally | Stack `manifests/layout.json`: `development.mainCheckout` |
 | Remote and branch | `origin` / `master` | local `origin` / `main`, pulling the `librehw-host` mirror; push disabled |
 | Release tooling | `ops\deploy\snd-desk`; fails closed unless the machine is `snd-desk` | `ops\candidate` (machine-neutral) plus the stack's own manifests |
-| Candidate store | `Monitoring\LibreHW\Candidates` | `LHM_RELEASE_ROOT`, configured by the host stack |
-| Live runtime | `Monitoring\LibreHW\Runtime`, one rollback slot in `Runtime\rollback` | `deployments\current` below the stack root (the parent of `LHM_RELEASE_ROOT`) |
-| Live version authority | `Runtime\release.json` | `manifests\channels\live.json` in the stack |
-| Mutable data | `%SEV_LOCAL_DATA%\LibreHardwareMonitor` | beside the executable; no `librehw.runtime.json` yet |
-| Launcher and public command | `Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1`, existing `%SEV_LOCAL_BIN%\librehw.cmd` compatibility shim | the stack's own `AGENTS.md`, manifests, and `docs\OPERATIONS.md` |
+| Candidate store | `-CandidateDirectory` passed to the SND-DESK publish helper | Explicit `-ReleaseRoot` or the host's configured optional shortcut |
+| Live runtime | `sq-app.json`: deployment `root`, with its `rollback` slot | Stack `manifests/layout.json`: `operations.live` |
+| Live version authority | Deployment `release.json` | `manifests\channels\live.json` in the stack |
+| Mutable data | Deployment `librehw.runtime.json` | Beside the executable unless configured otherwise |
+| Launcher and public command | `sq-app.json`: `consumers` | The stack's own manifests and `docs\OPERATIONS.md` |
 | Live-state check | `release.json`, `http://127.0.0.1:18085/data.json`, `Sync-LibreHardwareMonitorLauncher.ps1 -Mode Validate` | `ops\live-verification\Test-LhmLiveState.ps1 -StackRoot <stack>` |
 | Machine record | `sq-app.json` (paths and consumers only; no versions) | none in this repository |
 | Installed version | query `release.json` | query `manifests\channels\live.json`; refresh runtime evidence before an operational decision |
@@ -43,7 +66,7 @@ locations are inventory, not proof that its role-root variables are configured.
 Source, candidates, runtime, rollback, and mutable data are separate domains
 on both machines. Candidate validation never authorizes promotion. The complete
 SND-DESK flow is in [the local release contract](features/feature-local-release-system.md);
-the SND-HOST candidate and verification contracts are in
+the shared candidate and verification contracts used by SND-HOST are in
 [release packaging](features/feature-release-packaging.md) and
 [live-state verification](features/feature-live-state-verification.md).
 
@@ -79,18 +102,16 @@ Use live Git commands for branch, cleanliness, and ahead/behind state.
 
 ### Source routing on SND-HOST
 
-On 2026-10-27, SSH confirmed that `MACHINE_CODE_ROOT`, `MACHINE_TOOLS_ROOT`, and
-`MACHINE_WORKLOAD_ROOT` are absent at Process, User, and Machine scope on
-SND-HOST. Its `LHM_RELEASE_ROOT` is configured, and the stack's
-`manifests/layout.json` supplies `development.mainCheckout` for inspecting the
-legacy checkout without inventing a path. Review recovered its six unpublished
+The selected stack's `manifests/layout.json` supplies
+`development.mainCheckout` for inspecting the checkout. Review recovered its six unpublished
 commits through `f0dadd06` and integrated their history, including CSV clock
-recovery and live-verifier fixes. Keep that checkout pull-only; make subsequent
-source changes through `origin/master` on SND-DESK and fast-forward the mirror.
-The host's owning environment configuration must separately establish the role
-roots. Matching GitHub branch tips alone does not establish a checkout's state.
+recovery and live-verifier fixes. Keep that operational checkout pull-only;
+make source changes through the canonical repository's `master` branch and
+fast-forward the mirror.
+No SND-DESK-style environment enrollment is required. Matching GitHub branch
+tips alone does not establish a checkout's state.
 See the [integration review](reviews/review-2026-10-27-machine-version-unification.md)
-for evidence and remaining environment work. Runtime promotion and the held
+for integration evidence. Runtime promotion and the held
 live-machine changes remain separate.
 
 ## Current boundaries
@@ -202,7 +223,7 @@ dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf -p:Platfo
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseSystem.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Show-LhmExecutableIdentity.ps1 -Path <exact-exe> -StackRoot (Split-Path -Parent $env:LHM_RELEASE_ROOT) -Json
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Show-LhmExecutableIdentity.ps1 -Path '<exact-exe>' -StackRoot '<stack-root>' -Json
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-LhmLogManagement.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\live-verification\Test-LhmLiveStateSystem.ps1
 ```

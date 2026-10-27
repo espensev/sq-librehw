@@ -5,13 +5,22 @@
 **Updated:** 2026-10-27
 **Purpose:** keep feature work spec-first without blocking normal review, build, launch, and bugfix work.
 
-**Machines:** this fork runs on SND-DESK and SND-HOST from one source history
+**Machines:** current installations include SND-DESK and SND-HOST, sharing one source history
 (`origin/master`; the `librehw-host` remote is a fast-forward mirror of it).
 The machine matrix in `docs/README.md` is the single description of each
 machine's checkout, remote, release tooling, runtime root, and live version
-authority. Check `$env:COMPUTERNAME` before any operational write and use only
-that machine's column; the other machine's paths never establish local
-authority.
+authority. Identify the target with the platform's machine identity and follow
+its operational verification policy before writes; another machine's paths
+never establish local authority.
+
+**Portability:** shared code and instructions must not require SND-DESK's
+environment-variable naming scheme on other machines. Resolve source paths
+from the checkout or script location, and deployment paths from explicit
+arguments and the target's own configuration/manifests. Environment-variable
+shortcuts are optional where the tool supports them. Keep machine-specific
+adapters, including `ops/deploy/snd-desk` and `sq-app.json`, explicitly scoped;
+do not require another machine to create or rename global variables to use
+the shared tooling.
 
 This repository is not specs-only: product code exists and normal maintenance can proceed. The rule is narrower: **new features and meaningful behavior changes need a clear feature spec before implementation starts**, unless the maintainer explicitly asks for a small direct fix or exploratory spike.
 
