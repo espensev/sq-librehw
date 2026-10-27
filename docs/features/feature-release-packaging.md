@@ -114,7 +114,10 @@ runtime-data configuration is safe.
 1. explicit `-ReleaseRoot`;
 2. `LHM_RELEASE_ROOT`;
 3. the `<repository-directory-name>-releases` sibling of the repository
-   (`sq-librehw-releases` on SND-DESK, `librehw-host-releases` on SND-HOST).
+   (a checkout named `sq-librehw` yields `sq-librehw-releases`; a checkout
+   named `main` yields `main-releases`). This fallback follows the directory
+   name, not the machine or Git remote name. The configured SND-HOST
+   `LHM_RELEASE_ROOT` selects the stack's release store before this fallback.
 
 All paths are resolved before mutation. The release root is rejected when it is
 the repository, is inside the repository, contains the repository, or resolves

@@ -7,8 +7,8 @@ param(
 # Asserts that docs/architecture/upstream-divergence.md names every upstream-owned
 # path that differs from the pinned upstream base, names no upstream-owned path
 # that no longer differs, lists every fork-only file added inside the inherited
-# product roots, and still pins the merge-base with a fetched upstream/master. Skips (and passes) when the base commit object is absent, as
-# in a shallow hosted checkout without the upstream remote.
+# product roots, and still pins the merge-base with a fetched upstream/master.
+# Missing base history is a failure: a skipped comparison cannot establish coverage.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -79,9 +79,10 @@ Assert-Ok 'ledger has the fork-only marker region' { $null -ne $forkOnlyRegion }
 if ($failures.Count -gt 0) { exit 1 }
 
 $baseAvailable = (Invoke-Git -Arguments @('cat-file', '-e', "$base^{commit}")).ExitCode -eq 0
+Assert-Ok 'pinned upstream base is available' { $baseAvailable }
 if (-not $baseAvailable) {
-    Write-Output "SKIP: upstream base $base is not present in this clone; ledger content not compared"
-    exit 0
+    Write-Output "Fetch history containing upstream base $base before running this check; shallow clones may need git fetch --unshallow."
+    exit 1
 }
 
 Assert-Ok "pinned base $($base.Substring(0, 8)) is an ancestor of HEAD" {

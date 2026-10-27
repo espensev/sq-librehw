@@ -83,6 +83,17 @@ try {
     $bodyLines = @($lines | Where-Object { $_ -notmatch '^\s*#' })
     $body = $bodyLines -join "`n"
 
+    $checkoutIndexes = @(for ($i = 0; $i -lt $bodyLines.Count; $i++) {
+        if ($bodyLines[$i] -match '^\s*uses:\s*actions/checkout@') { $i }
+    })
+    $checkoutText = ''
+    if ($checkoutIndexes.Count -eq 1) {
+        # Start at the step's name so its sibling uses/with entries stay together.
+        $checkoutText = (Get-Block -Lines $bodyLines -Index ($checkoutIndexes[0] - 1)) -join "`n"
+    }
+    Assert-Case 'checkout fetches full history for the pinned upstream base' `
+        (($checkoutIndexes.Count -eq 1) -and ($checkoutText -match '(?m)^\s+fetch-depth:\s*0\s*(?:#.*)?$'))
+
     # --- Case 2: it parses as YAML -------------------------------------------
     $parsed = $null
     $python = Get-Command python -ErrorAction SilentlyContinue

@@ -64,6 +64,12 @@ $ExitRefused = 3
 # exist in the configuration but are deliberately not run, each with a reason.
 # ---------------------------------------------------------------------------
 $GateClassification = [ordered]@{
+    'upstream-divergence'           = @{
+        Classification = 'included'
+        AllowedKeys    = @('verify', 'test')
+        ExcludedKeys   = @()
+        Reason         = 'Compare the upstream ledger with Git history and exercise isolated regression fixtures; no live changes.'
+    }
     'pawnio-portable'                = @{
         Classification = 'included'
         AllowedKeys    = @('test')

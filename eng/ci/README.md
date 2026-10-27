@@ -54,6 +54,7 @@ warning, so a not-yet-registered gate never fails a run.
 
 | Gate | Runs | Reason |
 |---|---|---|
+| `upstream-divergence` | `verify`, `test` | Compare the ledger with the pinned upstream base and run temporary-repository regression cases. Missing base history fails. |
 | `winforms-net10` | `build`, `test` | Non-deploying source build and the deterministic .NET suites via `LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf`. |
 | `winforms-net472` | `build` | Non-deploying second-framework source build. |
 | `avalonia-spike` | `build`, `test` | Fixture-only, non-shipping spike solution and its runner. |
@@ -97,6 +98,12 @@ Including it in `-All` would recurse. Run the suite directly instead:
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Test-LhmCiGates.ps1
 ```
+
+The upstream ledger and its regression cases also have their own included
+`upstream-divergence` gate. They run under `-All` without invoking the
+self-referential runner tests. The hosted workflow fetches full history so
+the pinned upstream base is available; a clone missing that base must fetch
+it before the check can pass.
 
 ## Deny-list
 

@@ -47,6 +47,8 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # The upstream divergence check requires the pinned base.
 
       - name: Set up the pinned .NET SDK from global.json
         uses: actions/setup-dotnet@v5

@@ -173,6 +173,15 @@ test = 'powershell.exe -NoProfile -Command Set-Content -Path $sentinel -Value ra
         ($classifiedExcluded -and $neverRun) `
         "classified: $classifiedExcluded; steps: $(@($ciDry.steps).Count)"
 
+    $ledgerGate = @($drySummary.gates | Where-Object { $_.name -eq 'upstream-divergence' })
+    $ledgerCommands = @($ledgerGate | ForEach-Object { $_.steps } | ForEach-Object { $_.command })
+    Assert-Case '-All runs the upstream divergence check independently of ci-gates' `
+        (($dry.ExitCode -eq 0) -and ($ledgerGate.Count -eq 1) -and
+         ($ledgerGate[0].classification -eq 'included') -and ($ledgerCommands.Count -eq 2) -and
+         ($ledgerCommands[0] -match 'Test-UpstreamDivergenceLedger\.ps1') -and
+         ($ledgerCommands[1] -match 'Test-UpstreamDivergenceLedgerRegression\.ps1')) `
+        "commands: $($ledgerCommands -join ' | ')"
+
     # --- Case 7: no included command matches the runner's own deny-list ------
     $patterns = @($listSummary.denyList)
     $offenders = @()

@@ -96,6 +96,10 @@ files = ["docs/**/*.md", "agents/*.md", "data/plans/*.json"]
 [smart-test.cross-cutting]
 paths = ["Directory.Build.props", "Directory.Packages.props", "global.json", "LibreHardwareMonitor.sln", "experiments/avalonia-fixture-explorer/LibreHardwareMonitor.Avalonia.Spike.slnx"]
 
+[build-gate.upstream-divergence]
+verify = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\\ci\\tests\\Test-UpstreamDivergenceLedger.ps1"
+test = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\\ci\\tests\\Test-UpstreamDivergenceLedgerRegression.ps1"
+
 [build-gate.winforms-net10]
 build = "dotnet build LibreHardwareMonitor.Windows.Forms\\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64"
 test = "dotnet test LibreHardwareMonitor.Tests\\LibreHardwareMonitor.Tests.slnf -p:Platform=x64"

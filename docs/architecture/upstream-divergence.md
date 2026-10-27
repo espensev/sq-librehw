@@ -25,12 +25,15 @@ stays in the sync specifications linked below; this file does not repeat it.
 - Edit the row in the same pass as the code change. After an upstream sync,
   update the base commit, add rows for new adaptations, and remove rows for
   paths that no longer differ.
-- `eng/ci/Test-LhmCiGates.ps1` runs the ledger check with the other `eng/ci`
-  tests. The check fails when a differing upstream-owned path has no row, when
+- The included `upstream-divergence` gate runs this check and its regression
+  fixtures locally and in hosted `Non-deploying gates`. `eng/ci/Test-LhmCiGates.ps1`
+  also runs them with the other `eng/ci` tests. The check fails when a differing upstream-owned path has no row, when
   a row names an upstream-owned path that no longer differs, when a fork-only
   file added inside an inherited product root is not listed, or when the pinned
-  base is no longer the merge-base with a fetched `upstream/master`. It skips
-  when the base commit is absent from a shallow clone.
+  base is no longer the merge-base with a fetched `upstream/master`. Missing
+  base history fails; fetch the base before retrying. A checkout without an
+  `upstream/master` ref still compares every path against the pinned base,
+  but cannot check that ref's merge-base freshness.
 
 Classes used below: **fork** is intentional fork behavior; **adapt** is a
 change carried only by an upstream integration merge to preserve fork
@@ -328,15 +331,21 @@ reason.
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\tests\Test-UpstreamDivergenceLedger.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Test-LhmCiGates.ps1 -Filter Test-UpstreamDivergenceLedger
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Invoke-LhmGates.ps1 -Gate upstream-divergence
 ```
 
 The check reads the pinned base from this file, lists every upstream-owned path
 that differs from it in the working tree and every fork-only file added inside
 the inherited product roots, and compares both lists with the paths named
 between the ledger markers. It runs under Windows PowerShell 5.1 and
-PowerShell 7 and needs the base commit object; it prints `SKIP` and passes when
-a shallow clone lacks it. The hosted `Non-deploying gates` workflow does not run
-the `ci-gates` suite (it is self-referential), so this check is a local gate.
+PowerShell 7 and requires the base commit object. The hosted workflow fetches
+full history and runs the separate `upstream-divergence` gate; the
+self-referential `ci-gates` suite remains excluded from `-All`.
+
+Acceptance: both PowerShell engines must accept a complete documented fixture
+and reject a nonexistent base, a shallow clone missing the base, an undocumented
+upstream change, and an undocumented fork-only product file. Runner and workflow
+tests must keep this gate included and the checkout configured for full history.
 
 Verification log:
 
@@ -348,3 +357,8 @@ Verification log:
   added inside the inherited product roots to be listed (32 of 32 listed); the
   `EmbeddedController.cs` and `Identification.cs` merge attributions were
   corrected to `93bd9704` from `git blame`; both engines pass.
+- 2026-10-27, review follow-up: nonexistent-base and shallow-clone fixtures
+  reproduced an exit-zero skip. Both now fail; the standalone gate is included
+  in `-All`, with full history in the hosted checkout. The complete `eng/ci`
+  suite passes 122 assertions under each PowerShell engine, with two optional
+  PyYAML skips; the dedicated gate also passes both verification steps.

@@ -18,20 +18,25 @@ official source; the [upstream divergence ledger](architecture/upstream-divergen
 lists every file that differs from it. Verify the local machine identity before
 any operational write; a peer's paths never establish local authority.
 
+Resolve paths on the machine that owns them. The table uses paths relative
+to `MACHINE_TOOLS_ROOT`, except for the source checkout marked as code-root
+relative. In PowerShell use `Join-Path` with the named root. SND-HOST's legacy
+locations are inventory, not proof that its role-root variables are configured.
+
 | | SND-DESK | SND-HOST |
 |---|---|---|
 | Role | development checkout and its own live runtime | peer operational stack |
-| Source checkout | `E:\Monitoring\sq-librehw` (`%MACHINE_TOOLS_ROOT%Monitoring\sq-librehw`) | `D:\DevHome\workspaces\librehw-host\checkouts\main` |
+| Source checkout | `Monitoring\sq-librehw` | `DevHome\workspaces\librehw-host\checkouts\main`, relative to `MACHINE_CODE_ROOT` |
 | Remote and branch | `origin` / `master` | `librehw-host` / `main`, fast-forwarded from `master` |
 | Release tooling | `ops\deploy\snd-desk`; fails closed unless the machine is `snd-desk` | `ops\candidate` (machine-neutral) plus the stack's own manifests |
-| Candidate store | `E:\Monitoring\LibreHW\Candidates` | `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\releases` |
-| Live runtime | `E:\Monitoring\LibreHW\Runtime`, one rollback slot in `Runtime\rollback` | `E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack\deployments\current` |
+| Candidate store | `Monitoring\LibreHW\Candidates` | `LHM_RELEASE_ROOT`, configured by the host stack |
+| Live runtime | `Monitoring\LibreHW\Runtime`, one rollback slot in `Runtime\rollback` | `deployments\current` below the stack root (the parent of `LHM_RELEASE_ROOT`) |
 | Live version authority | `Runtime\release.json` | `manifests\channels\live.json` in the stack |
 | Mutable data | `%SEV_LOCAL_DATA%\LibreHardwareMonitor` | beside the executable; no `librehw.runtime.json` yet |
-| Launcher and public command | `E:\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1`, `%SEV_LOCAL_BIN%\librehw.cmd` | the stack's own `AGENTS.md`, manifests, and `docs\OPERATIONS.md` |
+| Launcher and public command | `Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1`, existing `%SEV_LOCAL_BIN%\librehw.cmd` compatibility shim | the stack's own `AGENTS.md`, manifests, and `docs\OPERATIONS.md` |
 | Live-state check | `release.json`, `http://127.0.0.1:18085/data.json`, `Sync-LibreHardwareMonitorLauncher.ps1 -Mode Validate` | `ops\live-verification\Test-LhmLiveState.ps1 -StackRoot <stack>` |
 | Machine record | `sq-app.json` (paths and consumers only; no versions) | none in this repository |
-| Last observed live build | query `release.json`; do not copy it into documents | `0.9.6+5ad1047.2026-08-05`, observed 2026-08-05; re-observe before any decision |
+| Installed version | query `release.json` | query `manifests\channels\live.json`; refresh runtime evidence before an operational decision |
 
 Source, candidates, runtime, rollback, and mutable data are separate domains
 on both machines. Candidate validation never authorizes promotion. The complete
@@ -40,26 +45,48 @@ the SND-HOST candidate and verification contracts are in
 [release packaging](features/feature-release-packaging.md) and
 [live-state verification](features/feature-live-state-verification.md).
 
+`sq-app.json` is a descriptive SND-DESK inventory. Its `%NAME%` path tokens
+require explicit expansion by a reader, such as
+`[Environment]::ExpandEnvironmentVariables`; JSON parsing alone does not expand
+them. Resolve and validate them on the owning machine before using a path.
+
 ## Version identity
 
 - `Directory.Build.props` pins `Version` `0.9.6`. `AssemblyVersion` stays
   `0.9.6` because the `data.json` contract embeds it; build with `-p:Platform=x64`.
-- Every build identifies itself by commit: the Windows project stamps the
-  product version `0.9.6+<sha7>[-dirty].<yyyy-MM-dd>` from Git.
+- Local builds from a Git checkout stamp the product version
+  `0.9.6+<sha7>[-dirty].<yyyy-MM-dd>`. `StampLocalBuildVersion` is disabled under
+  `GITHUB_ACTIONS=true`; those verification builds use the SDK's versioning
+  and source-revision behavior. If Git cannot supply a local revision, the
+  stamp says `nogit`, which is not a release identity.
 - Release and candidate identifiers embed that commit. SND-DESK
   `Publish-LibreHardwareMonitor.ps1` writes
   `<product version with + replaced by _>-<sha12>-<yyyyMMddTHHmmssZ>`, which
-  renders as `0.9.6_<sha7>.<date>-<sha12>-<utc>`; SND-HOST `New-LhmRelease.ps1`
+  renders as `0.9.6_<sha7>[-dirty].<date>-<sha12>-<utc>`; SND-HOST `New-LhmRelease.ps1`
   writes `0.9.6-<yyyyMMdd-HHmmssfff>-<sha7>`, appends `-dirty` for a dirty
   checkout, and accepts an explicit `-ReleaseId`. Compare machines by commit,
   never by identifier shape.
 - The commit is the only cross-machine version key. Read it from
   `release.json`, `live.json`, or Git when needed; do not copy release
-  identifiers or commits into documents or records, where they go stale.
+  identifiers or commits into current-state documents or inventory records,
+  where they go stale. Dated verification evidence may name the commit tested.
 
 Development stays on `master`. Owner direction on 2026-10-19 authorizes committing
 and pushing validated work, with ordinary merges when needed.
 Use live Git commands for branch, cleanliness, and ahead/behind state.
+
+### Source routing on SND-HOST
+
+On 2026-10-27, SSH confirmed that `MACHINE_CODE_ROOT`, `MACHINE_TOOLS_ROOT`, and
+`MACHINE_WORKLOAD_ROOT` are absent at Process, User, and Machine scope on
+SND-HOST. Its `LHM_RELEASE_ROOT` is configured, and the stack's
+`manifests/layout.json` supplies `development.mainCheckout` for inspecting the
+legacy checkout without inventing a path. That checkout still tracks and pushes
+to the host mirror and contains local history absent from the shared source.
+Reconcile that history before changing its remotes or updating its branch.
+The host's owning environment configuration must separately establish the role
+roots. Matching GitHub branch tips alone does not establish the host checkout's
+push policy. Runtime promotion and the held live-machine changes remain separate.
 
 ## Current boundaries
 
@@ -169,7 +196,7 @@ dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf -p:Platfo
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net10.0-windows -p:Platform=x64
 dotnet build LibreHardwareMonitor.Windows.Forms\LibreHardwareMonitor.Windows.Forms.csproj -c Release -f net472 -p:Platform=x64
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Test-LhmReleaseSystem.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Show-LhmExecutableIdentity.ps1 -Path <exact-exe> -StackRoot E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack -Json
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\candidate\Show-LhmExecutableIdentity.ps1 -Path <exact-exe> -StackRoot (Split-Path -Parent $env:LHM_RELEASE_ROOT) -Json
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\log-management\Test-LhmLogManagement.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\live-verification\Test-LhmLiveStateSystem.ps1
 ```
