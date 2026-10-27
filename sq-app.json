@@ -1,10 +1,10 @@
 {
   "schema": "sq.app.v1",
   "machineId": "snd-desk",
-  "verifiedOn": "2026-08-16",
+  "verifiedOn": "2026-10-27",
   "id": "sq-librehw",
   "kind": "git-source",
-  "root": "E:\\Monitoring\\sq-librehw",
+  "root": "%MACHINE_TOOLS_ROOT%Monitoring\\sq-librehw",
   "mutableState": [
     {
       "location": "filesystem",
@@ -15,25 +15,24 @@
   "deployments": [
     {
       "kind": "managed-runtime",
-      "root": "E:\\Monitoring\\LibreHW\\Runtime",
-      "executable": "E:\\Monitoring\\LibreHW\\Runtime\\LibreHardwareMonitor.Windows.Forms.exe",
-      "releaseManifest": "E:\\Monitoring\\LibreHW\\Runtime\\release.json",
-      "runtimeConfig": "E:\\Monitoring\\LibreHW\\Runtime\\librehw.runtime.json",
-      "releaseId": "0.9.6_e977e57.2026-08-14-e977e577ea13-20260814T205711Z",
-      "commit": "e977e577ea133fa6e9486f40f29b2266dcc22d70"
+      "root": "%MACHINE_TOOLS_ROOT%Monitoring\\LibreHW\\Runtime",
+      "executable": "%MACHINE_TOOLS_ROOT%Monitoring\\LibreHW\\Runtime\\LibreHardwareMonitor.Windows.Forms.exe",
+      "releaseManifest": "%MACHINE_TOOLS_ROOT%Monitoring\\LibreHW\\Runtime\\release.json",
+      "runtimeConfig": "%MACHINE_TOOLS_ROOT%Monitoring\\LibreHW\\Runtime\\librehw.runtime.json",
+      "versionAuthority": "releaseManifest; the installed releaseId and commit are read from release.json, never copied here"
     }
   ],
   "consumers": [
     {
       "kind": "scheduledTask",
       "name": "\\SevGrp\\AdminTask\\LibreHW-No-UAC",
-      "execute": "E:\\Monitoring\\LibreHW\\Runtime\\LibreHardwareMonitor.Windows.Forms.exe",
+      "execute": "%MACHINE_TOOLS_ROOT%Monitoring\\LibreHW\\Runtime\\LibreHardwareMonitor.Windows.Forms.exe",
       "arguments": "",
-      "workingDirectory": "E:\\Monitoring\\LibreHW\\Runtime"
+      "workingDirectory": "%MACHINE_TOOLS_ROOT%Monitoring\\LibreHW\\Runtime"
     },
     {
       "kind": "scriptLauncher",
-      "path": "E:\\Monitoring\\LibreHW\\Scripts\\Start-LibreHardwareMonitor.ps1"
+      "path": "%MACHINE_TOOLS_ROOT%Monitoring\\LibreHW\\Scripts\\Start-LibreHardwareMonitor.ps1"
     },
     {
       "kind": "pathShim",
@@ -44,13 +43,14 @@
     "kind": "git",
     "remote": "origin",
     "uri": "https://github.com/espensev/sq-librehw.git",
-    "commit": "9de2314dbe1a770153f6d254f3c3b01a96d4533f"
+    "branch": "master",
+    "versionAuthority": "git; the checked-out commit is read from the repository, never copied here"
   },
   "compatibility": {
     "phase": 2,
     "surfaces": [
-      "E:\\Monitoring\\LibreHW\\Runtime",
-      "E:\\Monitoring\\LibreHW\\Scripts\\Start-LibreHardwareMonitor.ps1",
+      "%MACHINE_TOOLS_ROOT%Monitoring\\LibreHW\\Runtime",
+      "%MACHINE_TOOLS_ROOT%Monitoring\\LibreHW\\Scripts\\Start-LibreHardwareMonitor.ps1",
       "%SEV_LOCAL_BIN%\\librehw.cmd"
     ],
     "retiredRoots": [

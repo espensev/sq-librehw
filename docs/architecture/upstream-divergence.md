@@ -5,7 +5,6 @@
 **Upstream:** `LibreHardwareMonitor/LibreHardwareMonitor` on GitHub, fetched as the
 `upstream` remote (push disabled)
 **Upstream base:** `3f118427b0fd38a72c3135c766807ebb5d605128`
-**Fork head when written:** `4e4f1be7` on `master` (`origin/master`)
 
 The upstream base is the merge-base of `master` and `upstream/master`. Every
 official commit through it is an ancestor of `master`, so the complete
@@ -280,7 +279,7 @@ embedded under their original resource names. Record:
 | `AGENTS.md` | Contributor and agent rules, spec-first workflow | itself |
 | `Directory.Packages.props` | Central package management; the single place NuGet versions are pinned | `3f5b59d7`, both sync specs |
 | `global.json` | Pins the .NET SDK 10.0.400 with latest-patch roll-forward | `456a126b` |
-| `sq-app.json` | Machine-verified application record for SND-DESK (source, runtime, consumers) | [local release system](../features/feature-local-release-system.md) |
+| `sq-app.json` | Machine-verified application record for SND-DESK (paths and consumers only; versions are read from `release.json` and Git) | [local release system](../features/feature-local-release-system.md) |
 | `live-tracker.md` | Campaign tracker, agent-level completion only | [campaign control plane](campaign-control-plane.md) |
 | `.github/workflows` | Two non-deploying hosted workflows that delegate to the gate runner | [gate runner](../../eng/ci/README.md) |
 | `.codex/skills` | Gate definitions (`project.toml`) and the planning contract | [gate runner](../../eng/ci/README.md) |
