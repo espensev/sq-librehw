@@ -1,7 +1,7 @@
 # Feature Spec: Live State Verification
 
 **Status:** implemented; report-only
-**Updated:** 2026-08-05
+**Updated:** 2026-09-28
 
 ## Problem
 
@@ -14,7 +14,7 @@ uniform record.
 
 The maintainer authorized a **read-only verifier** on 2026-08-05 while
 explicitly keeping `ops/deploy` SND-DESK-only. This tool deploys nothing,
-mutates nothing, and does not relax that roadmap non-negotiable: it is
+changes no operational state, and does not relax that roadmap non-negotiable: it is
 report-only operator tooling in the same lane as
 `docs/features/feature-host-operator-utilities.md`.
 
@@ -28,6 +28,8 @@ stack's own manifests and reports whether the live deployment matches them.
 - Input is an explicit `-StackRoot`; the script contains no machine-specific
   path. All expectations come from the stack's `manifests\layout.json`,
   `manifests\consumers.json`, and `manifests\channels\live.json`.
+- Refresh the invoking PowerShell process's .NET time-zone cache before any
+  clock observations, including when called from a long-running session.
 - Checks, each emitted as a `Check`/`Status`/`Detail` record with `Pass`,
   `Fail`, or `Info`:
   - `manifests`: all three manifests exist and parse; their schema/version and
@@ -35,7 +37,8 @@ stack's own manifests and reports whether the live deployment matches them.
     explicit `-StackRoot`; and the live channel's deployment root matches the
     layout's live root; before any task lookup, the consumer manifest must
     contain exactly one binding for the declared live entry point and exactly
-    one for the declared log-management invocation script;
+    one for the declared log-management invocation script; additional
+    scheduledTask bindings are allowed and each is checked as `task:<name>`;
   - `machine`: the manifest `computerName` matches the running machine;
   - `live-root`: the declared live root exists, is not a reparse point, and
     contains the declared entry point;
@@ -49,7 +52,13 @@ stack's own manifests and reports whether the live deployment matches them.
     cutover before the manifest refresh);
   - `task:<name>`: every `scheduledTask` consumer binding exists with exactly
     one action, the target is an exact executable path or exact PowerShell
-    `-File` path, and the working directory is exactly the target's parent;
+    `-File` path, and the working directory is exactly the target's parent
+    after expanding environment tokens such as `%LHM_STACK_ROOT%`; when a
+    binding declares `rawExecute` / `rawArguments` / `rawWorkingDirectory`, the registered
+    action must match those literals, which allows an empty working directory
+    and an unrooted `powershell.exe` engine only for extra script tasks.
+    Raw declarations never relax the required live-task working directory
+    or the log-management task's full engine path;
     a configured `PowerShellExecutable` is an exact engine-path contract, while
     legacy configuration permits only the machine Windows PowerShell path or
     the verifier process's own full PowerShell engine path, never another
@@ -63,7 +72,17 @@ stack's own manifests and reports whether the live deployment matches them.
   - `endpoints`: `/`, `/data.json`, and `/metrics` return HTTP 200 on the bound
     address;
   - `csv`: the current-day CSV exists and grows over `-CsvGrowthSeconds`
-    (default 5; `0` skips growth and reports `Info`);
+    (default 5; `0` skips growth and reports `Info`). The latest completed row
+    must have a valid invariant timestamp within 120 seconds of the file's
+    host-local last-write time, even when growth is skipped. This detects a
+    collector retaining a stale time zone without depending on the logging
+    interval. Read only the final 64 KiB with read/write sharing and compare
+    length/write metadata before and after reading. Retry a changed snapshot,
+    an unfinished final row, or clock disagreement up to three total attempts
+    with 100 ms between attempts. If a stable, complete snapshot cannot be
+    obtained, report an inconclusive `Fail` instead of claiming clock drift or
+    agreement. Reject malformed completed rows, including blank rows. Both the
+    millisecond and legacy whole-second timestamp formats are accepted;
   - `log-tooling`: the installed log-management scripts and configuration are
     present at the declared runtime; the configuration has the supported
     schema/version, includes the declared live root in `SourceDirectories`,
@@ -73,8 +92,10 @@ stack's own manifests and reports whether the live deployment matches them.
 - Output is the record stream, or a single `sq.lhm.live-state` version-1 JSON
   document with `-Json`. Any `Fail` ends the run with a throw naming the failed
   checks, so scheduled or scripted callers get a non-zero exit.
-- Strictly read-only: no file, task, process, service, registry, or manifest is
-  created or changed. Reading is the only side effect.
+- Read-only with respect to the operational stack: no file, task, external
+  process, service, registry, or manifest is created or changed. The invoking
+  PowerShell process refreshes its own .NET time-zone cache; it does not change
+  Windows time or time-zone settings.
 - Works under Windows PowerShell 5.1 and PowerShell 7.
 
 ## Non-goals
@@ -101,7 +122,7 @@ transactional evidence into an approval-free gate:
 | 3. Running version and SHA-256 match the selected package | Partial: SHA-256 is checked against `channels\live.json`, or an explicitly supplied `-ExpectedSha256`. | Compare product version and provenance with the explicitly selected immutable candidate/package. |
 | 4. `/`, `/data.json`, and `/metrics` return HTTP 200 | Complete. | None for this observation. |
 | 5. Every pre-cutover setting remains present and changed values are explained | Not covered. | Capture and compare the complete pre/post settings key/value set. |
-| 6. The same current-day CSV remains and grows after restart | Partial: current-day existence and growth are checked. | Prove that the file is the same pre-cutover CSV. |
+| 6. The same current-day CSV remains and grows after restart | Partial: current-day existence, growth, and latest completed row clock agreement with host-local last-write time are checked. | Prove that the file is the same pre-cutover CSV. |
 | 7. Log task and configuration still use the declared live/archive roots | Complete for the exact task target/config arguments and parsed configuration roots. | Installed-script byte identity remains a separate reconciliation check. |
 
 Candidate acceptance, promotion or rollback authority, package inventory,
@@ -124,6 +145,12 @@ manifest refresh remain outside this verifier.
   legacy fallback.
 - [x] The fixture run proves read-only behavior: no fixture file is created,
   changed, or touched by the verifier.
+- [x] CSV rows six hours behind or ahead of their write time fail, including
+  with the growth wait disabled. Valid modern/legacy timestamps pass; header-only
+  logs and malformed completed rows fail.
+- [x] Blank completed rows fail; append races retry against a consistent
+  snapshot; unfinished rows remain inconclusive if bounded retries cannot
+  obtain a completed row. Healthy long logging intervals still pass.
 - [x] `-Json` emits parseable `sq.lhm.live-state` v1 with the same records.
 - [x] The self-test passes under Windows PowerShell 5.1 and PowerShell 7 and is
   wired as the `live-verification` CI gate.
@@ -144,6 +171,33 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ops\live-verification\Te
 
 ## Verification log
 
+- 2026-10-27: integrated the unpublished SND-HOST history through `f0dadd06`.
+  Review reproduced acceptance of extra switches despite `rawArguments` and
+  found that raw declarations could relax required task bindings. The verifier
+  now enforces declared arguments and confines empty-directory/unrooted-engine
+  exceptions to extra script tasks. All three regression cases and the full
+  fixture suite pass under Windows PowerShell 5.1 and PowerShell 7. This is
+  source verification; no installed verifier or runtime was replaced.
+
+- 2026-09-28 review follow-up: reproduced completed blank rows passing and an
+  unfinished write being misreported as clock skew. Fixed blank-row parsing,
+  bounded snapshot consistency retries, and startup refresh of the verifier's
+  own cached zone. Added deterministic healthy/stale append, same-size rewrite,
+  partial completion and continuously changing writer fixtures. Both complete
+  PowerShell engine suites passed on the final source. At 08:46Z the updated
+  verifier passed all 12 checks against the unchanged live collector PID 41032,
+  including CSV growth and clock agreement. Review has no unresolved material
+  findings. Receipts are in the source workspace scratch directory
+  `20260928-082226-csv-clock-recovery`; the earlier operational packet is unchanged.
+- 2026-09-28: reproduced a false healthy result on SND-HOST while CSV rows
+  were 21,600 seconds behind their write time. Added timestamp validation to
+  the existing `csv` check. The regression failed before the implementation;
+  the complete verifier fixture suite then passed under PowerShell 7 and
+  Windows PowerShell 5.1. The updated verifier rejected the actual stale-clock
+  collector, then passed all 12 live checks after a restart of the unchanged
+  deployed candidate. Evidence: stack packet
+  `deployments\history\20260928-064909-clock-review`. This extends the pre-existing
+  uncommitted task-binding fixes; it does not deploy a new product binary.
 - 2026-08-05: implemented with fixture self-test passing under both engines.
   First live SND-HOST run the same day: 11/11 checks Pass, exit 0 — manifests,
   machine, live root, exact-path process (PID 15988), entry-point SHA-256

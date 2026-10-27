@@ -198,6 +198,101 @@ try {
         Sort-Object)
     Assert-LhmTest (@(Compare-Object -ReferenceObject $before -DifferenceObject $after).Count -eq 0) 'verifier must not write, grow, or touch any fixture file'
 
+    # Reproduce the live collector retaining a different time zone: file writes
+    # are current while completed row timestamps are six hours behind/ahead.
+    $csvFixture = Join-Path $liveDir ('LibreHardwareMonitorLog-' + (Get-Date).ToString('yyyy-MM-dd') + '.csv')
+    foreach ($offsetHours in @(-6, 6)) {
+        $stamp = (Get-Date).AddHours($offsetHours).ToString('MM/dd/yyyy HH:mm:ss.fff', [Globalization.CultureInfo]::InvariantCulture)
+        [IO.File]::WriteAllText($csvFixture, "Time,Sensor`r`n$stamp,42`r`n")
+        $tamper = Invoke-LhmFixtureProcess -Engine $engine -Verifier $verifier -StackRoot $testRoot
+        Assert-LhmFixtureFailure -Invocation $tamper -Check 'csv' -DetailPattern '*timestamp*last write*'
+    }
+    foreach ($timestampFormat in @('MM/dd/yyyy HH:mm:ss.fff', 'MM/dd/yyyy HH:mm:ss')) {
+        $stamp = (Get-Date).ToString($timestampFormat, [Globalization.CultureInfo]::InvariantCulture)
+        [IO.File]::WriteAllText($csvFixture, "Time,Sensor`r`n$stamp,42`r`n")
+        $csvBefore = (Get-FileHash -LiteralPath $csvFixture).Hash
+        $csvWriteBefore = [IO.File]::GetLastWriteTimeUtc($csvFixture)
+        $validCsv = Invoke-LhmFixtureProcess -Engine $engine -Verifier $verifier -StackRoot $testRoot
+        $csvCheck = @(Get-LhmFixtureCheck -Report $validCsv.Report -Name 'csv')
+        Assert-LhmTest ($csvCheck.Count -eq 1 -and $csvCheck[0].Status -eq 'Info') 'valid completed timestamp should pass with growth skipped'
+        Assert-LhmTest ($csvCheck[0].Detail -like '*timestamp*last write*') 'skipping growth must still validate the CSV clock'
+        Assert-LhmTest ((Get-FileHash -LiteralPath $csvFixture).Hash -eq $csvBefore -and [IO.File]::GetLastWriteTimeUtc($csvFixture) -eq $csvWriteBefore) 'clock validation must preserve CSV bytes and last-write time'
+    }
+    foreach ($badRows in @("Time,Sensor`r`n", "Time,Sensor`r`n$stamp,42`r`ninvalid,43`r`n", "Time,Sensor`r`n$stamp,42`r`n`r`n", "Time,Sensor`n$stamp,42`n`n")) {
+        [IO.File]::WriteAllText($csvFixture, $badRows)
+        $tamper = Invoke-LhmFixtureProcess -Engine $engine -Verifier $verifier -StackRoot $testRoot
+        Assert-LhmFixtureFailure -Invocation $tamper -Check 'csv' -DetailPattern '*timestamp*'
+    }
+
+    # Long intervals are healthy when the completed row and its write time agree.
+    # A partial next write changes metadata without completing a new timestamp.
+    $previousWrite = (Get-Date).AddMinutes(-5)
+    $previousStamp = $previousWrite.ToString('MM/dd/yyyy HH:mm:ss.fff', [Globalization.CultureInfo]::InvariantCulture)
+    [IO.File]::WriteAllText($csvFixture, "Time,Sensor`r`n$previousStamp,42`r`n")
+    [IO.File]::SetLastWriteTime($csvFixture, $previousWrite)
+    $validCsv = Invoke-LhmFixtureProcess -Engine $engine -Verifier $verifier -StackRoot $testRoot
+    $csvCheck = @(Get-LhmFixtureCheck -Report $validCsv.Report -Name 'csv')
+    Assert-LhmTest ($csvCheck.Count -eq 1 -and $csvCheck[0].Status -eq 'Info') 'a healthy long logging interval should pass with growth skipped'
+    [IO.File]::AppendAllText($csvFixture, '09/')
+    $csvBefore = (Get-FileHash -LiteralPath $csvFixture).Hash
+    $csvWriteBefore = [IO.File]::GetLastWriteTimeUtc($csvFixture)
+    $partialCsv = Invoke-LhmFixtureProcess -Engine $engine -Verifier $verifier -StackRoot $testRoot
+    Assert-LhmFixtureFailure -Invocation $partialCsv -Check 'csv' -DetailPattern '*unfinished*inconclusive*'
+    Assert-LhmTest ((Get-FileHash -LiteralPath $csvFixture).Hash -eq $csvBefore -and [IO.File]::GetLastWriteTimeUtc($csvFixture) -eq $csvWriteBefore) 'partial-row retries must preserve CSV bytes and last-write time'
+
+    # Intercept only CSV metadata reads in a child scope to put real file writes
+    # exactly between the tail and metadata observations, without timing races.
+    foreach ($raceMode in @('healthy-append', 'stale-append', 'stale-rewrite', 'partial-completes', 'always-changing')) {
+        & {
+            $snapshotState = [pscustomobject]@{ MetadataReads = 0 }
+            $nextWrite = Get-Date
+            $nextStamp = $nextWrite.ToString('MM/dd/yyyy HH:mm:ss.fff', [Globalization.CultureInfo]::InvariantCulture)
+            $staleStamp = $nextWrite.AddHours(-6).ToString('MM/dd/yyyy HH:mm:ss.fff', [Globalization.CultureInfo]::InvariantCulture)
+            [IO.File]::WriteAllText($csvFixture, "Time,Sensor`r`n$previousStamp,42`r`n")
+            [IO.File]::SetLastWriteTime($csvFixture, $previousWrite)
+            if ($raceMode -eq 'partial-completes') {
+                [IO.File]::AppendAllText($csvFixture, $nextStamp)
+            }
+
+            function Get-Item {
+                [CmdletBinding()]
+                param([string]$LiteralPath, [switch]$Force)
+
+                if ($LiteralPath -eq $csvFixture) {
+                    $snapshotState.MetadataReads++
+                    if ($snapshotState.MetadataReads -eq 2 -or
+                        ($raceMode -eq 'always-changing' -and $snapshotState.MetadataReads % 2 -eq 0)) {
+                        switch ($raceMode) {
+                            'healthy-append' { [IO.File]::AppendAllText($csvFixture, "$nextStamp,43`r`n") }
+                            'stale-append' { [IO.File]::AppendAllText($csvFixture, "$staleStamp,43`r`n") }
+                            'stale-rewrite' { [IO.File]::WriteAllText($csvFixture, "Time,Sensor`r`n$staleStamp,43`r`n") }
+                            'always-changing' { [IO.File]::AppendAllText($csvFixture, "$nextStamp,43`r`n") }
+                        }
+                    }
+                    if ($raceMode -eq 'partial-completes' -and $snapshotState.MetadataReads -eq 3) {
+                        [IO.File]::AppendAllText($csvFixture, ",43`r`n")
+                    }
+                }
+                Microsoft.PowerShell.Management\Get-Item @PSBoundParameters
+            }
+
+            $raceReport = Invoke-LhmFixtureInProcess -Verifier $verifier -StackRoot $testRoot
+            $raceCheck = @(Get-LhmFixtureCheck -Report $raceReport -Name 'csv')
+            Assert-LhmTest ($raceCheck.Count -eq 1) "$raceMode should produce one CSV check"
+            Assert-LhmTest ($snapshotState.MetadataReads -ge 4 -and $snapshotState.MetadataReads -le 6) "$raceMode should retry within three snapshot attempts"
+            if ($raceMode -in @('healthy-append', 'partial-completes')) {
+                Assert-LhmTest ($raceCheck[0].Status -eq 'Info' -and $raceCheck[0].Detail -like '*timestamp*last write*') "$raceMode should validate the completed new row"
+            }
+            elseif ($raceMode -eq 'always-changing') {
+                Assert-LhmTest ($raceCheck[0].Status -eq 'Fail' -and $raceCheck[0].Detail -like '*changed*inconclusive*') 'an unstable writer must not produce a clock diagnosis'
+            }
+            else {
+                Assert-LhmTest ($raceCheck[0].Status -eq 'Fail' -and $raceCheck[0].Detail -like '*timestamp*last write*') "$raceMode should detect the new stale timestamp after retrying"
+            }
+        }
+    }
+    Remove-Item -LiteralPath $csvFixture
+
     $layout.schema = 'sq.librehw-layout.invalid'
     Write-LhmFixtureJson -Path (Join-Path $manifestDir 'layout.json') -Value $layout
     $tamper = Invoke-LhmFixtureProcess -Engine $engine -Verifier $verifier -StackRoot $testRoot
@@ -249,6 +344,21 @@ try {
     Write-LhmFixtureJson -Path (Join-Path $manifestDir 'consumers.json') -Value $consumers
     $tamper = Invoke-LhmFixtureProcess -Engine $engine -Verifier $verifier -StackRoot $testRoot
     Assert-LhmFixtureFailure -Invocation $tamper -Check 'manifests' -DetailPattern '*scheduledTask bindings*found 1 binding*'
+    $consumers.bindings = $expectedConsumerBindings
+    Write-LhmFixtureJson -Path (Join-Path $manifestDir 'consumers.json') -Value $consumers
+
+    $extraGuardBinding = [ordered]@{
+        kind = 'scheduledTask'
+        name = '\SqLhmConsoleGuardFixture'
+        target = (Join-Path $testRoot 'operations\console-guard\Invoke-ConsoleGuard.ps1')
+    }
+    $consumers.bindings = @($expectedConsumerBindings[0], $expectedConsumerBindings[1], $extraGuardBinding)
+    Write-LhmFixtureJson -Path (Join-Path $manifestDir 'consumers.json') -Value $consumers
+    $extraBindings = Invoke-LhmFixtureProcess -Engine $engine -Verifier $verifier -StackRoot $testRoot
+    $extraManifests = @(Get-LhmFixtureCheck -Report $extraBindings.Report -Name 'manifests')
+    Assert-LhmTest ($extraManifests.Count -eq 1 -and $extraManifests[0].Status -eq 'Pass') (
+        'an additional scheduledTask binding besides the live and log-management targets should pass the manifests check; observed ' +
+        (@($extraManifests | ForEach-Object { "$($_.Status): $($_.Detail)" }) -join '; '))
     $consumers.bindings = $expectedConsumerBindings
     Write-LhmFixtureJson -Path (Join-Path $manifestDir 'consumers.json') -Value $consumers
 
@@ -350,6 +460,123 @@ try {
         $taskCheck = @(Get-LhmFixtureCheck -Report $report -Name $taskCheckName)
         $observedTaskDetail = @($taskCheck | ForEach-Object { "$($_.Status): $($_.Detail)" }) -join '; '
         Assert-LhmTest ($taskCheck.Count -eq 1 -and $taskCheck[0].Status -eq 'Pass') "$taskCheckName exact action should pass; observed '$observedTaskDetail'"
+    }
+
+    $previousStackRootPresent = Test-Path Env:LHM_STACK_ROOT
+    $previousStackRoot = $env:LHM_STACK_ROOT
+    try {
+        $env:LHM_STACK_ROOT = $testRoot
+        $tokenLiveDir = '%LHM_STACK_ROOT%\deployments\current'
+        $tokenLiveExe = '%LHM_STACK_ROOT%\deployments\current\FakeLhm.exe'
+        $tokenLogDir = '%LHM_STACK_ROOT%\operations\log-management'
+        $tokenLogScript = '%LHM_STACK_ROOT%\operations\log-management\Invoke-LhmLogManagement.ps1'
+        $tokenLogConfig = '%LHM_STACK_ROOT%\operations\log-management\log-management.json'
+        $global:LhmLiveFixtureTasks[$liveTaskName].Actions = @([pscustomobject]@{
+            Execute = $tokenLiveExe
+            Arguments = ''
+            WorkingDirectory = $tokenLiveDir
+        })
+        $global:LhmLiveFixtureTasks[$logTaskName].Actions = @([pscustomobject]@{
+            Execute = '%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe'
+            Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$tokenLogScript`" -ConfigPath `"$tokenLogConfig`""
+            WorkingDirectory = $tokenLogDir
+        })
+        $report = Invoke-LhmFixtureInProcess -Verifier $verifier -StackRoot $testRoot
+        foreach ($taskCheckName in @(('task:' + $liveTaskName), ('task:' + $logTaskName))) {
+            $taskCheck = @(Get-LhmFixtureCheck -Report $report -Name $taskCheckName)
+            $observedTaskDetail = @($taskCheck | ForEach-Object { "$($_.Status): $($_.Detail)" }) -join '; '
+            Assert-LhmTest ($taskCheck.Count -eq 1 -and $taskCheck[0].Status -eq 'Pass') (
+                "$taskCheckName environment-tokenized action should pass; observed '$observedTaskDetail'")
+        }
+    }
+    finally {
+        if ($previousStackRootPresent) {
+            $env:LHM_STACK_ROOT = $previousStackRoot
+        }
+        else {
+            Remove-Item Env:LHM_STACK_ROOT -ErrorAction SilentlyContinue
+        }
+        $global:LhmLiveFixtureTasks[$liveTaskName].Actions = @($liveAction)
+        $global:LhmLiveFixtureTasks[$logTaskName].Actions = @($logAction)
+    }
+
+    $guardTaskName = '\SqLhmExactGuardFixture'
+    $guardDir = Join-Path $testRoot 'operations\console-guard'
+    $guardTarget = Join-Path $guardDir 'Invoke-ConsoleGuard.ps1'
+    $consumers.bindings = @(
+        [ordered]@{ kind = 'scheduledTask'; name = $liveTaskName; target = $liveTarget },
+        [ordered]@{ kind = 'scheduledTask'; name = $logTaskName; target = $logTarget },
+        [ordered]@{
+            kind = 'scheduledTask'
+            name = $guardTaskName
+            target = $guardTarget
+            rawExecute = 'powershell.exe'
+            rawArguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"%LHM_STACK_ROOT%\operations\console-guard\Invoke-ConsoleGuard.ps1`""
+            rawWorkingDirectory = ''
+        }
+    )
+    Write-LhmFixtureJson -Path (Join-Path $manifestDir 'consumers.json') -Value $consumers
+    $guardAction = [pscustomobject]@{
+        Execute = 'powershell.exe'
+        Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"%LHM_STACK_ROOT%\operations\console-guard\Invoke-ConsoleGuard.ps1`""
+        WorkingDirectory = ''
+    }
+    $global:LhmLiveFixtureTasks[$guardTaskName] = [pscustomobject]@{
+        State = 'Ready'
+        Actions = @($guardAction)
+    }
+    $previousStackRootPresent = Test-Path Env:LHM_STACK_ROOT
+    $previousStackRoot = $env:LHM_STACK_ROOT
+    try {
+        $env:LHM_STACK_ROOT = $testRoot
+        $report = Invoke-LhmFixtureInProcess -Verifier $verifier -StackRoot $testRoot
+        $taskCheck = @(Get-LhmFixtureCheck -Report $report -Name ('task:' + $guardTaskName))
+        $observedTaskDetail = @($taskCheck | ForEach-Object { "$($_.Status): $($_.Detail)" }) -join '; '
+        Assert-LhmTest ($taskCheck.Count -eq 1 -and $taskCheck[0].Status -eq 'Pass') (
+            'declared empty working directory and unrooted powershell.exe should pass for an extra script task; observed ' +
+            "'$observedTaskDetail'")
+
+        $guardAction.Arguments += ' -UnexpectedSwitch'
+        $report = Invoke-LhmFixtureInProcess -Verifier $verifier -StackRoot $testRoot
+        $taskCheck = @(Get-LhmFixtureCheck -Report $report -Name ('task:' + $guardTaskName))
+        Assert-LhmTest ($taskCheck[0].Status -eq 'Fail' -and $taskCheck[0].Detail -like '*rawArguments*') 'declared raw arguments must reject additional switches'
+        $guardAction.Arguments = $consumers.bindings[2].rawArguments
+
+        $consumers.bindings[1]['rawExecute'] = 'powershell.exe'
+        Write-LhmFixtureJson -Path (Join-Path $manifestDir 'consumers.json') -Value $consumers
+        $global:LhmLiveFixtureTasks[$logTaskName].Actions = @([pscustomobject]@{
+            Execute = 'powershell.exe'; Arguments = $logAction.Arguments; WorkingDirectory = $logMgmtDir
+        })
+        $report = Invoke-LhmFixtureInProcess -Verifier $verifier -StackRoot $testRoot
+        $taskCheck = @(Get-LhmFixtureCheck -Report $report -Name ('task:' + $logTaskName))
+        Assert-LhmTest ($taskCheck[0].Status -eq 'Fail' -and $taskCheck[0].Detail -like '*full application path*') 'rawExecute must not relax the required log-management engine path'
+        $consumers.bindings[1].Remove('rawExecute')
+        $global:LhmLiveFixtureTasks[$logTaskName].Actions = @($logAction)
+
+        $consumers.bindings[0]['rawWorkingDirectory'] = ''
+        Write-LhmFixtureJson -Path (Join-Path $manifestDir 'consumers.json') -Value $consumers
+        $global:LhmLiveFixtureTasks[$liveTaskName].Actions = @([pscustomobject]@{
+            Execute = $liveTarget; Arguments = ''; WorkingDirectory = ''
+        })
+        $report = Invoke-LhmFixtureInProcess -Verifier $verifier -StackRoot $testRoot
+        $taskCheck = @(Get-LhmFixtureCheck -Report $report -Name ('task:' + $liveTaskName))
+        Assert-LhmTest ($taskCheck[0].Status -eq 'Fail' -and $taskCheck[0].Detail -like '*working directory*') 'rawWorkingDirectory must not relax the required live-task working directory'
+    }
+    finally {
+        if ($previousStackRootPresent) {
+            $env:LHM_STACK_ROOT = $previousStackRoot
+        }
+        else {
+            Remove-Item Env:LHM_STACK_ROOT -ErrorAction SilentlyContinue
+        }
+        $consumers.bindings = @(
+            [ordered]@{ kind = 'scheduledTask'; name = $liveTaskName; target = $liveTarget },
+            [ordered]@{ kind = 'scheduledTask'; name = $logTaskName; target = $logTarget }
+        )
+        Write-LhmFixtureJson -Path (Join-Path $manifestDir 'consumers.json') -Value $consumers
+        $global:LhmLiveFixtureTasks.Remove($guardTaskName)
+        $global:LhmLiveFixtureTasks[$liveTaskName].Actions = @($liveAction)
+        $global:LhmLiveFixtureTasks[$logTaskName].Actions = @($logAction)
     }
 
     $wrongEngineAction = [pscustomobject]@{

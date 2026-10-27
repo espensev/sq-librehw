@@ -102,6 +102,26 @@ candidate, rollback, and attended acceptance.
 
 ---
 
+## plan-015 — Web server / dashboard split (Phases A/1/2 only)
+
+**Phase:** 7 (plan number provisional; assigned at registration)
+**Status:** recovered historical scope; reconcile the package with
+`docs/architecture/dashboard-extraction.md` before scheduling any work.
+**Entry:** clean tree with `plan preflight` ready, plus the package's Phase 0
+baseline completed (contract-suite baseline recorded, `websplit-baseline`
+tag). Scoped authorization granted 2026-08-11 under
+`docs/architecture/refactor-roadmap.md` Phase 7.
+
+The historical full spec is the `librehw-webserver-split-plan` package (v0.7)
+described in the roadmap. Authorized scope:
+Phase A (dashboard external-hosting experiment on `:20000`), Phase 1
+(`LibreHardwareMonitor.Web` extraction), Phase 2 (`Node`-dependency
+severance). The WinForms-ownership non-negotiable is NOT relaxed; Phases 3–4
+(headless host, cutover) are not part of this campaign and need a separate
+explicit maintainer end-state decision before registration.
+
+---
+
 ## What invalidates this backlog
 
 Re-plan from the roadmap, rather than following this file, if any of these

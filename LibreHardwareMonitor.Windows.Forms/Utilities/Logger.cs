@@ -18,14 +18,15 @@ namespace LibreHardwareMonitor.Windows.Forms.Utilities;
 public class Logger
 {
     private const string FileNameFormat = "LibreHardwareMonitorLog-{0:yyyy-MM-dd}{1}.csv";
+    private static readonly TimeSpan TimeZoneRefreshInterval = TimeSpan.FromMinutes(1);
 
     private readonly IComputer _computer;
     private readonly string _logDirectory;
     private readonly object _lock = new object();
 
-    // Monotonic clock for the interval gate and gap detection; DateTime.Now is kept
-    // only for the timestamp column text and the file-name date (DST-safe logging).
-    private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
+    // Elapsed time governs cadence, gaps and cache refresh; local wall time is
+    // used only for row timestamps and file dates.
+    private readonly ILoggerClock _clock;
 
     private DateTime _day = DateTime.MinValue;
     private string _fileName;
@@ -33,6 +34,7 @@ public class Logger
     private ISensor[] _sensors;
     private TimeSpan? _lastLoggedElapsed;
     private TimeSpan? _lastTickElapsed;
+    private TimeSpan? _lastTimeZoneRefreshElapsed;
     private uint _lastSessionNumber;
     private DateTime _sessionDate = DateTime.MinValue;
 
@@ -43,8 +45,13 @@ public class Logger
     { }
 
     internal Logger(IComputer computer, string logDirectory)
+        : this(computer, logDirectory, new SystemLoggerClock())
+    { }
+
+    internal Logger(IComputer computer, string logDirectory, ILoggerClock clock)
     {
         _computer = computer ?? throw new ArgumentNullException(nameof(computer));
+        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         if (string.IsNullOrWhiteSpace(logDirectory) || !Path.IsPathRooted(logDirectory))
             throw new ArgumentException("The log directory must be an absolute path.", nameof(logDirectory));
 
@@ -328,8 +335,7 @@ public class Logger
 
     public void Log()
     {
-        DateTime now = DateTime.Now;
-        TimeSpan elapsed = _stopwatch.Elapsed;
+        TimeSpan elapsed = _clock.Elapsed;
 
         // The early-fire margin tolerates timer jitter without over-logging: half the observed
         // tick spacing (so sub-second update intervals cannot pass the gate twice per logging
@@ -343,6 +349,15 @@ public class Logger
 
         try
         {
+            // Long-running processes can retain a zone observed briefly during
+            // boot. Refresh without depending on a UI event or a wall-clock gate.
+            if (!_lastTimeZoneRefreshElapsed.HasValue || elapsed - _lastTimeZoneRefreshElapsed.Value >= TimeZoneRefreshInterval)
+            {
+                _clock.RefreshTimeZone();
+                _lastTimeZoneRefreshElapsed = elapsed;
+            }
+            DateTime now = _clock.LocalNow;
+
             switch (FileRotationMethod)
             {
                 case LoggerFileRotation.PerSession:

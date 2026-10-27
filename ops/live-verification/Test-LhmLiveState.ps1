@@ -9,6 +9,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# An invoking PowerShell session may have cached the same stale zone as the collector.
+[System.TimeZoneInfo]::ClearCachedData()
 . (Join-Path $PSScriptRoot 'LhmLiveManifest.Common.ps1')
 
 $stackRootPath = [System.IO.Path]::GetFullPath($StackRoot)
@@ -48,7 +50,7 @@ function Get-LhmTaskArgumentPath {
         throw "Task action -$Name path argument is empty."
     }
 
-    return $value
+    return (Get-LhmExpandedPath -Path $value)
 }
 
 function Get-LhmLegacyScriptEnginePaths {
@@ -76,6 +78,74 @@ function Test-LhmReparsePoint {
     return (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
 }
 
+function Get-LhmCsvClockDetail {
+    param([Parameter(Mandatory)][string]$Path)
+
+    # Read a bounded tail with sharing so the live writer is never blocked.
+    # A concurrent or partial append can give an older row a newer write time.
+    $retryDetail = 'CSV clock check is inconclusive; retry verification.'
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        if ($attempt -gt 0) { Start-Sleep -Milliseconds 100 }
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        try {
+            $before = Get-Item -LiteralPath $Path
+            $length = $before.Length
+            $lastWriteUtc = $before.LastWriteTimeUtc
+            $count = [int][Math]::Min(65536, $length)
+            $null = $stream.Seek($length - $count, [System.IO.SeekOrigin]::Begin)
+            $buffer = New-Object byte[] $count
+            $read = 0
+            while ($read -lt $count) {
+                $next = $stream.Read($buffer, $read, $count - $read)
+                if ($next -eq 0) { break }
+                $read += $next
+            }
+            $after = Get-Item -LiteralPath $Path
+            $stable = $read -eq $count -and $after.Length -eq $length -and
+                $after.LastWriteTimeUtc -eq $lastWriteUtc
+            $tail = [System.Text.Encoding]::UTF8.GetString($buffer, 0, $read)
+        }
+        finally {
+            $stream.Dispose()
+        }
+        if (-not $stable) {
+            $retryDetail = 'CSV changed during snapshot reads; clock check is inconclusive after bounded retries.'
+            continue
+        }
+
+        $lastNewline = $tail.LastIndexOf("`n")
+        if ($lastNewline -lt 0) { throw 'CSV has no completed row timestamp.' }
+        $completed = $tail.Substring(0, $lastNewline)
+        if ($completed.EndsWith("`r")) { $completed = $completed.Substring(0, $completed.Length - 1) }
+        $lastRow = $completed.Substring($completed.LastIndexOf("`n") + 1)
+        $timestampText = ($lastRow -split ',', 2)[0]
+        $timestamp = [datetime]::MinValue
+        $formats = [string[]]@('MM/dd/yyyy HH:mm:ss.fff', 'MM/dd/yyyy HH:mm:ss')
+        if (-not [datetime]::TryParseExact($timestampText, $formats,
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::None, [ref]$timestamp)) {
+            throw 'Latest completed CSV row has an invalid or missing timestamp.'
+        }
+        if ($lastNewline -ne $tail.Length - 1) {
+            $retryDetail = 'CSV has an unfinished final row; clock check is inconclusive after bounded retries.'
+            continue
+        }
+
+        # Compare with this snapshot's write time, not polling time: long logging
+        # intervals stay valid. Retry disagreement to allow writer metadata to settle.
+        $lastWrite = $lastWriteUtc.ToLocalTime()
+        $skewSeconds = [Math]::Abs(($lastWrite - $timestamp).TotalSeconds)
+        if ($skewSeconds -gt 120) {
+            $retryDetail = "CSV timestamp {0} differs from host-local last write {1} by {2:N1} seconds (limit 120); check the collector time zone." -f
+                $timestamp.ToString('o'), $lastWrite.ToString('o'), $skewSeconds
+            continue
+        }
+        return ("CSV timestamp agrees with host-local last write (difference {0:N1} seconds)." -f $skewSeconds)
+    }
+    throw $retryDetail
+}
+
 $layout = $null
 $consumers = $null
 $live = $null
@@ -99,7 +169,7 @@ try {
     $declaredTaskBindingsContract = @($manifestContract.ScheduledTaskBindings)
 
     $manifestsValid = $true
-    Add-LhmLiveCheck 'manifests' 'Pass' 'All three manifests parsed; schema, version, machineId, roots, and the two required scheduled-task target contracts agree.'
+    Add-LhmLiveCheck 'manifests' 'Pass' 'All three manifests parsed; schema, version, machineId, roots, and the required live and log-management scheduled-task target contracts agree.'
 }
 catch {
     Add-LhmLiveCheck 'manifests' 'Fail' $_.Exception.Message
@@ -251,10 +321,31 @@ if ($manifestsValid) {
 
             $action = $actions[0]
             $target = Get-LhmNormalizedPath -Path ([string]$binding.target)
+            $isExtraScriptTask = [System.IO.Path]::GetExtension($target) -ieq '.ps1' -and
+                -not (Test-LhmPathEqual -Left $target -Right $declaredEntryTargetContract) -and
+                -not (Test-LhmPathEqual -Left $target -Right $declaredLogTaskTargetContract)
             $expectedWorkingDirectory = Get-LhmNormalizedPath -Path (Split-Path -Parent $target)
-            $actualWorkingDirectory = [string]$action.WorkingDirectory
-            if ([string]::IsNullOrWhiteSpace($actualWorkingDirectory) -or
-                -not (Test-LhmPathEqual -Left $actualWorkingDirectory -Right $expectedWorkingDirectory)) {
+            $literalWorkingDirectory = [string]$action.WorkingDirectory
+            $rawWorkingDirectoryProperty = $binding.PSObject.Properties['rawWorkingDirectory']
+            $actualWorkingDirectory = Get-LhmExpandedPath -Path $literalWorkingDirectory
+            if ($null -ne $rawWorkingDirectoryProperty) {
+                $declaredRawWorkingDirectory = [string]$rawWorkingDirectoryProperty.Value
+                if ($literalWorkingDirectory -ne $declaredRawWorkingDirectory) {
+                    Add-LhmLiveCheck "task:$bindingName" 'Fail' "Task working directory '$literalWorkingDirectory' does not match declared rawWorkingDirectory '$declaredRawWorkingDirectory'."
+                    continue
+                }
+                if ([string]::IsNullOrWhiteSpace($literalWorkingDirectory) -and -not $isExtraScriptTask) {
+                    Add-LhmLiveCheck "task:$bindingName" 'Fail' 'Required task working directory must be the target parent.'
+                    continue
+                }
+                if (-not [string]::IsNullOrWhiteSpace($literalWorkingDirectory) -and
+                    -not (Test-LhmPathEqual -Left $actualWorkingDirectory -Right $expectedWorkingDirectory)) {
+                    Add-LhmLiveCheck "task:$bindingName" 'Fail' "Task working directory '$actualWorkingDirectory' does not match '$expectedWorkingDirectory'."
+                    continue
+                }
+            }
+            elseif ([string]::IsNullOrWhiteSpace($actualWorkingDirectory) -or
+                    -not (Test-LhmPathEqual -Left $actualWorkingDirectory -Right $expectedWorkingDirectory)) {
                 Add-LhmLiveCheck "task:$bindingName" 'Fail' "Task working directory '$actualWorkingDirectory' does not match '$expectedWorkingDirectory'."
                 continue
             }
@@ -263,7 +354,24 @@ if ($manifestsValid) {
             if ($null -ne $action.PSObject.Properties['Arguments'] -and $action.Arguments) {
                 $actionArguments = [string]$action.Arguments
             }
-            $executePath = ([string]$action.Execute).Trim('"')
+            $rawArgumentsProperty = $binding.PSObject.Properties['rawArguments']
+            if ($null -ne $rawArgumentsProperty -and $actionArguments -cne [string]$rawArgumentsProperty.Value) {
+                Add-LhmLiveCheck "task:$bindingName" 'Fail' 'Task arguments do not match declared rawArguments.'
+                continue
+            }
+            $literalExecute = ([string]$action.Execute).Trim('"')
+            $executePath = Get-LhmExpandedPath -Path $literalExecute
+            $rawExecuteProperty = $binding.PSObject.Properties['rawExecute']
+            $declaredRawExecute = $null
+            if ($null -ne $rawExecuteProperty) {
+                $declaredRawExecute = [string]$rawExecuteProperty.Value
+                if ($literalExecute -ne $declaredRawExecute) {
+                    Add-LhmLiveCheck "task:$bindingName" 'Fail' "Task execute path '$literalExecute' does not match declared rawExecute '$declaredRawExecute'."
+                    continue
+                }
+            }
+            $rawAllowsUnrootedEngine = ($isExtraScriptTask -and $null -ne $declaredRawExecute -and
+                -not [System.IO.Path]::IsPathRooted($declaredRawExecute))
             if ([System.IO.Path]::GetExtension($target) -ieq '.ps1') {
                 $engineName = [System.IO.Path]::GetFileName($executePath)
                 if ($engineName -notin @('powershell.exe', 'pwsh.exe')) {
@@ -271,33 +379,35 @@ if ($manifestsValid) {
                     continue
                 }
 
-                if (-not [System.IO.Path]::IsPathRooted($executePath)) {
+                if (-not [System.IO.Path]::IsPathRooted($executePath) -and -not $rawAllowsUnrootedEngine) {
                     Add-LhmLiveCheck "task:$bindingName" 'Fail' "Script task execute path '$executePath' is not a full application path."
                     continue
                 }
-                $normalizedExecutePath = Get-LhmNormalizedPath -Path $executePath
-                if ($null -ne $logConfigContractError) {
-                    Add-LhmLiveCheck "task:$bindingName" 'Fail' $logConfigContractError
-                    continue
-                }
-                $allowedEnginePaths = if ($configuredPowerShellExecutablePresent) {
-                    @($configuredPowerShellExecutableContract)
-                }
-                else {
-                    @(Get-LhmLegacyScriptEnginePaths)
-                }
-                $allowedEngineMatch = @($allowedEnginePaths | Where-Object {
-                    Test-LhmPathEqual -Left $_ -Right $normalizedExecutePath
-                }).Count -eq 1
-                if (-not $allowedEngineMatch) {
-                    $engineContract = if ($configuredPowerShellExecutablePresent) {
-                        "configured PowerShellExecutable '$configuredPowerShellExecutableContract'"
+                if ([System.IO.Path]::IsPathRooted($executePath)) {
+                    $normalizedExecutePath = Get-LhmNormalizedPath -Path $executePath
+                    if ($null -ne $logConfigContractError) {
+                        Add-LhmLiveCheck "task:$bindingName" 'Fail' $logConfigContractError
+                        continue
+                    }
+                    $allowedEnginePaths = if ($configuredPowerShellExecutablePresent) {
+                        @($configuredPowerShellExecutableContract)
                     }
                     else {
-                        'the canonical legacy PowerShell engine paths'
+                        @(Get-LhmLegacyScriptEnginePaths)
                     }
-                    Add-LhmLiveCheck "task:$bindingName" 'Fail' "Script task execute path '$normalizedExecutePath' does not match $engineContract."
-                    continue
+                    $allowedEngineMatch = @($allowedEnginePaths | Where-Object {
+                        Test-LhmPathEqual -Left $_ -Right $normalizedExecutePath
+                    }).Count -eq 1
+                    if (-not $allowedEngineMatch) {
+                        $engineContract = if ($configuredPowerShellExecutablePresent) {
+                            "configured PowerShellExecutable '$configuredPowerShellExecutableContract'"
+                        }
+                        else {
+                            'the canonical legacy PowerShell engine paths'
+                        }
+                        Add-LhmLiveCheck "task:$bindingName" 'Fail' "Script task execute path '$normalizedExecutePath' does not match $engineContract."
+                        continue
+                    }
                 }
 
                 $fileArgument = Get-LhmTaskArgumentPath -Arguments $actionArguments -Name 'File'
@@ -429,22 +539,23 @@ if ($null -ne $liveRoot -and [System.IO.Directory]::Exists($liveRoot)) {
     try {
         $csvPath = Join-Path $liveRoot ('LibreHardwareMonitorLog-' + (Get-Date).ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture) + '.csv')
         if (-not [System.IO.File]::Exists($csvPath)) {
-            Add-LhmLiveCheck 'csv' 'Fail' "Current-day CSV does not exist: $csvPath"
+            throw "Current-day CSV does not exist: $csvPath"
         }
-        elseif ($CsvGrowthSeconds -eq 0) {
-            Add-LhmLiveCheck 'csv' 'Info' 'Current-day CSV exists; growth check skipped.'
-        }
-        else {
+        $growthDetail = 'Current-day CSV exists; growth check skipped.'
+        if ($CsvGrowthSeconds -gt 0) {
             $firstLength = ([System.IO.FileInfo]::new($csvPath)).Length
             Start-Sleep -Seconds $CsvGrowthSeconds
             $secondLength = ([System.IO.FileInfo]::new($csvPath)).Length
             if ($secondLength -gt $firstLength) {
-                Add-LhmLiveCheck 'csv' 'Pass' "Current-day CSV grew $firstLength -> $secondLength bytes over $CsvGrowthSeconds second(s)."
+                $growthDetail = "Current-day CSV grew $firstLength -> $secondLength bytes over $CsvGrowthSeconds second(s)."
             }
             else {
-                Add-LhmLiveCheck 'csv' 'Fail' "Current-day CSV did not grow (stayed at $secondLength bytes over $CsvGrowthSeconds second(s))."
+                throw "Current-day CSV did not grow (stayed at $secondLength bytes over $CsvGrowthSeconds second(s))."
             }
         }
+        $clockDetail = Get-LhmCsvClockDetail -Path $csvPath
+        $csvStatus = if ($CsvGrowthSeconds -eq 0) { 'Info' } else { 'Pass' }
+        Add-LhmLiveCheck 'csv' $csvStatus "$growthDetail $clockDetail"
     }
     catch {
         Add-LhmLiveCheck 'csv' 'Fail' $_.Exception.Message

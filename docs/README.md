@@ -13,7 +13,9 @@ One product, one source history, two machines. `origin`
 development remote. `librehw-host`
 (`https://github.com/celine-anime/librehw-host.git`, branch `main`) is the
 SND-HOST mirror of that same history: it is only ever fast-forwarded from
-`master` and never receives independent commits. `upstream` is the fetch-only
+`master` and never receives independent commits. These remote aliases describe
+the SND-DESK checkout; SND-HOST calls the mirror `origin` and keeps its push URL
+`DISABLED`. `upstream` on SND-DESK is the fetch-only
 official source; the [upstream divergence ledger](architecture/upstream-divergence.md)
 lists every file that differs from it. Verify the local machine identity before
 any operational write; a peer's paths never establish local authority.
@@ -27,7 +29,7 @@ locations are inventory, not proof that its role-root variables are configured.
 |---|---|---|
 | Role | development checkout and its own live runtime | peer operational stack |
 | Source checkout | `Monitoring\sq-librehw` | `DevHome\workspaces\librehw-host\checkouts\main`, relative to `MACHINE_CODE_ROOT` |
-| Remote and branch | `origin` / `master` | `librehw-host` / `main`, fast-forwarded from `master` |
+| Remote and branch | `origin` / `master` | local `origin` / `main`, pulling the `librehw-host` mirror; push disabled |
 | Release tooling | `ops\deploy\snd-desk`; fails closed unless the machine is `snd-desk` | `ops\candidate` (machine-neutral) plus the stack's own manifests |
 | Candidate store | `Monitoring\LibreHW\Candidates` | `LHM_RELEASE_ROOT`, configured by the host stack |
 | Live runtime | `Monitoring\LibreHW\Runtime`, one rollback slot in `Runtime\rollback` | `deployments\current` below the stack root (the parent of `LHM_RELEASE_ROOT`) |
@@ -81,12 +83,15 @@ On 2026-10-27, SSH confirmed that `MACHINE_CODE_ROOT`, `MACHINE_TOOLS_ROOT`, and
 `MACHINE_WORKLOAD_ROOT` are absent at Process, User, and Machine scope on
 SND-HOST. Its `LHM_RELEASE_ROOT` is configured, and the stack's
 `manifests/layout.json` supplies `development.mainCheckout` for inspecting the
-legacy checkout without inventing a path. That checkout still tracks and pushes
-to the host mirror and contains local history absent from the shared source.
-Reconcile that history before changing its remotes or updating its branch.
+legacy checkout without inventing a path. Review recovered its six unpublished
+commits through `f0dadd06` and integrated their history, including CSV clock
+recovery and live-verifier fixes. Keep that checkout pull-only; make subsequent
+source changes through `origin/master` on SND-DESK and fast-forward the mirror.
 The host's owning environment configuration must separately establish the role
-roots. Matching GitHub branch tips alone does not establish the host checkout's
-push policy. Runtime promotion and the held live-machine changes remain separate.
+roots. Matching GitHub branch tips alone does not establish a checkout's state.
+See the [integration review](reviews/review-2026-10-27-machine-version-unification.md)
+for evidence and remaining environment work. Runtime promotion and the held
+live-machine changes remain separate.
 
 ## Current boundaries
 
@@ -147,6 +152,7 @@ Open gates:
 | `docs\architecture\campaign-control-plane.md` | Campaign authority and provenance |
 | `docs\features\feature-release-packaging.md` | Candidate packaging contract |
 | `docs\features\feature-csv-log-storage-efficiency.md` | CSV formatting contract and SND-HOST promotion status |
+| `docs\features\feature-csv-clock-recovery.md` | Automatic CSV time-zone recovery and verification |
 | `docs\features\feature-host-log-management.md` | Log archive and retention contract |
 | `docs\features\feature-live-state-verification.md` | Read-only host verification contract |
 | `docs\features\feature-http-server-safety.md` | Direct HTTP listener fail-closed and exposure contract |

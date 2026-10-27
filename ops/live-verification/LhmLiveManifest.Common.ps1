@@ -28,10 +28,20 @@ function Get-LhmManifestValue {
     return $current
 }
 
+function Get-LhmExpandedPath {
+    param([AllowEmptyString()][string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return [string]$Path
+    }
+
+    return [Environment]::ExpandEnvironmentVariables($Path.Trim('"'))
+}
+
 function Get-LhmNormalizedPath {
     param([Parameter(Mandatory)][string]$Path)
 
-    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $fullPath = [System.IO.Path]::GetFullPath((Get-LhmExpandedPath -Path $Path))
     $pathRoot = [System.IO.Path]::GetPathRoot($fullPath)
     while ($fullPath.Length -gt $pathRoot.Length -and
            ($fullPath.EndsWith([string][System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::Ordinal) -or
@@ -158,9 +168,7 @@ function Get-LhmLiveManifestContract {
             $logTargetCount++
         }
     }
-    if ($scheduledTaskBindings.Count -ne 2 -or
-        $liveTargetCount -ne 1 -or
-        $logTargetCount -ne 1) {
+    if ($liveTargetCount -ne 1 -or $logTargetCount -ne 1) {
         throw ("consumers.json scheduledTask bindings must contain exactly the declared live target '$declaredEntryTarget' " +
                "and log-management target '$declaredLogTaskTarget'; found $($scheduledTaskBindings.Count) binding(s): " +
                ($observedTaskTargets -join ', '))

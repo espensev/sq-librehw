@@ -63,6 +63,14 @@ try {
 
     Assert-Check 'complete history and ledger pass' $fixture 0 'PASS: every upstream-owned path'
 
+    $newPath = Join-Path $fixture 'LibreHardwareMonitorLib/Added.cs'
+    [IO.File]::WriteAllText($newPath, 'staged fork-only')
+    $stagedLedger = $ledger.Replace('<!-- ledger:fork-only:end -->', "| ``LibreHardwareMonitorLib/Added.cs`` | fixture |`n<!-- ledger:fork-only:end -->")
+    [IO.File]::WriteAllText($ledgerPath, $stagedLedger)
+    Invoke-FixtureGit @('add', '--', 'LibreHardwareMonitorLib/Added.cs') | Out-Null
+    Assert-Check 'a documented staged addition passes before commit' $fixture 0 'PASS: every fork-only file'
+    Invoke-FixtureGit @('rm', '-qf', '--', 'LibreHardwareMonitorLib/Added.cs') | Out-Null
+
     [IO.File]::WriteAllText($ledgerPath, $ledger.Replace($base, ('0' * 40)))
     Assert-Check 'a nonexistent pinned base fails instead of skipping' $fixture 1 'FAIL: pinned upstream base is available'
 

@@ -116,8 +116,13 @@ foreach ($line in $diff.Lines) {
 
 $baseTree = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
 foreach ($path in (Invoke-Git -Arguments @('ls-tree', '-r', '--name-only', $base)).Lines) { [void]$baseTree.Add($path) }
-$headTree = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
-foreach ($path in (Invoke-Git -Arguments @('ls-tree', '-r', '--name-only', 'HEAD')).Lines) { [void]$headTree.Add($path) }
+$currentTree = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
+$tracked = Invoke-Git -Arguments @('ls-files', '--cached')
+Assert-Ok 'tracked working-tree inventory succeeded' { $tracked.ExitCode -eq 0 }
+if ($failures.Count -gt 0) { exit 1 }
+foreach ($path in $tracked.Lines) {
+    if (Test-Path -LiteralPath (Join-Path $repositoryRoot $path) -PathType Leaf) { [void]$currentTree.Add($path) }
+}
 
 $upstreamTokens = Get-BacktickTokens -Text $upstreamRegion
 $forkOnlyTokens = Get-BacktickTokens -Text $forkOnlyRegion
@@ -133,13 +138,13 @@ $stale = @($listedUpstreamOwned | Where-Object { -not $differing.Contains($_) } 
 Assert-Ok 'no ledger row names an upstream-owned path that no longer differs' { $stale.Count -eq 0 }
 foreach ($path in $stale) { Write-Output "  stale row: $path" }
 
-$unknown = @($upstreamTokens | Where-Object { $_.Contains('/') -and -not $_.EndsWith('/') -and -not $baseTree.Contains($_) -and -not $headTree.Contains($_) } | Sort-Object)
-Assert-Ok 'every path named in the upstream-owned region exists in the base or in HEAD' { $unknown.Count -eq 0 }
+$unknown = @($upstreamTokens | Where-Object { $_.Contains('/') -and -not $_.EndsWith('/') -and -not $baseTree.Contains($_) -and -not $currentTree.Contains($_) } | Sort-Object)
+Assert-Ok 'every path named in the upstream-owned region exists in the base or tracked working tree' { $unknown.Count -eq 0 }
 foreach ($path in $unknown) { Write-Output "  unknown path: $path" }
 
-$forkOnlyMissing = @($forkOnlyTokens | Where-Object { $_.Contains('/') -and -not $_.EndsWith('/') -and -not $headTree.Contains($_) } | Sort-Object)
-Assert-Ok 'every path named in the fork-only region exists in HEAD' { $forkOnlyMissing.Count -eq 0 }
-foreach ($path in $forkOnlyMissing) { Write-Output "  fork-only path not in HEAD: $path" }
+$forkOnlyMissing = @($forkOnlyTokens | Where-Object { $_.Contains('/') -and -not $_.EndsWith('/') -and -not $currentTree.Contains($_) } | Sort-Object)
+Assert-Ok 'every path named in the fork-only region exists in the tracked working tree' { $forkOnlyMissing.Count -eq 0 }
+foreach ($path in $forkOnlyMissing) { Write-Output "  fork-only path not in tracked working tree: $path" }
 
 $forkOnlyInBase = @($forkOnlyTokens | Where-Object { $baseTree.Contains($_) } | Sort-Object)
 Assert-Ok 'no path named in the fork-only region exists in the upstream base' { $forkOnlyInBase.Count -eq 0 }

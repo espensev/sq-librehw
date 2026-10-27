@@ -333,6 +333,46 @@ HTTP `200`, settings persistence, CSV/archive growth, and full consumer
 rebinding all passed for the physical path migration. A later data-root change
 must pass the same gate again.
 
+## Phase 7 — Web server / dashboard split (scoped authorization)
+
+**Status:** historical scoped authorization from 2026-08-11, recovered from
+SND-HOST in October; reconcile with [dashboard extraction](dashboard-extraction.md)
+before scheduling. The ownership amendment is deferred and NOT granted here.
+
+Authorized under the historical `librehw-webserver-split-plan` package (v0.7),
+recorded on SND-HOST's tools volume under `SQ_HQ/Monitoring`, which holds the
+full task specs, evidence, and eval harness. The byte-identical wire gate is
+the Contracts suite (63 methods / 99 executed cases at `08e1223e`).
+
+- [ ] **Phase A — dashboard external-hosting experiment.** Static copy of
+      frontend assets (now `dashboard/web/`) plus a `<base href>` seam, served on `:20000` (the
+      adopted firewall-rule port). Deploy artifact with a keep/discard
+      decision recorded in the package; a repo change occurs only if the
+      experiment is kept (opt-in base-URL seam, same-origin bytes unchanged).
+- [ ] **Phase 1 — extract web serving into `LibreHardwareMonitor.Web`.**
+      Byte-identical wire format; Contracts multi-targeted to both WinForms
+      TFMs; resource-name re-pin per the package's sanctioned exceptions.
+- [ ] **Phase 2 — sever the `Node` dependency.** Snapshot/command-seam
+      interfaces (`ISensorSnapshotSource`, `ISensorCommandSink`, `HostInfo`);
+      test-harness swap per the package's Sanctioned Exception 2.
+
+Explicitly NOT authorized:
+
+- **Phases 3–4** (headless host owning the hardware stack, cutover, GUI
+  retirement). These relax the "WinForms remains the sole current hardware,
+  process, and scheduled-task owner" non-negotiable and stay contingent on a
+  separate explicit maintainer end-state decision; the package marks them
+  CONTINGENT.
+- Any change to hardware, process, or scheduled-task ownership; any live
+  runtime change; any new network exposure of `:8080` (no inbound path
+  exists today — adding one requires auth plus per-origin CORS first, per
+  the package's 03 §5 auth rule).
+
+**Exit gate:** per authorized phase, the package's gates apply — Contracts
+green unmodified (both TFMs once multi-targeted), golden masters never
+re-baselined beyond the package's three sanctioned exceptions, and no live
+consumer changed. Phases 1–2 change no live state, like Plans 007–013.
+
 ## Next campaign
 
 **The sequenced queue lives in `docs/campaign-backlog.md`.** That file holds the

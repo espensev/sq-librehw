@@ -51,7 +51,7 @@ git diff --numstat 3f118427 -- <path>; git diff -w --numstat 3f118427 -- <path> 
 git log --format='%h %ad %s' --date=short 3f118427..master -- <path>              # provenance
 ```
 
-Counts at the pinned base on 2026-10-27: 464 paths differ; 74 upstream-owned
+Initial inventory at `4e4f1be7` on 2026-10-27: 464 paths differ; 74 upstream-owned
 paths are modified, 32 deleted, 6 moved, and 352 are fork-only additions.
 `.editorconfig`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`, and `Directory.Build.props`
 are unchanged from upstream.
@@ -159,7 +159,7 @@ specifications and the
 | `LibreHardwareMonitor.Windows.Forms/UI/UnitManager.cs` | Upstream byte-formatting helpers from `677a3a56` not adopted; adds `CelsiusRateToFahrenheit`. | declined, fork | [2026-10-19 sync](../features/feature-upstream-sync-2026-10-19.md), [thermal trends](../features/feature-thermal-trends.md); `bbaa9207` |
 | `LibreHardwareMonitor.Windows.Forms/Utilities/HttpServer.cs` | Listener dispatch extracted to `LibreHardwareMonitor.Windows.Forms/Utilities/HttpListenerDispatchService.cs`; `data.json` projected from immutable snapshots by `LibreHardwareMonitor.Windows.Forms/Utilities/DataJsonProjection.cs`; non-finite values serialize as null; sensor writes require a full matching origin; cardtruth preview route retired; embedded resource prefix from the executing assembly name. | fork | [plan-008](../campaign-plan-008-immutable-sensor-snapshot-and.md), [plan-009](../campaign-plan-009-http-listener-dispatch-service.md), [HTTP server safety](../features/feature-http-server-safety.md), [memory and UI reliability](../features/feature-memory-ui-reliability.md); `22e23748`, `5a95bd78`, `58e240b4`, `0b500f32`, `5b9c6f9f`, `bbaa9207`, `ceecf610`, `3a31eb59`, `b510f47d` |
 | `LibreHardwareMonitor.Windows.Forms/Utilities/IconFactory.cs` | Icons created from a handle are tracked so `DestroyIcon` runs exactly once. | fork | `f931a8cc` |
-| `LibreHardwareMonitor.Windows.Forms/Utilities/Logger.cs` | CSV rows carry millisecond timestamps on a monotonic interval gate; session-numbered file names in a configurable directory; per-unit value rounding with a significant-digit floor; duplicate identifiers fan out to distinct columns. Leading byte-order mark dropped. | fork, noise | [CSV storage efficiency](../features/feature-csv-log-storage-efficiency.md), [local release system](../features/feature-local-release-system.md); `d5e84ad8`, `d035a906`, `1ea62672`, `9b1eb527`, `72d44e18`, `8897a3e3`, `9609a4ca` |
+| `LibreHardwareMonitor.Windows.Forms/Utilities/Logger.cs` | CSV rows carry millisecond timestamps on a monotonic interval gate; bounded time-zone cache refresh before due writes; session-numbered file names in a configurable directory; per-unit value rounding with a significant-digit floor; duplicate identifiers fan out to distinct columns. Leading byte-order mark dropped. | fork, noise | [CSV clock recovery](../features/feature-csv-clock-recovery.md), [CSV storage efficiency](../features/feature-csv-log-storage-efficiency.md), [local release system](../features/feature-local-release-system.md); `d5e84ad8`, `d035a906`, `1ea62672`, `9b1eb527`, `72d44e18`, `8897a3e3`, `9609a4ca`, `795847fc` |
 | `LibreHardwareMonitor.Windows.Forms/Utilities/PersistentSettings.cs` | Bounded history persistence; durable save with a preserved backup and failing fallback; validated history checkpoint; Windows session-end save protocol. | fork | [memory and UI reliability](../features/feature-memory-ui-reliability.md); `e0758bf4`, `45abee20`, `5b9c6f9f`, `7522851e`, `aa95772b` |
 
 ## 2. Upstream-owned files the fork deleted
@@ -270,6 +270,7 @@ embedded under their original resource names. Record:
 | `LibreHardwareMonitor.Windows.Forms/UI/Themes/ScrollIndicatorGeometry.cs` | Shared scrollbar geometry | same; `48496529` |
 | `LibreHardwareMonitor.Windows.Forms/Utilities/DataJsonProjection.cs` | `data.json` projection from snapshots | [plan-008](../campaign-plan-008-immutable-sensor-snapshot-and.md); `3a31eb59` |
 | `LibreHardwareMonitor.Windows.Forms/Utilities/HttpListenerDispatchService.cs` | Bounded HTTP listener dispatch | [plan-009](../campaign-plan-009-http-listener-dispatch-service.md); `b510f47d` |
+| `LibreHardwareMonitor.Windows.Forms/Utilities/LoggerClock.cs` | Monotonic cadence and refreshable local time for CSV writes | [CSV clock recovery](../features/feature-csv-clock-recovery.md); `795847fc` |
 | `LibreHardwareMonitor.Windows.Forms/Utilities/RuntimePaths.cs` | Managed data-root and startup-task resolution | [local release system](../features/feature-local-release-system.md); `9b1eb527` |
 | `LibreHardwareMonitor.Windows.Forms/Utilities/PawnIoInstallerLease.cs` | Serialized PawnIO installer extraction | same; `9b1eb527` |
 | `LibreHardwareMonitor.Windows.Forms/Utilities/ReleaseSmoke.cs` | Candidate smoke entry point | [release packaging](../features/feature-release-packaging.md); `c733e891` |
@@ -342,7 +343,11 @@ PowerShell 7 and requires the base commit object. The hosted workflow fetches
 full history and runs the separate `upstream-divergence` gate; the
 self-referential `ci-gates` suite remains excluded from `-All`.
 
+New files must be staged before checking; existence is checked against the
+tracked working tree so documented additions can pass before their first commit.
+
 Acceptance: both PowerShell engines must accept a complete documented fixture
+and a documented staged addition,
 and reject a nonexistent base, a shallow clone missing the base, an undocumented
 upstream change, and an undocumented fork-only product file. Runner and workflow
 tests must keep this gate included and the checkout configured for full history.
@@ -362,3 +367,7 @@ Verification log:
   in `-All`, with full history in the hosted checkout. The complete `eng/ci`
   suite passes 122 assertions under each PowerShell engine, with two optional
   PyYAML skips; the dedicated gate also passes both verification steps.
+- 2026-10-27, SND-HOST integration: added the recovered `LoggerClock.cs` row
+  and clock-recovery ownership for `Logger.cs`. A staged-file regression exposed
+  the old HEAD-only existence check; the gate now uses the tracked working tree.
+  Both engine suites pass 124 assertions with the same two PyYAML skips.
