@@ -6,8 +6,8 @@ param(
 # Upstream divergence ledger gate.
 # Asserts that docs/architecture/upstream-divergence.md names every upstream-owned
 # path that differs from the pinned upstream base, names no upstream-owned path
-# that no longer differs, and still pins the merge-base with a fetched
-# upstream/master. Skips (and passes) when the base commit object is absent, as
+# that no longer differs, lists every fork-only file added inside the inherited
+# product roots, and still pins the merge-base with a fetched upstream/master. Skips (and passes) when the base commit object is absent, as
 # in a shallow hosted checkout without the upstream remote.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -143,6 +143,26 @@ foreach ($path in $forkOnlyMissing) { Write-Output "  fork-only path not in HEAD
 $forkOnlyInBase = @($forkOnlyTokens | Where-Object { $baseTree.Contains($_) } | Sort-Object)
 Assert-Ok 'no path named in the fork-only region exists in the upstream base' { $forkOnlyInBase.Count -eq 0 }
 foreach ($path in $forkOnlyInBase) { Write-Output "  upstream-owned path listed as fork-only: $path" }
+
+$productRoots = @('Aga.Controls/', 'LibreHardwareMonitorLib/', 'LibreHardwareMonitor.Windows.Forms/')
+$forkOnlyInProductRoots = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
+foreach ($line in $diff.Lines) {
+    $parts = $line -split "`t"
+    if ($parts.Count -lt 2) { continue }
+    $status = $parts[0].Substring(0, 1)
+    $added = $null
+    if ($status -eq 'A') { $added = $parts[1] }
+    elseif (($status -eq 'R' -or $status -eq 'C') -and $parts.Count -ge 3) { $added = $parts[2] }
+    if ($null -eq $added) { continue }
+    foreach ($root in $productRoots) {
+        if ($added.StartsWith($root, [System.StringComparison]::Ordinal)) { [void]$forkOnlyInProductRoots.Add($added) }
+    }
+}
+$forkOnlyListed = @($forkOnlyTokens | Where-Object { $forkOnlyInProductRoots.Contains($_) })
+Write-Output "  fork-only files inside the product roots: $($forkOnlyInProductRoots.Count); listed in the fork-only region: $($forkOnlyListed.Count)"
+$forkOnlyUnlisted = @($forkOnlyInProductRoots | Where-Object { -not $forkOnlyTokens.Contains($_) } | Sort-Object)
+Assert-Ok 'every fork-only file inside an inherited product root is listed in the fork-only region' { $forkOnlyUnlisted.Count -eq 0 }
+foreach ($path in $forkOnlyUnlisted) { Write-Output "  unlisted fork-only file: $path" }
 
 if ($failures.Count -gt 0) {
     Write-Output "Failed assertions: $($failures.Count)"

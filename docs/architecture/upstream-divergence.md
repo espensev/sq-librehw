@@ -28,7 +28,8 @@ stays in the sync specifications linked below; this file does not repeat it.
   paths that no longer differ.
 - `eng/ci/Test-LhmCiGates.ps1` runs the ledger check with the other `eng/ci`
   tests. The check fails when a differing upstream-owned path has no row, when
-  a row names an upstream-owned path that no longer differs, or when the pinned
+  a row names an upstream-owned path that no longer differs, when a fork-only
+  file added inside an inherited product root is not listed, or when the pinned
   base is no longer the merge-base with a fetched `upstream/master`. It skips
   when the base commit is absent from a shallow clone.
 
@@ -109,10 +110,10 @@ specifications and the
 | `LibreHardwareMonitorLib/Hardware/Cpu/Amd17Cpu.cs` | Upstream per-core PM-table sensors take indices 1000 plus table offset and 2000 plus core id so existing sequential sensor ids and saved selections stay stable; a failed or partial table clears the cached voltage and temperature. | adapt | [2026-10-19 sync](../features/feature-upstream-sync-2026-10-19.md); merge `93bd9704` |
 | `LibreHardwareMonitorLib/Hardware/Motherboard/Model.cs` | Fourteen upstream enum members are appended after `Unknown` instead of inserted in place so public numeric values stay stable; pinned by `MotherboardModelCompatibilityTests`. | adapt | both sync specs; merges `3a805fab`, `93bd9704`, `2e3b059b` |
 | `LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/Nct677X.cs` | NCT6687DR fan-configuration retry extracted into testable helpers that keep the restore-required flag when the EC restore fails; NCT6701D temperatures cleared each poll so remapped sources cannot retain old readings. Leading byte-order mark dropped. | adapt, noise | both sync specs; merges `3a805fab`, `93bd9704` |
-| `LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/EC/EmbeddedController.cs` | Intel 700 water-flow factor multiplied by 60 so `SensorType.Flow` keeps litres per hour. | adapt | [2026-10-19 sync](../features/feature-upstream-sync-2026-10-19.md); merge `2e3b059b` |
+| `LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/EC/EmbeddedController.cs` | Intel 700 water-flow factor multiplied by 60 so `SensorType.Flow` keeps litres per hour. | adapt | [2026-10-19 sync](../features/feature-upstream-sync-2026-10-19.md); merge `93bd9704` |
 | `LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/LpcPort.cs` | `ReadIoPort` and `WriteIoPort` are virtual for fake-register tests. | adapt | merge `93bd9704` |
 | `LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/LpcIO.cs` | Mixed CRLF and LF line endings on 23 lines from merge `93bd9704`; no code difference (`git diff -w` is empty). | noise | merge `93bd9704` |
-| `LibreHardwareMonitorLib/Hardware/Motherboard/Identification.cs` | Trailing whitespace removed on one line; no code difference. | noise | merge `2e3b059b` |
+| `LibreHardwareMonitorLib/Hardware/Motherboard/Identification.cs` | Trailing whitespace removed on one line; no code difference. | noise | merge `93bd9704` |
 | `LibreHardwareMonitorLib/Hardware/Gpu/AmdGpu.cs` | Identical to upstream before `677a3a56`; memory sensors stay MB (`SmallData`). | declined | [2026-10-19 sync](../features/feature-upstream-sync-2026-10-19.md) |
 | `LibreHardwareMonitorLib/Hardware/Gpu/IntelDiscreteGpu.cs` | Identical to upstream before `677a3a56`; memory sensors stay MB. | declined | same |
 | `LibreHardwareMonitorLib/Hardware/Gpu/IntelIntegratedGpu.cs` | Identical to upstream before `677a3a56`; D3D memory sensors stay MB. | declined | same |
@@ -331,8 +332,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Test-LhmCiGates.p
 ```
 
 The check reads the pinned base from this file, lists every upstream-owned path
-that differs from it in the working tree, and compares that list with the paths
-named between the ledger markers. It runs under Windows PowerShell 5.1 and
+that differs from it in the working tree and every fork-only file added inside
+the inherited product roots, and compares both lists with the paths named
+between the ledger markers. It runs under Windows PowerShell 5.1 and
 PowerShell 7 and needs the base commit object; it prints `SKIP` and passes when
 a shallow clone lacks it. The hosted `Non-deploying gates` workflow does not run
 the `ci-gates` suite (it is self-referential), so this check is a local gate.
@@ -343,3 +345,7 @@ Verification log:
   112 upstream-owned rows (74 modified, 32 deleted, 6 moved) and 32 fork-only
   files inside product roots; the check passed under both engines with the
   fetched `upstream/master` merge-base equal to the pinned base.
+- 2026-10-27, second pass: the check now also requires every fork-only file
+  added inside the inherited product roots to be listed (32 of 32 listed); the
+  `EmbeddedController.cs` and `Identification.cs` merge attributions were
+  corrected to `93bd9704` from `git blame`; both engines pass.
