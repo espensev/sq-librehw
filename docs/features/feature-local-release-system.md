@@ -5,15 +5,16 @@ launcher actions fail closed to `snd-desk`; the non-live fixture is intentionall
 peer-safe under isolated temporary roots. Do not treat these paths, tasks,
 users, or runtime state as SND-HOST instructions.
 
-**Status:** Master `9e68b348` is installed on SND-DESK since 2026-10-23, with
-the Corsair failure-path repair `957923fc` retained in the verified rollback
-slot. The promoted tree carries the 2026-10-19 official upstream integration,
-the device-polling isolation, history-preservation, and runtime-enables
-follow-ups, and the 18085 health-gate default. All 17 HX1500i readings, the
-NVIDIA power sensors of both GPUs, general hardware monitoring, and CSV logging
-are live-verified with HWiNFO and iCUE still running; failed PSU polls log
-empty cells for that tick instead of stale values. See the 2026-10-23 record
-below. The webserver is enabled at `http://127.0.0.1:18085/`; since 2026-10-23
+**Status:** Master `aa95772b` is installed on SND-DESK since 2026-10-27, with
+the previous master `9e68b348` retained in the verified rollback slot. The
+promoted tree adds the tailnet fleet view phase 1 (fleet poller boot, Machines
+panel, per-machine rendering) and the Windows session-end protocol fix to the
+2026-10-23 tree (2026-10-19 official upstream integration, device-polling
+isolation, history preservation, runtime enables, and the 18085 health-gate
+default). All 17 HX1500i readings, the NVIDIA power sensors of both GPUs,
+general hardware monitoring, and CSV logging are live-verified with HWiNFO and
+iCUE still running; failed PSU polls log empty cells for that tick instead of
+stale values. See the 2026-10-27 record below. The webserver is enabled at `http://127.0.0.1:18085/`; since 2026-10-23
 the promotion, rollback, cutover, and migration scripts default `-HealthUri` to
 `http://127.0.0.1:18085/data.json` (the historical 8085 default is retired),
 and the managed-task principal SID constant matches the current
@@ -22,7 +23,7 @@ Focused value-axis Shift-wheel zoom and adaptive lane tick spacing
 remain installed, including the earlier startup zoom repair.
 The legacy scheduler-root task is retired; the enabled managed task's logon
 trigger is the sole automatic-start authority.
-Launcher convergence was rechecked with Validate on 2026-10-23: launcher,
+Launcher convergence was rechecked with Validate on 2026-10-27: launcher,
 central launcher, public shim, and managed task are current, and only the
 2026-10-02 convergence receipt is stale because it names the 2026-10-02 merge
 worktree rather than the primary checkout as its source, as already recorded
@@ -33,7 +34,7 @@ Current Data/Bin authority is persisted `SEV_LOCAL_DATA` / `SEV_LOCAL_BIN`
 (User, then Machine, then Process), with recursive expansion of `%...%`
 templates. The app-owned `librehw` launcher is the sole activation authority.
 Completed migrations and their dated evidence are retained below.
-**Updated:** 2026-10-23
+**Updated:** 2026-10-27
 
 ## Problem
 
@@ -1315,3 +1316,67 @@ Evidence is retained under `D:\DevHome\tmp\librehw-master-promotion-20261023`:
 `after-data.json`, `live-verification.json`, `installed-psu-stability.json`,
 `launcher-validate.log`, `closeout.json`, `psu-null-soak.json`, and
 `post-promotion-soak.json`.
+
+### Master promotion — 2026-10-27
+
+Commit `aa95772b` (`master`, 9 commits past the installed `9e68b348`) was
+published from the clean primary checkout as candidate
+`desk-master-20261027-aa95772b`. Release verification passed Library 193/193,
+Application 266 with the one existing opt-in skip, and Contracts 115/115; both
+x64 Release targets built with zero warnings/errors, and the exact-executable
+smoke reported file version `0.9.6.2496` and product version
+`0.9.6+aa95772.2026-10-27` with the manifest SHA-256 matching the payload. The
+non-live release fixture passed under Windows PowerShell 5.1 and pwsh 7, and
+the fork's non-deploying CI gate passed for the same commit (run 40250298067).
+The promoted range carries the tailnet fleet view phase 1 (`1cc3af3c`,
+`5cc2856a`, `619dda7e`, `d8263a13`) and the Windows session-end protocol fix
+(`aa95772b`).
+
+Preconditions were rechecked immediately before promotion: an elevated pwsh
+7.6.7 session, a verified `snd-desk` identity, the clean checkout at the
+expected HEAD, the exact four-entry install root without a release
+transaction, one responding exact-path process answering 200, the
+log-management task idle, and the .NET 10 Desktop runtime present. The
+identity-verified `-WhatIf` preview reached the promotion ShouldProcess point
+without error, and the guarded promotion (`-AllowStopExactProcess`, explicit
+loopback `-HealthUri`) completed in 3.9 seconds at 19:30 local with the health
+probe answering 200. Installed SHA-256 is
+`eea0e77529d280349c439e553a15a27dcec83811c7d1bde2692aa99a5a8403b1`; rollback
+`9e68b348` matches its prior installed payload
+`0d6e4ece5e80035c46647906519d05d9f7ad7778fc541c93fcbec9688dda7173`. No release
+transaction remained after activation.
+
+Live verification found one responding exact-path process (new PID, started
+19:30:31), 54 hardware nodes, 613 sensors (609 with values), all 17 Corsair
+readings, all nine NVIDIA power sensors across both GPUs, 251 changing
+sensors, continuing CSV growth, and no Application crash event since start.
+Against the pre-promotion baseline of 563 sensors, 50 sensor IDs were added
+and none removed, all of them `/nic/` entries: the previous process had
+enumerated 30 adapters at the 14:23 boot while Windows now has 40, and the
+fresh enumeration picked up the rest. Another 45 consecutive HTTP samples each
+retained 17/17 readings and correct rail voltages; PSU uptime advanced 45
+seconds, and HWiNFO, iCUE, and Corsair.Service kept their process IDs and
+start times. Launcher Validate reports launcher, central launcher, public shim,
+and managed task current; only the convergence receipt is stale, as before.
+
+A 10.5-minute soak confirmed the same process still responding (20 of 20
+samples, HTTP 200 each), no crash event, package power changing on both GPUs,
+and 688 CSV rows from 19:30:40 to 19:40:57 all carrying 17 PSU values, with no
+partial or empty rows and a maximum row gap of 1.6 seconds. For comparison,
+the previous build's log since the 14:23 boot held 37 all-empty PSU rows in
+21,157 and an 18.9-second gap in the ten minutes before promotion.
+
+Installed-dashboard smoke (read-only, isolated DevHome headless browser on CDP
+port 9001): the runtime serves the extracted dashboard assets; the page booted
+on the fleet poller with the local source current, the Machines panel listed
+the local row, Standard rendered 14 primary cards and 12 panels, Studio 6
+focus cards and 12 systems, and Workspace 3 panels and 8 cards over 613 live
+sensors; the trace held only same-origin GETs and no console error or
+exception. The Machines form is keyboard-reachable: Enter or Space on the
+toolbar summary opens it, Tab reaches the enable toggle, import, label, URL,
+and add controls, and Escape closes it. No peer was configured in the live
+dashboard. The session-end save is still to be observed at the next real
+shutdown (see the reliability spec).
+
+Evidence is retained under `D:\DevHome\tmp\librehw-master-promotion-20261027`;
+its `README.txt` maps every file to the step above.

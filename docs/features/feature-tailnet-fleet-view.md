@@ -1,7 +1,7 @@
 # Feature Spec: Tailnet Fleet View
 
-**Status:** Option A phase 1 implemented in source and browser-verified against fixtures and one live peer; not yet promoted to the installed runtime
-**Updated:** 2026-10-25
+**Status:** Option A phase 1 promoted to the SND-DESK runtime on 2026-10-27 within master `aa95772b` and smoke-verified on the installed dashboard; the tailnet listener port is still an open operator decision
+**Updated:** 2026-10-27
 **Supersedes:** [Unified Tailnet Monitoring View](feature-unified-tailnet-monitoring-view.md)
 
 The owner selected Option A on 2026-10-23 UTC and requested this refinement on
@@ -12,8 +12,8 @@ polling, and ingestion models with regression tests; the second (2026-10-25)
 made the fleet poller the dashboard's boot poller, added the Machines panel,
 and rendered per-machine attribution and freshness in all three views. The
 interrupted peer fixture is retained unchanged and used by those tests.
-Installed-runtime promotion and the tailnet listener port remain separate
-operational steps.
+The installed-runtime promotion happened on 2026-10-27; the tailnet listener
+port remains a separate operational step.
 
 Frontend source and tests now belong to `dashboard/`; the Windows application
 embeds the same assets under stable resource names. The
@@ -272,9 +272,10 @@ framework builds and installed-runtime acceptance remain distinct.
    polling/ingestion with deterministic foundation tests for A2–A7.
 2. Completed (2026-10-25): fleet session integration, Machines panel, and
    per-machine rendering in all three views, with A1/A3/A5/A8 browser evidence.
-3. Next: decide the snd-desk tailnet listener port, then candidate/release
-   promotion under the local release contract and installed-runtime acceptance
-   against authorized peers.
+3. Completed (2026-10-27): candidate/release promotion under the local release
+   contract with a read-only installed-runtime smoke (below).
+4. Next: decide the snd-desk tailnet listener port, then installed-runtime
+   acceptance against authorized peers.
 
 ### Foundation implementation (2026-10-24)
 
@@ -397,5 +398,22 @@ Verification (source `619dda7e` and the rendering commit on top of it):
 - Not exercised: the installed runtime, keyboard-only operation of the
   Machines form, and hidden-tab visibility beyond the Node suite.
 
-Remaining operational decisions are the desktop listener port and release
-promotion. They do not block phase-1 source work.
+### Installed-runtime smoke (2026-10-27)
+
+Master `aa95772b` was promoted on SND-DESK under the
+[local release contract](feature-local-release-system.md#master-promotion--2026-10-27).
+A read-only smoke from the isolated DevHome headless browser (CDP port 9001)
+against `http://127.0.0.1:18085/` found: the runtime serves the extracted
+dashboard assets; the page boots on `SQFleetPoller` with the local source
+current; the Machines panel lists the local row; Standard renders 14 primary
+cards and 12 panels, Studio 6 focus cards and 12 systems, and Workspace 3
+panels and 8 cards over 613 live sensors; the network trace holds only
+same-origin GETs with no console error or exception. The Machines form is
+keyboard-reachable: Enter or Space on the toolbar summary opens it, Tab
+reaches the enable toggle, import, label, URL, and add controls, and Escape
+closes it. No peer was configured in the live dashboard, so peer acceptance
+against the installed runtime is still open. Evidence:
+`librehw-master-promotion-20261027` in the DevHome tmp folder.
+
+The remaining operational decision is the desktop listener port; it does not
+block phase-1 source work.

@@ -6,8 +6,8 @@ deployed and live-verified on SND-HOST
 
 **Corsair failure follow-up:** source-verified on 2026-10-07; candidate
 `957923fc` was promoted to SND-DESK on 2026-10-08 and live-verified with HWiNFO
-and iCUE running. Since 2026-10-23 `957923fc` holds the rollback slot behind
-master `9e68b348`.
+and iCUE running. It stayed in the rollback slot until 2026-10-27, when master
+`aa95772b` replaced `9e68b348`, which now holds the one rollback slot.
 
 **Device polling follow-up:** source-verified on 2026-10-19; deployed to
 SND-DESK on 2026-10-23 within master `9e68b348`. Physical device-failure
@@ -22,7 +22,11 @@ roll back attempted groups and reconcile UI/settings without automatic retry.
 Deployed to SND-DESK on 2026-10-23 within master `9e68b348`; failed-disable
 recovery remains separate.
 
-**Updated:** 2026-10-23
+**Session-end protocol follow-up:** source-verified on 2026-10-26; deployed to
+SND-DESK on 2026-10-27 within master `aa95772b`. The live shutdown-save check
+stays open until the next real shutdown.
+
+**Updated:** 2026-10-27
 
 ## Problem and motivation
 
@@ -543,11 +547,13 @@ Verification on 2026-10-19:
 - [ ] Decide whether failed `Computer.Reset()` must reconstruct the last known
   group set. The current failure path closes every partial replacement and
   leaves no mixed generation, but already-closed prior groups cannot be restored.
-- [ ] Live-verify the session-end protocol after the next promotion: at a real
-  restart the settings file's LastWriteTime lands within seconds of the User32
-  1074 event, and Winsrv 10001 stops naming the executable in sessions where the
-  window was shown. Task result `0x80070004` is still expected, because every
-  logon-task application on the machine ends with it at session end.
+- [ ] Live-verify the session-end protocol now that `aa95772b` is installed
+  (2026-10-27): at a real restart the settings file's LastWriteTime lands
+  within seconds of the User32 1074 event, and Winsrv 10001 stops naming the
+  executable in sessions where the window was shown. Task result `0x80070004`
+  is still expected, because every logon-task application on the machine ends
+  with it at session end. Control point from the old build: the 2026-10-27
+  14:22:42 restart left the settings file last written at 11:56:01.
 - [ ] Keep unclaimed `<sensor>/values` history in every save until hardware
   discovery has finished a successful `Computer.Open`, not only in the
   session-end checkpoint. Today an autosave during a long PawnIO prompt, or the
@@ -605,6 +611,16 @@ separate maintainer approval.
 
 ## Verification log
 
+- 2026-10-27 master promotion, live: master `aa95772b` (the session-end
+  protocol fix on top of fleet phase 1) was promoted on SND-DESK with
+  `9e68b348` in the rollback slot. Live verification, a 45-sample PSU watch,
+  and a 10.5-minute soak passed: 613 sensors (50 `/nic/` IDs added by a fresh
+  adapter enumeration, none removed), 17/17 PSU readings in all 688 CSV rows
+  with no partial or empty rows and a 1.6-second maximum gap, package power
+  changing on both GPUs, no crash event, and HWiNFO, iCUE, and Corsair.Service
+  untouched. The shutdown-save behavior is not yet observed. Evidence:
+  `D:\DevHome\tmp\librehw-master-promotion-20261027`; record in the
+  [local release spec](feature-local-release-system.md#master-promotion--2026-10-27).
 - 2026-10-26 session-end protocol, source-only: event logs from 10-19 to 10-24
   showed that the `MainForm_FormClosing` veto only occurred after the window had
   been shown and caused no measurable delay. Task result `0x80070004` is shared
