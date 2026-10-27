@@ -1,7 +1,7 @@
 # External Release Candidate Packaging
 
 **Status:** implemented; candidate creation remains non-deploying
-**Updated:** 2026-10-02
+**Updated:** 2026-10-27
 
 ## Problem
 

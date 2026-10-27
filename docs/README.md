@@ -46,10 +46,13 @@ the SND-HOST candidate and verification contracts are in
   `0.9.6` because the `data.json` contract embeds it; build with `-p:Platform=x64`.
 - Every build identifies itself by commit: the Windows project stamps the
   product version `0.9.6+<sha7>[-dirty].<yyyy-MM-dd>` from Git.
-- Release and candidate identifiers embed that commit. SND-DESK `release.json`
-  uses `0.9.6_<sha7>.<date>-<sha12>-<utc>`; SND-HOST candidates use
-  `0.9.6-<date>-<time>-<sha7>`. Compare machines by commit, never by
-  identifier shape.
+- Release and candidate identifiers embed that commit. SND-DESK
+  `Publish-LibreHardwareMonitor.ps1` writes
+  `<product version with + replaced by _>-<sha12>-<yyyyMMddTHHmmssZ>`, which
+  renders as `0.9.6_<sha7>.<date>-<sha12>-<utc>`; SND-HOST `New-LhmRelease.ps1`
+  writes `0.9.6-<yyyyMMdd-HHmmssfff>-<sha7>`, appends `-dirty` for a dirty
+  checkout, and accepts an explicit `-ReleaseId`. Compare machines by commit,
+  never by identifier shape.
 - The commit is the only cross-machine version key. Read it from
   `release.json`, `live.json`, or Git when needed; do not copy release
   identifiers or commits into documents or records, where they go stale.
