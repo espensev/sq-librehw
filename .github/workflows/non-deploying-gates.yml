@@ -16,8 +16,8 @@
 #
 # Actions are referenced by version tag rather than by commit SHA.
 #
-# The Node and Python versions match the SND-HOST development host (Node
-# v26.5.1, Python 3.13.14). Toolchain setup succeeded on the hosted Windows
+# The Node and Python versions pin the toolchain the gates were last proven
+# with (Node v26.5.1, Python 3.13.14). Toolchain setup succeeded on the hosted Windows
 # runner in run 39293151243; that run separately exposed a release-fixture defect.
 #
 # This workflow must never gain a deploying, publishing, or host-mutating step.

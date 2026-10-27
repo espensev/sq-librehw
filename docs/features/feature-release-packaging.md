@@ -114,7 +114,7 @@ runtime-data configuration is safe.
 1. explicit `-ReleaseRoot`;
 2. `LHM_RELEASE_ROOT`;
 3. the `<repository-directory-name>-releases` sibling of the repository
-   (`librehw-host-releases` for this checkout).
+   (`sq-librehw-releases` on SND-DESK, `librehw-host-releases` on SND-HOST).
 
 All paths are resolved before mutation. The release root is rejected when it is
 the repository, is inside the repository, contains the repository, or resolves

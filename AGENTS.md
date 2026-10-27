@@ -5,17 +5,13 @@
 **Updated:** 2026-10-27
 **Purpose:** keep feature work spec-first without blocking normal review, build, launch, and bugfix work.
 
-**Current SND-DESK workspace:** `E:\Monitoring\sq-librehw`, branch `master`.
-Local candidates, installed runtime, and rollback belong under
-`E:\Monitoring\LibreHW`; use `ops/deploy/snd-desk` and
-`docs/features/feature-local-release-system.md` for this machine.
-
-**Separate SND-HOST workspace:** primary checkout at
-`D:\DevHome\workspaces\librehw-host\checkouts\main`; future linked agent lanes
-belong under `D:\DevHome\workspaces\librehw-host\worktrees`. The physical
-release/runtime/rollback/log authority is
-`E:\SQ_HQ\Monitoring\LibreHardwareMonitorStack`; see `docs/README.md` and its
-`manifests` directory before host-path work.
+**Machines:** this fork runs on SND-DESK and SND-HOST from one source history
+(`origin/master`; the `librehw-host` remote is a fast-forward mirror of it).
+The machine matrix in `docs/README.md` is the single description of each
+machine's checkout, remote, release tooling, runtime root, and live version
+authority. Check `$env:COMPUTERNAME` before any operational write and use only
+that machine's column; the other machine's paths never establish local
+authority.
 
 This repository is not specs-only: product code exists and normal maintenance can proceed. The rule is narrower: **new features and meaningful behavior changes need a clear feature spec before implementation starts**, unless the maintainer explicitly asks for a small direct fix or exploratory spike.
 
