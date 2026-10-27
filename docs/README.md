@@ -102,6 +102,7 @@ Open gates:
 |---|---|
 | `docs\architecture\refactor-roadmap.md` | Structural continuation and phase gates |
 | `docs\architecture\dashboard-extraction.md` | Dashboard source ownership and extraction acceptance |
+| `docs\architecture\upstream-divergence.md` | Every upstream-owned file the fork modified, deleted, moved, or declined, with its owning record; checked by `eng\ci\tests\Test-UpstreamDivergenceLedger.ps1` |
 | `docs\campaign-backlog.md` | Sequenced campaign queue |
 | `docs\campaign-playbook.md` | Campaign procedure |
 | `docs\campaign-history.md` | Per-criterion acceptance ledger |
@@ -177,6 +178,9 @@ Git-ignore, reparse, loaded-process, and fail-closed CIM inventory guards.
 ## Documentation policy
 
 - Keep current contracts and links; place completed evidence in Git history.
+- When a change touches a file that also exists in upstream LibreHardwareMonitor,
+  update its row in `docs\architecture\upstream-divergence.md` in the same pass;
+  `eng\ci\Test-LhmCiGates.ps1` fails when a differing upstream file has no row.
 - Delete completed discovery or review notes after unresolved findings are
   folded into an active contract.
 - Edit plan JSON through campaign tooling; do not hand-edit rendered plans.

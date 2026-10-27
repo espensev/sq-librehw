@@ -2,6 +2,8 @@
 > This is a maintained fork of LibreHardwareMonitor with additional dashboard
 > views, sensor extensions, and operational tooling. Fork-specific contracts,
 > feature specs, and verification records live in [`docs/README.md`](docs/README.md).
+> Every file that differs from the upstream source is listed, with its reason, in
+> the [upstream divergence ledger](docs/architecture/upstream-divergence.md).
 > The upstream README follows below.
 
 ---

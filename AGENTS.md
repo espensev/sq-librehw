@@ -2,7 +2,7 @@
 
 **Project:** LibreHardwareMonitor Sev IQ local fork  
 **Status:** Active implementation fork  
-**Updated:** 2026-08-20
+**Updated:** 2026-10-27
 **Purpose:** keep feature work spec-first without blocking normal review, build, launch, and bugfix work.
 
 **Current SND-DESK workspace:** `E:\Monitoring\sq-librehw`, branch `master`.
@@ -40,6 +40,10 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
   before resuming the structural baseline or starting another campaign.
 - `dashboard/README.md` and `docs/architecture/dashboard-extraction.md`: frontend
   ownership, direct Node tests, fixture development, and stable embedded resources.
+- `docs/architecture/upstream-divergence.md`: **upstream divergence ledger** listing
+  every upstream-owned file the fork modified, deleted, moved, or declined, classified
+  and linked to its owning spec or commit. Update its row in the same pass as any edit
+  to a file that also exists upstream.
 - `docs/campaign-backlog.md`: the sequenced campaign queue — what to run next,
   its entry conditions, ownership, and exit criteria.
 - `docs/campaign-playbook.md`: how to actually run a campaign here, including
@@ -101,7 +105,7 @@ A feature is ready for implementation only when its spec covers:
 - Implement from the accepted spec, not from unstated assumptions.
 - Keep edits scoped to the feature or bugfix.
 - If implementation discovers the spec is wrong, update the spec before or with the code change.
-- Preserve upstream compatibility unless the spec explicitly accepts a local-fork divergence.
+- Preserve upstream compatibility unless the spec explicitly accepts a local-fork divergence. Record every accepted divergence in `docs/architecture/upstream-divergence.md`.
 - Keep generated output, logs, and local scratch artifacts out of source.
 
 Useful baseline commands:
@@ -132,5 +136,6 @@ For docs/spec edits:
 For product-code edits:
 
 - run the repo-appropriate build;
+- if the edit touches a file that also exists in upstream LibreHardwareMonitor, update its row in `docs/architecture/upstream-divergence.md` and run `eng\ci\Test-LhmCiGates.ps1 -Filter Test-UpstreamDivergenceLedger`;
 - launch or otherwise exercise the changed workflow when practical;
 - update the spec verification log or implementation notes after the behavior is checked.

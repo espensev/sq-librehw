@@ -132,3 +132,6 @@ separate release step.
   warning in the run is the pre-existing Avalonia spike AVLN3001.
   `MotherboardModelCompatibilityTests` passes with the appended member. The
   range is not promoted, and the new board has no hardware check here.
+
+The per-file state of the fork against official `3f118427` is kept in the
+[upstream divergence ledger](../architecture/upstream-divergence.md).
