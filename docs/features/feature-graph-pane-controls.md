@@ -108,7 +108,10 @@ Stacked Axes, Show Axes Labels, Grid Density, Time Axis, Value Axes, Lanes, Rese
   infinite bound leaves its field empty); it accepts
   finite numbers with maximum > minimum in the current culture, rejects group
   separators (so `1.5` in a comma-decimal culture is an error, not 15), and
-  keeps the dialog open with an inline message on invalid input. The fixed
+  rejects a pair that the float `plotPanel.Min/Max` keys cannot store as a
+  finite increasing range (a sub-ulp pair such as `1` and `1.00000001`, or a
+  magnitude past about `3.4e38`). It keeps the dialog open with an inline
+  message on invalid input. The fixed
   range applies even when `Value Axes > Enable Zoom` is off. Menu value
   changes, like wheel zoom, are written to the existing `plotPanel.Min/Max<key>`
   keys by the next settings save; `Auto Range` removes them immediately. The
@@ -336,9 +339,11 @@ Value-range keys are unchanged (`plotPanel.Min/Max<key>`, graph-lanes spec).
   un-plot through `SetSensorNodesPlot` and the re-plot path are code-reviewed only,
   live check pending.)
 - [x] Value Zoom In/Out, Auto Range, and Set Range affect only the pane and persist
-  through the existing keys; invalid Set Range input is rejected. The prompt
-  leaves a NaN or infinite bound empty and prefills round-trip text when `G6`
-  would collapse the range.
+  through the existing keys; invalid Set Range input is rejected, including a
+  finite increasing double pair whose float cast is not a finite increasing
+  pair. The prompt leaves a NaN or infinite bound empty and prefills round-trip
+  text when `G6` would collapse the range. Wheel and menu value zoom do not use
+  that float check.
 - [x] Overlay mode ignores overrides and restores them in stacked mode.
 - [x] Full x64 test filter and both Release builds pass; ledger gate passes.
 - [ ] Operator confirms the defaults above and the live gestures after a
@@ -538,3 +543,30 @@ moved every other following pane.
   15 passed, 0 failed (four new files re-staged, index only).
 - Not verified: a real wheel burst or touchpad pinch before `WM_PAINT` in the
   running app. The fixture drives the controller directly and never paints.
+
+### 2026-11-10: Set Range float round-trip and pre-paint line hit (`master` after `baca022a`)
+
+- Review of `baca022a` refuted two reports (grouped thousands already fail
+  `NumberStyles.Float`; detach and a later own-window zoom are different
+  gestures and both stay at 1 s). Two reports held.
+- `SetLaneValueRange` returns false before `Zoom` when the float cast is NaN,
+  Infinity, or not strictly increasing. The previous range stays, so the next
+  save does not write equal floats or `Infinity` and then delete
+  `plotPanel.Min/Max`. Wheel zoom and menu Zoom In/Out still go through
+  `ZoomLaneValue`.
+- `GetSensorAt` skips a series whose `ActualPoints` is still null. That is the
+  gap after `SetSensors` replaces the series and before the next
+  `model.Update`: `GetNearestPoint` otherwise throws `ArgumentNullException`.
+  The property is protected, so the skip reads it by name.
+- `FullyQualifiedName~PlotPanel` on the Application project (`-p:Platform=x64`):
+  137 passed, 0 failed. The two new tests passed on a separate re-run.
+- `dotnet test LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf -p:Platform=x64`:
+  Contracts 124 passed; Library 193 passed; Application 371 passed and 1
+  established skip (`SettingsPersistenceTests.LiveConfigCopy_LoadsAndCompactsWithinMemoryBudgets`).
+- Both Release builds (`net10.0-windows`, `net472`, `-p:Platform=x64
+  --no-incremental`): 0 warnings, 0 errors.
+- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Test-LhmCiGates.ps1 -Filter Test-UpstreamDivergenceLedger`:
+  15 passed, 0 failed. `PlotPanel.cs` was already a ledger row, so the row text
+  was left as it stood.
+- Not verified: live gestures and menus in the running app. That remains behind
+  the operator promotion gate.

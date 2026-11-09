@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Windows.Forms;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
@@ -31,6 +32,11 @@ public class PlotPanel : UserControl
     private const string LaneTimeSettingPrefix = "plotPanel.laneTime.";
     private const double MenuZoomFactor = 1.25;
     private const double LineHitTolerance = 8;
+
+    // Protected, and null until UpdateData copies an ItemsSource. GetNearestPoint throws on that null.
+    private static readonly PropertyInfo SeriesActualPoints = typeof(DataPointSeries).GetProperty(
+        "ActualPoints",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
     // Shared by the Time Axis menu and each pane's Time Scale menu.
     private static readonly (string Text, double Seconds)[] TimeWindowPresets =
@@ -671,6 +677,11 @@ public class PlotPanel : UserControl
         foreach (LineSeries series in _model.Series.OfType<LineSeries>())
         {
             if (series.Tag is not ISensor sensor || (laneKey != null && series.YAxisKey != laneKey))
+                continue;
+
+            // A series replaced by SetSensors has not been through Update: ActualPoints is null
+            // (axes may already be assigned). GetNearestPoint throws; the line is not a hit.
+            if (SeriesActualPoints != null && SeriesActualPoints.GetValue(series) == null)
                 continue;
 
             TrackerHitResult hit = series.GetNearestPoint(point, true);
@@ -1584,6 +1595,18 @@ public class PlotPanel : UserControl
         if (key == null || !_axes.TryGetValue(key, out LinearAxis axis) ||
             double.IsNaN(minimum) || double.IsInfinity(minimum) ||
             double.IsNaN(maximum) || double.IsInfinity(maximum) || !(maximum > minimum))
+        {
+            return false;
+        }
+
+        // plotPanel.Min/Max are floats. A finite increasing double pair can cast to equal
+        // floats or Infinity; reject it so the previous range stays. Wheel and menu zoom
+        // go through ZoomLaneValue and are not checked here.
+        float storedMinimum = (float)minimum;
+        float storedMaximum = (float)maximum;
+        if (float.IsNaN(storedMinimum) || float.IsInfinity(storedMinimum) ||
+            float.IsNaN(storedMaximum) || float.IsInfinity(storedMaximum) ||
+            !(storedMaximum > storedMinimum))
         {
             return false;
         }

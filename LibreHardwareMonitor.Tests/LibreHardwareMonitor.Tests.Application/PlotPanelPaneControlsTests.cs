@@ -804,6 +804,31 @@ public sealed class PlotPanelPaneControlsTests
     }
 
     [Fact]
+    public void GetSensorAt_SkipsSeriesReplacedBeforeTheNextUpdate()
+    {
+        using Fixture f = Fixture.Create();
+        ScreenPoint inside = f.PointIn(WheelRegion.StackedPane);
+        Assert.True(f.View.Model.PlotArea.Width > 0);
+        Assert.True(f.View.Model.PlotArea.Contains(inside));
+
+        var replacement = new FakeSensor(SensorType.Power, "SoC", 30, _ => 50f);
+        f.Panel.SetSensors(
+            new List<ISensor> { replacement },
+            new Dictionary<ISensor, Color> { [replacement] = Color.Green },
+            new Dictionary<ISensor, string> { [replacement] = f.LaneKey },
+            2);
+
+        // The previous layout's plot area is still live, but the new series has not been through Update.
+        Assert.True(f.View.Model.PlotArea.Contains(inside));
+        LineSeries series = Assert.Single(f.View.Model.Series.Cast<LineSeries>());
+        Assert.Same(replacement, series.Tag);
+        Assert.Null(series.XAxis);
+        Assert.Throws<ArgumentNullException>(() => series.GetNearestPoint(inside, true));
+
+        Assert.Null(f.Panel.GetSensorAt(inside));
+    }
+
+    [Fact]
     public void RemoveFromGraph_OffersEachSensorAndConfirmsAllInPane()
     {
         using Fixture f = Fixture.Create();
@@ -895,6 +920,33 @@ public sealed class PlotPanelPaneControlsTests
         Assert.True(f.Panel.SetLaneValueRange(f.LaneKey, 5, 25));
         Assert.Equal((5d, 25d), (f.LaneAxis.ActualMinimum, f.LaneAxis.ActualMaximum));
         Assert.False(f.LaneAxis.IsZoomEnabled);
+    }
+
+    [Fact]
+    public void SetRange_RejectsAFiniteDoublePairThatIsNotAFiniteIncreasingFloatPair()
+    {
+        using Fixture f = Fixture.Create();
+        string minKey = "plotPanel.Min" + f.LaneKey;
+        string maxKey = "plotPanel.Max" + f.LaneKey;
+        Assert.True(f.Panel.SetLaneValueRange(f.LaneKey, 10, 90));
+        f.Panel.SetCurrentSettings();
+        Assert.Equal(10f, f.Settings.GetValue(minKey, float.NaN));
+        Assert.Equal(90f, f.Settings.GetValue(maxKey, float.NaN));
+
+        // Equal floats (1 and 1.00000001) and non-finite floats (1e39, and -1e39..1e39) stay rejected.
+        Assert.False(f.Panel.SetLaneValueRange(f.LaneKey, 1, 1.00000001));
+        Assert.False(f.Panel.SetLaneValueRange(f.LaneKey, 1e39, 2e39));
+        Assert.False(f.Panel.SetLaneValueRange(f.LaneKey, -1e39, 1e39));
+        Assert.Equal((10d, 90d), (f.LaneAxis.ActualMinimum, f.LaneAxis.ActualMaximum));
+        f.Panel.SetCurrentSettings();
+        Assert.Equal(10f, f.Settings.GetValue(minKey, float.NaN));
+        Assert.Equal(90f, f.Settings.GetValue(maxKey, float.NaN));
+
+        Assert.True(f.Panel.SetLaneValueRange(f.LaneKey, 1.5, 2.5));
+        Assert.Equal((1.5d, 2.5d), (f.LaneAxis.ActualMinimum, f.LaneAxis.ActualMaximum));
+        f.Panel.SetCurrentSettings();
+        Assert.Equal(1.5f, f.Settings.GetValue(minKey, float.NaN));
+        Assert.Equal(2.5f, f.Settings.GetValue(maxKey, float.NaN));
     }
 
     [Fact]
