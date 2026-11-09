@@ -1,7 +1,7 @@
 # Feature Spec: Graph Pane Controls
 
-**Status:** source implemented and fixture-verified (2026-11-09, uncommitted at verification); not a candidate or live behavior; defaults await operator confirmation
-**Updated:** 2026-11-09
+**Status:** promoted to the SND-DESK runtime on 2026-11-10 at `1bf2655f`; defaults confirmed; live sample checked; remove-from-graph and a restart layout check are still open
+**Updated:** 2026-11-10
 **Extends:** [graph lanes](feature-graph-lanes.md) (lanes, weights, per-lane value zoom and persistence stay owned there)
 **Origin:** operator request 2026-11-09 with an annotated screenshot of the stacked Power / Temperature / Fan graph and its right-click menu
 
@@ -44,14 +44,14 @@ The operator asked that:
 - Deleting sensor history. Removal only un-plots; re-checking the sensor restores
   the line with its retained history.
 
-## Decisions pending operator confirmation
+## Decisions
 
-The operator was away when these were asked; each is a reversible default. The
-pane time-zoom and menu-anchor defaults were changed on 2026-11-09 to meet the
-operator's original requirement: "users can set the zoom level for each pane,
-SEPARATELY, this is essential."
+The operator confirmed these defaults on 2026-11-10 by continuing to the
+runtime promotion. Each one stays reversible. The pane time-zoom and
+menu-anchor defaults were set on 2026-11-09 to meet the original requirement:
+"users can set the zoom level for each pane, SEPARATELY, this is essential."
 
-| Question | Default taken | Alternative offered |
+| Question | Confirmed default | Alternative not taken |
 |---|---|---|
 | Own time window per pane? | Yes, as an opt-in override per pane; default `Follow Shared` keeps panes aligned | Shared time only, per-pane value controls |
 | Plain wheel over a pane | Zooms only that pane's value scale; `Shift` + wheel stays a value alias | Keep upstream time + value wheel |
@@ -346,8 +346,11 @@ Value-range keys are unchanged (`plotPanel.Min/Max<key>`, graph-lanes spec).
   that float check.
 - [x] Overlay mode ignores overrides and restores them in stacked mode.
 - [x] Full x64 test filter and both Release builds pass; ledger gate passes.
-- [ ] Operator confirms the defaults above and the live gestures after a
-  separately authorized promotion.
+- [x] Operator confirmed the defaults above. After promotion of `1bf2655f`, a
+  live sample checked pane menus, the gear menu, Power wheel zoom, and a Fan
+  1 h detach restored with Follow Shared.
+- [ ] A live remove-from-graph and a restart that keeps the layout are still
+  unchecked.
 
 ## Follow-ups
 
@@ -568,5 +571,35 @@ moved every other following pane.
 - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File eng\ci\Test-LhmCiGates.ps1 -Filter Test-UpstreamDivergenceLedger`:
   15 passed, 0 failed. `PlotPanel.cs` was already a ledger row, so the row text
   was left as it stood.
-- Not verified: live gestures and menus in the running app. That remains behind
-  the operator promotion gate.
+- Not verified in that pass: live gestures and menus in the running app.
+
+### 2026-11-10: SND-DESK promotion and live sample (`1bf2655f`)
+
+- Identity verifier returned `VERIFIED` for `snd-desk` instance
+  `ca96d510-7d87-4cec-8e1a-bd8fc3866903`.
+- `Publish-LibreHardwareMonitor.ps1` wrote
+  `E:\Monitoring\LibreHW\Candidates\desk-master-20261110-1bf2655f`.
+  Release `0.9.6_1bf2655.2026-11-10-1bf2655f185b-20261109T235203Z`,
+  SHA-256 `9b924116c6e00477400a74390dd8cdc5410364ff7d8693cd7290db1d8eb8401c`.
+  Its internal suites passed Library 193, Application 371 plus the known skip,
+  and Contracts 124. Both Release builds passed with 0 warnings.
+- WhatIf preflight, then `Install-LibreHardwareMonitorRelease.ps1
+  -AllowStopExactProcess -Confirm:$false`. Activated. Rollback is
+  `0.9.6_aa95772.2026-10-27-aa95772b3243-20261027T182911Z`. This runtime also
+  contains the commits after `aa95772b`, including the upstream merge.
+- Installed exe hash matches the manifest. `http://127.0.0.1:18085/data.json`
+  returned 200. The main window title was `Libre Hardware Monitor - Sev IQ`.
+- Right-click in Power, Temperature, and Fan each showed that pane's header
+  plus Value Scale, Time Scale, Height, and Remove from Graph. Fan Time Scale
+  listed Follow Shared, the presets through 24 h including 1 h, and Zoom In /
+  Zoom Out. The gear button menu had the shared graph items and no pane header.
+- Three plain wheel notches over Power moved its top label from 90 to 75.
+  Temperature, Fan, and the shared time axis stayed on the same window.
+  Power had no `plotPanel.Min/MaxPower` key, so Auto Range put it back on auto.
+- Fan Time Scale `1 h` drew the pane's own axis from `11/9 23:59` to
+  `11/10 00:52` while the shared axis stayed on the recent 10 minutes.
+  Follow Shared removed that pane axis. The settings file hash was unchanged
+  from the pre-gesture copy.
+- Not done live: Remove from Graph plus re-plot, a restart that keeps a
+  detached pane, the Set Range dialog, DPI, and the dark disabled-header
+  contrast.
