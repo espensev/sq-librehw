@@ -64,7 +64,8 @@ the graph is exactly today's graph.
   selected sensor when they share one type; otherwise it is disabled.
 - `Graph` menu and the graph-local options menu: `Lanes >` with one entry per visible or
   user lane: `Rename...` and `Remove Lane` (user lanes only), `Height > 1x | 2x | 3x`,
-  and `Auto Range`.
+  and `Auto Range`. [Graph pane controls](feature-graph-pane-controls.md) adds
+  `Value Scale`, `Time Scale`, and `Remove from Graph` to each lane entry.
 - `Reset Graph View` keeps today's meaning: it clears sensor values/history and does not
   alter lane zoom, membership, or weights. The existing `Value Axes > Autoscale All`
   action resets zoom on every lane.
@@ -77,7 +78,8 @@ the graph is exactly today's graph.
   and auto-range modes. Normal live time scrolling continues.
 - The shortcut respects `Value Axes > Enable Zoom`. Outside a visible lane it
   does nothing. In overlay mode, target the value-axis labels; the shared plot
-  area is ambiguous and does nothing. Plain wheel and Ctrl + wheel stay unchanged.
+  area is ambiguous and does nothing. Plain wheel and Ctrl + wheel are defined by
+  [graph pane controls](feature-graph-pane-controls.md#mouse-gestures).
 - Value tick spacing follows rendered lane height and axis text size, including
   Fine grid mode, instead of forcing twenty labels into short lanes. Time-axis
   Fine spacing and the existing grid visibility choices remain unchanged.

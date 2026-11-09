@@ -87,6 +87,18 @@ public sealed class PresentationSurfaceCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public void Plot_SensorsRemoveRequestedCallbackForwardsUnchanged()
+    {
+        PresentationSurfaceCoordinator coordinator = CreateCoordinator(withGadget: true);
+        Action<IReadOnlyList<ISensor>> removeRequested = _ => { };
+
+        coordinator.PlotSensorsRemoveRequested = removeRequested;
+
+        Assert.Same(removeRequested, _plot.SensorsRemoveRequested);
+        Assert.Same(removeRequested, coordinator.PlotSensorsRemoveRequested);
+    }
+
+    [Fact]
     public void SetPlotSensors_ForwardsSensorSequenceColorDictionaryInstanceAndStroke()
     {
         PresentationSurfaceCoordinator coordinator = CreateCoordinator(withGadget: true);
@@ -260,6 +272,8 @@ public sealed class PresentationSurfaceCoordinatorTests : IDisposable
         public Action ResetGraphView { get; set; }
 
         public Action<string> LaneRemoved { get; set; }
+
+        public Action<IReadOnlyList<ISensor>> SensorsRemoveRequested { get; set; }
 
         internal int SetCurrentSettingsCount { get; private set; }
         internal List<ISensor> Sensors { get; private set; }

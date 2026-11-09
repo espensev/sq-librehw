@@ -72,6 +72,7 @@ If a requested implementation is ambiguous and acceptance is unclear, draft the 
 - `docs/features/feature-independent-text-scaling.md`: shipped independent sensor-pane and graph-axis text scaling.
 - `docs/features/feature-http-server-safety.md`: fail-closed HTTP listener host resolution and exposure contract; source implemented, live deployment not yet promoted.
 - `docs/features/feature-graph-lanes.md`: promoted and live-verified on SND-DESK, including repaired manual-zoom persistence; operator layout sign-off remains separate.
+- `docs/features/feature-graph-pane-controls.md`: source-implemented per-pane value and time scales, pane gestures and right-click menu, and graph-menu sensor removal; not a candidate or live behavior, and its defaults await operator confirmation.
 - `docs/features/feature-host-log-management.md`: deployed host-neutral CSV archive, retention, and task-install package.
 - `docs/features/feature-csv-log-storage-efficiency.md`: source-only compact CSV numeric formatting with a non-zero significant-digit floor; not yet a candidate or live behavior.
 - `docs/features/feature-host-operator-utilities.md`: planned portable thermal snapshot and report-only log evidence analyzer.

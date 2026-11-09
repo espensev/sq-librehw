@@ -182,6 +182,7 @@ Open gates:
 | `docs\features\feature-unified-tailnet-monitoring-view.md` | Superseded static unified view; historical operational evidence only |
 | `eng\ci\README.md` | Non-deploying gate runner |
 | `docs\features\feature-graph-lanes.md` | Promoted and live-verified on SND-DESK; lane splits, height, layout, and repaired manual-zoom persistence pass; operator sign-off separate |
+| `docs\features\feature-graph-pane-controls.md` | Per-pane value and time scales, pane gestures and right-click menu, graph-menu sensor removal; source-only, not a candidate or live behavior |
 | `docs\reviews\settled-2026-10-23-smu-and-rapl.md` | Closed Ryzen SMU reply and Intel RAPL claims; do not reopen |
 
 Other feature documents contain their own status and acceptance criteria.

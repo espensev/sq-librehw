@@ -53,6 +53,12 @@ internal sealed class PlotPanelPresentationAdapter : IPresentationPlotSurface
         set => _plotPanel.LaneRemoved = value;
     }
 
+    public Action<IReadOnlyList<ISensor>> SensorsRemoveRequested
+    {
+        get => _plotPanel.SensorsRemoveRequested;
+        set => _plotPanel.SensorsRemoveRequested = value;
+    }
+
     public void SetCurrentSettings() => _plotPanel.SetCurrentSettings();
 
     public void SetSensors(

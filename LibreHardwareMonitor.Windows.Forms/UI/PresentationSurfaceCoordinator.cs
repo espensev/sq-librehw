@@ -33,6 +33,8 @@ internal interface IPresentationPlotSurface
 
     Action<string> LaneRemoved { get; set; }
 
+    Action<IReadOnlyList<ISensor>> SensorsRemoveRequested { get; set; }
+
     void SetCurrentSettings();
 
     void SetSensors(
@@ -161,6 +163,12 @@ internal sealed class PresentationSurfaceCoordinator : IDisposable
     {
         get => _plot.LaneRemoved;
         set => _plot.LaneRemoved = value;
+    }
+
+    internal Action<IReadOnlyList<ISensor>> PlotSensorsRemoveRequested
+    {
+        get => _plot.SensorsRemoveRequested;
+        set => _plot.SensorsRemoveRequested = value;
     }
 
     internal bool IsTrayMainIconEnabled

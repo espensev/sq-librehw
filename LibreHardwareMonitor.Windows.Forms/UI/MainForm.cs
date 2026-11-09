@@ -975,6 +975,7 @@ public sealed partial class MainForm : Form
         // The graph-local options menu offers the same reset command as this menu item.
         _presentation.PlotResetGraphView = () => resetPlotMenuItem_Click(this, EventArgs.Empty);
         _presentation.PlotLaneRemoved = ReturnRemovedLaneSensorsToDefault;
+        _presentation.PlotSensorsRemoveRequested = RemoveSensorsFromPlot;
         sensorValuesTimeWindowMenuItem.Text = "&Time Window";
         plotLocationMenuItem.Text = "Graph &Location";
         strokeThicknessMenuItem.Text = "&Stroke Thickness";
@@ -1948,6 +1949,19 @@ public sealed partial class MainForm : Form
             .ToList();
         if (nodes.Count > 0)
             RunBatchedPlotChange(nodes, node => node.GraphLaneKey = null);
+    }
+
+    // Graph-menu removal un-plots through the same node path as the sensor-tree checkbox, so
+    // re-checking a sensor restores its line, lane, and color.
+    private void RemoveSensorsFromPlot(IReadOnlyList<ISensor> sensors)
+    {
+        if (sensors == null || sensors.Count == 0)
+            return;
+
+        var removed = new HashSet<ISensor>(sensors);
+        List<SensorNode> nodes = GetAllSensorNodes().Where(node => removed.Contains(node.Sensor)).ToList();
+        if (nodes.Count > 0)
+            SetSensorNodesPlot(nodes, false);
     }
 
     private ToolStripMenuItem CreateGraphLaneMenu(List<SensorNode> sensorNodes)
