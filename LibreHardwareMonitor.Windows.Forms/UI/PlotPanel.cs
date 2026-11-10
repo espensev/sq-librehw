@@ -523,7 +523,7 @@ public class PlotPanel : UserControl
         LinearAxis axis = _axes[lane.Key];
         var menu = new ToolStripMenuItem("Values") { Name = "paneValues" };
         bool auto = _autoRangeLaneKeys.Contains(lane.Key);
-        (string minimumText, string maximumText) = PlotRangePrompt.FormatPrefill(axis.ActualMinimum, axis.ActualMaximum, CultureInfo.CurrentCulture);
+        (string minimumText, string maximumText) = PlotRangePrompt.FormatState(axis.ActualMinimum, axis.ActualMaximum, CultureInfo.CurrentCulture);
         string bounds = minimumText + " – " + maximumText + (string.IsNullOrEmpty(axis.Unit) ? string.Empty : " " + axis.Unit);
         ThemedMenuRenderer.SetState(menu, auto ? "Auto" : bounds);
 

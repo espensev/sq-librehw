@@ -164,7 +164,7 @@ mode. A keyboard invocation targets the focused pane.
 Power · W                                  header: lane name · axis unit (not selectable)
 Remove "<sensor>" from Graph               only when a line is hit
 ──
-Values                 Auto | 30 – 140 W ›  ● Auto Range | ● Fixed Range...  <bounds> | ── | Zoom In  <scope> | Zoom Out  <scope>
+Values             Auto | 30.0 – 140.0 W ›  ● Auto Range | ● Fixed Range...  <bounds> | ── | Zoom In  <scope> | Zoom Out  <scope>
 Time        Shared | 1 h | 4 min 10 s   ›  ● Follow Shared  <shared span> | ● Custom (…) | ── | ● 30 sec … 24 h | ── | Zoom In/Out  <scope>
 Height                              1×  ›  stacked only: ● 1× | ● 2× | ● 3×
 Remove from Graph                       ›  <each sensor> | ── | All N in This Pane...
@@ -192,7 +192,9 @@ Clear Graph History...
 ```
 
 - Right-aligned grey text is the current state. `Values` shows `Auto` or the
-  fixed bounds with the unit. `Time` shows `Shared`, the preset or the custom
+  fixed bounds with the unit, rounded to one decimal place (operator decision
+  2026-11-10); if one decimal would make both bounds read the same, it falls
+  back to the prompt prefill text. `Time` shows `Shared`, the preset or the custom
   span. `Time Axis` shows `Auto`, the preset or the custom span. The scoped
   `Zoom In`/`Zoom Out` entries show `This pane` or `All panes` in the same
   column.
@@ -471,12 +473,11 @@ Not part of this change; each needs its own decision or fix.
   `Shift` + wheel should act on overlay's single shared time axis.
 - Menu-bar `Graph` menu and gear sharing one definition, and the sensor-tree
   menu's always-present `Graph Lane` and `Reset Pen Color`.
-- `Values` state text after a wheel zoom shows the prompt's round-trip
-  prefill, e.g. `30.2104 – 116.976 W` or `262.066 – 1986.73 RPM`, where the
-  contract example reads `30 – 140 W`. `CreateValueScaleMenu` reuses
-  `PlotRangePrompt.FormatPrefill` for the label. A display format rounded to
-  the axis's significant digits would match the contract; the prompt prefill
-  must keep round-trip text. Seen live on `d5e53c0d`; cosmetic.
+- `Values` state text after a wheel zoom showed the prompt's round-trip
+  prefill on `d5e53c0d` (`30.2104 – 116.976 W`, `262.066 – 1986.73 RPM`).
+  Fixed in source: `PlotRangePrompt.FormatState` rounds to one decimal place
+  and falls back to the prefill only when that collapses the range; the prompt
+  fields keep round-trip text. Installed check awaits the next promotion.
 
 ## Verification plan
 

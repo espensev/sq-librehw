@@ -3,6 +3,7 @@
 // Copyright (C) LibreHardwareMonitor and Contributors.
 // All Rights Reserved.
 
+using System;
 using System.Globalization;
 using System.Windows.Forms;
 using LibreHardwareMonitor.Windows.Forms.UI.Themes;
@@ -75,6 +76,33 @@ internal static class PlotRangePrompt
     private static string FormatBound(double value, string format, CultureInfo culture)
     {
         return double.IsNaN(value) || double.IsInfinity(value) ? string.Empty : value.ToString(format, culture);
+    }
+
+    /// <summary>
+    /// Display text for a pane's current value range in its menu state column: one decimal place,
+    /// rounded half away from zero, with negative zero shown as zero. Falls back to
+    /// <see cref="FormatPrefill"/> when one decimal would collapse the range (both bounds reading the
+    /// same, such as 1.21 to 1.24 V). A NaN or infinite bound is empty. Not for the prompt fields,
+    /// which must keep their round-trip text.
+    /// </summary>
+    internal static (string Minimum, string Maximum) FormatState(double minimum, double maximum, CultureInfo culture)
+    {
+        string minimumText = FormatOneDecimal(minimum, culture);
+        string maximumText = FormatOneDecimal(maximum, culture);
+        if (minimumText.Length > 0 && maximumText.Length > 0 && !TryParseRange(minimumText, maximumText, culture, out _, out _))
+            return FormatPrefill(minimum, maximum, culture);
+
+        return (minimumText, maximumText);
+    }
+
+    private static string FormatOneDecimal(double value, CultureInfo culture)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value))
+            return string.Empty;
+
+        double rounded = Math.Round(value, 1, MidpointRounding.AwayFromZero);
+        // -0.0 == 0, so this also drops the sign that .NET Core would print as "-0.0".
+        return (rounded == 0 ? 0d : rounded).ToString("F1", culture);
     }
 
     /// <summary>

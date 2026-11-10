@@ -957,7 +957,7 @@ public sealed class PlotPanelPaneControlsTests
         Render(f.View);
         f.Panel.RebuildPaneMenuSection(PointAwayFromLines(f, f.LaneAxis));
         var items = f.View.ContextMenuStrip.Items;
-        Assert.Equal("30 – 140 W", Item(items, "paneValues").ShortcutKeyDisplayString);
+        Assert.Equal(30d.ToString("F1", CultureInfo.CurrentCulture) + " – " + 140d.ToString("F1", CultureInfo.CurrentCulture) + " W", Item(items, "paneValues").ShortcutKeyDisplayString);
         Assert.Equal("4 min 10 s", Item(items, "paneTime").ShortcutKeyDisplayString);
         Assert.Equal("2×", Item(items, "paneHeight").ShortcutKeyDisplayString);
         Assert.Equal("This pane", ScopeMenu(f).ShortcutKeyDisplayString);
@@ -1505,6 +1505,23 @@ public sealed class PlotPanelPaneControlsTests
         Assert.Equal(expectedMaximum, maximumText);
         if (minimumText.Length > 0 && maximumText.Length > 0)
             Assert.True(PlotRangePrompt.TryParseRange(minimumText, maximumText, cultureInfo, out _, out _));
+    }
+
+    [Theory]
+    [InlineData(30d, 140d, "", "30.0", "140.0")]
+    [InlineData(30.2104, 116.976, "", "30.2", "117.0")]
+    [InlineData(262.066, 1986.73, "", "262.1", "1986.7")]
+    [InlineData(25.3425, 60.3841, "de-DE", "25,3", "60,4")]
+    [InlineData(-0.03, 50d, "", "0.0", "50.0")]
+    [InlineData(1.21, 1.24, "", "1.21", "1.24")]
+    [InlineData(-0.04, 0.04, "", "-0.04", "0.04")]
+    [InlineData(double.NaN, 20d, "", "", "20.0")]
+    public void ValuesStateText_UsesOneDecimalUnlessThatCollapsesTheRange(double minimum, double maximum, string culture, string expectedMinimum, string expectedMaximum)
+    {
+        (string minimumText, string maximumText) = PlotRangePrompt.FormatState(minimum, maximum, CultureInfo.GetCultureInfo(culture));
+
+        Assert.Equal(expectedMinimum, minimumText);
+        Assert.Equal(expectedMaximum, maximumText);
     }
 
     private static readonly OxyColor SharedMajor = OxyColor.FromRgb(255, 0, 0);
