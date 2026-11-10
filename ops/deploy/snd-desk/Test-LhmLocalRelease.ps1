@@ -2125,6 +2125,7 @@ try {
 finally {
     `$listener.Stop()
     `$listener.Close()
+    `$server.Dispose()
 }
 "@
 
@@ -2132,28 +2133,44 @@ finally {
         Get-Command powershell.exe -CommandType Application -ErrorAction Stop
     $harnessPath = Join-Path ([System.IO.Path]::GetTempPath()) `
         ("sq-librehw-health-probe-{0}.ps1" -f [guid]::NewGuid().ToString('N'))
-    $outputPath = "$harnessPath.out"
+    $process = $null
     try {
         $harness | Set-Content -LiteralPath $harnessPath -Encoding UTF8
-        $process = Start-Process -FilePath $windowsPowerShell.Source `
-            -ArgumentList @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$harnessPath`"") `
-            -NoNewWindow -PassThru -RedirectStandardOutput $outputPath
+        # Launch via ProcessStartInfo rather than Start-Process -PassThru: under
+        # Windows PowerShell 5.1, Start-Process without -Wait disposes the native
+        # process handle before returning, leaving $process.ExitCode null.
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $windowsPowerShell.Source
+        $startInfo.Arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$harnessPath`""
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $startInfo.EnvironmentVariables['PSModulePath'] =
+            Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules'
+
+        $process = [System.Diagnostics.Process]::Start($startInfo)
+        Assert-True ($null -ne $process) `
+            'Windows PowerShell 5.1 health-probe child process did not start.'
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
         if (-not $process.WaitForExit(30000)) {
-            $process.Kill()
-            $process.WaitForExit()
+            try { $process.Kill() } catch { }
+            [void]$process.WaitForExit(5000)
             throw 'Assert-LhmHttpHealth hung under Windows PowerShell 5.1 against a healthy data.json envelope.'
         }
-        $output = if (Test-Path -LiteralPath $outputPath) {
-            Get-Content -LiteralPath $outputPath -Raw
-        }
-        else {
-            ''
-        }
-        Assert-True ($process.ExitCode -eq 0 -and $output -match 'HEALTH-PROBE-PASS') `
-            "Assert-LhmHttpHealth failed under Windows PowerShell 5.1 against a healthy data.json envelope: $output"
+        $process.WaitForExit()
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        $output = (@($stdout, $stderr) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [Environment]::NewLine
+        Assert-True ($process.ExitCode -eq 0 -and $stdout -match 'HEALTH-PROBE-PASS') `
+            "Assert-LhmHttpHealth failed under Windows PowerShell 5.1 against a healthy data.json envelope (exit $($process.ExitCode)): $output"
     }
     finally {
-        Remove-Item -LiteralPath $harnessPath, $outputPath -Force -ErrorAction SilentlyContinue
+        if ($null -ne $process) {
+            $process.Dispose()
+        }
+        Remove-Item -LiteralPath $harnessPath -Force -ErrorAction SilentlyContinue
     }
 
     return $true
