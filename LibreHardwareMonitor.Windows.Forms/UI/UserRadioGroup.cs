@@ -6,6 +6,7 @@
 
 using System;
 using System.Windows.Forms;
+using LibreHardwareMonitor.Windows.Forms.UI.Themes;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
 
 namespace LibreHardwareMonitor.Windows.Forms.UI;
@@ -28,6 +29,7 @@ public class UserRadioGroup
 
         for (int i = 0; i < _menuItems.Length; i++)
         {
+            ThemedMenuRenderer.MarkChoice(_menuItems[i]);
             _menuItems[i].Checked = i == _value;
             int index = i;
             _menuItems[i].Click += delegate

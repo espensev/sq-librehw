@@ -894,8 +894,8 @@ public sealed partial class MainForm : Form
 
     private void InitializeTheme()
     {
-        mainMenu.Renderer = new ThemedToolStripRenderer();
-        treeContextMenu.Renderer = new ThemedToolStripRenderer();
+        mainMenu.Renderer = new ThemedMenuRenderer();
+        treeContextMenu.Renderer = new ThemedMenuRenderer();
         ThemedVScrollIndicator.AddToControl(treeView);
         ThemedHScrollIndicator.AddToControl(treeView);
 
@@ -970,9 +970,9 @@ public sealed partial class MainForm : Form
         mainMenu.Items.Insert(optionsMenuIndex >= 0 ? optionsMenuIndex : mainMenu.Items.Count, graphMenuItem);
 
         plotMenuItem.Text = "&Show Graph";
-        resetPlotMenuItem.Text = "&Reset Graph View";
+        resetPlotMenuItem.Text = "&Clear Graph History...";
 
-        // The graph-local options menu offers the same reset command as this menu item.
+        // Both graph entry points use the same history-clear confirmation.
         _presentation.PlotResetGraphView = () => resetPlotMenuItem_Click(this, EventArgs.Empty);
         _presentation.PlotLaneRemoved = ReturnRemovedLaneSensorsToDefault;
         _presentation.PlotSensorsRemoveRequested = RemoveSensorsFromPlot;
@@ -2461,10 +2461,18 @@ public sealed partial class MainForm : Form
 
     private void resetPlotMenuItem_Click(object sender, EventArgs e)
     {
-        _computer.Accept(new SensorVisitor(delegate (ISensor sensorClick)
-        {
-            sensorClick.ClearValues();
-        }));
+        ConfirmClearGraphHistory(this, () => _computer.Accept(new SensorVisitor(sensor => sensor.ClearValues())));
+    }
+
+    internal static void ConfirmClearGraphHistory(IWin32Window owner, Action clearHistory)
+    {
+        if (MessageBox.Show(owner,
+                "Clear the in-memory graph history for every sensor? Logged CSV files will be kept.",
+                "Clear Graph History", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            return;
+
+        clearHistory();
     }
 
     private void MainForm_MoveOrResize(object sender, EventArgs e)

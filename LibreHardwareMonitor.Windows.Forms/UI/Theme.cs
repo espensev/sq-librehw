@@ -192,10 +192,24 @@ namespace LibreHardwareMonitor.Windows.Forms.UI.Themes
 
         // menu
         public virtual Color MenuBackgroundColor => BackgroundColor;
-        public virtual Color MenuBorderColor => StrongLineColor;
+        public virtual Color MenuBorderColor => BlendMenu(0.28);
         public virtual Color MenuForegroundColor => ForegroundColor;
         public virtual Color MenuSelectedBackgroundColor => SelectedBackgroundColor;
         public virtual Color MenuSelectedForegroundColor => SelectedForegroundColor;
+        public virtual Color MenuDisabledForegroundColor => BlendMenu(0.46);
+        public virtual Color MenuStateForegroundColor => BlendMenu(0.68);
+        public virtual Color MenuSeparatorColor => BlendMenu(0.22);
+        public virtual Color MenuHighlightColor => BlendMenu(0.14);
+
+        private Color BlendMenu(double fraction)
+        {
+            Color background = MenuBackgroundColor;
+            Color foreground = MenuForegroundColor;
+            return Color.FromArgb(
+                (int)Math.Round(background.R + (foreground.R - background.R) * fraction),
+                (int)Math.Round(background.G + (foreground.G - background.G) * fraction),
+                (int)Math.Round(background.B + (foreground.B - background.B) * fraction));
+        }
 
         // plot
         public virtual Color PlotBackgroundColor => BackgroundColor;

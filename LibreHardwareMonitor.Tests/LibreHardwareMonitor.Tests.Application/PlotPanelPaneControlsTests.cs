@@ -12,6 +12,7 @@ using System.Reflection;
 using System.Threading;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Windows.Forms.UI;
+using LibreHardwareMonitor.Windows.Forms.UI.Themes;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
 using OxyPlot;
 using OxyPlot.Annotations;
@@ -607,6 +608,7 @@ public sealed class PlotPanelPaneControlsTests
         Assert.True(f.Panel.SetLaneTimeWindow("Power", 0, 1800));
         Assert.Equal(2, f.View.Model.Axes.OfType<PlotPaneTimeAxis>().Count());
 
+        f.Panel.RebuildPaneMenuSection(null); // Refresh disabled state as a real menu opening does.
         Item(Item(f.View.ContextMenuStrip.Items, "timeAxis").DropDownItems, "allPanesFollowShared").PerformClick();
 
         AssertNoPaneAxes(f);
@@ -913,20 +915,89 @@ public sealed class PlotPanelPaneControlsTests
     }
 
     [Fact]
+    public void MenuRevision_MovesPersistentOptionsAndKeepsHandlersAndOwnership()
+    {
+        using Fixture f = Fixture.Create();
+        var menu = f.View.ContextMenuStrip;
+        ToolStripMenuItem stacked = Item(menu.Items, "stackedAxes");
+        ToolStripMenuItem grid = Item(menu.Items, "gridDensity");
+        ToolStripMenuItem scope = ScopeMenu(f);
+        ToolStripMenuItem lanes = Item(menu.Items, "lanes");
+        Assert.True(lanes.HasDropDownItems);
+
+        f.Panel.RebuildPaneMenuSection(PointAwayFromLines(f, f.LaneAxis));
+        ToolStripMenuItem options = Item(menu.Items, "graphOptions");
+        Assert.DoesNotContain(menu.Items.Cast<ToolStripItem>(), item => item.Name == "stackedAxes");
+        Assert.Same(stacked, Item(options.DropDownItems, "stackedAxes"));
+        Assert.Same(scope, ScopeMenu(f));
+        Item(grid.DropDownItems, "Major").PerformClick();
+        Assert.Equal(1, f.Settings.GetValue("plotGridDensity", -1));
+
+        f.Panel.RebuildPaneMenuSection(null);
+        Assert.DoesNotContain(menu.Items.Cast<ToolStripItem>(), item => item.Name == "graphOptions");
+        Assert.Same(stacked, Item(menu.Items, "stackedAxes"));
+        Assert.Equal("Major", grid.ShortcutKeyDisplayString);
+
+        f.Panel.RebuildPaneMenuSection(PointAwayFromLines(f, f.LaneAxis));
+        f.Panel.Dispose();
+        Assert.True(stacked.IsDisposed);
+        Assert.True(grid.IsDisposed);
+        Assert.True(scope.IsDisposed);
+        Assert.True(options.IsDisposed);
+    }
+
+    [Fact]
+    public void MenuRevision_StatesTrackRangesPresetsScopeAndOverlay()
+    {
+        using Fixture f = Fixture.Create();
+        f.Panel.SetLaneValueRange(f.LaneKey, 30, 140);
+        f.Panel.SetLaneTimeWindow(f.LaneKey, 0, 250);
+        f.Panel.SetLaneWeight(f.LaneKey, 2);
+        f.Panel.TimeAxisZoom(0, 600);
+        Render(f.View);
+        f.Panel.RebuildPaneMenuSection(PointAwayFromLines(f, f.LaneAxis));
+        var items = f.View.ContextMenuStrip.Items;
+        Assert.Equal("30 – 140 W", Item(items, "paneValues").ShortcutKeyDisplayString);
+        Assert.Equal("4 min 10 s", Item(items, "paneTime").ShortcutKeyDisplayString);
+        Assert.Equal("2×", Item(items, "paneHeight").ShortcutKeyDisplayString);
+        Assert.Equal("This pane", ScopeMenu(f).ShortcutKeyDisplayString);
+        ToolStripMenuItem time = Item(Item(items, "graphOptions").DropDownItems, "timeAxis");
+        Assert.Equal("10 min", time.ShortcutKeyDisplayString);
+        Assert.Equal("10 min", Assert.Single(time.DropDownItems.OfType<ToolStripMenuItem>(), item => item.Checked && item.Name != "enableZoom").Text);
+
+        f.Panel.TimeAxisZoom(10, 260);
+        f.Panel.RebuildPaneMenuSection(null);
+        Assert.Equal("4 min 10 s", time.ShortcutKeyDisplayString);
+        Assert.DoesNotContain(time.DropDownItems.OfType<ToolStripMenuItem>(), item => item.Checked && item.Name != "enableZoom");
+        Item(time.DropDownItems, "timeAuto").PerformClick();
+        f.Panel.RebuildPaneMenuSection(null);
+        Assert.Equal("Auto", time.ShortcutKeyDisplayString);
+        Assert.True(Item(time.DropDownItems, "timeAuto").Checked);
+
+        using Fixture overlay = Fixture.Create(stacked: false);
+        Assert.DoesNotContain(overlay.Panel.CreatePaneMenuItems(overlay.PointIn(WheelRegion.ValueLabels)), item => item.Name == "paneHeight");
+        using ToolStripMenuItem lanes = overlay.Panel.CreateLanesMenu();
+        overlay.Panel.PopulateLanesMenu(lanes.DropDownItems);
+        Assert.All(lanes.DropDownItems.OfType<ToolStripMenuItem>(), lane =>
+            Assert.DoesNotContain(lane.DropDownItems.Cast<ToolStripItem>(), item => item.Name == "paneHeight" || item.Name == "autoRange"));
+    }
+
+    [Fact]
     public void PaneMenu_SectionForPaneOrLabelsButNotForGearOrOverlayPlotArea()
     {
         using Fixture f = Fixture.Create();
 
         IReadOnlyList<ToolStripItem> section = f.Panel.CreatePaneMenuItems(PointAwayFromLines(f, f.LaneAxis));
         Assert.Equal(
-            new[] { "── CPU ──", "Value Scale", "Time Scale", "Height", "Remove from Graph", "Rename...", "Remove Lane", string.Empty },
+            new[] { "CPU · W", string.Empty, "Values", "Time", "Height", "Remove from Graph", "Rename Lane...", "Remove Lane...", string.Empty },
             section.Select(item => item is ToolStripSeparator ? string.Empty : item.Text));
-        Assert.False(section[0].Enabled);
+        Assert.True(section[0].Enabled);
+        Assert.False(section[0].CanSelect);
         Assert.IsType<ToolStripSeparator>(section.Last());
 
         IReadOnlyList<ToolStripItem> defaultSection = f.Panel.CreatePaneMenuItems(PointAwayFromLines(f, f.DefaultAxis));
         AssertPaneHeader(defaultSection[0], "Power");
-        Assert.DoesNotContain(defaultSection, item => item.Text == "Rename..." || item.Text == "Remove Lane");
+        Assert.DoesNotContain(defaultSection, item => item.Name == "renameLane" || item.Name == "removeLane");
 
         Assert.Empty(f.Panel.CreatePaneMenuItems(null));
         Assert.Empty(f.Panel.CreatePaneMenuItems(new ScreenPoint(-10, -10)));
@@ -943,9 +1014,9 @@ public sealed class PlotPanelPaneControlsTests
         ToolStripItem[] fixedItems = f.View.ContextMenuStrip.Items.Cast<ToolStripItem>().ToArray();
 
         f.Panel.RebuildPaneMenuSection(PointAwayFromLines(f, f.LaneAxis));
-        ToolStripItem[] firstSection = f.View.ContextMenuStrip.Items.Cast<ToolStripItem>().Take(8).ToArray();
+        ToolStripItem[] firstSection = f.View.ContextMenuStrip.Items.Cast<ToolStripItem>().Take(9).ToArray();
         AssertPaneHeader(firstSection[0], "CPU");
-        Assert.Equal(fixedItems, f.View.ContextMenuStrip.Items.Cast<ToolStripItem>().Skip(8));
+        Assert.Equal(fixedItems.Skip(2), Item(f.View.ContextMenuStrip.Items, "graphOptions").DropDownItems.Cast<ToolStripItem>());
         var disposed = new HashSet<ToolStripItem>();
         foreach (ToolStripItem item in firstSection)
             item.Disposed += (sender, args) => disposed.Add((ToolStripItem)sender);
@@ -980,11 +1051,15 @@ public sealed class PlotPanelPaneControlsTests
         Assert.Equal(f.SeriesOf(f.Cpu).XAxis.Transform(tracker.DataPoint.X), tracker.Position.X, 1e-6);
         Assert.Same(f.Cpu, f.Panel.GetSensorAt(onLine));
         IReadOnlyList<ToolStripItem> section = f.Panel.CreatePaneMenuItems(onLine);
-        Assert.Equal("Remove \"Test hardware CPU\" from Graph", section[0].Text);
-        Assert.Equal(stacked ? "── CPU ──" : null, section.Count > 2 ? section[1].Text : null);
+        ToolStripMenuItem removeLine = Item(section, "removeLine");
+        Assert.Equal("Remove \"Test hardware CPU\" from Graph", removeLine.Text);
+        if (stacked)
+            AssertPaneHeader(section[0], "CPU");
+        else
+            Assert.DoesNotContain(section, IsPaneHeader);
         Assert.IsType<ToolStripSeparator>(section.Last());
 
-        section[0].PerformClick();
+        removeLine.PerformClick();
         Assert.Same(f.Cpu, Assert.Single(requested));
     }
 
@@ -1244,8 +1319,8 @@ public sealed class PlotPanelPaneControlsTests
 
         Assert.True(timeScale.Enabled);
         Assert.True(Item(timeScale.DropDownItems, "followShared").Enabled);
-        Assert.Equal(15, timeScale.DropDownItems.OfType<ToolStripRadioButtonMenuItem>().Count(item => item.Text != "Follow Shared"));
-        Assert.All(timeScale.DropDownItems.OfType<ToolStripRadioButtonMenuItem>(), item => Assert.True(item.Enabled, item.Text));
+        Assert.Equal(15, timeScale.DropDownItems.OfType<ToolStripMenuItem>().Count(item => ThemedMenuRenderer.IsChoice(item) && item.Text != "Follow Shared"));
+        Assert.All(timeScale.DropDownItems.OfType<ToolStripMenuItem>().Where(ThemedMenuRenderer.IsChoice), item => Assert.True(item.Enabled, item.Text));
         Assert.False(ScopedZoom(timeScale.DropDownItems, true, "This pane").Enabled);
         Assert.False(ScopedZoom(timeScale.DropDownItems, false, "This pane").Enabled);
         Assert.False(f.Panel.ZoomLaneTime(f.LaneKey, 1.25));
@@ -1271,7 +1346,8 @@ public sealed class PlotPanelPaneControlsTests
 
         Assert.False(Assert.IsAssignableFrom<ToolStripMenuItem>(items[0]).Checked);
         Assert.Equal("Follow Shared", items[0].Text);
-        ToolStripRadioButtonMenuItem custom = Assert.IsType<ToolStripRadioButtonMenuItem>(items[1]);
+        ToolStripMenuItem custom = Assert.IsType<ToolStripMenuItem>(items[1]);
+        Assert.True(ThemedMenuRenderer.IsChoice(custom));
         Assert.Equal(text, custom.Text);
         Assert.True(custom.Checked);
         Assert.False(custom.Enabled);
@@ -1479,13 +1555,17 @@ public sealed class PlotPanelPaneControlsTests
     private static ToolStripMenuItem ScopedZoom(ToolStripItemCollection items, bool zoomIn, string scope)
     {
         ToolStripMenuItem item = Item(items, zoomIn ? "zoomIn" : "zoomOut");
-        Assert.Equal((zoomIn ? "Zoom In" : "Zoom Out") + " (" + scope + ")", item.Text);
+        Assert.Equal(zoomIn ? "Zoom In" : "Zoom Out", item.Text);
+        Assert.Equal(scope, item.ShortcutKeyDisplayString);
         return item;
     }
 
     /// <summary>Asserts the persistent scope menu names <paramref name="scope" />.</summary>
-    private static void AssertScopeLabel(ToolStripMenuItem scopeMenu, string scope) =>
-        Assert.Equal("Zoom scope: " + scope, scopeMenu.Text);
+    private static void AssertScopeLabel(ToolStripMenuItem scopeMenu, string scope)
+    {
+        Assert.Equal("Zoom Scope", scopeMenu.Text);
+        Assert.Equal(scope, scopeMenu.ShortcutKeyDisplayString);
+    }
 
     private static bool IsPaneHeader(ToolStripItem item) => item.Name == "paneHeader";
 
@@ -1493,7 +1573,7 @@ public sealed class PlotPanelPaneControlsTests
     private static void AssertPaneHeader(ToolStripItem item, string laneName)
     {
         Assert.True(IsPaneHeader(item));
-        Assert.Equal("── " + laneName + " ──", item.Text);
+        Assert.Equal(laneName + " · W", item.Text);
     }
 
     private static ToolStripMenuItem Item(ToolStripItemCollection items, string text) =>

@@ -3,7 +3,6 @@
 // Copyright (C) LibreHardwareMonitor and Contributors.
 // All Rights Reserved.
 
-using System.Drawing;
 using System.Globalization;
 using System.Windows.Forms;
 using LibreHardwareMonitor.Windows.Forms.UI.Themes;
@@ -13,39 +12,36 @@ namespace LibreHardwareMonitor.Windows.Forms.UI;
 /// <summary>Minimum/maximum prompt for a graph pane's fixed value range, in the current culture.</summary>
 internal static class PlotRangePrompt
 {
-    internal static bool TryShow(IWin32Window owner, string title, double minimum, double maximum, out double rangeMinimum, out double rangeMaximum)
+    internal static bool TryShow(IWin32Window owner, string title, string unit, double minimum, double maximum, out double rangeMinimum, out double rangeMaximum)
+    {
+        using Form dialog = CreateDialog(owner, title, unit, minimum, maximum);
+        if (dialog.ShowDialog(owner) != DialogResult.OK)
+        {
+            rangeMinimum = 0;
+            rangeMaximum = 0;
+            return false;
+        }
+
+        (rangeMinimum, rangeMaximum) = ((double, double))dialog.Tag;
+        return true;
+    }
+
+    internal static Form CreateDialog(IWin32Window owner, string title, string unit, double minimum, double maximum)
     {
         CultureInfo culture = CultureInfo.CurrentCulture;
-        double parsedMinimum = 0;
-        double parsedMaximum = 0;
         (string minimumText, string maximumText) = FormatPrefill(minimum, maximum, culture);
-
-        using Form dialog = new()
-        {
-            Text = title,
-            FormBorderStyle = FormBorderStyle.FixedDialog,
-            StartPosition = FormStartPosition.CenterParent,
-            MinimizeBox = false,
-            MaximizeBox = false,
-            ShowInTaskbar = false,
-            ClientSize = new Size(360, 132),
-            Font = SystemFonts.MessageBoxFont
-        };
-        using Label minimumLabel = new() { Text = "Minimum:", Left = 12, Top = 15, Width = 80 };
-        using TextBox minimumBox = new() { Left = 96, Top = 12, Width = 252, Text = minimumText };
-        using Label maximumLabel = new() { Text = "Maximum:", Left = 12, Top = 43, Width = 80 };
-        using TextBox maximumBox = new() { Left = 96, Top = 40, Width = 252, Text = maximumText };
-        using Label error = new() { Left = 12, Top = 70, Width = 336, Height = 20 };
+        var dialog = new PlotPromptDialog(owner, title);
+        string suffix = string.IsNullOrEmpty(unit) ? ":" : " (" + unit + "):";
+        TextBox minimumBox = dialog.AddInput("Minimum" + suffix, "minimum", minimumText);
+        TextBox maximumBox = dialog.AddInput("Maximum" + suffix, "maximum", maximumText);
+        Label error = dialog.AddValidation();
         // OK validates first, so invalid input keeps the dialog open with the reason shown.
-        using Button ok = new() { Text = "OK", Left = 192, Top = 96, Width = 75 };
-        using Button cancel = new() { Text = "Cancel", DialogResult = DialogResult.Cancel, Left = 273, Top = 96, Width = 75 };
-        dialog.Controls.AddRange(new Control[] { minimumLabel, minimumBox, maximumLabel, maximumBox, error, ok, cancel });
-        dialog.AcceptButton = ok;
-        dialog.CancelButton = cancel;
+        Button ok = dialog.AddButtons();
         ok.Click += (sender, args) =>
         {
-            if (TryParseRange(minimumBox.Text, maximumBox.Text, culture, out parsedMinimum, out parsedMaximum))
+            if (TryParseRange(minimumBox.Text, maximumBox.Text, culture, out double parsedMinimum, out double parsedMaximum))
             {
+                dialog.Tag = (parsedMinimum, parsedMaximum);
                 dialog.DialogResult = DialogResult.OK;
                 return;
             }
@@ -58,17 +54,7 @@ internal static class PlotRangePrompt
             minimumBox.Focus();
         };
         Theme.Current.Apply(dialog);
-
-        if (dialog.ShowDialog(owner) != DialogResult.OK)
-        {
-            rangeMinimum = 0;
-            rangeMaximum = 0;
-            return false;
-        }
-
-        rangeMinimum = parsedMinimum;
-        rangeMaximum = parsedMaximum;
-        return true;
+        return dialog;
     }
 
     /// <summary>

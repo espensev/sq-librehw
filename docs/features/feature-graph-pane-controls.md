@@ -1,6 +1,6 @@
 # Feature Spec: Graph Pane Controls
 
-**Status:** wheel-axis and explicit-scope revision implemented and source-verified; the graph-menu revision (design, state text, glyphs, prompts) is specified below with its implementation in progress. Promotion and live acceptance of both revisions remain separate. Earlier controls were promoted to SND-DESK on 2026-11-10 at `1bf2655f`; existing remove-from-graph and restart checks remain open.
+**Status:** wheel-axis, explicit-scope and graph-menu revisions implemented in source. Menu completion verification is recorded below. Promotion and live acceptance remain separate; remove-from-graph and installed restart checks remain open. Read the machine matrix and runtime manifest for installed identity.
 **Updated:** 2026-11-10
 **Extends:** [graph lanes](feature-graph-lanes.md) (lanes, weights, per-lane value zoom and persistence stay owned there)
 **Origin:** operator request 2026-11-09 with an annotated screenshot of the stacked Power / Temperature / Fan graph and its right-click menu
@@ -237,21 +237,30 @@ menus.
 - They open centred on the owner window, inside that screen's working area.
   Cancel changes nothing. Validation is unchanged.
 
-### Decisions pending operator confirmation
+### Confirmed menu decisions
 
-| Question | Source default | Alternative |
+The operator confirmed all source defaults on 2026-11-10 during continuation.
+
+| Question | Confirmed default | Alternative |
 |---|---|---|
 | Graph-wide settings on a pane right-click | One `Graph Options` submenu | Inline after a separator (shipped) |
 | `Reset Graph View` | Renamed `Clear Graph History...` with confirmation | Keep the name and add a separate view reset |
 | Exclusive-choice glyph | Dot for every radio group | Checkmarks |
 | Pane header | Lane name and unit, semibold | Name only, dim |
 
+The [completion review](../reviews/review-2026-11-10-graph-menu-completion.md)
+records the implementation gaps found before this revision was completed.
+
 ### Compatibility and risk
 
 - New fork-only `UI/Themes/ThemedMenuRenderer.cs`: the renderer, the header
   label and the choice marker. It derives from `ThemedToolStripRenderer`,
-  which stays byte-identical to upstream. The graph menus stop using
+  which stays byte-identical to upstream. Native shortcut-column measurement is
+  reused, with explicit parent-state painting because WinForms suppresses that
+  paint for submenu parents. The graph menus stop using
   `ToolStripRadioButtonMenuItem`, which is unchanged.
+- Fork-only `UI/PlotPromptDialog.cs` provides content layout and owner-screen
+  positioning for both graph prompts.
 - Fork rows change for `Theme.cs` (menu colors), `UserRadioGroup.cs` (marks its
   items as choices), `MainForm.cs` (renderer, `Clear Graph History...`) and
   `PlotPanel.cs` (menus).
@@ -262,91 +271,65 @@ menus.
 
 ### Menu revision acceptance
 
-- [ ] A pane right-click shows the header, an optional line item, Values,
+- [x] A pane right-click shows the header, an optional line item, Values,
   Time, Height (stacked only), Remove from Graph, user-lane items, Zoom Scope
   and Graph Options. No graph-wide setting appears at the top level.
-- [ ] The gear, a right-click with no pane, and a keyboard invocation with no
+- [x] The gear, a right-click with no pane, and a keyboard invocation with no
   focused pane show the graph-wide list at the top level, with no Graph
   Options parent.
-- [ ] Moving the graph-wide items keeps their persisted state and handlers;
+- [x] Moving the graph-wide items keeps their persisted state and handlers;
   disposing the panel disposes them wherever they are.
-- [ ] Parent state text is correct for Values (Auto/fixed), Time
+- [x] Parent state text is correct for Values (Auto/fixed), Time
   (shared/preset/custom), Height, Zoom Scope, Grid Density and Time Axis
   (Auto/preset/custom).
-- [ ] Exclusive choices draw one dot and toggles a check, centred and scaled.
+- [x] Exclusive choices draw one dot and toggles a check, centred and scaled.
   Separators, headers, hover and disabled items are distinct in Light, Dark
   and Black at 100%, 150% and 200% fonts (fixture renders).
-- [ ] `Clear Graph History...` asks first: No keeps history, Yes clears it.
-- [ ] `Lanes` shows its arrow before the first open, and lane entries have no
+- [x] `Clear Graph History...` asks first: No keeps history, Yes clears it.
+- [x] `Lanes` shows its arrow before the first open, and lane entries have no
   duplicate `Auto Range`.
-- [ ] Range prompt labels with units, fields and buttons fit at 100–200%
+- [x] Range prompt labels with units, fields and buttons fit at 100–200%
   fonts. Both prompts centre on the owner's screen.
-- [ ] Full suite, both Release builds and the divergence-ledger gate pass.
+- [x] Full suite, both Release builds and the divergence-ledger gate pass.
 - [ ] After a separately authorized promotion: right-click each pane, use the
-  gear, and open `Set Range...` on the installed runtime.
+  gear, and open `Fixed Range...` on the installed runtime.
 
-## Shipped behavior and earlier verification
+### Menu completion verification, 2026-11-10
 
-The remaining sections describe the prior implementation and its verification.
-Where they conflict with the current source contract above, that contract
-governs implementation; checked criteria below are historical evidence only.
+- Completed the approved defaults over `dd5b30bb`. Two new menu regressions
+  first failed on the old layout, then passed after implementation. They check
+  persistent item identity, setting handlers, disposal, state labels, shared
+  Auto/preset/custom choices, and overlay omissions.
+- `GraphMenuPresentationTests`: 13 passed. Real Yes/No dialogs verify No as
+  the default and that only Yes invokes the fixture history clear. Content
+  layout tests exercise invalid input and cancel, and check fields, unit labels,
+  wrapping validation and buttons at three font sizes. Owner-screen centering
+  and clamping also cover negative monitor coordinates.
+- Visual inspection found WinForms suppressing the native shortcut text on
+  submenu parents even though it reserves its width. The renderer now paints
+  that state explicitly; a bitmap regression checks that it is actually drawn.
+  The relevant upstream behavior is in
+  [ToolStripMenuItem.OnPaint](https://github.com/dotnet/winforms/blob/main/src/System.Windows.Forms/System/Windows/Forms/Controls/ToolStrips/ToolStripMenuItem.cs).
+- Full suite: Application 404 passed / one established opt-in skip, Library
+  193 passed, Contracts 124 passed (721 passed total). Both x64 Release
+  frameworks built with zero warnings/errors. Divergence ledger: 15 passed.
+- Evidence under the authoritative workload root at
+  `LibreHW/audits/2026-11-10-graph-menu-completion`: TRX files, build and gate
+  logs, and 72 fixture PNGs covering Light/Dark/Black at 100/150/200% fonts.
+  Menu, submenu and prompt captures were inspected; the 360-pixel panel probe
+  checks scope-button bounds, not readability of all narrow graph ticks.
+- Captures use fake histories and 144 device DPI. They do not establish live
+  hardware behavior, monitor-DPI transitions or installed acceptance. Source
+  callback and keyboard routing are reviewed; installed menu entry points
+  remain part of the promotion check. No promotion was performed.
 
-## Problem and motivation
+## Pane model and persistence
 
-With `Stacked Axes` on, each visible lane is a horizontal **pane** of the graph.
-Today the pane's value zoom exists but is implicit: wheel over a pane zooms the
-shared time window *and* that pane's values together, Shift + wheel zooms the
-values only, and the right-click menu has no pane-specific entries. The time
-window is one shared axis for every pane. Removing a line from the graph needs a
-trip to the sensor tree.
-
-The operator asked that:
-
-- the value and the time scale be adjustable **independently for each pane**,
-  with the controls easy to reach from the right-click menu;
-- the mouse wheel zoom ("resize") each pane separately;
-- graphs can be deleted by clicking a graph or through menu options.
-
-## Goals
-
-- A right-click inside a pane opens a menu whose first section targets that pane:
-  value scale, time scale, height, and removal.
-- Each pane can keep following the shared time window (default) or own an
-  independent time window, labelled and gridded inside that pane.
-- Wheel gestures zoom exactly one pane's value scale or one pane's time scale.
-- A plotted line can be removed from the graph by right-clicking it, and every
-  line of a pane can be removed from the pane menu.
-- With no pane override, the plot model, layout, and persisted keys are the same
-  as before this feature.
-
-## Non-goals
-
-- Dragging pane borders, reordering panes, or wheel-driven pane height.
-  Height stays `1x | 2x | 3x` (now also in the pane menu).
-- Per-pane time windows in overlay mode (`Stacked Axes` off). Overrides persist
-  but are not applied while overlaid.
-- Changes to the tracker look, the web dashboard, CSV, `data.json`, or the HTTP
-  contract.
-- Deleting sensor history. Removal only un-plots; re-checking the sensor restores
-  the line with its retained history.
-
-## Decisions
-
-The operator confirmed these defaults on 2026-11-10 by continuing to the
-runtime promotion. Each one stays reversible. The pane time-zoom and
-menu-anchor defaults were set on 2026-11-09 to meet the original requirement:
-"users can set the zoom level for each pane, SEPARATELY, this is essential."
-
-| Question | Confirmed default | Alternative not taken |
-|---|---|---|
-| Own time window per pane? | Yes, as an opt-in override per pane; default `Follow Shared` keeps panes aligned | Shared time only, per-pane value controls |
-| Plain wheel over a pane | Zooms only that pane's value scale; `Shift` + wheel stays a value alias | Keep upstream time + value wheel |
-| Pane time zoom (`Ctrl` + wheel, zoom rectangle, pane `Time Scale` zoom) | Detaches the pane into its own window seeded from the shared window, so with a fixed shared window no other pane moves. Under `Time Axis > Auto` the shared range refits to the following panes' data, so they can shift. An overriding pane zooms its own window. Pan in a following pane still moves the shared window | Zoom the shared window while the pane follows |
-| Anchor of menu `Time Scale > Zoom In / Zoom Out` | The newest edge stays fixed and only the oldest edge moves, so a live window stays live (0–3600 s zooms in to 0–2880 s) | The window centre |
-| Ways to delete | Right-click a line; pane `Remove from Graph` submenu (each sensor, or all in pane with confirmation) | Click line + Delete key |
-| Wheel changes pane height? | No | `Alt` + wheel steps height |
-
-## User-visible behavior
+Each visible graph lane is a pane in stacked mode. A pane can follow the shared
+time window or retain an independent window. Removing a sensor from the graph
+only un-plots it; re-plotting restores its retained history. The separate
+Clear Graph History command is the only menu action here that deletes history.
+The web dashboard, CSV and HTTP contracts are unchanged.
 
 ### Pane hit-testing
 
@@ -358,12 +341,6 @@ menu-anchor defaults were set on 2026-11-09 to meet the original requirement:
 - A line is hit when the nearest rendered point of a plotted series (interpolated)
   is within 8 px × DPI scale of the pointer, searching the hit pane's series in
   stacked mode and all series in overlay mode.
-
-### Right-click menu
-
-Superseded by [Current source contract: graph menus](#current-source-contract-graph-menus).
-The shipped `1bf2655f` layout prepended this pane section to the unchanged
-graph-wide menu; see Git history for its full text.
 
 ### Per-pane time window
 
@@ -382,13 +359,10 @@ graph-wide menu; see Git history for its full text.
   and follows later changes to them. With `Show Axes Labels` off the pane draws
   neither its labels nor their strip; its gridlines stay. Its window follows
   "now" whether or not zoom is enabled.
-- Wheel and drag inside an overriding pane move only that pane's window. Inside
-  a following pane, `Ctrl` + wheel and the zoom rectangle detach the pane: it
-  gets its own window, seeded from the shared window and zoomed. With a fixed
-  shared window no other pane moves; under `Time Axis > Auto` the shared range
-  refits to the following panes' data, so they can shift (see Persistence). A
-  pan (right-drag, `Alt` + left-drag) in a following pane still moves the
-  shared window (see Follow-ups).
+- Shift + wheel in This pane scope and pane Time zoom detach a following pane
+  from its current window. Sibling windows remain stable even under shared Auto.
+  A right-drag or Alt + left-drag in a following pane still pans the shared
+  window; in an overriding pane it pans that pane's window.
 - The hover tracker shows the time of the hovered pane's axis in the active label
   mode (local time or elapsed). Local-time labels choose seconds, minutes, or a
   date prefix from the range and tick step of the axis being labelled.
@@ -396,50 +370,17 @@ graph-wide menu; see Git history for its full text.
   stacked mode returns. A hidden lane's override is likewise dormant until the
   lane is visible again.
 
-### Mouse gestures
+### Input and between-paint layout
 
-| Gesture | Over a stacked pane | Over value-axis labels | Over time-axis labels | Overlay plot area |
-|---|---|---|---|---|
-| Wheel | pane value zoom at pointer | that lane's value zoom | shared time zoom | shared time zoom |
-| `Shift` + wheel | pane value zoom (alias) | that lane's value zoom | nothing | nothing |
-| `Ctrl` + wheel | pane time zoom at pointer (detaches a following pane) | nothing | shared time zoom | shared time zoom |
-| Right-drag, `Alt` + left-drag | pan pane value + its time (own window; shared window while following) | as OxyPlot | as OxyPlot | as OxyPlot |
-| Middle-drag, `Ctrl` + right-drag, `Ctrl` + `Alt` + left-drag | zoom rectangle on pane value + its time (detaches a following pane) | as OxyPlot | as OxyPlot | as OxyPlot |
+The wheel/scope table and binding review at the top are the input contract.
+Wheel zoom uses a factor of 1.2 per notch, anchored at the pointer; pane menu
+zoom uses 1.25 and keeps the newest time edge. Zoom flags and range clamps
+apply. Unbound gestures are consumed without changing axes.
 
-Value zoom respects `Value Axes > Enable Zoom`; time zoom respects
-`Time Axis > Enable Zoom`. A disabled or missed wheel gesture is consumed and
-changes nothing; wheel factor is 1.2 per notch, anchored at the pointer value.
-This supersedes the graph-lanes line "Plain wheel and Ctrl + wheel stay
-unchanged". Other wheel modifier combinations have no binding and do nothing.
-
-A detach computes the new window from the shared axis, which the pane followed
-until then: `Ctrl` + wheel zooms the shared window's range about the time under
-the pointer, and the zoom rectangle takes the time range it spans. The result is
-converted to ages and clamped like a menu zoom (at least 1 s, no older than
-24 h), and only that pane's series move to it.
-
-OxyPlot lays an axis out only when it renders, but input can reach a pane
-before the next paint: a fast wheel spin, a touchpad pinch (which arrives as
-`Ctrl` + wheel), or queued input. A pane axis therefore lays itself out over the
-plot area when it is created and after every change of its window, with the
-formula the next render uses. The next wheel notch, pan, or zoom rectangle then
-maps through the pane's current window instead of an unrendered axis.
-
-The pan and zoom-rectangle gestures resolve the pane by geometry, because
-OxyPlot's own hit test always returns the first horizontal (shared) axis. They
-take their enable flag from the shared time axis before switching to the pane
-axis; the pane axes mirror that flag, so the result is the same. In a following
-pane the zoom rectangle hands its time range to the detach and lets OxyPlot zoom
-only the value axis; it applies OxyPlot's own rule that a rectangle 10 px or less
-on either side zooms nothing. With `Time Axis > Enable Zoom` off it zooms the
-value axis only and does not detach.
-
-OxyPlot's remaining default gestures are unchanged: keyboard pan, zoom, and
-reset (arrows, `+`/`-`, PageUp/PageDown, `A`, Home) and the double-click
-`ResetAt` act on every axis, pane windows included (a reset pane window is
-recorded as its new age window, as for the shared window); `XButton1/2` zoom
-and touch use OxyPlot's hit test and so act on the shared time window even
-inside an overriding pane.
+A pane axis lays itself out when created and after every window change using
+the transform that the next render will use. Repeated wheel or pan input before
+a paint therefore maps through the current window. Pan resolves the pane by
+geometry because OxyPlot's horizontal-axis hit test returns the shared axis.
 
 ### Persistence
 
@@ -447,21 +388,18 @@ inside an overriding pane.
 |---|---|---|
 | `plotPanel.laneTime.<lane key>` | `ageMin:ageMax` seconds, invariant culture, round-trip (`R`) | absent = follow shared; malformed, negative, non-increasing, or older than 24 h (`ageMax` above 86400) values are ignored on load and removed on the next save; removed with its lane |
 
-Menu changes (presets, `Time Scale` zoom, `Follow Shared`, `All Panes Follow
-Shared`) and detaches (`Ctrl` + wheel or zoom rectangle in a following pane)
+Menu changes (presets, `Time` zoom, `Follow Shared`, `All Panes Follow
+Shared`) and detaches (`Shift` + wheel in a following pane)
 write or remove the key immediately. Pan and zoom inside an overriding pane
 update the window in memory, and the next settings save writes it, as for the
 shared window. Dormant overrides (overlay mode, hidden lane) are kept.
 
-With `Time Axis > Auto`, the shared window is saved from its data range
-(`plotPanel.MinTimeSpan` / `MaxTimeSpan`) only while some visible series is on
-the shared axis. A detach takes that pane's series off the shared axis, so the
-Auto range refits to the series that remain. When every visible pane overrides,
-the shared axis has no data and the stored window is kept. The default `TimeSpan` lane's value-range keys
-have the same names (upstream naming). The shared window owns them, as it did
-before this feature, so that lane's range is never written or removed there
-(settings save, `Auto Range`, `Value Axes > Autoscale All`, and the startup
-auto-fit).
+With `Time Axis > Auto`, every visible plotted history contributes to the
+shared extent, including histories bound to detached pane axes. Detachment
+alone cannot refit siblings. The shared window is saved from that extent;
+without plotted samples the saved window is preserved. The default `TimeSpan`
+lane's value-range keys have the same upstream names as the shared window,
+which owns those keys; that lane never writes or removes them.
 
 Value-range keys are unchanged (`plotPanel.Min/Max<key>`, graph-lanes spec).
 
@@ -472,7 +410,7 @@ Value-range keys are unchanged (`plotPanel.Min/Max<key>`, graph-lanes spec).
   request.
 - New fork-only `UI/PlotTimeAxes.cs` (shared `PlotTimeAxis` with band
   exclusion, `PlotPaneTimeAxis` with its in-band label layer and between-paint
-  layout, pane-aware pan and zoom-rectangle manipulators) and `UI/PlotRangePrompt.cs` (prompt,
+  layout, pane-aware pan) and `UI/PlotRangePrompt.cs` (prompt,
   `TryParseRange`, and `FormatPrefill`).
 - `PresentationSurfaceCoordinator.cs`, `WinFormsPresentationAdapters.cs`,
   `MainForm.cs`: forward the sensor-removal request to `SetSensorNodesPlot`.
@@ -482,93 +420,35 @@ Value-range keys are unchanged (`plotPanel.Min/Max<key>`, graph-lanes spec).
 
 - Upstream sync: `PlotPanel.cs` and `MainForm.cs` diverge further; new logic lives
   in fork-only files where practical. Recorded in the upstream-divergence ledger.
-- OxyPlot 2.2: relies on public virtual `Axis.Render`/`Axis.Measure`, render-context
-  clipping, `PlotManipulator.XAxis` in `PanManipulator`/`ZoomRectangleManipulator`,
-  the above-series annotation layer, `GetAxesFromPoint` returning the first
-  matching axis, and `ZoomRectangleManipulator` zooming only its Y axis when its
-  X axis is null; the pane zoom rectangle mirrors that class's private rectangle,
-  clamps, and 10 px threshold. The pane axis also mirrors the horizontal branch
-  of the internal `Axis.UpdateTransform` through the protected `SetTransform` and
-  `OnAxisChanged`. An OxyPlot upgrade must re-run the pane rendering and input
-  tests and re-check both copies against the new source.
+- OxyPlot 2.2: uses public axis render/measure overrides and render-context
+  clipping. The pane axis mirrors the horizontal `Axis.UpdateTransform`
+  branch through protected transform APIs. Recheck that mirror and rerun input
+  and rendering tests when upgrading OxyPlot.
 - Render cost: with overrides, the shared axis renders once per painted strip
   (the spike measured about +30% export time for one override at 1000x400).
 - `net472` and `net10.0-windows`: no new framework APIs.
 - DPI and text scale: pane labels use the axis font and `plotTextScale`; hit
   tolerance scales with DPI.
-- Behavior change: plain wheel no longer zooms time inside a stacked pane. In
-  overlay mode, plain wheel over the plot area zooms only the shared time
-  window (it no longer zooms a value axis too), and `Ctrl` + wheel there zooms
-  only the shared time window at the normal 1.2 step, no longer OxyPlot's fine
-  zoom of both axes.
-- Behavior change (2026-11-09): in a stacked pane that follows the shared
-  window, `Ctrl` + wheel, the zoom rectangle, and `Time Scale > Zoom In / Zoom
-  Out` give that pane its own window instead of moving the shared window, and
-  menu zoom keeps the newest edge. `Follow Shared` (or `All Panes Follow
-  Shared`) rejoins the shared window.
+- Overlay mode with This pane scope deliberately does not zoom from the shared
+  plot area. Select All panes for shared-time zoom there; value-axis labels
+  still target individual value axes. This compatibility change and the open
+  alternative are explicit in Follow-ups.
 
-## Acceptance criteria
+## Pane-model acceptance
 
-- [x] With no override, the model's axes, series axis keys, plot area, and
-  existing plot tests are unchanged without test edits.
-- [x] Plain wheel and Shift + wheel over a stacked pane change only that pane's
-  value range; time and sibling ranges stay fixed.
-- [x] Ctrl + wheel over a following pane detaches only that pane: with a fixed
-  shared window the shared window and every other pane stay, and its new window
-  is the shared span / 1.2 with the time under the pointer kept. Over an
-  overriding pane it changes only that pane's window.
-- [x] Menu `Time Scale > Zoom In / Zoom Out` keeps the newest edge (a live pane
-  stays live) and never goes below 1 s or beyond 24 h; on a following pane it
-  detaches the pane from the shared window's current window and does not zoom
-  the shared window, which stays unchanged when fixed.
-- [x] A zoom rectangle in a following pane detaches it with the rectangle's time
-  range, zooms its value axis, and leaves a fixed shared window unchanged; below
-  OxyPlot's 10 px threshold or with time zoom off it does not detach.
-- [x] Under `Time Axis > Auto` the three detaches above take the pane's series
-  off the shared axis, so the shared range refits to the following panes' data
-  and they can shift; the detached pane keeps its window. (Fixture-tested for
-  `Ctrl` + wheel; the menu and rectangle detaches rebind the series through the
-  same `SetLaneTimeWindow` path.)
-- [x] A detached pane maps a wheel notch, a pan, and a zoom rectangle that
-  arrive before its first paint through its own window (no dropped notch, no
-  jump to the oldest 24 h, no collapse), and its stored window and setting
-  follow; its scale and offset before the next render match those after it
-  (to 1e-9).
-- [x] With `Time Axis > Enable Zoom` off, `Time Scale` stays enabled with
-  `Follow Shared` and the presets usable; only `Zoom In / Zoom Out` are disabled.
-- [x] An override that matches no preset shows a checked, disabled `Custom (…)`
-  item after `Follow Shared`.
-- [x] A stored pane window older than 24 h (for example `90000:100000`) is
-  ignored on load, and the next save removes its key.
-- [x] A pane time preset binds only that pane's series to its own axis; its
-  window follows "now" across ticks, survives restart, and `Follow Shared` /
-  `All Panes Follow Shared` return it to the shared axis and remove the key.
-- [x] Shared gridlines are absent inside an overriding band and present in
-  following bands; pane gridlines and labels are confined to their band; plot
-  area is unchanged.
-- [x] Right-drag in an overriding pane pans only its own time window.
-- [x] Right-click inside a pane prepends that pane's section; from the ⚙ button
-  or in overlay plot area no pane section appears; a hit line adds its remove item.
-  (Section building and rebuild/dispose are fixture-tested; the `Opening` hook's
-  ⚙ flag and pointer mapping are code-reviewed only.)
-- [ ] Remove-from-graph requests un-plot exactly the chosen sensors; re-plotting
-  restores them; lane definitions persist. (The request carries exactly the
-  chosen sensors and is forwarded unchanged to MainForm, fixture-tested; MainForm's
-  un-plot through `SetSensorNodesPlot` and the re-plot path are code-reviewed only,
-  live check pending.)
-- [x] Value Zoom In/Out, Auto Range, and Set Range affect only the pane and persist
-  through the existing keys; invalid Set Range input is rejected, including a
-  finite increasing double pair whose float cast is not a finite increasing
-  pair. The prompt leaves a NaN or infinite bound empty and prefills round-trip
-  text when `G6` would collapse the range. Wheel and menu value zoom do not use
-  that float check.
-- [x] Overlay mode ignores overrides and restores them in stacked mode.
-- [x] Full x64 test filter and both Release builds pass; ledger gate passes.
-- [x] Operator confirmed the defaults above. After promotion of `1bf2655f`, a
-  live sample checked pane menus, the gear menu, Power wheel zoom, and a Fan
-  1 h detach restored with Follow Shared.
-- [ ] A live remove-from-graph and a restart that keeps the layout are still
-  unchecked.
+- [x] Overrides bind only the pane's series, follow now across ticks, restore
+  from settings, and rejoin the shared axis through Follow Shared.
+- [x] Shared and pane gridlines, labels and tracker values use their correct
+  axes; pane drawing stays inside its band without changing the plot area.
+- [x] Malformed, negative, non-increasing or older-than-24-hour overrides are
+  ignored on load and removed on save. Dormant overrides survive overlay mode.
+- [x] Value ranges preserve their existing keys. Invalid numeric pairs,
+  including float-unpersistable pairs, are rejected. Prompt prefill uses
+  round-trip text when compact formatting would collapse the range.
+- [x] Sensor removal requests carry exactly the selected sensors. The menu
+  callback remains routed through MainForm's existing plot-selection path.
+- [ ] Live removal and re-plotting, detached-pane restart persistence and
+  monitor-DPI switching after separately authorized promotion.
 
 ## Follow-ups
 
@@ -608,7 +488,10 @@ Temperature, and Fan panes; zoom each pane's values with the wheel; give the Fan
 pane a 1 h window while Temperature stays on the shared 10 min; remove one line by
 right-clicking it and re-check it in the tree; restart and confirm the layout.
 
-## Verification log
+## Historical verification log
+
+These dated records describe their named revisions. Current contracts and
+acceptance above supersede their older gesture and menu descriptions.
 
 ### 2026-11-09: source implementation (uncommitted working tree on `master` at `2ebadab2`)
 

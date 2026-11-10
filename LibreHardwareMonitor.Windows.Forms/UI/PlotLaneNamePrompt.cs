@@ -3,7 +3,6 @@
 // Copyright (C) LibreHardwareMonitor and Contributors.
 // All Rights Reserved.
 
-using System.Drawing;
 using System.Windows.Forms;
 using LibreHardwareMonitor.Windows.Forms.UI.Themes;
 
@@ -13,37 +12,33 @@ internal static class PlotLaneNamePrompt
 {
     internal static bool TryShow(IWin32Window owner, string title, string initialValue, out string value)
     {
-        using Form dialog = new()
-        {
-            Text = title,
-            FormBorderStyle = FormBorderStyle.FixedDialog,
-            StartPosition = FormStartPosition.CenterParent,
-            MinimizeBox = false,
-            MaximizeBox = false,
-            ShowInTaskbar = false,
-            ClientSize = new Size(360, 92),
-            Font = SystemFonts.MessageBoxFont
-        };
-        using TextBox textBox = new() { Left = 12, Top = 12, Width = 336, Text = initialValue ?? string.Empty };
-        using Button ok = new() { Text = "OK", DialogResult = DialogResult.OK, Left = 192, Top = 50, Width = 75 };
-        using Button cancel = new() { Text = "Cancel", DialogResult = DialogResult.Cancel, Left = 273, Top = 50, Width = 75 };
-        dialog.Controls.AddRange(new Control[] { textBox, ok, cancel });
-        dialog.AcceptButton = ok;
-        dialog.CancelButton = cancel;
-        dialog.Shown += (sender, args) =>
-        {
-            textBox.SelectAll();
-            textBox.Focus();
-        };
-        Theme.Current.Apply(dialog);
-
+        using Form dialog = CreateDialog(owner, title, initialValue);
         if (dialog.ShowDialog(owner) != DialogResult.OK)
         {
             value = null;
             return false;
         }
 
-        value = textBox.Text;
+        value = (string)dialog.Tag;
         return true;
+    }
+
+    internal static Form CreateDialog(IWin32Window owner, string title, string initialValue)
+    {
+        var dialog = new PlotPromptDialog(owner, title);
+        TextBox textBox = dialog.AddInput("Lane name:", "laneName", initialValue ?? string.Empty);
+        Button ok = dialog.AddButtons();
+        ok.Click += (sender, args) =>
+        {
+            dialog.Tag = textBox.Text;
+            dialog.DialogResult = DialogResult.OK;
+        };
+        dialog.Shown += (sender, args) =>
+        {
+            textBox.SelectAll();
+            textBox.Focus();
+        };
+        Theme.Current.Apply(dialog);
+        return dialog;
     }
 }
