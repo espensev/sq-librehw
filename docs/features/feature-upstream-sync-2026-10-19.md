@@ -102,8 +102,9 @@ for scope, recovery evidence, remaining work and verification commands.
 
 Official `e68a7ef7..3f118427` (six commits: `617ab24e`, `a8381734`, `f0ceab1f`,
 `feb0e0ee`, `e4313b25`, `3f118427`) merged into master on 2026-10-27. The
-installed SND-DESK runtime stays at `aa95772b`; promotion of this range is a
-separate release step.
+runtime was not changed by that source integration. Later promotion evidence
+is recorded in the local release and pane-control specs; query the deployment
+manifest for current installed identity.
 
 - Dependency bumps are pinned in `Directory.Packages.props`: DiskInfoToolkit
   2.2.1 to 2.2.2 (dependency updates only; the 2.2.1 USB exclusion, overlapped

@@ -7,7 +7,8 @@ deployed and live-verified on SND-HOST
 **Corsair failure follow-up:** source-verified on 2026-10-07; candidate
 `957923fc` was promoted to SND-DESK on 2026-10-08 and live-verified with HWiNFO
 and iCUE running. It stayed in the rollback slot until 2026-10-27, when master
-`aa95772b` replaced `9e68b348`, which now holds the one rollback slot.
+`aa95772b` replaced `9e68b348`. That is historical promotion evidence; current
+installed and rollback identities come from the machine matrix and manifests.
 
 **Device polling follow-up:** source-verified on 2026-10-19; deployed to
 SND-DESK on 2026-10-23 within master `9e68b348`. Physical device-failure
@@ -547,8 +548,8 @@ Verification on 2026-10-19:
 - [ ] Decide whether failed `Computer.Reset()` must reconstruct the last known
   group set. The current failure path closes every partial replacement and
   leaves no mixed generation, but already-closed prior groups cannot be restored.
-- [ ] Live-verify the session-end protocol now that `aa95772b` is installed
-  (2026-10-27): at a real restart the settings file's LastWriteTime lands
+- [ ] Live-verify the session-end protocol on the current installed build
+  (verify its manifest first): at a real restart the settings file's LastWriteTime lands
   within seconds of the User32 1074 event, and Winsrv 10001 stops naming the
   executable in sessions where the window was shown. Task result `0x80070004`
   is still expected, because every logon-task application on the machine ends

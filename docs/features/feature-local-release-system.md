@@ -5,31 +5,13 @@ launcher actions fail closed to `snd-desk`; the non-live fixture is intentionall
 peer-safe under isolated temporary roots. Do not treat these paths, tasks,
 users, or runtime state as SND-HOST instructions.
 
-**Status:** Master `aa95772b` is installed on SND-DESK since 2026-10-27, with
-the previous master `9e68b348` retained in the verified rollback slot. The
-promoted tree adds the tailnet fleet view phase 1 (fleet poller boot, Machines
-panel, per-machine rendering) and the Windows session-end protocol fix to the
-2026-10-23 tree (2026-10-19 official upstream integration, device-polling
-isolation, history preservation, runtime enables, and the 18085 health-gate
-default). All 17 HX1500i readings, the NVIDIA power sensors of both GPUs,
-general hardware monitoring, and CSV logging are live-verified with HWiNFO and
-iCUE still running; failed PSU polls log empty cells for that tick instead of
-stale values. See the 2026-10-27 record below. The webserver is enabled at `http://127.0.0.1:18085/`; since 2026-10-23
-the promotion, rollback, cutover, and migration scripts default `-HealthUri` to
-`http://127.0.0.1:18085/data.json` (the historical 8085 default is retired),
-and the managed-task principal SID constant matches the current
-`SND-DESK\Sev` account.
-Focused value-axis Shift-wheel zoom and adaptive lane tick spacing
-remain installed, including the earlier startup zoom repair.
-The legacy scheduler-root task is retired; the enabled managed task's logon
-trigger is the sole automatic-start authority.
-Launcher convergence was rechecked with Validate on 2026-10-27: launcher,
-central launcher, public shim, and managed task are current, and only the
-2026-10-02 convergence receipt is stale because it names the 2026-10-02 merge
-worktree rather than the primary checkout as its source, as already recorded
-on 2026-10-07 and 2026-10-08.
-Technical graph restart verification passed; operator layout sign-off remains
-separate.
+**Status:** the local release and launcher system is installed on SND-DESK.
+Read the [machine matrix](../README.md#current-installations) and deployment
+`release.json` / `rollback/release.json` for current identities. The dated
+verification records below establish only the revisions and observations they
+name; refresh live health and launcher convergence before operational writes.
+Source delivery and candidate verification do not authorize promotion.
+
 Current Data/Bin authority is persisted `SEV_LOCAL_DATA` / `SEV_LOCAL_BIN`
 (User, then Machine, then Process), with recursive expansion of `%...%`
 templates. The app-owned `librehw` launcher is the sole activation authority.
