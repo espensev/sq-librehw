@@ -58,7 +58,7 @@ public sealed class PlotPanelLaneTests
     [InlineData(-120, false, false)]
     [InlineData(120, true, false)]
     [InlineData(120, true, true)]
-    public void ShiftWheel_ZoomsOnlyHoveredValueAxis(int delta, bool overLabels, bool overlay)
+    public void Wheel_ZoomsOnlyHoveredValueAxis(int delta, bool overLabels, bool overlay)
     {
         var settings = new PersistentSettings();
         settings.SetValue("stackedAxes", !overlay);
@@ -79,7 +79,7 @@ public sealed class PlotPanelLaneTests
 
         view.ActualController.HandleMouseWheel(view, new OxyMouseWheelEventArgs
         {
-            Position = point, Delta = delta, ModifierKeys = OxyModifierKeys.Shift
+            Position = point, Delta = delta, ModifierKeys = OxyModifierKeys.None
         });
         RenderPlot(view);
 
@@ -113,7 +113,7 @@ public sealed class PlotPanelLaneTests
         view.ActualController.HandleMouseWheel(view, new OxyMouseWheelEventArgs
         {
             Position = outside ? new ScreenPoint(0, 0) : view.Model.PlotArea.Center,
-            Delta = 120, ModifierKeys = OxyModifierKeys.Shift
+            Delta = 120, ModifierKeys = OxyModifierKeys.None
         });
         RenderPlot(view);
         Assert.Equal(before, view.Model.Axes.Select(a => (a.ActualMinimum, a.ActualMaximum)).ToArray());
@@ -171,7 +171,7 @@ public sealed class PlotPanelLaneTests
             new Dictionary<ISensor, string> { [sensor] = lane.Key },
             2);
 
-        LineSeries series = Assert.IsType<LineSeries>(Assert.Single(view.Model.Series));
+        LineSeries series = Assert.IsAssignableFrom<LineSeries>(Assert.Single(view.Model.Series));
         LinearAxis axis = Assert.IsType<LinearAxis>(view.Model.Axes.Single(candidate => candidate.Key == lane.Key));
         Assert.Equal(lane.Key, series.YAxisKey);
         Assert.Equal("Vcore", axis.Title);
@@ -458,7 +458,7 @@ public sealed class PlotPanelLaneTests
 
         Assert.True(panel.RemoveLane(lane.Key));
 
-        LineSeries series = Assert.IsType<LineSeries>(Assert.Single(view.Model.Series));
+        LineSeries series = Assert.IsAssignableFrom<LineSeries>(Assert.Single(view.Model.Series));
         Assert.Equal(lane.Key, removedKey);
         Assert.Equal("Power", series.YAxisKey);
         Assert.DoesNotContain(view.Model.Axes, axis => axis.Key == lane.Key);

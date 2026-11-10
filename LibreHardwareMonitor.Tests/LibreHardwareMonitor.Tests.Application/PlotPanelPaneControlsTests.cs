@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Windows.Forms.UI;
@@ -53,23 +54,22 @@ public sealed class PlotPanelPaneControlsTests
     public enum PaneGesture
     {
         Wheel,
-        ZoomRectangle,
         Pan
     }
 
     [Theory]
     [InlineData(WheelRegion.StackedPane, OxyModifierKeys.None, WheelTarget.LaneValue)]
-    [InlineData(WheelRegion.StackedPane, OxyModifierKeys.Shift, WheelTarget.LaneValue)]
-    [InlineData(WheelRegion.StackedPane, OxyModifierKeys.Control, WheelTarget.DetachedPaneTime)]
+    [InlineData(WheelRegion.StackedPane, OxyModifierKeys.Shift, WheelTarget.DetachedPaneTime)]
+    [InlineData(WheelRegion.StackedPane, OxyModifierKeys.Control, WheelTarget.Nothing)]
     [InlineData(WheelRegion.ValueLabels, OxyModifierKeys.None, WheelTarget.LaneValue)]
-    [InlineData(WheelRegion.ValueLabels, OxyModifierKeys.Shift, WheelTarget.LaneValue)]
+    [InlineData(WheelRegion.ValueLabels, OxyModifierKeys.Shift, WheelTarget.DetachedPaneTime)]
     [InlineData(WheelRegion.ValueLabels, OxyModifierKeys.Control, WheelTarget.Nothing)]
-    [InlineData(WheelRegion.TimeLabels, OxyModifierKeys.None, WheelTarget.SharedTime)]
+    [InlineData(WheelRegion.TimeLabels, OxyModifierKeys.None, WheelTarget.Nothing)]
     [InlineData(WheelRegion.TimeLabels, OxyModifierKeys.Shift, WheelTarget.Nothing)]
-    [InlineData(WheelRegion.TimeLabels, OxyModifierKeys.Control, WheelTarget.SharedTime)]
-    [InlineData(WheelRegion.OverlayPlot, OxyModifierKeys.None, WheelTarget.SharedTime)]
+    [InlineData(WheelRegion.TimeLabels, OxyModifierKeys.Control, WheelTarget.Nothing)]
+    [InlineData(WheelRegion.OverlayPlot, OxyModifierKeys.None, WheelTarget.Nothing)]
     [InlineData(WheelRegion.OverlayPlot, OxyModifierKeys.Shift, WheelTarget.Nothing)]
-    [InlineData(WheelRegion.OverlayPlot, OxyModifierKeys.Control, WheelTarget.SharedTime)]
+    [InlineData(WheelRegion.OverlayPlot, OxyModifierKeys.Control, WheelTarget.Nothing)]
     [InlineData(WheelRegion.Outside, OxyModifierKeys.None, WheelTarget.Nothing)]
     [InlineData(WheelRegion.Outside, OxyModifierKeys.Shift, WheelTarget.Nothing)]
     [InlineData(WheelRegion.Outside, OxyModifierKeys.Control, WheelTarget.Nothing)]
@@ -79,7 +79,7 @@ public sealed class PlotPanelPaneControlsTests
         ScreenPoint point = f.PointIn(region);
         if (expected == WheelTarget.DetachedPaneTime)
         {
-            AssertCtrlWheelDetaches(f, point, f.LaneKey);
+            AssertShiftWheelDetaches(f, point, f.LaneKey);
             Assert.Null(f.SeriesOf(f.Gpu).XAxisKey);
             return;
         }
@@ -96,8 +96,8 @@ public sealed class PlotPanelPaneControlsTests
 
     [Theory]
     [InlineData(OxyModifierKeys.None, WheelRegion.StackedPane, false)]
-    [InlineData(OxyModifierKeys.Shift, WheelRegion.ValueLabels, false)]
-    [InlineData(OxyModifierKeys.Control, WheelRegion.StackedPane, true)]
+    [InlineData(OxyModifierKeys.None, WheelRegion.ValueLabels, false)]
+    [InlineData(OxyModifierKeys.Shift, WheelRegion.StackedPane, true)]
     [InlineData(OxyModifierKeys.None, WheelRegion.TimeLabels, true)]
     [InlineData(OxyModifierKeys.Control, WheelRegion.OverlayPlot, true)]
     public void Wheel_DisabledZoomIsConsumedAndChangesNothing(OxyModifierKeys modifiers, WheelRegion region, bool timeGesture)
@@ -111,6 +111,273 @@ public sealed class PlotPanelPaneControlsTests
             });
 
         AssertWheelChangesOnly(f, f.PointIn(region), modifiers, null);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AllPaneValues_UseNormalizedAnchorAndKeepTimeAndHiddenRanges(bool overlay)
+    {
+        using Fixture f = Fixture.Create(stacked: !overlay);
+        var fan = new FakeSensor(SensorType.Fan, "Fan", 120, _ => 1200);
+        var temperature = new FakeSensor(SensorType.Temperature, "Die", 120, _ => 50);
+        f.Bind(f.Gpu, f.Cpu, fan, temperature);
+        f.Panel.SetLaneWeight(f.LaneKey, 3);
+        f.Panel.SetLaneValueRange("Power", 0, 400);
+        f.Panel.SetLaneValueRange(f.LaneKey, 20, 80);
+        f.Panel.SetLaneValueRange("Fan", 500, 2500);
+        f.Panel.SetLaneValueRange("Temperature", 20, 100);
+        f.Panel.SetLaneValueRange("Voltage", 0, 12);
+        Render(f.View);
+        SelectScope(f, "All panes");
+        OxyRect band = BandRect(f.View.Model, f.LaneAxis);
+        // Overlay has no unambiguous pane, so every value range uses its centre.
+        double fraction = overlay ? 0.5 : 0.25;
+        var point = new ScreenPoint(band.Center.X, band.Bottom - band.Height * fraction);
+        Dictionary<Axis, (double Min, double Max)> before = Snapshot(f.View.Model);
+        Wheel(f, point, OxyModifierKeys.None);
+        Wheel(f, point, OxyModifierKeys.None); // No paint between gestures.
+        Render(f.View);
+        foreach (Axis axis in f.View.Model.Axes)
+        {
+            var old = before[axis];
+            if (!axis.IsAxisVisible || axis.IsHorizontal())
+            {
+                Assert.Equal(old, (axis.ActualMinimum, axis.ActualMaximum));
+                continue;
+            }
+
+            double anchor = old.Min + fraction * (old.Max - old.Min);
+            Assert.Equal(anchor + (old.Min - anchor) / 1.44, axis.ActualMinimum, 1e-6);
+            Assert.Equal(anchor + (old.Max - anchor) / 1.44, axis.ActualMaximum, 1e-6);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AllPaneTime_PreservesIndependentWindowsAndDormantOverrides(bool overlay)
+    {
+        using Fixture f = Fixture.Create(stacked: !overlay);
+        var fan = new FakeSensor(SensorType.Fan, "Fan", 120, _ => 1200);
+        f.Bind(f.Gpu, f.Cpu, fan);
+        f.Panel.SetLaneTimeWindow(f.LaneKey, 30, 150);
+        f.Panel.SetLaneTimeWindow("Voltage", 20, 80);
+        Render(f.View);
+        SelectScope(f, "All panes");
+        Dictionary<Axis, (double Min, double Max)> before = Snapshot(f.View.Model);
+        OxyRect plot = f.View.Model.PlotArea;
+        var point = new ScreenPoint(plot.Left + plot.Width * 0.3, plot.Center.Y);
+        Wheel(f, point, OxyModifierKeys.Shift);
+        Wheel(f, point, OxyModifierKeys.Shift);
+        Render(f.View);
+        Assert.Equal(before.Count, f.View.Model.Axes.Count); // Followers stay shared; no duplicate zoom.
+        foreach (Axis axis in f.View.Model.Axes)
+        {
+            var old = before[axis];
+            if (axis.IsHorizontal())
+            {
+                double anchor = old.Min + 0.3 * (old.Max - old.Min);
+                Assert.Equal(anchor + (old.Min - anchor) / 1.44, axis.ActualMinimum, 1e-6);
+                Assert.Equal(anchor + (old.Max - anchor) / 1.44, axis.ActualMaximum, 1e-6);
+            }
+            else
+                Assert.Equal(old, (axis.ActualMinimum, axis.ActualMaximum));
+        }
+
+        Assert.True(f.Panel.TryGetLaneTimeWindow("Voltage", out double min, out double max));
+        Assert.Equal((20d, 80d), (min, max));
+        Assert.False(f.Panel.TryGetLaneTimeWindow("Power", out _, out _));
+        Assert.False(f.Panel.TryGetLaneTimeWindow("Fan", out _, out _));
+        if (overlay)
+        {
+            Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out min, out max));
+            Assert.Equal((30d, 150d), (min, max));
+        }
+    }
+
+    [Fact]
+    public void Scope_MenuSurfaceAndRestartAgreeAndPaneCommandsStayLocal()
+    {
+        var settings = new PersistentSettings();
+        string savedLaneKey;
+        using (Fixture f = Fixture.Create(settings: settings))
+        {
+            savedLaneKey = f.LaneKey;
+            ToolStripMenuItem scope = ScopeMenu(f);
+            Assert.Equal("Zoom scope: This pane", scope.Text);
+            Assert.True(Item(scope.DropDownItems, "This pane").Checked);
+            SelectScope(f, "All panes");
+            f.Panel.RebuildPaneMenuSection(f.PointIn(WheelRegion.StackedPane));
+            Assert.Equal("Zoom scope: All panes", scope.Text);
+            Assert.False(Item(scope.DropDownItems, "This pane").Checked);
+            Assert.True(Item(scope.DropDownItems, "All panes").Checked);
+            Assert.Contains("All panes", f.Panel.Controls.OfType<System.Windows.Forms.Button>().Single().Text);
+            ToolStripMenuItem values = Item(f.View.ContextMenuStrip.Items, "Value Scale");
+            Dictionary<Axis, (double Min, double Max)> before = Snapshot(f.View.Model);
+            Item(values.DropDownItems, "Zoom In (All panes)").PerformClick();
+            Assert.True(f.DefaultAxis.ActualMaximum - f.DefaultAxis.ActualMinimum < before[f.DefaultAxis].Max - before[f.DefaultAxis].Min);
+            Assert.True(f.LaneAxis.ActualMaximum - f.LaneAxis.ActualMinimum < before[f.LaneAxis].Max - before[f.LaneAxis].Min);
+            var other = (f.DefaultAxis.ActualMinimum, f.DefaultAxis.ActualMaximum);
+            Item(values.DropDownItems, "Auto Range").PerformClick();
+            Render(f.View);
+            Assert.Equal(other, (f.DefaultAxis.ActualMinimum, f.DefaultAxis.ActualMaximum));
+            SelectScope(f, "This pane");
+            Assert.Contains("This pane", f.Panel.Controls.OfType<System.Windows.Forms.Button>().Single().Text);
+            AssertWheelChangesOnly(f, f.PointIn(WheelRegion.StackedPane), OxyModifierKeys.None, f.LaneAxis);
+            SelectScope(f, "All panes");
+            f.Panel.SetLaneTimeWindow(f.LaneKey, 30, 180);
+            f.Panel.SetCurrentSettings();
+        }
+
+        using Fixture restarted = Fixture.Create(settings: settings, laneKey: savedLaneKey);
+        Assert.Equal("Zoom scope: This pane", ScopeMenu(restarted).Text);
+        Assert.True(restarted.Panel.TryGetLaneTimeWindow(restarted.LaneKey, out double min, out double max));
+        Assert.Equal((30d, 180d), (min, max));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UnassignedModifiersAndDisabledAllPaneZoom_ChangeNothing(bool all)
+    {
+        using Fixture f = Fixture.Create();
+        if (all)
+            SelectScope(f, "All panes");
+        ScreenPoint point = f.PointIn(WheelRegion.StackedPane);
+        foreach (OxyModifierKeys modifiers in new[] { OxyModifierKeys.Control, OxyModifierKeys.Alt,
+                     OxyModifierKeys.Control | OxyModifierKeys.Shift, OxyModifierKeys.Control | OxyModifierKeys.Alt,
+                     OxyModifierKeys.Shift | OxyModifierKeys.Alt, OxyModifierKeys.Control | OxyModifierKeys.Shift | OxyModifierKeys.Alt })
+            AssertWheelChangesOnly(f, point, modifiers, null);
+        Item(Item(f.View.ContextMenuStrip.Items, "Time Axis").DropDownItems, "Enable Zoom").PerformClick();
+        Item(Item(f.View.ContextMenuStrip.Items, "Value Axes").DropDownItems, "Enable Zoom").PerformClick();
+        AssertWheelChangesOnly(f, point, OxyModifierKeys.None, null);
+        AssertWheelChangesOnly(f, point, OxyModifierKeys.Shift, null);
+    }
+
+    [Fact]
+    public void SharedLabels_TargetOnlyAnUnambiguousFollowingPane()
+    {
+        using Fixture f = Fixture.Create();
+        AssertWheelChangesOnly(f, f.PointIn(WheelRegion.TimeLabels), OxyModifierKeys.Shift, null);
+        f.Panel.SetLaneTimeWindow(f.LaneKey, 0, 120);
+        Render(f.View);
+        AssertShiftWheelDetaches(f, f.PointIn(WheelRegion.TimeLabels), "Power");
+    }
+
+    [Theory]
+    [InlineData(OxyKey.Add)]
+    [InlineData(OxyKey.Subtract)]
+    [InlineData(OxyKey.PageUp)]
+    [InlineData(OxyKey.PageDown)]
+    [InlineData(OxyKey.Home)]
+    [InlineData(OxyKey.A)]
+    public void UnassignedKeyboardZoomAndReset_ChangeNothing(OxyKey key)
+    {
+        using Fixture f = Fixture.Create();
+        f.Panel.SetLaneTimeWindow(f.LaneKey, 30, 180);
+        Render(f.View);
+        Dictionary<Axis, (double Min, double Max)> before = Snapshot(f.View.Model);
+        f.View.ActualController.HandleKeyDown(f.View, new OxyKeyEventArgs { Key = key });
+        f.View.ActualController.HandleKeyDown(f.View, new OxyKeyEventArgs { Key = key, ModifierKeys = OxyModifierKeys.Control });
+        Render(f.View);
+        Assert.Equal(before, Snapshot(f.View.Model));
+    }
+
+    private static ToolStripMenuItem ScopeMenu(Fixture f) =>
+        f.View.ContextMenuStrip.Items.OfType<ToolStripMenuItem>().Single(item => item.Text.StartsWith("Zoom scope:", StringComparison.Ordinal));
+
+    private static void SelectScope(Fixture f, string text) => Item(ScopeMenu(f).DropDownItems, text).PerformClick();
+
+    private static void Wheel(Fixture f, ScreenPoint point, OxyModifierKeys modifiers) =>
+        Assert.True(f.View.ActualController.HandleMouseWheel(f.View, new OxyMouseWheelEventArgs { Position = point, Delta = 120, ModifierKeys = modifiers }));
+
+    [Fact]
+    public void KeyboardContextMenu_UsesTheFocusedVisiblePaneAndIgnoresPointerPosition()
+    {
+        using Fixture f = Fixture.Create();
+        Assert.Null(f.Panel.FocusedPanePoint());
+        Wheel(f, f.PointIn(WheelRegion.StackedPane), OxyModifierKeys.None);
+        // Hit-testing a different mouse position does not transfer keyboard focus.
+        f.Panel.GetLaneKeyAt(new ScreenPoint(f.View.Model.PlotArea.Center.X, BandRect(f.View.Model, f.DefaultAxis).Center.Y));
+        Assert.Equal(f.LaneKey, f.Panel.GetLaneKeyAt(f.Panel.FocusedPanePoint().Value));
+        bool called = false;
+        f.View.GetType().GetProperty("OpenKeyboardMenu", BindingFlags.Instance | BindingFlags.NonPublic)
+            .SetValue(f.View, (Action)(() => called = true));
+        object[] args = { System.Windows.Forms.Message.Create(IntPtr.Zero, 0x007B, IntPtr.Zero, new IntPtr(-1)) };
+        f.View.GetType().GetMethod("WndProc", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(f.View, args);
+        Assert.True(called);
+        Assert.Equal(f.LaneKey, f.Panel.GetLaneKeyAt(f.Panel.FocusedPanePoint().Value));
+        f.Bind(f.Gpu);
+        Render(f.View);
+        Assert.Null(f.Panel.FocusedPanePoint());
+    }
+
+    [Fact]
+    public void LocalAutoDetach_KeepsSiblingsExactlyStableAcrossBurstsAndPaintsThenRefitsOnRemoval()
+    {
+        using Fixture f = Fixture.Create(cpuSamples: 600);
+        f.Panel.TimeAxisZoom(0, double.NaN);
+        Render(f.View);
+        Dictionary<Axis, (double Min, double Max)> before = Snapshot(f.View.Model);
+        ScreenPoint point = f.PointIn(WheelRegion.StackedPane);
+        for (int i = 0; i < 4; i++)
+        {
+            Wheel(f, point, OxyModifierKeys.Shift);
+            Assert.All(before, pair => Assert.Equal(pair.Value, (pair.Key.ActualMinimum, pair.Key.ActualMaximum)));
+        }
+
+        Render(f.View);
+        Assert.All(before, pair => Assert.Equal(pair.Value, (pair.Key.ActualMinimum, pair.Key.ActualMaximum)));
+        f.Panel.InvalidatePlot();
+        Render(f.View);
+        Assert.All(before, pair => Assert.Equal(pair.Value, (pair.Key.ActualMinimum, pair.Key.ActualMaximum)));
+        // Visibility, unlike detachment, must change the eligible Auto extent.
+        f.Bind(f.Gpu);
+        Render(f.View);
+        Assert.InRange(f.SharedAxis.ActualMaximum - f.SharedAxis.ActualMinimum, 110, 130);
+    }
+
+    [Fact]
+    public void AllPaneTime_WithEveryPaneDetachedLeavesUnusedSharedWindowAlone()
+    {
+        using Fixture f = Fixture.Create();
+        f.Panel.SetLaneTimeWindow("Power", 10, 310);
+        f.Panel.SetLaneTimeWindow(f.LaneKey, 30, 150);
+        Render(f.View);
+        var shared = (f.SharedAxis.ActualMinimum, f.SharedAxis.ActualMaximum);
+        SelectScope(f, "All panes");
+        ToolStripMenuItem time = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Time Scale");
+        Item(time.DropDownItems, "Zoom In (All panes)").PerformClick();
+        Assert.Equal(shared, (f.SharedAxis.ActualMinimum, f.SharedAxis.ActualMaximum));
+        Assert.True(f.Panel.TryGetLaneTimeWindow("Power", out double min, out double max));
+        Assert.Equal((10d, 250d), (min, max));
+        Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out min, out max));
+        Assert.Equal((30d, 126d), (min, max));
+        Item(time.DropDownItems, "Follow Shared").PerformClick();
+        Assert.False(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out _, out _));
+        Assert.True(f.Panel.TryGetLaneTimeWindow("Power", out min, out max));
+        Assert.Equal((10d, 250d), (min, max));
+    }
+
+    [Fact]
+    public void InheritedDoubleClickResetAndTouchZoom_LeaveEveryAxisUnchanged()
+    {
+        using Fixture f = Fixture.Create();
+        f.Panel.SetLaneTimeWindow(f.LaneKey, 30, 180);
+        Render(f.View);
+        Dictionary<Axis, (double Min, double Max)> before = Snapshot(f.View.Model);
+        ScreenPoint point = f.PointIn(WheelRegion.StackedPane);
+        foreach (var gesture in new[] { (OxyMouseButton.Middle, OxyModifierKeys.None),
+                     (OxyMouseButton.Right, OxyModifierKeys.Control),
+                     (OxyMouseButton.Left, OxyModifierKeys.Control | OxyModifierKeys.Alt) })
+            f.View.ActualController.HandleMouseDown(f.View, new OxyMouseDownEventArgs
+            {
+                Position = point, ChangedButton = gesture.Item1, ModifierKeys = gesture.Item2, ClickCount = 2
+            });
+        f.View.ActualController.HandleTouchStarted(f.View, new OxyTouchEventArgs { Position = point });
+        Render(f.View);
+        Assert.Equal(before, Snapshot(f.View.Model));
     }
 
     [Fact]
@@ -135,8 +402,7 @@ public sealed class PlotPanelPaneControlsTests
 
     [Theory]
     [InlineData(OxyModifierKeys.None, false)]
-    [InlineData(OxyModifierKeys.Shift, false)]
-    [InlineData(OxyModifierKeys.Control, true)]
+    [InlineData(OxyModifierKeys.Shift, true)]
     public void Wheel_InOverridingPaneZoomsItsValueOrItsOwnTimeAxis(OxyModifierKeys modifiers, bool paneTime)
     {
         using Fixture f = Fixture.Create();
@@ -150,14 +416,14 @@ public sealed class PlotPanelPaneControlsTests
     }
 
     [Fact]
-    public void Wheel_CtrlOverFollowingPaneDetachesOnlyThatPaneWhileAnotherPaneOverrides()
+    public void Wheel_ShiftOverFollowingPaneDetachesOnlyThatPaneWhileAnotherPaneOverrides()
     {
         using Fixture f = Fixture.Create();
         Assert.True(f.Panel.SetLaneTimeWindow(f.LaneKey, 0, 120));
         Render(f.View);
         OxyRect band = BandRect(f.View.Model, f.DefaultAxis);
 
-        AssertCtrlWheelDetaches(f, new ScreenPoint(f.View.Model.PlotArea.Center.X, band.Center.Y), "Power");
+        AssertShiftWheelDetaches(f, new ScreenPoint(f.View.Model.PlotArea.Center.X, band.Center.Y), "Power");
 
         Assert.Equal("time:" + f.LaneKey, f.SeriesOf(f.Cpu).XAxisKey);
         Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out double ageMin, out double ageMax));
@@ -252,12 +518,12 @@ public sealed class PlotPanelPaneControlsTests
             Assert.True(f.Panel.SetLaneTimeWindow(laneKey, 0, 3600));
             Render(f.View);
 
-            // Ctrl + wheel out in the overriding pane until its axis stops at its absolute minimum.
+            // Shift + wheel out in the overriding pane until its axis stops at its absolute minimum.
             for (int i = 0; i < 40; i++)
             {
                 f.View.ActualController.HandleMouseWheel(f.View, new OxyMouseWheelEventArgs
                 {
-                    Position = f.PointIn(WheelRegion.StackedPane), Delta = -120, ModifierKeys = OxyModifierKeys.Control
+                    Position = f.PointIn(WheelRegion.StackedPane), Delta = -120, ModifierKeys = OxyModifierKeys.Shift
                 });
                 Render(f.View);
             }
@@ -273,7 +539,7 @@ public sealed class PlotPanelPaneControlsTests
     }
 
     [Fact]
-    public void AutoTimeWindow_KeepsStoredSharedWindowWhileEveryVisiblePaneOverrides()
+    public void AutoTimeWindow_UsesPlottedDataEvenWhileEveryVisiblePaneOverrides()
     {
         using Fixture f = Fixture.Create();
         f.Panel.TimeAxisZoom(0, 300);
@@ -288,18 +554,16 @@ public sealed class PlotPanelPaneControlsTests
         Assert.True(f.Panel.AutoRangeLane("TimeSpan"));
         Assert.Equal((0f, 300f), StoredSharedWindow(f.Settings));
 
-        // In Auto the shared range comes from its series. With every visible pane overriding it has
-        // none, so its range is OxyPlot's empty-axis fallback and the stored window must stay. The
-        // auto-range default TimeSpan lane shares these keys, so the lane loop must leave them too.
+        // Auto includes all plotted histories even when every visible pane has an override.
         Item(Item(f.View.ContextMenuStrip.Items, "Time Axis").DropDownItems, "Auto").PerformClick();
         Assert.True(f.Panel.SetLaneTimeWindow(f.LaneKey, 0, 60));
         Assert.True(f.Panel.SetLaneTimeWindow("Power", 0, 120));
         f.Panel.InvalidatePlot();
         Render(f.View);
         f.Panel.SetCurrentSettings();
-        Assert.Equal((0f, 300f), StoredSharedWindow(f.Settings));
+        Assert.InRange(StoredSharedWindow(f.Settings).Max, 110f, 130f);
 
-        // A following pane puts data back on the shared axis; Auto saves its data-driven window again.
+        // Returning a pane to shared does not change which histories Auto includes.
         Assert.True(f.Panel.ClearLaneTimeWindow("Power"));
         f.Panel.InvalidatePlot();
         Render(f.View);
@@ -308,10 +572,9 @@ public sealed class PlotPanelPaneControlsTests
     }
 
     [Fact]
-    public void AutoSharedWindow_RefitsToTheRemainingDataWhenTheLongestPaneDetaches()
+    public void AutoSharedWindow_KeepsEveryPlottedSeriesWhenTheLongestPaneDetaches()
     {
-        // Under Time Axis > Auto the shared range is the autoscale of the series still on the shared
-        // axis, so a detach can shift the other following panes; a fixed shared window cannot move.
+        // Detaching the longest history must not change any following pane, even after painting.
         using Fixture f = Fixture.Create(cpuSamples: 600);
         Item(Item(f.View.ContextMenuStrip.Items, "Time Axis").DropDownItems, "Auto").PerformClick();
         f.Panel.InvalidatePlot();
@@ -321,15 +584,15 @@ public sealed class PlotPanelPaneControlsTests
 
         Assert.True(f.View.ActualController.HandleMouseWheel(f.View, new OxyMouseWheelEventArgs
         {
-            Position = f.PointIn(WheelRegion.StackedPane), Delta = 120, ModifierKeys = OxyModifierKeys.Control
+            Position = f.PointIn(WheelRegion.StackedPane), Delta = 120, ModifierKeys = OxyModifierKeys.Shift
         }));
         Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out double ageMin, out double ageMax));
         f.Panel.InvalidatePlot();
         Render(f.View);
 
-        // Only the 120 s GPU series is left on the shared axis; the detached pane keeps its window.
+        // The shared Auto extent still includes the detached 600 s history.
         Assert.Null(f.SeriesOf(f.Gpu).XAxisKey);
-        Assert.InRange(shared.ActualMaximum - shared.ActualMinimum, 110, 130);
+        Assert.InRange(shared.ActualMaximum - shared.ActualMinimum, 590, 620);
         Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out double keptMin, out double keptMax));
         Assert.Equal((ageMin, ageMax), (keptMin, keptMax));
         Assert.Equal(ageMax - ageMin, f.PaneAxis.ActualMaximum - f.PaneAxis.ActualMinimum, 1e-6);
@@ -570,110 +833,37 @@ public sealed class PlotPanelPaneControlsTests
     [Theory]
     [InlineData(OxyMouseButton.Middle, OxyModifierKeys.None)]
     [InlineData(OxyMouseButton.Right, OxyModifierKeys.Control)]
-    public void ZoomRectangleInOverridingPaneZoomsOnlyItsWindow(OxyMouseButton button, OxyModifierKeys modifiers)
-    {
-        using Fixture f = Fixture.Create();
-        Assert.True(f.Panel.SetLaneTimeWindow(f.LaneKey, 0, 120));
-        Render(f.View);
-        PlotPaneTimeAxis pane = f.PaneAxis;
-        Axis shared = f.SharedAxis;
-        Dictionary<Axis, (double Min, double Max)> before = Snapshot(f.View.Model);
-        OxyRect band = BandRect(f.View.Model, f.LaneAxis);
-        var start = new ScreenPoint(band.Left + band.Width * 0.3, band.Center.Y - 20);
-        var end = new ScreenPoint(band.Left + band.Width * 0.6, band.Center.Y + 20);
-        double expectedMin = pane.InverseTransform(start.X);
-        double expectedMax = pane.InverseTransform(end.X);
-
-        Drag(f.View, button, modifiers, start, end);
-
-        Assert.Equal(expectedMin, pane.ActualMinimum, 1e-6);
-        Assert.Equal(expectedMax, pane.ActualMaximum, 1e-6);
-        Assert.Equal(before[shared], (shared.ActualMinimum, shared.ActualMaximum));
-        Assert.Equal(before[f.DefaultAxis], (f.DefaultAxis.ActualMinimum, f.DefaultAxis.ActualMaximum));
-        Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out double ageMin, out double ageMax));
-        Assert.Equal(expectedMax - expectedMin, ageMax - ageMin, 3);
-    }
-
-    [Theory]
-    [InlineData(OxyMouseButton.Middle, OxyModifierKeys.None)]
-    [InlineData(OxyMouseButton.Right, OxyModifierKeys.Control)]
     [InlineData(OxyMouseButton.Left, OxyModifierKeys.Control | OxyModifierKeys.Alt)]
-    public void ZoomRectangleInFollowingPaneDetachesItWithTheRectangleTimeRange(OxyMouseButton button, OxyModifierKeys modifiers)
+    [InlineData(OxyMouseButton.XButton1, OxyModifierKeys.None)]
+    [InlineData(OxyMouseButton.XButton2, OxyModifierKeys.None)]
+    public void UnassignedMouseZoomBindings_LeaveEveryAxisUnchanged(OxyMouseButton button, OxyModifierKeys modifiers)
     {
         using Fixture f = Fixture.Create();
-        Axis shared = f.SharedAxis;
-        LinearAxis lane = f.LaneAxis;
         Dictionary<Axis, (double Min, double Max)> before = Snapshot(f.View.Model);
-        OxyRect band = BandRect(f.View.Model, lane);
-        var start = new ScreenPoint(band.Left + band.Width * 0.3, band.Center.Y - 20);
-        var end = new ScreenPoint(band.Left + band.Width * 0.6, band.Center.Y + 20);
-        double expectedMin = shared.InverseTransform(start.X);
-        double expectedMax = shared.InverseTransform(end.X);
-        double valueMin = lane.InverseTransform(end.Y);
-        double valueMax = lane.InverseTransform(start.Y);
-
-        Drag(f.View, button, modifiers, start, end);
+        ScreenPoint point = f.PointIn(WheelRegion.StackedPane);
+        Drag(f.View, button, modifiers, point, new ScreenPoint(point.X + 100, point.Y + 30));
         Render(f.View);
-
-        Assert.Equal(before[shared], (shared.ActualMinimum, shared.ActualMaximum));
-        Assert.Equal(before[f.DefaultAxis], (f.DefaultAxis.ActualMinimum, f.DefaultAxis.ActualMaximum));
-        PlotPaneTimeAxis pane = f.PaneAxis;
-        Assert.Equal("time:" + f.LaneKey, pane.Key);
-        Assert.Equal(pane.Key, f.SeriesOf(f.Cpu).XAxisKey);
-        Assert.Null(f.SeriesOf(f.Gpu).XAxisKey);
-        Assert.Equal(expectedMin, pane.ActualMinimum, 1e-6);
-        Assert.Equal(expectedMax, pane.ActualMaximum, 1e-6);
-        Assert.Equal(valueMin, lane.ActualMinimum, 1e-6);
-        Assert.Equal(valueMax, lane.ActualMaximum, 1e-6);
-    }
-
-    [Fact]
-    public void ZoomRectangleInFollowingPane_BelowThresholdOrWithTimeZoomOffDoesNotDetach()
-    {
-        using Fixture f = Fixture.Create();
-        PlotModel model = f.View.Model;
-        OxyRect band = BandRect(model, f.LaneAxis);
-        var start = new ScreenPoint(band.Center.X, band.Center.Y - 20);
-        Dictionary<Axis, (double Min, double Max)> before = Snapshot(model);
-
-        // OxyPlot zooms nothing for a rectangle 10 px or less on either side.
-        Drag(f.View, OxyMouseButton.Middle, OxyModifierKeys.None, start, new ScreenPoint(start.X + 8, start.Y + 40));
-        Render(f.View);
-
-        Assert.Equal(before.Count, model.Axes.Count);
-        Assert.All(before, pair => Assert.Equal(pair.Value, (pair.Key.ActualMinimum, pair.Key.ActualMaximum)));
+        Assert.Equal(before, Snapshot(f.View.Model));
         Assert.False(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out _, out _));
-
-        // With time zoom off the rectangle spans the plot width and zooms only the value axis.
-        Item(Item(f.View.ContextMenuStrip.Items, "Time Axis").DropDownItems, "Enable Zoom").PerformClick();
-        Drag(f.View, OxyMouseButton.Middle, OxyModifierKeys.None, start, new ScreenPoint(start.X + 100, start.Y + 40));
-        Render(f.View);
-
-        Assert.Equal(before.Count, model.Axes.Count);
-        Assert.False(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out _, out _));
-        Assert.Equal(before[f.SharedAxis], (f.SharedAxis.ActualMinimum, f.SharedAxis.ActualMaximum));
-        Assert.NotEqual(before[f.LaneAxis], (f.LaneAxis.ActualMinimum, f.LaneAxis.ActualMaximum));
     }
 
     [Theory]
     [InlineData(PaneGesture.Wheel)]
-    [InlineData(PaneGesture.ZoomRectangle)]
     [InlineData(PaneGesture.Pan)]
     public void DetachedPane_MapsInputThatArrivesBeforeItIsRendered(PaneGesture first)
     {
-        // Wheel bursts, a touchpad pinch (Ctrl + wheel), and queued input reach a pane before the next
-        // paint. After a Ctrl + wheel detach, each case runs all three gestures in cycle order, starting
-        // with a different one, and never renders. Expectations come from the pane's window and the
-        // plot area, not from the pane's transform.
+        // Wheel bursts and queued pans can reach a pane before its next paint.
+        // Expectations come from its window and plot area, not its transform.
         using Fixture f = Fixture.Create();
         OxyRect plot = f.View.Model.PlotArea;
         ScreenPoint point = f.PointIn(WheelRegion.StackedPane);
         Axis shared = f.SharedAxis;
         (double Min, double Max) sharedWindow = (shared.ActualMinimum, shared.ActualMaximum);
         double sharedSpan = sharedWindow.Max - sharedWindow.Min;
-        double anchor = shared.InverseTransform(point.X);
+        double anchorX = Math.Max(f.View.Model.PlotArea.Left, Math.Min(f.View.Model.PlotArea.Right, point.X));
+        double anchor = shared.InverseTransform(anchorX);
         string settingKey = "plotPanel.laneTime." + f.LaneKey;
-        var notch = new OxyMouseWheelEventArgs { Position = point, Delta = 120, ModifierKeys = OxyModifierKeys.Control };
+        var notch = new OxyMouseWheelEventArgs { Position = point, Delta = 120, ModifierKeys = OxyModifierKeys.Shift };
 
         Assert.True(f.View.ActualController.HandleMouseWheel(f.View, notch));
         PlotPaneTimeAxis pane = f.PaneAxis;
@@ -681,13 +871,13 @@ public sealed class PlotPanelPaneControlsTests
         Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out double detachedAgeMin, out _));
         double now = pane.ActualMaximum + detachedAgeMin;
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 4; i++)
         {
             double min = pane.ActualMinimum;
             double max = pane.ActualMaximum;
             double TimeAt(double x) => min + (x - plot.Left) / plot.Width * (max - min);
             (double Min, double Max) expected;
-            switch ((PaneGesture)(((int)first + i) % 3))
+            switch ((PaneGesture)(((int)first + i) % 2))
             {
                 case PaneGesture.Wheel:
                     double at = TimeAt(point.X);
@@ -700,12 +890,6 @@ public sealed class PlotPanelPaneControlsTests
                         Assert.Equal(sharedSpan / 1.44, expected.Max - expected.Min, 1e-6);
                     }
 
-                    break;
-                case PaneGesture.ZoomRectangle:
-                    var start = new ScreenPoint(plot.Left + plot.Width * 0.3, point.Y - 20);
-                    var end = new ScreenPoint(plot.Left + plot.Width * 0.6, point.Y + 20);
-                    Drag(f.View, OxyMouseButton.Middle, OxyModifierKeys.None, start, end);
-                    expected = (TimeAt(start.X), TimeAt(end.X));
                     break;
                 default:
                     Drag(f.View, OxyMouseButton.Right, OxyModifierKeys.None, point, new ScreenPoint(point.X + 100, point.Y));
@@ -823,9 +1007,37 @@ public sealed class PlotPanelPaneControlsTests
         LineSeries series = Assert.Single(f.View.Model.Series.Cast<LineSeries>());
         Assert.Same(replacement, series.Tag);
         Assert.Null(series.XAxis);
-        Assert.Throws<ArgumentNullException>(() => series.GetNearestPoint(inside, true));
+        Assert.Null(series.GetNearestPoint(inside, true));
 
         Assert.Null(f.Panel.GetSensorAt(inside));
+    }
+
+    [Theory]
+    [InlineData(OxyModifierKeys.None)]
+    [InlineData(OxyModifierKeys.Control)]
+    [InlineData(OxyModifierKeys.Shift)]
+    public void Tracker_AfterSeriesReplacementBeforePaintSkipsUnpreparedLinesAndRecovers(OxyModifierKeys modifiers)
+    {
+        using Fixture f = Fixture.Create();
+        ScreenPoint point = f.PointIn(WheelRegion.StackedPane);
+        f.Bind(); // Replace the series while the previous layout is still available.
+        Assert.All(f.View.Model.Series.Cast<LineSeries>(), series => Assert.Null(series.XAxis));
+
+        Assert.True(f.View.ActualController.HandleMouseDown(f.View, new OxyMouseDownEventArgs
+        {
+            Position = point, ChangedButton = OxyMouseButton.Left, ClickCount = 1, ModifierKeys = modifiers
+        }));
+        f.View.ActualController.HandleMouseMove(f.View, new OxyMouseEventArgs { Position = point });
+        f.View.ActualController.HandleMouseUp(f.View, new OxyMouseEventArgs { Position = point });
+
+        Render(f.View);
+        LineSeries prepared = f.SeriesOf(f.Cpu);
+        Assert.NotNull(prepared.GetNearestPoint(point, false));
+        Assert.True(f.View.ActualController.HandleMouseDown(f.View, new OxyMouseDownEventArgs
+        {
+            Position = point, ChangedButton = OxyMouseButton.Left, ClickCount = 1, ModifierKeys = modifiers
+        }));
+        f.View.ActualController.HandleMouseUp(f.View, new OxyMouseEventArgs { Position = point });
     }
 
     [Fact]
@@ -876,7 +1088,7 @@ public sealed class PlotPanelPaneControlsTests
         ToolStripMenuItem valueScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Value Scale");
         Assert.True(Item(valueScale.DropDownItems, "Auto Range").Checked);
 
-        Item(valueScale.DropDownItems, "Zoom In").PerformClick();
+        Item(valueScale.DropDownItems, "Zoom In (This pane)").PerformClick();
 
         Assert.Equal(center - (max - min) / 2.5, lane.ActualMinimum, 6);
         Assert.Equal(center + (max - min) / 2.5, lane.ActualMaximum, 6);
@@ -887,7 +1099,7 @@ public sealed class PlotPanelPaneControlsTests
         Assert.Equal(lane.ActualMaximum, f.Settings.GetValue(maxKey, float.NaN), 3);
         Assert.False(f.Settings.Contains("plotPanel.MinPower"));
 
-        Item(valueScale.DropDownItems, "Zoom Out").PerformClick();
+        Item(valueScale.DropDownItems, "Zoom Out (This pane)").PerformClick();
         Assert.Equal(min, lane.ActualMinimum, 6);
         Assert.Equal(max, lane.ActualMaximum, 6);
 
@@ -914,8 +1126,8 @@ public sealed class PlotPanelPaneControlsTests
         using Fixture f = Fixture.Create(configure: settings => settings.SetValue("yAxesEnableZoom", false));
         ToolStripMenuItem valueScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Value Scale");
 
-        Assert.False(Item(valueScale.DropDownItems, "Zoom In").Enabled);
-        Assert.False(Item(valueScale.DropDownItems, "Zoom Out").Enabled);
+        Assert.False(Item(valueScale.DropDownItems, "Zoom In (This pane)").Enabled);
+        Assert.False(Item(valueScale.DropDownItems, "Zoom Out (This pane)").Enabled);
         Assert.False(f.Panel.ZoomLaneValue(f.LaneKey, 1.25));
         Assert.True(f.Panel.SetLaneValueRange(f.LaneKey, 5, 25));
         Assert.Equal((5d, 25d), (f.LaneAxis.ActualMinimum, f.LaneAxis.ActualMaximum));
@@ -960,7 +1172,7 @@ public sealed class PlotPanelPaneControlsTests
         Assert.Equal((30d, 110d), (ageMin, ageMax));
 
         ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Time Scale");
-        Item(timeScale.DropDownItems, "Zoom Out").PerformClick();
+        Item(timeScale.DropDownItems, "Zoom Out (This pane)").PerformClick();
         Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out ageMin, out ageMax));
         Assert.Equal(30, ageMin);
         Assert.Equal(130, ageMax, 1e-9);
@@ -983,7 +1195,7 @@ public sealed class PlotPanelPaneControlsTests
         IReadOnlyList<ToolStripItem> section = f.Panel.CreatePaneMenuItems(new ScreenPoint(f.View.Model.PlotArea.Center.X, band.Center.Y));
         Assert.Equal("── Power ──", section.First(item => item.Text.StartsWith("──", StringComparison.Ordinal)).Text);
 
-        Item(Item(section, "Time Scale").DropDownItems, "Zoom In").PerformClick();
+        Item(Item(section, "Time Scale").DropDownItems, "Zoom In (This pane)").PerformClick();
 
         Assert.True(f.Panel.TryGetLaneTimeWindow("Power", out double ageMin, out double ageMax));
         Assert.Equal(0d, ageMin);
@@ -1011,7 +1223,7 @@ public sealed class PlotPanelPaneControlsTests
         for (int i = 0; i < 25; i++)
         {
             ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Time Scale");
-            Item(timeScale.DropDownItems, "Zoom In").PerformClick();
+            Item(timeScale.DropDownItems, "Zoom In (This pane)").PerformClick();
             Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out ageMin, out ageMax));
             Assert.Equal(0d, ageMin);
             Assert.True(ageMax - ageMin >= minimumRange, $"click {i + 1}: span {ageMax - ageMin} below {minimumRange}");
@@ -1033,8 +1245,8 @@ public sealed class PlotPanelPaneControlsTests
         Assert.True(Item(timeScale.DropDownItems, "Follow Shared").Enabled);
         Assert.Equal(15, timeScale.DropDownItems.OfType<ToolStripRadioButtonMenuItem>().Count(item => item.Text != "Follow Shared"));
         Assert.All(timeScale.DropDownItems.OfType<ToolStripRadioButtonMenuItem>(), item => Assert.True(item.Enabled, item.Text));
-        Assert.False(Item(timeScale.DropDownItems, "Zoom In").Enabled);
-        Assert.False(Item(timeScale.DropDownItems, "Zoom Out").Enabled);
+        Assert.False(Item(timeScale.DropDownItems, "Zoom In (This pane)").Enabled);
+        Assert.False(Item(timeScale.DropDownItems, "Zoom Out (This pane)").Enabled);
         Assert.False(f.Panel.ZoomLaneTime(f.LaneKey, 1.25));
 
         Item(timeScale.DropDownItems, "5 min").PerformClick();
@@ -1114,7 +1326,7 @@ public sealed class PlotPanelPaneControlsTests
         Assert.False(pane.IsZoomEnabled);
         ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Time Scale");
         Assert.True(timeScale.Enabled);
-        Assert.False(Item(timeScale.DropDownItems, "Zoom In").Enabled);
+        Assert.False(Item(timeScale.DropDownItems, "Zoom In (This pane)").Enabled);
         Assert.False(f.Panel.ZoomLaneTime(f.LaneKey, 1.25));
 
         // Window follow does not depend on the zoom option.
@@ -1338,22 +1550,23 @@ public sealed class PlotPanelPaneControlsTests
     }
 
     /// <summary>
-    /// Ctrl + wheel over a following pane: that lane gets its own window, seeded from the shared window
+    /// Shift + wheel over a following pane: that lane gets its own window, seeded from the shared window
     /// and zoomed 1.2x about the time under the pointer. Every existing axis and every other series stays.
     /// </summary>
-    private static void AssertCtrlWheelDetaches(Fixture f, ScreenPoint point, string laneKey)
+    private static void AssertShiftWheelDetaches(Fixture f, ScreenPoint point, string laneKey)
     {
         PlotModel model = f.View.Model;
         Dictionary<Axis, (double Min, double Max)> before = Snapshot(model);
         Dictionary<LineSeries, string> seriesKeys = model.Series.Cast<LineSeries>().ToDictionary(series => series, series => series.XAxisKey);
         Axis shared = f.SharedAxis;
         double sharedSpan = shared.ActualMaximum - shared.ActualMinimum;
-        double anchor = shared.InverseTransform(point.X);
+        double anchorX = Math.Max(f.View.Model.PlotArea.Left, Math.Min(f.View.Model.PlotArea.Right, point.X));
+        double anchor = shared.InverseTransform(anchorX);
         Assert.False(f.Panel.TryGetLaneTimeWindow(laneKey, out _, out _));
 
         bool handled = f.View.ActualController.HandleMouseWheel(f.View, new OxyMouseWheelEventArgs
         {
-            Position = point, Delta = 120, ModifierKeys = OxyModifierKeys.Control
+            Position = point, Delta = 120, ModifierKeys = OxyModifierKeys.Shift
         });
 
         // The new axis is already laid out as the next render lays it out, so input before that paint
@@ -1370,7 +1583,7 @@ public sealed class PlotPanelPaneControlsTests
         Assert.Equal(before.Count + 1, model.Axes.Count);
         Assert.All(seriesKeys, pair => Assert.Equal(pair.Key.YAxisKey == laneKey ? pane.Key : pair.Value, pair.Key.XAxisKey));
         Assert.Equal(sharedSpan / 1.2, pane.ActualMaximum - pane.ActualMinimum, 1e-6);
-        Assert.Equal(anchor, pane.InverseTransform(point.X), 1e-6);
+        Assert.Equal(anchor, pane.InverseTransform(anchorX), 1e-6);
         Assert.True(f.Panel.TryGetLaneTimeWindow(laneKey, out double ageMin, out double ageMax));
         Assert.Equal(sharedSpan / 1.2, ageMax - ageMin, 1e-6);
     }
@@ -1386,7 +1599,7 @@ public sealed class PlotPanelPaneControlsTests
         });
         Render(f.View);
 
-        // No gesture outside a following pane's Ctrl + wheel creates a pane axis.
+        // No gesture outside a following pane's Shift + wheel creates a pane axis.
         Assert.Equal(before.Count, f.View.Model.Axes.Count);
         List<Axis> changed = f.View.Model.Axes
             .Where(axis => before[axis] != (axis.ActualMinimum, axis.ActualMaximum))

@@ -9,6 +9,7 @@ using System.Linq;
 using OxyPlot;
 using OxyPlot.Annotations;
 using OxyPlot.Axes;
+using OxyPlot.Series;
 
 namespace LibreHardwareMonitor.Windows.Forms.UI;
 
@@ -305,87 +306,6 @@ internal sealed class PlotPanePanManipulator : PanManipulator
     }
 }
 
-/// <summary>
-/// Middle-drag / Ctrl+right-drag / Ctrl+Alt+left-drag zoom rectangle that targets the pointer's pane
-/// time axis. Started in a following pane, its time part detaches that pane instead of zooming the
-/// shared window: the base zooms only the value axis, and the detach callback receives the
-/// rectangle's range on the shared axis. The base keeps its rectangle private, so this class tracks
-/// the same rectangle with the same clamps and the same 10 px threshold (OxyPlot 2.2).
-/// </summary>
-internal sealed class PlotPaneZoomRectangleManipulator : ZoomRectangleManipulator
-{
-    private const double MinimumZoomSize = 10;
-
-    private readonly Func<ScreenPoint, Axis> _resolveTimeAxis;
-    private readonly Func<ScreenPoint, Action<double, double>> _resolveTimeDetach;
-    private Action<double, double> _timeDetach;
-    private bool _isZoomEnabled;
-    private OxyRect _zoomRectangle;
-
-    internal PlotPaneZoomRectangleManipulator(
-        IPlotView plotView,
-        Func<ScreenPoint, Axis> resolveTimeAxis,
-        Func<ScreenPoint, Action<double, double>> resolveTimeDetach)
-        : base(plotView)
-    {
-        _resolveTimeAxis = resolveTimeAxis;
-        _resolveTimeDetach = resolveTimeDetach;
-    }
-
-    public override void Started(OxyMouseEventArgs e)
-    {
-        base.Started(e);
-        _isZoomEnabled = (XAxis != null && XAxis.IsZoomEnabled) || (YAxis != null && YAxis.IsZoomEnabled);
-        _zoomRectangle = new OxyRect(StartPosition.X, StartPosition.Y, 0, 0);
-        _timeDetach = XAxis != null ? _resolveTimeDetach?.Invoke(e.Position) : null;
-        if (XAxis != null && _resolveTimeAxis(e.Position) is Axis timeAxis)
-            XAxis = timeAxis;
-    }
-
-    public override void Delta(OxyMouseEventArgs e)
-    {
-        base.Delta(e);
-        if (!_isZoomEnabled)
-            return;
-
-        OxyRect plotArea = PlotView.ActualModel.PlotArea;
-        double x = Math.Min(StartPosition.X, e.Position.X);
-        double width = Math.Abs(StartPosition.X - e.Position.X);
-        double y = Math.Min(StartPosition.Y, e.Position.Y);
-        double height = Math.Abs(StartPosition.Y - e.Position.Y);
-        if (XAxis == null || !XAxis.IsZoomEnabled)
-        {
-            x = plotArea.Left;
-            width = plotArea.Width;
-        }
-
-        if (YAxis == null || !YAxis.IsZoomEnabled)
-        {
-            y = plotArea.Top;
-            height = plotArea.Height;
-        }
-
-        _zoomRectangle = new OxyRect(x, y, width, height);
-    }
-
-    public override void Completed(OxyMouseEventArgs e)
-    {
-        Action<double, double> timeDetach = _timeDetach;
-        if (timeDetach == null || !_isZoomEnabled || XAxis == null || !XAxis.IsZoomEnabled ||
-            !(_zoomRectangle.Width > MinimumZoomSize && _zoomRectangle.Height > MinimumZoomSize))
-        {
-            base.Completed(e);
-            return;
-        }
-
-        double minimum = XAxis.InverseTransform(_zoomRectangle.Left);
-        double maximum = XAxis.InverseTransform(_zoomRectangle.Right);
-        XAxis = null;
-        base.Completed(e);
-        timeDetach(minimum, maximum);
-    }
-}
-
 /// <summary>Forwards every call except text drawing, so a repeated axis pass paints gridlines only.</summary>
 internal sealed class TextSuppressingRenderContext : IRenderContext
 {
@@ -431,4 +351,35 @@ internal sealed class TextSuppressingRenderContext : IRenderContext
     public void PushClip(OxyRect clippingRectangle) => _inner.PushClip(clippingRectangle);
 
     public void PopClip() => _inner.PopClip();
+}
+
+/// <summary>
+/// A plotted history contributes its data extent to shared Auto even when its drawing uses a pane
+/// time axis. OxyPlot calls this for visible series after recalculating data bounds, so detaching,
+/// hiding, clearing, or adding samples cannot leave a stale or truncated shared extent.
+/// </summary>
+internal sealed class PlotLineSeries : LineSeries
+{
+    private readonly Axis _sharedTime;
+
+    internal PlotLineSeries(Axis sharedTime) => _sharedTime = sharedTime;
+
+    public override TrackerHitResult GetNearestPoint(ScreenPoint point, bool interpolate)
+    {
+        // SetSensors replaces series before the next paint prepares their points and axes.
+        // Both controller hit-testing and tracker gestures can arrive during that gap.
+        return ActualPoints == null || XAxis == null || YAxis == null
+            ? null
+            : base.GetNearestPoint(point, interpolate);
+    }
+
+    protected override void UpdateAxisMaxMin()
+    {
+        base.UpdateAxisMaxMin();
+        if (XAxis != _sharedTime)
+        {
+            _sharedTime.Include(MinX);
+            _sharedTime.Include(MaxX);
+        }
+    }
 }

@@ -1,17 +1,18 @@
 # Feature Spec: Graph Pane Controls
 
-**Status:** existing pane controls promoted to SND-DESK on 2026-11-10 at `1bf2655f`; the next-revision wheel mapping and scope below are confirmed but not implemented; existing remove-from-graph and restart checks remain open
+**Status:** wheel-axis and explicit-scope revision implemented and source-verified; promotion and live acceptance of this revision remain separate. Earlier controls were promoted to SND-DESK on 2026-11-10 at `1bf2655f`; existing remove-from-graph and restart checks remain open.
 **Updated:** 2026-11-10
 **Extends:** [graph lanes](feature-graph-lanes.md) (lanes, weights, per-lane value zoom and persistence stay owned there)
 **Origin:** operator request 2026-11-09 with an annotated screenshot of the stacked Power / Temperature / Fan graph and its right-click menu
 
-## Confirmed next revision: wheel axis and target scope
+## Current source contract: wheel axis and target scope
 
 The operator clarified the interaction on 2026-11-10: retain time zoom through
 `Shift` + wheel, make the pane under the pointer the standard target, and offer
 a separate selection to zoom all panes. This supersedes both the earlier
 review suggestion to remove time zoom and the shipped Shift/Ctrl mapping
-documented below. This section is the target contract, not a delivery claim.
+documented below. This section describes the source revision; the historical
+runtime verification below does not verify its deployment.
 
 | Gesture | `This pane` (default) | `All panes` (explicit selection) |
 |---|---|---|
@@ -57,29 +58,67 @@ documented below. This section is the target contract, not a delivery claim.
   The scope selector does not automatically turn pan into an all-pane action.
   No extra replacement shortcuts are approved by this clarification.
 
-### Next-revision acceptance and verification
+Implementation binding review: retain right-drag / Alt+left-drag pane-aware
+pan and left-button tracker gestures. Unbind rectangle zoom, auxiliary-button
+zoom, keyboard zoom/pan/reset, double-click reset, shake reset, and touch
+pan/zoom; these inherited commands cannot express the selected dimension and
+scope. No replacement shortcuts are introduced. Apps / Shift+F10 opens the
+pane menu for the last clicked or wheel-targeted visible pane; with no such
+focus it opens only graph-wide options. Shared time labels resolve locally
+only when exactly one visible pane follows that axis.
 
-- [ ] Wheel changes only values, Shift + wheel only time, with This pane as
+### Current-revision acceptance and verification
+
+- [x] Wheel changes only values, Shift + wheel only time, with This pane as
   the startup default; Ctrl + wheel cannot retain its former time shortcut.
-- [ ] Local gestures leave all siblings unchanged in fixed/shared Auto modes,
+- [x] Local gestures leave all siblings unchanged in fixed/shared Auto modes,
   before and after the next paint, including repeated input without a render.
-- [ ] All panes changes every eligible visible target once; mixed units,
+- [x] All panes changes every eligible visible target once; mixed units,
   unequal pane heights, independent time spans, and shared-axis deduplication
   use the same factor and normalized anchor. Hidden overrides survive.
-- [ ] The scope radio state and persistent scope label agree; selecting This
+- [x] The scope radio state and persistent scope label agree; selecting This
   pane restores local behavior. Reopening menus preserves session selection;
-  restarting returns scope to This pane without discarding saved ranges.
-- [ ] Axis-label, shared-label, overlay, missed-target, disabled-zoom, keyboard
+  reconstructing the panel from saved settings returns scope to This pane
+  without discarding saved ranges. Installed-process restart remains pending.
+- [x] Axis-label, shared-label, overlay, missed-target, disabled-zoom, keyboard
   context, and unassigned-modifier cases cannot accidentally zoom all panes.
-- [ ] Add targeted controller/settings regressions, review all remaining input
-  bindings, build net472 and net10.0-windows, and visually check state indicators
-  at supported DPI/theme settings. Live deployment remains a separate action.
+- [x] Add targeted controller/settings regressions, review all remaining input
+  bindings, and build net472 and net10.0-windows.
+- [x] Inspect the persistent scope indicator in light/dark fixture renders at
+  144 DPI with 100%, 150% and 200% font sizes. Both labels fit and remain legible.
+- [ ] Check the installed menus and gestures, real monitor-DPI changes and
+  restart behavior after separately authorized promotion.
+
+### Source verification, 2026-11-10
+
+- Reviewed and completed the working-tree draft over `f793f738`. The
+  [continuation review](../reviews/review-2026-11-10-pane-zoom-continuation.md)
+  records the findings and limits.
+- Shared Auto includes every visible plotted history even when its series
+  draws against a detached pane axis. Detach alone leaves siblings unchanged;
+  removing a plotted history still refits Auto. Scoped zoom snapshots targets
+  and ranges before applying one factor, deduplicating the shared axis.
+- `PlotLineSeries.GetNearestPoint` skips unprepared points/axes for every
+  caller, replacing `GetSensorAt`'s reflection guard. Controller mouse-down
+  after `SetSensors` reproduced `ArgumentNullException` for plain, Ctrl and
+  Shift left-click; all three cases now pass and tracking resumes after render.
+- `FullyQualifiedName~PlotPanel`: 155 passed. Full deterministic suite:
+  Application 389 passed and one established opt-in skip; Library 193 passed;
+  Contracts 124 passed. Both Release frameworks: zero warnings or errors.
+- Upstream-divergence ledger gate: 15 passed, zero failed. `git diff --check`
+  passed before staging.
+- Fixture evidence lives under the authoritative workload root at
+  `LibreHW/audits/2026-11-10-pane-zoom-continuation`: failing `tracker-red.trx`,
+  passing `plot-final.trx`, full-suite TRX files, and twelve scope-label PNGs.
+  The external visual harness uses fake sensor histories and a hidden form;
+  it does not launch the product or exercise hardware. Its text percentages
+  are font sizes at 144 device DPI, not three different monitor-DPI settings.
 
 ## Shipped behavior and earlier verification
 
 The remaining sections describe the prior implementation and its verification.
-Where they conflict with the confirmed next revision above, the new contract
-governs future implementation; checked criteria below do not verify it.
+Where they conflict with the current source contract above, that contract
+governs implementation; checked criteria below are historical evidence only.
 
 ## Problem and motivation
 
@@ -435,12 +474,8 @@ Not part of this change; each needs its own decision or fix.
 - Pan detaches: right-drag or `Alt` + left-drag in a following pane still pans
   the shared window. Detaching would need the pan manipulator to create the
   pane axis when the drag starts.
-- Auto shared window and detach: under `Time Axis > Auto` a detach takes the
-  pane's series off the shared axis, so the shared range refits and the other
-  following panes can shift. Keeping them still would need Auto to keep the
-  detached series' data range or to hold the range at the detach.
-- A keyboard-opened context menu (menu key, `Shift` + `F10`) builds its pane
-  section for the mouse pointer's position, not for a focused pane.
+- Shared Auto stability on detach and keyboard menu targeting are resolved
+  in the current source revision above; installed behavior awaits promotion.
 - Contrast of the disabled `── <pane> ──` header item in the dark theme (not
   checked).
 - Pane label strip on short panes: a band shorter than one label line shows no

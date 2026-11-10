@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
-using System.Reflection;
 using System.Windows.Forms;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Windows.Forms.Utilities;
@@ -32,11 +31,6 @@ public class PlotPanel : UserControl
     private const string LaneTimeSettingPrefix = "plotPanel.laneTime.";
     private const double MenuZoomFactor = 1.25;
     private const double LineHitTolerance = 8;
-
-    // Protected, and null until UpdateData copies an ItemsSource. GetNearestPoint throws on that null.
-    private static readonly PropertyInfo SeriesActualPoints = typeof(DataPointSeries).GetProperty(
-        "ActualPoints",
-        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
     // Shared by the Time Axis menu and each pane's Time Scale menu.
     private static readonly (string Text, double Seconds)[] TimeWindowPresets =
@@ -86,6 +80,10 @@ public class PlotPanel : UserControl
     private readonly PlotModel _model;
     private ContextMenuStrip _menu;
     private Button _optionsButton;
+    private ToolStripMenuItem _zoomScopeMenu;
+    private bool _zoomAllPanes;
+    private string _focusedLaneKey;
+    private bool _menuFromKeyboard;
     private readonly ToolTip _toolTip = new ToolTip();
     private readonly PlotTimeAxis _timeAxis = new PlotTimeAxis();
     private readonly PlotLanes _lanes;
@@ -163,15 +161,18 @@ public class PlotPanel : UserControl
         SetDpi();
         _model = CreatePlotModel();
 
-        _plot = new PlotView { Dock = DockStyle.Fill, Model = _model, BackColor = Color.Black, ContextMenuStrip = CreateMenu() };
-        var controller = new PlotController();
-        // Each binding replaces OxyPlot's default for the same gesture: plain and Ctrl wheel no
-        // longer reach ZoomWheel/ZoomWheelFine, and pan/zoom-rectangle follow the pointer's pane. A
-        // zoom rectangle in a following pane detaches it; a pan there still moves the shared window
-        // (a pan detach is a follow-up).
-        foreach (OxyModifierKeys modifiers in new[] { OxyModifierKeys.None, OxyModifierKeys.Shift, OxyModifierKeys.Control })
+        _plot = new PanePlotView
         {
-            OxyModifierKeys gesture = modifiers;
+            Dock = DockStyle.Fill, Model = _model, BackColor = Color.Black,
+            ContextMenuStrip = CreateMenu(), OpenKeyboardMenu = OpenFocusedPaneMenu
+        };
+        var controller = new PlotController();
+        // Install only reviewed bindings. Inherited rectangle, keyboard, touch, auxiliary-button
+        // zoom and reset commands bypass the dimension/scope contract.
+        controller.UnbindAll();
+        for (int combination = 0; combination < 8; combination++)
+        {
+            OxyModifierKeys gesture = (OxyModifierKeys)combination;
             controller.BindMouseWheel(gesture,
                 new DelegatePlotCommand<OxyMouseWheelEventArgs>((view, _, args) => ZoomAtPointer(args, gesture)));
         }
@@ -180,16 +181,15 @@ public class PlotPanel : UserControl
             plotController.AddMouseManipulator(view, new PlotPanePanManipulator(view, ResolveTimeAxisAt), args));
         controller.BindMouseDown(OxyMouseButton.Right, pan);
         controller.BindMouseDown(OxyMouseButton.Left, OxyModifierKeys.Alt, pan);
-        var zoomRectangle = new DelegatePlotCommand<OxyMouseDownEventArgs>((view, plotController, args) =>
-            plotController.AddMouseManipulator(view, new PlotPaneZoomRectangleManipulator(view, ResolveTimeAxisAt, GetTimeDetachAt), args));
-        controller.BindMouseDown(OxyMouseButton.Middle, zoomRectangle);
-        controller.BindMouseDown(OxyMouseButton.Right, OxyModifierKeys.Control, zoomRectangle);
-        controller.BindMouseDown(OxyMouseButton.Left, OxyModifierKeys.Control | OxyModifierKeys.Alt, zoomRectangle);
+        controller.BindMouseDown(OxyMouseButton.Left, PlotCommands.SnapTrack);
+        controller.BindMouseDown(OxyMouseButton.Left, OxyModifierKeys.Control, PlotCommands.Track);
+        controller.BindMouseDown(OxyMouseButton.Left, OxyModifierKeys.Shift, PlotCommands.PointsOnlyTrack);
         _plot.Controller = controller;
         ConfirmRemoval = message => MessageBox.Show(
             FindForm(), message, "Remove from Graph", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
         _plot.MouseDown += (sender, e) =>
         {
+            _focusedLaneKey = GetZoomLaneKeyAt(new ScreenPoint(e.X, e.Y));
             if (e.Button == MouseButtons.Right)
             {
                 _rightClickEnter = e.Location;
@@ -413,7 +413,7 @@ public class PlotPanel : UserControl
             items.Add(removeLine);
         }
 
-        string laneKey = GetLaneKeyAt(point.Value);
+        string laneKey = GetZoomLaneKeyAt(point.Value);
         if (laneKey != null && _lanes.TryGetLane(laneKey, out PlotLane lane))
         {
             items.Add(new ToolStripMenuItem("── " + EscapeMenuText(lane.Name) + " ──") { Enabled = false });
@@ -497,10 +497,8 @@ public class PlotPanel : UserControl
         LinearAxis axis = _axes[lane.Key];
         var menu = new ToolStripMenuItem("Value Scale");
 
-        var zoomIn = new ToolStripMenuItem("Zoom In") { Enabled = axis.IsZoomEnabled };
-        zoomIn.Click += (sender, args) => ZoomLaneValue(lane.Key, MenuZoomFactor);
-        var zoomOut = new ToolStripMenuItem("Zoom Out") { Enabled = axis.IsZoomEnabled };
-        zoomOut.Click += (sender, args) => ZoomLaneValue(lane.Key, 1 / MenuZoomFactor);
+        var zoomIn = CreateScopedZoomItem(lane, false, true);
+        var zoomOut = CreateScopedZoomItem(lane, false, false);
         var autoRange = new ToolStripMenuItem("Auto Range") { Checked = _autoRangeLaneKeys.Contains(lane.Key) };
         autoRange.Click += (sender, args) => AutoRangeLane(lane.Key);
         var setRange = new ToolStripMenuItem("Set Range...");
@@ -547,13 +545,32 @@ public class PlotPanel : UserControl
         }
 
         menu.DropDownItems.Add(new ToolStripSeparator());
-        var zoomIn = new ToolStripMenuItem("Zoom In") { Enabled = _timeAxis.IsZoomEnabled };
-        zoomIn.Click += (sender, args) => ZoomLaneTime(lane.Key, MenuZoomFactor);
+        var zoomIn = CreateScopedZoomItem(lane, true, true);
         menu.DropDownItems.Add(zoomIn);
-        var zoomOut = new ToolStripMenuItem("Zoom Out") { Enabled = _timeAxis.IsZoomEnabled };
-        zoomOut.Click += (sender, args) => ZoomLaneTime(lane.Key, 1 / MenuZoomFactor);
+        var zoomOut = CreateScopedZoomItem(lane, true, false);
         menu.DropDownItems.Add(zoomOut);
         return menu;
+    }
+
+    private string ZoomScopeText => _zoomAllPanes ? "All panes" : "This pane";
+
+    private ToolStripMenuItem CreateScopedZoomItem(PlotLane lane, bool time, bool zoomIn)
+    {
+        var item = new ToolStripMenuItem((zoomIn ? "Zoom In" : "Zoom Out") + " (" + ZoomScopeText + ")")
+        {
+            Enabled = time ? _timeAxis.IsZoomEnabled : _axes[lane.Key].IsZoomEnabled
+        };
+        item.Click += (sender, args) =>
+        {
+            double factor = zoomIn ? MenuZoomFactor : 1 / MenuZoomFactor;
+            if (_zoomAllPanes)
+                ZoomTargets(lane.Key, time, factor, time ? 1 : 0.5);
+            else if (time)
+                ZoomLaneTime(lane.Key, factor);
+            else
+                ZoomLaneValue(lane.Key, factor);
+        };
+        return item;
     }
 
     /// <summary>Compact invariant duration for menu text: "45 s", "4 min 10 s", "1 h 5 min".</summary>
@@ -679,11 +696,6 @@ public class PlotPanel : UserControl
             if (series.Tag is not ISensor sensor || (laneKey != null && series.YAxisKey != laneKey))
                 continue;
 
-            // A series replaced by SetSensors has not been through Update: ActualPoints is null
-            // (axes may already be assigned). GetNearestPoint throws; the line is not a hit.
-            if (SeriesActualPoints != null && SeriesActualPoints.GetValue(series) == null)
-                continue;
-
             TrackerHitResult hit = series.GetNearestPoint(point, true);
             if (hit == null || !_model.PlotArea.Contains(hit.Position))
                 continue;
@@ -797,10 +809,9 @@ public class PlotPanel : UserControl
         double ageMax = _windowAgeMax;
         if (double.IsNaN(ageMax))
         {
-            // Auto takes its range from the shared axis's series. With every visible pane
-            // overriding it has none, and its range is only OxyPlot's empty-axis fallback, so the
-            // stored window is kept.
-            if (!_model.Series.OfType<LineSeries>().Any(series => series.IsVisible && series.XAxisKey == null))
+            // Every plotted history contributes to Auto, including detached panes. With no
+            // plotted samples the empty-axis fallback must not replace the saved window.
+            if (!_model.Series.OfType<LineSeries>().Any(series => series.IsVisible && !double.IsNaN(series.MinX)))
                 return;
 
             ageMax = Math.Max(0, _lastNowX - _timeAxis.ActualMinimum);
@@ -819,6 +830,8 @@ public class PlotPanel : UserControl
         {
             bool fromOptionsButton = _menuFromOptionsButton;
             _menuFromOptionsButton = false;
+            bool fromKeyboard = _menuFromKeyboard;
+            _menuFromKeyboard = false;
             if (_cancelContextMenu)
             {
                 e.Cancel = true;
@@ -828,7 +841,11 @@ public class PlotPanel : UserControl
 
             // A right-click targets the pane under the pointer; the ⚙ button targets no pane.
             ScreenPoint? point = null;
-            if (!fromOptionsButton)
+            if (fromKeyboard)
+            {
+                point = FocusedPanePoint();
+            }
+            else if (!fromOptionsButton)
             {
                 Point client = _plot.PointToClient(MousePosition);
                 point = new ScreenPoint(client.X, client.Y);
@@ -836,6 +853,14 @@ public class PlotPanel : UserControl
 
             RebuildPaneMenuSection(point);
         };
+
+        _zoomScopeMenu = new ToolStripMenuItem("Zoom scope: This pane");
+        var thisPane = new ToolStripRadioButtonMenuItem("This pane") { Checked = true };
+        var allPanes = new ToolStripRadioButtonMenuItem("All panes");
+        thisPane.Click += (sender, e) => SetZoomScope(false);
+        allPanes.Click += (sender, e) => SetZoomScope(true);
+        _zoomScopeMenu.DropDownItems.AddRange(new ToolStripItem[] { thisPane, allPanes });
+        menu.Items.Add(_zoomScopeMenu);
 
         ToolStripMenuItem stackedAxesMenuItem = new ToolStripMenuItem("Stacked Axes");
         _stackedAxes = new UserOption("stackedAxes", true, stackedAxesMenuItem, _settings);
@@ -950,17 +975,18 @@ public class PlotPanel : UserControl
     private void CreateOptionsButton()
     {
         // Graph-local entry point to the same option set as the plot right-click menu.
-        // Overlay the button so the plot keeps its footprint; use a fixed glyph size
-        // so nothing clips in narrow panel placements.
+        // Overlay the button so the plot keeps its footprint; size it to the scope label.
         int size = (int)Math.Round(24 * _dpiYScale);
         int margin = (int)Math.Round(6 * _dpiXScale);
 
         _optionsButton = new Button
         {
-            Text = "⚙",
+            Text = "Zoom: " + ZoomScopeText + "  ⚙",
             AccessibleName = "Graph options",
             FlatStyle = FlatStyle.Flat,
-            Size = new Size(size, size),
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(size, size),
             Anchor = AnchorStyles.Top | AnchorStyles.Right,
             UseVisualStyleBackColor = false,
             TabStop = true
@@ -978,7 +1004,62 @@ public class PlotPanel : UserControl
         _toolTip.SetToolTip(_optionsButton, "Graph options");
 
         Controls.Add(_optionsButton);
+        UpdateZoomScopeLabel();
         _optionsButton.BringToFront();
+    }
+
+    private void SetZoomScope(bool allPanes)
+    {
+        _zoomAllPanes = allPanes;
+        _zoomScopeMenu.Text = "Zoom scope: " + ZoomScopeText;
+        ((ToolStripMenuItem)_zoomScopeMenu.DropDownItems[0]).Checked = !allPanes;
+        ((ToolStripMenuItem)_zoomScopeMenu.DropDownItems[1]).Checked = allPanes;
+        UpdateZoomScopeLabel();
+    }
+
+    private void UpdateZoomScopeLabel()
+    {
+        if (_optionsButton == null)
+            return;
+
+        _optionsButton.Text = "Zoom: " + ZoomScopeText + "  ⚙";
+        _optionsButton.AccessibleName = "Graph options. Zoom scope: " + ZoomScopeText;
+        _toolTip.SetToolTip(_optionsButton, "Zoom scope: " + ZoomScopeText + ". Wheel: values; Shift+wheel: time. Graph options.");
+        _optionsButton.Size = _optionsButton.PreferredSize;
+        _optionsButton.Left = ClientSize.Width - _optionsButton.Width - (int)Math.Round(6 * _dpiXScale);
+    }
+
+    internal ScreenPoint? FocusedPanePoint()
+    {
+        if (!_stackedAxes.Value || _focusedLaneKey == null || !_axes.TryGetValue(_focusedLaneKey, out LinearAxis axis) || !axis.IsAxisVisible)
+            return null;
+
+        return new ScreenPoint(_model.PlotArea.Center.X, (axis.ScreenMin.Y + axis.ScreenMax.Y) / 2);
+    }
+
+    private void OpenFocusedPaneMenu()
+    {
+        _cancelContextMenu = false;
+        _menuFromKeyboard = true;
+        ScreenPoint point = FocusedPanePoint() ?? _model.PlotArea.Center;
+        _menu.Show(_plot, new Point((int)point.X, (int)point.Y));
+    }
+
+    private sealed class PanePlotView : PlotView
+    {
+        internal Action OpenKeyboardMenu { get; set; }
+
+        protected override void WndProc(ref Message message)
+        {
+            // WM_CONTEXTMENU with (-1, -1) is keyboard invocation (Apps / Shift+F10).
+            if (message.Msg == 0x007B && message.LParam == new IntPtr(-1))
+            {
+                OpenKeyboardMenu?.Invoke();
+                return;
+            }
+
+            base.WndProc(ref message);
+        }
     }
 
     private PlotModel CreatePlotModel()
@@ -1304,7 +1385,7 @@ public class PlotPanel : UserControl
             _sensorLaneKeys.TryGetValue(sensor, out string persistedLaneKey);
             PlotLane lane = _lanes.ResolveLane(sensor.SensorType, persistedLaneKey);
 
-            var series = new LineSeries
+            var series = new PlotLineSeries(_timeAxis)
             {
                 // A List<DataPoint> ItemsSource takes OxyPlot's zero-copy fast path; the list is
                 // owned by PlotPanelSeriesState and refreshed in SyncSeriesPoints only when the sensor's
@@ -1361,112 +1442,107 @@ public class PlotPanel : UserControl
     }
 
     /// <summary>
-    /// Wheel routing (plain, Shift, Ctrl). Stacked plot area: plain/Shift zoom the hovered pane's
-    /// values, Ctrl its own time window, detaching a following pane from the shared one. Value-axis
-    /// labels: plain/Shift zoom that lane. Time labels and the overlay plot area: plain/Ctrl zoom the
-    /// shared time window. Every gesture is consumed so OxyPlot's all-axis wheel zoom never runs; a
-    /// miss or disabled zoom changes nothing.
+    /// Wheel changes values; Shift+wheel changes time. All other combinations are consumed.
+    /// A normalized anchor and a snapshot of targets keep each pane independent, even between paints.
     /// </summary>
     private void ZoomAtPointer(OxyMouseWheelEventArgs args, OxyModifierKeys modifiers)
     {
         args.Handled = true;
         ScreenPoint point = args.Position;
-        if (args.Delta == 0 || !_model.PlotAndAxisArea.Contains(point))
+        if (args.Delta == 0 || !_model.PlotAndAxisArea.Contains(point) ||
+            (modifiers != OxyModifierKeys.None && modifiers != OxyModifierKeys.Shift))
             return;
 
-        double factor = Math.Pow(1.2, args.Delta / 120.0);
-        bool timeGesture = modifiers == OxyModifierKeys.Control;
-        bool valueGesture = modifiers != OxyModifierKeys.Control;
-        if (_model.PlotArea.Contains(point))
+        string laneKey = GetZoomLaneKeyAt(point);
+        _focusedLaneKey = laneKey;
+        bool time = modifiers == OxyModifierKeys.Shift;
+        double fraction = 0.5;
+        if (time && _model.PlotArea.Width > 0)
+            fraction = (point.X - _model.PlotArea.Left) / _model.PlotArea.Width;
+        else if (laneKey != null)
         {
-            if (_stackedAxes.Value)
-            {
-                string laneKey = GetLaneKeyAt(point);
-                if (laneKey == null)
-                    return;
-
-                if (!timeGesture)
-                    ZoomAxisAt(_axes[laneKey], factor, point.Y);
-                else if (_paneTimeAxes.TryGetValue(laneKey, out PlotPaneTimeAxis pane))
-                    ZoomAxisAt(pane, factor, point.X);
-                else
-                    DetachLaneTimeAt(laneKey, factor, point.X);
-            }
-            else if (modifiers != OxyModifierKeys.Shift)
-            {
-                ZoomAxisAt(_timeAxis, factor, point.X);
-            }
-
-            return;
+            Axis axis = _axes[laneKey];
+            double height = axis.ScreenMax.Y - axis.ScreenMin.Y;
+            if (height != 0)
+                fraction = (axis.ScreenMax.Y - point.Y) / height;
         }
 
-        _model.GetAxesFromPoint(point, out Axis timeAxis, out Axis valueAxis);
-        if (valueAxis != null && valueAxis.Key != null && _axes.ContainsKey(valueAxis.Key))
-        {
-            if (valueGesture)
-                ZoomAxisAt(valueAxis, factor, point.Y);
-        }
-        else if (timeAxis == _timeAxis && modifiers != OxyModifierKeys.Shift)
-        {
-            ZoomAxisAt(_timeAxis, factor, point.X);
-        }
+        ZoomTargets(laneKey, time, Math.Pow(1.2, args.Delta / 120.0), Math.Max(0, Math.Min(1, fraction)));
     }
 
-    private void ZoomAxisAt(Axis axis, double factor, double screenCoordinate)
+    private string GetZoomLaneKeyAt(ScreenPoint point)
     {
-        if (!axis.IsAxisVisible || !axis.IsZoomEnabled)
+        string key = GetLaneKeyAt(point);
+        if (key != null || !_stackedAxes.Value || !_model.PlotAndAxisArea.Contains(point) || _model.PlotArea.Contains(point))
+            return key;
+
+        _model.GetAxesFromPoint(point, out Axis timeAxis, out _);
+        if (timeAxis != _timeAxis)
+            return null;
+
+        // A shared label is ambiguous while more than one pane follows it.
+        List<string> followers = _axes.Where(pair => pair.Value.IsAxisVisible && !_paneTimeAxes.ContainsKey(pair.Key))
+            .Select(pair => pair.Key).Take(2).ToList();
+        return followers.Count == 1 ? followers[0] : null;
+    }
+
+    /// <summary>
+    /// Applies one dimension to the selected scope. Every range is captured before mutation;
+    /// shared time is deduplicated, and hidden overrides are never targets.
+    /// </summary>
+    private void ZoomTargets(string laneKey, bool time, double factor, double fraction)
+    {
+        if (!(factor > 0) || double.IsInfinity(factor) || double.IsNaN(fraction) ||
+            (!_zoomAllPanes && (laneKey == null || !_axes.TryGetValue(laneKey, out LinearAxis lane) || !lane.IsAxisVisible)) ||
+            (time && (!_timeAxis.IsZoomEnabled || (!_zoomAllPanes && !_stackedAxes.Value))))
             return;
 
-        double value = axis.InverseTransform(screenCoordinate);
-        if (double.IsNaN(value) || double.IsInfinity(value))
-            return;
+        var targets = new List<(string Key, Axis Axis, double Min, double Max)>();
+        var seen = new HashSet<Axis>();
+        foreach (KeyValuePair<string, LinearAxis> pair in _axes)
+        {
+            if (!pair.Value.IsAxisVisible || (!_zoomAllPanes && pair.Key != laneKey))
+                continue;
 
-        axis.ZoomAt(factor, value);
+            Axis axis = time
+                ? (_paneTimeAxes.TryGetValue(pair.Key, out PlotPaneTimeAxis pane) ? pane : _timeAxis)
+                : pair.Value;
+            if (!axis.IsZoomEnabled || !seen.Add(axis) || !(axis.ActualMaximum > axis.ActualMinimum))
+                continue;
+
+            if (!time)
+                targets.Add((pair.Key, axis, axis.ActualMinimum, axis.ActualMaximum));
+            else if (axis == _timeAxis && !double.IsNaN(_windowAgeMax))
+                targets.Add((pair.Key, axis, _windowAgeMin, _windowAgeMax));
+            else if (axis != _timeAxis && _laneTimeWindows.TryGetValue(pair.Key, out var window))
+                targets.Add((pair.Key, axis, window.AgeMin, window.AgeMax));
+            else
+                targets.Add((pair.Key, axis, Math.Max(0, _lastNowX - axis.ActualMaximum), _lastNowX - axis.ActualMinimum));
+        }
+
+        foreach ((string key, Axis axis, double min, double max) in targets)
+        {
+            // Age runs opposite to screen X. Computing in age space preserves an exact live edge.
+            double anchor = time ? max - fraction * (max - min) : min + fraction * (max - min);
+            if (double.IsNaN(anchor) || double.IsInfinity(anchor))
+                continue;
+
+            if (!time)
+            {
+                axis.ZoomAt(factor, anchor);
+                continue;
+            }
+
+            (double ageMin, double ageMax) = ClampLaneTimeWindow(
+                anchor + (min - anchor) / factor,
+                anchor + (max - anchor) / factor);
+            if (_zoomAllPanes && axis == _timeAxis)
+                TimeAxisZoom(ageMin, ageMax);
+            else
+                SetLaneTimeWindow(key, ageMin, ageMax);
+        }
+
         InvalidatePlotCosmetic();
-    }
-
-    /// <summary>
-    /// Ctrl + wheel over a following pane: the lane gets its own window, the shared window zoomed by
-    /// <paramref name="factor" /> about the time under the pointer. The shared window is not zoomed;
-    /// under Time Axis > Auto its range still refits to the series left on it. Computed from the
-    /// shared axis, which the lane followed until now.
-    /// </summary>
-    private void DetachLaneTimeAt(string laneKey, double factor, double screenX)
-    {
-        if (!_timeAxis.IsZoomEnabled)
-            return;
-
-        double x = _timeAxis.InverseTransform(screenX);
-        double minimum = _timeAxis.ActualMinimum;
-        double maximum = _timeAxis.ActualMaximum;
-        DetachLaneTimeWindow(laneKey, x + (minimum - x) / factor, x + (maximum - x) / factor);
-    }
-
-    /// <summary>
-    /// Gives the lane its own window over [<paramref name="minimum" />, <paramref name="maximum" />]
-    /// of the shared axis's values, clamped like every pane window.
-    /// </summary>
-    private void DetachLaneTimeWindow(string laneKey, double minimum, double maximum)
-    {
-        (double ageMin, double ageMax) = ClampLaneTimeWindow(_lastNowX - maximum, _lastNowX - minimum);
-        SetLaneTimeWindow(laneKey, ageMin, ageMax);
-    }
-
-    /// <summary>
-    /// The resolved action of a zoom rectangle started at <paramref name="point" />: inside a following
-    /// stacked pane, detach that pane over the rectangle's shared-axis range; otherwise null, and the
-    /// rectangle zooms the axes OxyPlot assigned.
-    /// </summary>
-    private Action<double, double> GetTimeDetachAt(ScreenPoint point)
-    {
-        if (!_stackedAxes.Value || !_model.PlotArea.Contains(point))
-            return null;
-
-        string laneKey = GetLaneKeyAt(point);
-        if (laneKey == null || _paneTimeAxes.ContainsKey(laneKey))
-            return null;
-
-        return (minimum, maximum) => DetachLaneTimeWindow(laneKey, minimum, maximum);
     }
 
     /// <summary>
@@ -1554,7 +1630,7 @@ public class PlotPanel : UserControl
     /// <summary>
     /// Scales the lane's own time window with its newest edge fixed, so a live window stays live. A
     /// following lane is seeded from the shared window and so detaches; the shared window is never
-    /// zoomed (under Time Axis > Auto its range refits). Requires stacked mode and Time Axis > Enable Zoom.
+    /// zoomed. Auto still includes every plotted history. Requires stacked mode and Time Axis > Enable Zoom.
     /// </summary>
     internal bool ZoomLaneTime(string key, double factor)
     {
