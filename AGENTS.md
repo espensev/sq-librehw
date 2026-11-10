@@ -145,3 +145,10 @@ For product-code edits:
 - if the edit touches a file that also exists in upstream LibreHardwareMonitor, update its row in `docs/architecture/upstream-divergence.md` and run `eng\ci\Test-LhmCiGates.ps1 -Filter Test-UpstreamDivergenceLedger`;
 - launch or otherwise exercise the changed workflow when practical;
 - update the spec verification log or implementation notes after the behavior is checked.
+
+For commit, push, and live-testing handoff (owner workflow direction, 2026-11-10):
+
+- commit validated work cleanly on `master` and push to `origin/master` plus the `librehw-host` fast-forward mirror (`git push librehw-host master:main`; never push to `upstream`), unless the maintainer explicitly asked to hold local commits;
+- when handing off product-code changes for live operator testing on the active machine (for example `ops\deploy\snd-desk\Publish-LibreHardwareMonitor.ps1` and `Install-LibreHardwareMonitorRelease.ps1` on SND-DESK after `VERIFIED` machine identity), publish a candidate from the clean commit and promote it so the running deployment matches what the operator will test (if UAC blocks non-elevated stop/install, stage the candidate and provide a single elevated install command);
+- do not re-publish or re-promote after docs-only or test-only follow-up commits so the previous product release stays intact in the rollback slot;
+- clean disposable repository build outputs with `.\eng\Clear-LhmRepositoryBuildOutputs.ps1` (never `git clean -fdX`).

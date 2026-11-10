@@ -157,8 +157,10 @@ Open gates:
   operator layout sign-off remains separate.
   See `docs\features\feature-local-release-system.md` and
   `docs\features\feature-graph-lanes.md`.
-- Push, candidate creation, candidate acceptance, and live promotion are
-  separate decisions.
+- Candidate validation alone never auto-promotes; however, when handing off
+  validated work for live operator testing on the active machine, commit,
+  push `master` (and fast-forward `librehw-host`), publish a candidate when
+  product code changed, and promote it live (see `AGENTS.md` section 5).
 
 ## Documentation map
 
