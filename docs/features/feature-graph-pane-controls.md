@@ -1,6 +1,6 @@
 # Feature Spec: Graph Pane Controls
 
-**Status:** wheel-axis, explicit-scope and graph-menu revisions implemented in source and promoted on SND-DESK at `d5e53c0d` on 2026-11-10. Installed acceptance ran the same afternoon (record below): menus, gestures, `Fixed Range...`, remove-from-graph and an installed restart passed. Only a real monitor-DPI switch remains open. Read the machine matrix and runtime manifest for installed identity.
+**Status:** wheel-axis, explicit-scope and graph-menu revisions implemented in source and promoted on SND-DESK at `d5e53c0d` on 2026-11-10. Installed acceptance ran the same afternoon (record below): menus, gestures, `Fixed Range...`, remove-from-graph and an installed restart passed. Only a real monitor-DPI switch remains open. `fef3fbd8` (one-decimal `Values` state text) is installed on top. Read the machine matrix and runtime manifest for installed identity.
 **Updated:** 2026-11-10
 **Extends:** [graph lanes](feature-graph-lanes.md) (lanes, weights, per-lane value zoom and persistence stay owned there)
 **Origin:** operator request 2026-11-09 with an annotated screenshot of the stacked Power / Temperature / Fan graph and its right-click menu
@@ -477,7 +477,7 @@ Not part of this change; each needs its own decision or fix.
   prefill on `d5e53c0d` (`30.2104 – 116.976 W`, `262.066 – 1986.73 RPM`).
   Fixed in source: `PlotRangePrompt.FormatState` rounds to one decimal place
   and falls back to the prefill only when that collapses the range; the prompt
-  fields keep round-trip text. Installed check awaits the next promotion.
+  fields keep round-trip text. Installed at `fef3fbd8` (record below).
 
 ## Verification plan
 
@@ -776,3 +776,27 @@ moved every other following pane.
   restart is operator-reported; the agent checked persisted settings and health
   only. Hover, dot/check centring and Height were not in the captures and rest
   on the operator's report.
+
+### 2026-11-10: SND-DESK promotion (`fef3fbd8`), one-decimal Values state text
+
+- Source: `fef3fbd8` adds `PlotRangePrompt.FormatState` and uses it for the
+  pane `Values` state text. PlotPanel filter 165 passed; full suite
+  Application 412 passed plus the established skip, Library 193, Contracts 124;
+  both Release builds 0 warnings/errors; divergence ledger 15 passed.
+- Identity verifier returned `VERIFIED` for `snd-desk` instance
+  `ca96d510-7d87-4cec-8e1a-bd8fc3866903` before publish and again inside the
+  elevated install session.
+- Candidate `E:\Monitoring\LibreHW\Candidates\desk-master-20261110-fef3fbd8`,
+  release `0.9.6_fef3fbd.2026-11-10-fef3fbd8e35e-20261110T154547Z`, SHA-256
+  `377edfb91a9d3ae5f8c46c06f2cd4fd7894143537b6eb80b1d5bb71ea4fe3a30`; manifest
+  commit equals the clean source `HEAD`, and `Read-LhmReleasePayload
+  -RequireCandidateShape` accepted it.
+- A non-elevated `-WhatIf` stopped before any change: the running elevated
+  process path cannot be inspected. The operator ran the install from an
+  elevated pwsh 7.6.9 (WhatIf, then `-AllowStopExactProcess -Confirm:$false`).
+  Activated at 16:55; rollback is
+  `0.9.6_d5e53c0.2026-11-10-d5e53c0dd0de-20261110T134832Z`.
+- Status script at 16:55: manifest commit `fef3fbd8`, exe hash `match=True`,
+  one responding process (started 16:55:13), startup task running,
+  `data.json` 200 with 612 sensors, 187 values moving, 0 crash/hang events.
+- Not yet seen live: the rounded `Values` text in a pane menu after a wheel zoom.
