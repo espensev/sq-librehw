@@ -355,7 +355,7 @@ public class PlotPanel : UserControl
 
     public ToolStripMenuItem CreateLanesMenu()
     {
-        var menu = new ToolStripMenuItem("Lanes");
+        var menu = new ToolStripMenuItem("Lanes") { Name = "lanes" };
         menu.DropDownOpening += (sender, args) => PopulateLanesMenu(menu.DropDownItems);
         return menu;
     }
@@ -384,7 +384,7 @@ public class PlotPanel : UserControl
 
             laneItem.DropDownItems.Add(CreateHeightMenu(lane));
 
-            var autoRange = new ToolStripMenuItem("Auto Range") { Checked = _autoRangeLaneKeys.Contains(lane.Key) };
+            var autoRange = new ToolStripMenuItem("Auto Range") { Name = "autoRange", Checked = _autoRangeLaneKeys.Contains(lane.Key) };
             autoRange.Click += (sender, args) => AutoRangeLane(lane.Key);
             laneItem.DropDownItems.Add(autoRange);
             laneItem.DropDownItems.Add(CreateValueScaleMenu(lane));
@@ -408,7 +408,7 @@ public class PlotPanel : UserControl
         ISensor hitSensor = GetSensorAt(point.Value);
         if (hitSensor != null)
         {
-            var removeLine = new ToolStripMenuItem("Remove \"" + EscapeMenuText(GetSensorTitle(hitSensor)) + "\" from Graph");
+            var removeLine = new ToolStripMenuItem("Remove \"" + EscapeMenuText(GetSensorTitle(hitSensor)) + "\" from Graph") { Name = "removeLine" };
             removeLine.Click += (sender, args) => RequestSensorRemoval(new[] { hitSensor });
             items.Add(removeLine);
         }
@@ -416,7 +416,7 @@ public class PlotPanel : UserControl
         string laneKey = GetZoomLaneKeyAt(point.Value);
         if (laneKey != null && _lanes.TryGetLane(laneKey, out PlotLane lane))
         {
-            items.Add(new ToolStripMenuItem("── " + EscapeMenuText(lane.Name) + " ──") { Enabled = false });
+            items.Add(new ToolStripMenuItem("── " + EscapeMenuText(lane.Name) + " ──") { Name = "paneHeader", Enabled = false });
             items.Add(CreateValueScaleMenu(lane));
             items.Add(CreateTimeScaleMenu(lane));
             items.Add(CreateHeightMenu(lane));
@@ -451,7 +451,7 @@ public class PlotPanel : UserControl
 
     private ToolStripMenuItem CreateRenameLaneItem(PlotLane lane)
     {
-        var rename = new ToolStripMenuItem("Rename...");
+        var rename = new ToolStripMenuItem("Rename...") { Name = "renameLane" };
         rename.Click += (sender, args) =>
         {
             if (PlotLaneNamePrompt.TryShow(FindForm(), "Rename Graph Lane", lane.Name, out string name))
@@ -462,7 +462,7 @@ public class PlotPanel : UserControl
 
     private ToolStripMenuItem CreateRemoveLaneItem(PlotLane lane)
     {
-        var remove = new ToolStripMenuItem("Remove Lane");
+        var remove = new ToolStripMenuItem("Remove Lane") { Name = "removeLane" };
         remove.Click += (sender, args) =>
         {
             if (MessageBox.Show(
@@ -480,7 +480,7 @@ public class PlotPanel : UserControl
 
     private ToolStripMenuItem CreateHeightMenu(PlotLane lane)
     {
-        var height = new ToolStripMenuItem("Height");
+        var height = new ToolStripMenuItem("Height") { Name = "paneHeight" };
         for (int weight = 1; weight <= 3; weight++)
         {
             int selectedWeight = weight;
@@ -495,13 +495,13 @@ public class PlotPanel : UserControl
     private ToolStripMenuItem CreateValueScaleMenu(PlotLane lane)
     {
         LinearAxis axis = _axes[lane.Key];
-        var menu = new ToolStripMenuItem("Value Scale");
+        var menu = new ToolStripMenuItem("Value Scale") { Name = "paneValues" };
 
         var zoomIn = CreateScopedZoomItem(lane, false, true);
         var zoomOut = CreateScopedZoomItem(lane, false, false);
-        var autoRange = new ToolStripMenuItem("Auto Range") { Checked = _autoRangeLaneKeys.Contains(lane.Key) };
+        var autoRange = new ToolStripMenuItem("Auto Range") { Name = "autoRange", Checked = _autoRangeLaneKeys.Contains(lane.Key) };
         autoRange.Click += (sender, args) => AutoRangeLane(lane.Key);
-        var setRange = new ToolStripMenuItem("Set Range...");
+        var setRange = new ToolStripMenuItem("Set Range...") { Name = "setRange" };
         setRange.Click += (sender, args) =>
         {
             if (PlotRangePrompt.TryShow(FindForm(), lane.Name + " Range", axis.ActualMinimum, axis.ActualMaximum,
@@ -523,16 +523,16 @@ public class PlotPanel : UserControl
     private ToolStripMenuItem CreateTimeScaleMenu(PlotLane lane)
     {
         bool hasOverride = _laneTimeWindows.TryGetValue(lane.Key, out (double AgeMin, double AgeMax) window);
-        var menu = new ToolStripMenuItem("Time Scale") { Enabled = _stackedAxes.Value };
+        var menu = new ToolStripMenuItem("Time Scale") { Name = "paneTime", Enabled = _stackedAxes.Value };
 
-        var follow = new ToolStripRadioButtonMenuItem("Follow Shared") { Checked = !hasOverride };
+        var follow = new ToolStripRadioButtonMenuItem("Follow Shared") { Name = "followShared", Checked = !hasOverride };
         follow.Click += (sender, args) => ClearLaneTimeWindow(lane.Key);
         menu.DropDownItems.Add(follow);
         if (hasOverride && !TimeWindowPresets.Any(preset => window.AgeMin == 0 && window.AgeMax == preset.Seconds))
         {
             string text = "Custom (" + FormatDuration(window.AgeMax - window.AgeMin) +
                           (window.AgeMin >= 1 ? ", ending " + FormatDuration(window.AgeMin) + " ago" : string.Empty) + ")";
-            menu.DropDownItems.Add(new ToolStripRadioButtonMenuItem(text) { Checked = true, Enabled = false });
+            menu.DropDownItems.Add(new ToolStripRadioButtonMenuItem(text) { Name = "customTime", Checked = true, Enabled = false });
         }
 
         menu.DropDownItems.Add(new ToolStripSeparator());
@@ -558,6 +558,7 @@ public class PlotPanel : UserControl
     {
         var item = new ToolStripMenuItem((zoomIn ? "Zoom In" : "Zoom Out") + " (" + ZoomScopeText + ")")
         {
+            Name = zoomIn ? "zoomIn" : "zoomOut",
             Enabled = time ? _timeAxis.IsZoomEnabled : _axes[lane.Key].IsZoomEnabled
         };
         item.Click += (sender, args) =>
@@ -595,7 +596,7 @@ public class PlotPanel : UserControl
 
     private ToolStripMenuItem CreateRemoveFromGraphMenu(PlotLane lane)
     {
-        var menu = new ToolStripMenuItem("Remove from Graph");
+        var menu = new ToolStripMenuItem("Remove from Graph") { Name = "paneRemove" };
         IReadOnlyList<ISensor> sensors = GetLaneSensors(lane.Key);
         if (sensors.Count == 0)
         {
@@ -611,7 +612,7 @@ public class PlotPanel : UserControl
         }
 
         menu.DropDownItems.Add(new ToolStripSeparator());
-        var all = new ToolStripMenuItem("All " + sensors.Count.ToString(CultureInfo.CurrentCulture) + " in This Pane...");
+        var all = new ToolStripMenuItem("All " + sensors.Count.ToString(CultureInfo.CurrentCulture) + " in This Pane...") { Name = "removeAllInPane" };
         all.Click += (sender, args) =>
         {
             string question = "Remove all " + sensors.Count.ToString(CultureInfo.CurrentCulture) + " sensors in '" + lane.Name +
@@ -854,15 +855,15 @@ public class PlotPanel : UserControl
             RebuildPaneMenuSection(point);
         };
 
-        _zoomScopeMenu = new ToolStripMenuItem("Zoom scope: This pane");
-        var thisPane = new ToolStripRadioButtonMenuItem("This pane") { Checked = true };
-        var allPanes = new ToolStripRadioButtonMenuItem("All panes");
+        _zoomScopeMenu = new ToolStripMenuItem("Zoom scope: This pane") { Name = "zoomScope" };
+        var thisPane = new ToolStripRadioButtonMenuItem("This pane") { Name = "scopeThisPane", Checked = true };
+        var allPanes = new ToolStripRadioButtonMenuItem("All panes") { Name = "scopeAllPanes" };
         thisPane.Click += (sender, e) => SetZoomScope(false);
         allPanes.Click += (sender, e) => SetZoomScope(true);
         _zoomScopeMenu.DropDownItems.AddRange(new ToolStripItem[] { thisPane, allPanes });
         menu.Items.Add(_zoomScopeMenu);
 
-        ToolStripMenuItem stackedAxesMenuItem = new ToolStripMenuItem("Stacked Axes");
+        ToolStripMenuItem stackedAxesMenuItem = new ToolStripMenuItem("Stacked Axes") { Name = "stackedAxes" };
         _stackedAxes = new UserOption("stackedAxes", true, stackedAxesMenuItem, _settings);
         _stackedAxes.Changed += (sender, e) =>
         {
@@ -871,7 +872,7 @@ public class PlotPanel : UserControl
         };
         menu.Items.Add(stackedAxesMenuItem);
 
-        ToolStripMenuItem showAxesLabelsMenuItem = new ToolStripMenuItem("Show Axes Labels");
+        ToolStripMenuItem showAxesLabelsMenuItem = new ToolStripMenuItem("Show Axes Labels") { Name = "showAxesLabels" };
         _showAxesLabels = new UserOption("showAxesLabels", true, showAxesLabelsMenuItem, _settings);
         _showAxesLabels.Changed += (sender, e) =>
         {
@@ -887,7 +888,7 @@ public class PlotPanel : UserControl
         };
         menu.Items.Add(showAxesLabelsMenuItem);
 
-        ToolStripMenuItem gridDensityMenuItem = new ToolStripMenuItem("Grid Density");
+        ToolStripMenuItem gridDensityMenuItem = new ToolStripMenuItem("Grid Density") { Name = "gridDensity" };
         ToolStripMenuItem[] gridDensityMenuItems =
         {
             new ToolStripMenuItem("Off"),
@@ -903,10 +904,10 @@ public class PlotPanel : UserControl
         _gridDensity = new UserRadioGroup("plotGridDensity", DefaultGridDensity, gridDensityMenuItems, _settings);
         _gridDensity.Changed += (sender, e) => InvalidatePlotCosmetic();
 
-        ToolStripMenuItem timeAxisMenuItem = new ToolStripMenuItem("Time Axis");
+        ToolStripMenuItem timeAxisMenuItem = new ToolStripMenuItem("Time Axis") { Name = "timeAxis" };
         var timeAxisMenuItems = new List<ToolStripMenuItem>
-        { new ToolStripMenuItem("Enable Zoom"),
-            new ToolStripMenuItem("Auto", null, (s, e) => { TimeAxisZoom(0, double.NaN); }) };
+        { new ToolStripMenuItem("Enable Zoom") { Name = "enableZoom" },
+            new ToolStripMenuItem("Auto", null, (s, e) => { TimeAxisZoom(0, double.NaN); }) { Name = "timeAuto" } };
         foreach ((string text, double seconds) in TimeWindowPresets)
             timeAxisMenuItems.Add(new ToolStripMenuItem(text, null, (s, e) => { TimeAxisZoom(0, seconds); }));
 
@@ -914,10 +915,10 @@ public class PlotPanel : UserControl
             timeAxisMenuItem.DropDownItems.Add(mi);
         menu.Items.Add(timeAxisMenuItem);
 
-        ToolStripMenuItem allPanesFollowSharedMenuItem = new ToolStripMenuItem("All Panes Follow Shared", null, (s, e) => ClearAllLaneTimeWindows());
+        ToolStripMenuItem allPanesFollowSharedMenuItem = new ToolStripMenuItem("All Panes Follow Shared", null, (s, e) => ClearAllLaneTimeWindows()) { Name = "allPanesFollowShared" };
         timeAxisMenuItem.DropDownOpening += (s, e) => allPanesFollowSharedMenuItem.Enabled = _laneTimeWindows.Count > 0;
 
-        ToolStripMenuItem timeAxisLabelModeMenuItem = new ToolStripMenuItem("Label Mode");
+        ToolStripMenuItem timeAxisLabelModeMenuItem = new ToolStripMenuItem("Label Mode") { Name = "labelMode" };
         ToolStripMenuItem[] timeAxisLabelModeMenuItems =
         {
             new ToolStripMenuItem("Local Time"),
@@ -945,10 +946,10 @@ public class PlotPanel : UserControl
                 pane.IsZoomEnabled = _timeAxisEnableZoom.Value;
         };
 
-        ToolStripMenuItem yAxesMenuItem = new ToolStripMenuItem("Value Axes");
+        ToolStripMenuItem yAxesMenuItem = new ToolStripMenuItem("Value Axes") { Name = "valueAxes" };
         ToolStripMenuItem[] yAxesMenuItems =
-        { new ToolStripMenuItem("Enable Zoom"),
-            new ToolStripMenuItem("Autoscale All", null, (s, e) => { AutoscaleAllYAxes(); }) };
+        { new ToolStripMenuItem("Enable Zoom") { Name = "enableZoom" },
+            new ToolStripMenuItem("Autoscale All", null, (s, e) => { AutoscaleAllYAxes(); }) { Name = "autoscaleAll" } };
 
         foreach (ToolStripItem mi in yAxesMenuItems)
             yAxesMenuItem.DropDownItems.Add(mi);
@@ -964,7 +965,7 @@ public class PlotPanel : UserControl
         menu.Items.Add(CreateLanesMenu());
 
         menu.Items.Add(new ToolStripSeparator());
-        ToolStripMenuItem resetGraphViewMenuItem = new ToolStripMenuItem("Reset Graph View");
+        ToolStripMenuItem resetGraphViewMenuItem = new ToolStripMenuItem("Reset Graph View") { Name = "resetGraphView" };
         resetGraphViewMenuItem.Click += (sender, e) => ResetGraphView?.Invoke();
         menu.Items.Add(resetGraphViewMenuItem);
 

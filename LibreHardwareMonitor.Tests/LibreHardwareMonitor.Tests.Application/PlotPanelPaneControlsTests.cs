@@ -205,21 +205,21 @@ public sealed class PlotPanelPaneControlsTests
         {
             savedLaneKey = f.LaneKey;
             ToolStripMenuItem scope = ScopeMenu(f);
-            Assert.Equal("Zoom scope: This pane", scope.Text);
-            Assert.True(Item(scope.DropDownItems, "This pane").Checked);
+            AssertScopeLabel(scope, "This pane");
+            Assert.True(Item(scope.DropDownItems, "scopeThisPane").Checked);
             SelectScope(f, "All panes");
             f.Panel.RebuildPaneMenuSection(f.PointIn(WheelRegion.StackedPane));
-            Assert.Equal("Zoom scope: All panes", scope.Text);
-            Assert.False(Item(scope.DropDownItems, "This pane").Checked);
-            Assert.True(Item(scope.DropDownItems, "All panes").Checked);
+            AssertScopeLabel(scope, "All panes");
+            Assert.False(Item(scope.DropDownItems, "scopeThisPane").Checked);
+            Assert.True(Item(scope.DropDownItems, "scopeAllPanes").Checked);
             Assert.Contains("All panes", f.Panel.Controls.OfType<System.Windows.Forms.Button>().Single().Text);
-            ToolStripMenuItem values = Item(f.View.ContextMenuStrip.Items, "Value Scale");
+            ToolStripMenuItem values = Item(f.View.ContextMenuStrip.Items, "paneValues");
             Dictionary<Axis, (double Min, double Max)> before = Snapshot(f.View.Model);
-            Item(values.DropDownItems, "Zoom In (All panes)").PerformClick();
+            ScopedZoom(values.DropDownItems, true, "All panes").PerformClick();
             Assert.True(f.DefaultAxis.ActualMaximum - f.DefaultAxis.ActualMinimum < before[f.DefaultAxis].Max - before[f.DefaultAxis].Min);
             Assert.True(f.LaneAxis.ActualMaximum - f.LaneAxis.ActualMinimum < before[f.LaneAxis].Max - before[f.LaneAxis].Min);
             var other = (f.DefaultAxis.ActualMinimum, f.DefaultAxis.ActualMaximum);
-            Item(values.DropDownItems, "Auto Range").PerformClick();
+            Item(values.DropDownItems, "autoRange").PerformClick();
             Render(f.View);
             Assert.Equal(other, (f.DefaultAxis.ActualMinimum, f.DefaultAxis.ActualMaximum));
             SelectScope(f, "This pane");
@@ -231,7 +231,7 @@ public sealed class PlotPanelPaneControlsTests
         }
 
         using Fixture restarted = Fixture.Create(settings: settings, laneKey: savedLaneKey);
-        Assert.Equal("Zoom scope: This pane", ScopeMenu(restarted).Text);
+        AssertScopeLabel(ScopeMenu(restarted), "This pane");
         Assert.True(restarted.Panel.TryGetLaneTimeWindow(restarted.LaneKey, out double min, out double max));
         Assert.Equal((30d, 180d), (min, max));
     }
@@ -249,8 +249,8 @@ public sealed class PlotPanelPaneControlsTests
                      OxyModifierKeys.Control | OxyModifierKeys.Shift, OxyModifierKeys.Control | OxyModifierKeys.Alt,
                      OxyModifierKeys.Shift | OxyModifierKeys.Alt, OxyModifierKeys.Control | OxyModifierKeys.Shift | OxyModifierKeys.Alt })
             AssertWheelChangesOnly(f, point, modifiers, null);
-        Item(Item(f.View.ContextMenuStrip.Items, "Time Axis").DropDownItems, "Enable Zoom").PerformClick();
-        Item(Item(f.View.ContextMenuStrip.Items, "Value Axes").DropDownItems, "Enable Zoom").PerformClick();
+        Item(Item(f.View.ContextMenuStrip.Items, "timeAxis").DropDownItems, "enableZoom").PerformClick();
+        Item(Item(f.View.ContextMenuStrip.Items, "valueAxes").DropDownItems, "enableZoom").PerformClick();
         AssertWheelChangesOnly(f, point, OxyModifierKeys.None, null);
         AssertWheelChangesOnly(f, point, OxyModifierKeys.Shift, null);
     }
@@ -285,9 +285,10 @@ public sealed class PlotPanelPaneControlsTests
     }
 
     private static ToolStripMenuItem ScopeMenu(Fixture f) =>
-        f.View.ContextMenuStrip.Items.OfType<ToolStripMenuItem>().Single(item => item.Text.StartsWith("Zoom scope:", StringComparison.Ordinal));
+        f.View.ContextMenuStrip.Items.OfType<ToolStripMenuItem>().Single(item => item.Name == "zoomScope");
 
-    private static void SelectScope(Fixture f, string text) => Item(ScopeMenu(f).DropDownItems, text).PerformClick();
+    private static void SelectScope(Fixture f, string text) =>
+        Assert.Single(ScopeMenu(f).DropDownItems.OfType<ToolStripMenuItem>(), item => item.Text == text).PerformClick();
 
     private static void Wheel(Fixture f, ScreenPoint point, OxyModifierKeys modifiers) =>
         Assert.True(f.View.ActualController.HandleMouseWheel(f.View, new OxyMouseWheelEventArgs { Position = point, Delta = 120, ModifierKeys = modifiers }));
@@ -347,14 +348,14 @@ public sealed class PlotPanelPaneControlsTests
         Render(f.View);
         var shared = (f.SharedAxis.ActualMinimum, f.SharedAxis.ActualMaximum);
         SelectScope(f, "All panes");
-        ToolStripMenuItem time = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Time Scale");
-        Item(time.DropDownItems, "Zoom In (All panes)").PerformClick();
+        ToolStripMenuItem time = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "paneTime");
+        ScopedZoom(time.DropDownItems, true, "All panes").PerformClick();
         Assert.Equal(shared, (f.SharedAxis.ActualMinimum, f.SharedAxis.ActualMaximum));
         Assert.True(f.Panel.TryGetLaneTimeWindow("Power", out double min, out double max));
         Assert.Equal((10d, 250d), (min, max));
         Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out min, out max));
         Assert.Equal((30d, 126d), (min, max));
-        Item(time.DropDownItems, "Follow Shared").PerformClick();
+        Item(time.DropDownItems, "followShared").PerformClick();
         Assert.False(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out _, out _));
         Assert.True(f.Panel.TryGetLaneTimeWindow("Power", out min, out max));
         Assert.Equal((10d, 250d), (min, max));
@@ -496,9 +497,9 @@ public sealed class PlotPanelPaneControlsTests
         Assert.Equal((0d, 3600d), (ageMin, ageMax));
         Assert.Equal(3600, restored.PaneAxis.ActualMaximum - restored.PaneAxis.ActualMinimum, 6);
 
-        ToolStripMenuItem timeScale = Item(restored.Panel.CreatePaneMenuItems(restored.PointIn(WheelRegion.StackedPane)), "Time Scale");
+        ToolStripMenuItem timeScale = Item(restored.Panel.CreatePaneMenuItems(restored.PointIn(WheelRegion.StackedPane)), "paneTime");
         Assert.True(Item(timeScale.DropDownItems, "1 h").Checked);
-        ToolStripMenuItem follow = Item(timeScale.DropDownItems, "Follow Shared");
+        ToolStripMenuItem follow = Item(timeScale.DropDownItems, "followShared");
         Assert.False(follow.Checked);
         follow.PerformClick();
 
@@ -555,7 +556,7 @@ public sealed class PlotPanelPaneControlsTests
         Assert.Equal((0f, 300f), StoredSharedWindow(f.Settings));
 
         // Auto includes all plotted histories even when every visible pane has an override.
-        Item(Item(f.View.ContextMenuStrip.Items, "Time Axis").DropDownItems, "Auto").PerformClick();
+        Item(Item(f.View.ContextMenuStrip.Items, "timeAxis").DropDownItems, "timeAuto").PerformClick();
         Assert.True(f.Panel.SetLaneTimeWindow(f.LaneKey, 0, 60));
         Assert.True(f.Panel.SetLaneTimeWindow("Power", 0, 120));
         f.Panel.InvalidatePlot();
@@ -576,7 +577,7 @@ public sealed class PlotPanelPaneControlsTests
     {
         // Detaching the longest history must not change any following pane, even after painting.
         using Fixture f = Fixture.Create(cpuSamples: 600);
-        Item(Item(f.View.ContextMenuStrip.Items, "Time Axis").DropDownItems, "Auto").PerformClick();
+        Item(Item(f.View.ContextMenuStrip.Items, "timeAxis").DropDownItems, "timeAuto").PerformClick();
         f.Panel.InvalidatePlot();
         Render(f.View);
         Axis shared = f.SharedAxis;
@@ -606,7 +607,7 @@ public sealed class PlotPanelPaneControlsTests
         Assert.True(f.Panel.SetLaneTimeWindow("Power", 0, 1800));
         Assert.Equal(2, f.View.Model.Axes.OfType<PlotPaneTimeAxis>().Count());
 
-        Item(Item(f.View.ContextMenuStrip.Items, "Time Axis").DropDownItems, "All Panes Follow Shared").PerformClick();
+        Item(Item(f.View.ContextMenuStrip.Items, "timeAxis").DropDownItems, "allPanesFollowShared").PerformClick();
 
         AssertNoPaneAxes(f);
         Assert.False(f.Settings.Contains("plotPanel.laneTime." + f.LaneKey));
@@ -619,7 +620,7 @@ public sealed class PlotPanelPaneControlsTests
     {
         using Fixture f = Fixture.Create();
         Assert.True(f.Panel.SetLaneTimeWindow(f.LaneKey, 0, 120));
-        ToolStripMenuItem stacked = Item(f.View.ContextMenuStrip.Items, "Stacked Axes");
+        ToolStripMenuItem stacked = Item(f.View.ContextMenuStrip.Items, "stackedAxes");
 
         stacked.PerformClick();
         Render(f.View);
@@ -629,7 +630,7 @@ public sealed class PlotPanelPaneControlsTests
         Assert.True(f.Settings.Contains("plotPanel.laneTime." + f.LaneKey));
         Assert.False(f.Panel.ZoomLaneTime(f.LaneKey, 1.25));
         ToolStripItem[] labelSection = f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.ValueLabels)).ToArray();
-        Assert.False(Item(labelSection, "Time Scale").Enabled);
+        Assert.False(Item(labelSection, "paneTime").Enabled);
 
         stacked.PerformClick();
         Render(f.View);
@@ -784,7 +785,7 @@ public sealed class PlotPanelPaneControlsTests
         settings.SetValue("showAxesLabels", false);
 
         using Fixture f = Fixture.Create(settings: settings, laneKey: laneKey);
-        ToolStripMenuItem showLabels = Item(f.View.ContextMenuStrip.Items, "Show Axes Labels");
+        ToolStripMenuItem showLabels = Item(f.View.ContextMenuStrip.Items, "showAxesLabels");
         AssertPaneLabels(f, visible: false);
 
         showLabels.PerformClick();
@@ -924,7 +925,7 @@ public sealed class PlotPanelPaneControlsTests
         Assert.IsType<ToolStripSeparator>(section.Last());
 
         IReadOnlyList<ToolStripItem> defaultSection = f.Panel.CreatePaneMenuItems(PointAwayFromLines(f, f.DefaultAxis));
-        Assert.Equal("── Power ──", defaultSection[0].Text);
+        AssertPaneHeader(defaultSection[0], "Power");
         Assert.DoesNotContain(defaultSection, item => item.Text == "Rename..." || item.Text == "Remove Lane");
 
         Assert.Empty(f.Panel.CreatePaneMenuItems(null));
@@ -932,7 +933,7 @@ public sealed class PlotPanelPaneControlsTests
 
         using Fixture overlay = Fixture.Create(stacked: false);
         Assert.Empty(overlay.Panel.CreatePaneMenuItems(PointAwayFromLines(overlay, overlay.LaneAxis)));
-        Assert.Equal("── CPU ──", overlay.Panel.CreatePaneMenuItems(overlay.PointIn(WheelRegion.ValueLabels))[0].Text);
+        AssertPaneHeader(overlay.Panel.CreatePaneMenuItems(overlay.PointIn(WheelRegion.ValueLabels))[0], "CPU");
     }
 
     [Fact]
@@ -943,7 +944,7 @@ public sealed class PlotPanelPaneControlsTests
 
         f.Panel.RebuildPaneMenuSection(PointAwayFromLines(f, f.LaneAxis));
         ToolStripItem[] firstSection = f.View.ContextMenuStrip.Items.Cast<ToolStripItem>().Take(8).ToArray();
-        Assert.Equal("── CPU ──", firstSection[0].Text);
+        AssertPaneHeader(firstSection[0], "CPU");
         Assert.Equal(fixedItems, f.View.ContextMenuStrip.Items.Cast<ToolStripItem>().Skip(8));
         var disposed = new HashSet<ToolStripItem>();
         foreach (ToolStripItem item in firstSection)
@@ -1055,7 +1056,7 @@ public sealed class PlotPanelPaneControlsTests
         f.Panel.SensorsRemoveRequested = sensors => requests.Add(sensors);
         Assert.Equal(new ISensor[] { f.Cpu, soc }, f.Panel.GetLaneSensors(f.LaneKey));
 
-        ToolStripMenuItem remove = Item(f.Panel.CreatePaneMenuItems(PointAwayFromLines(f, f.LaneAxis)), "Remove from Graph");
+        ToolStripMenuItem remove = Item(f.Panel.CreatePaneMenuItems(PointAwayFromLines(f, f.LaneAxis)), "paneRemove");
         Assert.Equal(
             new[] { "Test hardware CPU", "Test hardware SoC", string.Empty, "All 2 in This Pane..." },
             remove.DropDownItems.Cast<ToolStripItem>().Select(item => item is ToolStripSeparator ? string.Empty : item.Text));
@@ -1065,12 +1066,12 @@ public sealed class PlotPanelPaneControlsTests
 
         string question = null;
         f.Panel.ConfirmRemoval = message => { question = message; return false; };
-        Item(remove.DropDownItems, "All 2 in This Pane...").PerformClick();
+        Item(remove.DropDownItems, "removeAllInPane").PerformClick();
         Assert.Contains("CPU", question);
         Assert.Single(requests);
 
         f.Panel.ConfirmRemoval = _ => true;
-        Item(remove.DropDownItems, "All 2 in This Pane...").PerformClick();
+        Item(remove.DropDownItems, "removeAllInPane").PerformClick();
         Assert.Equal(new ISensor[] { f.Cpu, soc }, requests[1]);
     }
 
@@ -1085,10 +1086,10 @@ public sealed class PlotPanelPaneControlsTests
         double max = lane.ActualMaximum;
         double center = (min + max) / 2;
         Dictionary<Axis, (double Min, double Max)> before = Snapshot(f.View.Model);
-        ToolStripMenuItem valueScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Value Scale");
-        Assert.True(Item(valueScale.DropDownItems, "Auto Range").Checked);
+        ToolStripMenuItem valueScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "paneValues");
+        Assert.True(Item(valueScale.DropDownItems, "autoRange").Checked);
 
-        Item(valueScale.DropDownItems, "Zoom In (This pane)").PerformClick();
+        ScopedZoom(valueScale.DropDownItems, true, "This pane").PerformClick();
 
         Assert.Equal(center - (max - min) / 2.5, lane.ActualMinimum, 6);
         Assert.Equal(center + (max - min) / 2.5, lane.ActualMaximum, 6);
@@ -1099,7 +1100,7 @@ public sealed class PlotPanelPaneControlsTests
         Assert.Equal(lane.ActualMaximum, f.Settings.GetValue(maxKey, float.NaN), 3);
         Assert.False(f.Settings.Contains("plotPanel.MinPower"));
 
-        Item(valueScale.DropDownItems, "Zoom Out (This pane)").PerformClick();
+        ScopedZoom(valueScale.DropDownItems, false, "This pane").PerformClick();
         Assert.Equal(min, lane.ActualMinimum, 6);
         Assert.Equal(max, lane.ActualMaximum, 6);
 
@@ -1113,9 +1114,9 @@ public sealed class PlotPanelPaneControlsTests
         Assert.False(f.Panel.SetLaneValueRange(f.LaneKey, 0, double.PositiveInfinity));
         Assert.Equal((10d, 90d), (lane.ActualMinimum, lane.ActualMaximum));
 
-        valueScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Value Scale");
-        Assert.False(Item(valueScale.DropDownItems, "Auto Range").Checked);
-        Item(valueScale.DropDownItems, "Auto Range").PerformClick();
+        valueScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "paneValues");
+        Assert.False(Item(valueScale.DropDownItems, "autoRange").Checked);
+        Item(valueScale.DropDownItems, "autoRange").PerformClick();
         Assert.False(f.Settings.Contains(minKey));
         Assert.False(f.Settings.Contains(maxKey));
     }
@@ -1124,10 +1125,10 @@ public sealed class PlotPanelPaneControlsTests
     public void ValueZoomRespectsEnableZoomButSetRangeStillApplies()
     {
         using Fixture f = Fixture.Create(configure: settings => settings.SetValue("yAxesEnableZoom", false));
-        ToolStripMenuItem valueScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Value Scale");
+        ToolStripMenuItem valueScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "paneValues");
 
-        Assert.False(Item(valueScale.DropDownItems, "Zoom In (This pane)").Enabled);
-        Assert.False(Item(valueScale.DropDownItems, "Zoom Out (This pane)").Enabled);
+        Assert.False(ScopedZoom(valueScale.DropDownItems, true, "This pane").Enabled);
+        Assert.False(ScopedZoom(valueScale.DropDownItems, false, "This pane").Enabled);
         Assert.False(f.Panel.ZoomLaneValue(f.LaneKey, 1.25));
         Assert.True(f.Panel.SetLaneValueRange(f.LaneKey, 5, 25));
         Assert.Equal((5d, 25d), (f.LaneAxis.ActualMinimum, f.LaneAxis.ActualMaximum));
@@ -1171,8 +1172,8 @@ public sealed class PlotPanelPaneControlsTests
         Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out double ageMin, out double ageMax));
         Assert.Equal((30d, 110d), (ageMin, ageMax));
 
-        ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Time Scale");
-        Item(timeScale.DropDownItems, "Zoom Out (This pane)").PerformClick();
+        ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "paneTime");
+        ScopedZoom(timeScale.DropDownItems, false, "This pane").PerformClick();
         Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out ageMin, out ageMax));
         Assert.Equal(30, ageMin);
         Assert.Equal(130, ageMax, 1e-9);
@@ -1193,9 +1194,9 @@ public sealed class PlotPanelPaneControlsTests
         double sharedSpan = sharedBefore.Max - sharedBefore.Min;
         OxyRect band = BandRect(f.View.Model, f.DefaultAxis);
         IReadOnlyList<ToolStripItem> section = f.Panel.CreatePaneMenuItems(new ScreenPoint(f.View.Model.PlotArea.Center.X, band.Center.Y));
-        Assert.Equal("── Power ──", section.First(item => item.Text.StartsWith("──", StringComparison.Ordinal)).Text);
+        AssertPaneHeader(section.First(IsPaneHeader), "Power");
 
-        Item(Item(section, "Time Scale").DropDownItems, "Zoom In (This pane)").PerformClick();
+        ScopedZoom(Item(section, "paneTime").DropDownItems, true, "This pane").PerformClick();
 
         Assert.True(f.Panel.TryGetLaneTimeWindow("Power", out double ageMin, out double ageMax));
         Assert.Equal(0d, ageMin);
@@ -1222,8 +1223,8 @@ public sealed class PlotPanelPaneControlsTests
 
         for (int i = 0; i < 25; i++)
         {
-            ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Time Scale");
-            Item(timeScale.DropDownItems, "Zoom In (This pane)").PerformClick();
+            ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "paneTime");
+            ScopedZoom(timeScale.DropDownItems, true, "This pane").PerformClick();
             Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out ageMin, out ageMax));
             Assert.Equal(0d, ageMin);
             Assert.True(ageMax - ageMin >= minimumRange, $"click {i + 1}: span {ageMax - ageMin} below {minimumRange}");
@@ -1239,14 +1240,14 @@ public sealed class PlotPanelPaneControlsTests
     public void TimeScaleMenu_WithTimeZoomOffKeepsFollowAndPresetsButDisablesZoom()
     {
         using Fixture f = Fixture.Create(configure: settings => settings.SetValue("timeAxisEnableZoom", false));
-        ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Time Scale");
+        ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "paneTime");
 
         Assert.True(timeScale.Enabled);
-        Assert.True(Item(timeScale.DropDownItems, "Follow Shared").Enabled);
+        Assert.True(Item(timeScale.DropDownItems, "followShared").Enabled);
         Assert.Equal(15, timeScale.DropDownItems.OfType<ToolStripRadioButtonMenuItem>().Count(item => item.Text != "Follow Shared"));
         Assert.All(timeScale.DropDownItems.OfType<ToolStripRadioButtonMenuItem>(), item => Assert.True(item.Enabled, item.Text));
-        Assert.False(Item(timeScale.DropDownItems, "Zoom In (This pane)").Enabled);
-        Assert.False(Item(timeScale.DropDownItems, "Zoom Out (This pane)").Enabled);
+        Assert.False(ScopedZoom(timeScale.DropDownItems, true, "This pane").Enabled);
+        Assert.False(ScopedZoom(timeScale.DropDownItems, false, "This pane").Enabled);
         Assert.False(f.Panel.ZoomLaneTime(f.LaneKey, 1.25));
 
         Item(timeScale.DropDownItems, "5 min").PerformClick();
@@ -1265,7 +1266,7 @@ public sealed class PlotPanelPaneControlsTests
         using Fixture f = Fixture.Create();
         Assert.True(f.Panel.SetLaneTimeWindow(f.LaneKey, ageMin, ageMax));
 
-        ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Time Scale");
+        ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "paneTime");
         ToolStripItem[] items = timeScale.DropDownItems.Cast<ToolStripItem>().ToArray();
 
         Assert.False(Assert.IsAssignableFrom<ToolStripMenuItem>(items[0]).Checked);
@@ -1282,12 +1283,12 @@ public sealed class PlotPanelPaneControlsTests
     public void TimeScaleMenu_FollowingOrPresetWindowHasNoCustomItem()
     {
         using Fixture f = Fixture.Create();
-        ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Time Scale");
+        ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "paneTime");
         Assert.DoesNotContain(timeScale.DropDownItems.Cast<ToolStripItem>(), item => item.Text.StartsWith("Custom", StringComparison.Ordinal));
-        Assert.True(Item(timeScale.DropDownItems, "Follow Shared").Checked);
+        Assert.True(Item(timeScale.DropDownItems, "followShared").Checked);
 
         Assert.True(f.Panel.SetLaneTimeWindow(f.LaneKey, 0, 600));
-        timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Time Scale");
+        timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "paneTime");
         Assert.DoesNotContain(timeScale.DropDownItems.Cast<ToolStripItem>(), item => item.Text.StartsWith("Custom", StringComparison.Ordinal));
         Assert.Equal("10 min", Assert.Single(timeScale.DropDownItems.OfType<ToolStripMenuItem>(), item => item.Checked).Text);
     }
@@ -1316,17 +1317,17 @@ public sealed class PlotPanelPaneControlsTests
         Assert.Matches(@"^\d{2}:\d{2}:\d{2}$", pane.FormatValue(pane.ActualMaximum));
         Assert.Matches(@"^(\d+/\d+ )?\d{2}:\d{2}$", shared.FormatValue(shared.ActualMaximum));
 
-        ToolStripMenuItem timeAxis = Item(f.View.ContextMenuStrip.Items, "Time Axis");
-        Item(Item(timeAxis.DropDownItems, "Label Mode").DropDownItems, "Elapsed").PerformClick();
+        ToolStripMenuItem timeAxis = Item(f.View.ContextMenuStrip.Items, "timeAxis");
+        Item(Item(timeAxis.DropDownItems, "labelMode").DropDownItems, "Elapsed").PerformClick();
         Assert.Equal("0:00", pane.FormatValue(pane.ActualMaximum));
         Assert.IsType<TimeSpan>(pane.GetValue(pane.ActualMinimum));
 
-        Item(timeAxis.DropDownItems, "Enable Zoom").PerformClick();
+        Item(timeAxis.DropDownItems, "enableZoom").PerformClick();
         Assert.False(shared.IsZoomEnabled);
         Assert.False(pane.IsZoomEnabled);
-        ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "Time Scale");
+        ToolStripMenuItem timeScale = Item(f.Panel.CreatePaneMenuItems(f.PointIn(WheelRegion.StackedPane)), "paneTime");
         Assert.True(timeScale.Enabled);
-        Assert.False(Item(timeScale.DropDownItems, "Zoom In (This pane)").Enabled);
+        Assert.False(ScopedZoom(timeScale.DropDownItems, true, "This pane").Enabled);
         Assert.False(f.Panel.ZoomLaneTime(f.LaneKey, 1.25));
 
         // Window follow does not depend on the zoom option.
@@ -1344,12 +1345,12 @@ public sealed class PlotPanelPaneControlsTests
         foreach (string lane in new[] { "Power", "CPU" })
         {
             ToolStripMenuItem entry = Item(lanes.DropDownItems, lane);
-            Assert.NotNull(Item(entry.DropDownItems, "Value Scale"));
-            Assert.NotNull(Item(entry.DropDownItems, "Time Scale"));
-            Assert.NotNull(Item(entry.DropDownItems, "Remove from Graph"));
+            Assert.NotNull(Item(entry.DropDownItems, "paneValues"));
+            Assert.NotNull(Item(entry.DropDownItems, "paneTime"));
+            Assert.NotNull(Item(entry.DropDownItems, "paneRemove"));
         }
 
-        Item(Item(Item(lanes.DropDownItems, "CPU").DropDownItems, "Time Scale").DropDownItems, "5 min").PerformClick();
+        Item(Item(Item(lanes.DropDownItems, "CPU").DropDownItems, "paneTime").DropDownItems, "5 min").PerformClick();
         Assert.True(f.Panel.TryGetLaneTimeWindow(f.LaneKey, out double ageMin, out double ageMax));
         Assert.Equal((0d, 300d), (ageMin, ageMax));
     }
@@ -1470,8 +1471,30 @@ public sealed class PlotPanelPaneControlsTests
             $"pane gridline x={segment.X:F1} {segment.Top:F1}..{segment.Bottom:F1} outside band {band.Top:F1}..{band.Bottom:F1}"));
     }
 
-    private static ToolStripMenuItem Item(IEnumerable<ToolStripItem> items, string text) =>
-        Assert.IsAssignableFrom<ToolStripMenuItem>(Assert.Single(items, item => item.Text == text));
+    /// <summary>The single item whose stable <c>Name</c> (or, for data-driven entries, text) is <paramref name="key" />.</summary>
+    private static ToolStripMenuItem Item(IEnumerable<ToolStripItem> items, string key) =>
+        Assert.IsAssignableFrom<ToolStripMenuItem>(Assert.Single(items, item => item.Name == key || (string.IsNullOrEmpty(item.Name) && item.Text == key)));
+
+    /// <summary>A scope-labelled Zoom In/Out entry, asserting that it names <paramref name="scope" />.</summary>
+    private static ToolStripMenuItem ScopedZoom(ToolStripItemCollection items, bool zoomIn, string scope)
+    {
+        ToolStripMenuItem item = Item(items, zoomIn ? "zoomIn" : "zoomOut");
+        Assert.Equal((zoomIn ? "Zoom In" : "Zoom Out") + " (" + scope + ")", item.Text);
+        return item;
+    }
+
+    /// <summary>Asserts the persistent scope menu names <paramref name="scope" />.</summary>
+    private static void AssertScopeLabel(ToolStripMenuItem scopeMenu, string scope) =>
+        Assert.Equal("Zoom scope: " + scope, scopeMenu.Text);
+
+    private static bool IsPaneHeader(ToolStripItem item) => item.Name == "paneHeader";
+
+    /// <summary>Asserts <paramref name="item" /> is the pane header for <paramref name="laneName" />.</summary>
+    private static void AssertPaneHeader(ToolStripItem item, string laneName)
+    {
+        Assert.True(IsPaneHeader(item));
+        Assert.Equal("── " + laneName + " ──", item.Text);
+    }
 
     private static ToolStripMenuItem Item(ToolStripItemCollection items, string text) =>
         Item(items.Cast<ToolStripItem>(), text);
