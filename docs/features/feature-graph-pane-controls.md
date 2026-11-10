@@ -1,6 +1,6 @@
 # Feature Spec: Graph Pane Controls
 
-**Status:** wheel-axis, explicit-scope and graph-menu revisions implemented in source. Menu completion verification is recorded below. Promotion and live acceptance remain separate; remove-from-graph and installed restart checks remain open. Read the machine matrix and runtime manifest for installed identity.
+**Status:** wheel-axis, explicit-scope and graph-menu revisions implemented in source and promoted on SND-DESK at `d5e53c0d` on 2026-11-10 (record below). Installed acceptance of these revisions has not been run: menus, gestures, `Fixed Range...`, remove-from-graph and the installed restart check remain open. Read the machine matrix and runtime manifest for installed identity.
 **Updated:** 2026-11-10
 **Extends:** [graph lanes](feature-graph-lanes.md) (lanes, weights, per-lane value zoom and persistence stay owned there)
 **Origin:** operator request 2026-11-09 with an annotated screenshot of the stacked Power / Temperature / Fan graph and its right-click menu
@@ -702,3 +702,28 @@ moved every other following pane.
 - Not done live: Remove from Graph plus re-plot, a restart that keeps a
   detached pane, the Set Range dialog, DPI, and the dark disabled-header
   contrast.
+
+### 2026-11-10: SND-DESK promotion (`d5e53c0d`), installed acceptance not run
+
+- Identity verifier returned `VERIFIED` for `snd-desk` instance
+  `ca96d510-7d87-4cec-8e1a-bd8fc3866903` before the install.
+- Candidate `E:\Monitoring\LibreHW\Candidates\desk-master-20261110-42015e60`
+  (manifest commit `d5e53c0d`; the directory name carries the source tip at
+  publish time). Release
+  `0.9.6_d5e53c0.2026-11-10-d5e53c0dd0de-20261110T134832Z`, SHA-256
+  `92c1166c36201f2d185aced61c125691a92240ce45131cb232eff41a23e8d700`.
+- The first guarded install under Windows PowerShell 5.1 activated the
+  candidate, then failed its own health gate and rolled back to `1bf2655f`.
+  The app was serving: `Assert-LhmHttpHealth` called `Invoke-WebRequest`
+  without `-UseBasicParsing`, and 5.1 hands the body to the retired IE engine,
+  which hangs past `-TimeoutSec` or throws on this machine. The rollback's
+  own health gate failed the same way. The local release spec records the
+  repair.
+- The install was rerun under pwsh 7 (WhatIf, then
+  `-AllowStopExactProcess -Confirm:$false`) and activated. Rollback is
+  `0.9.6_1bf2655.2026-11-10-1bf2655f185b-20261109T235203Z`.
+- Independent check at 15:17: installed exe hash matches the manifest,
+  `\SevGrp\AdminTask\LibreHW-No-UAC` is running (started 15:10:20), and
+  `http://127.0.0.1:18085/data.json` returns the `Sensor` envelope.
+- Not done: every installed check in Menu revision acceptance and Pane-model
+  acceptance. The session that promoted stopped before its first UI step.
