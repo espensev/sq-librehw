@@ -1,6 +1,6 @@
 # Feature Spec: Graph Pane Controls
 
-**Status:** wheel-axis and explicit-scope revision implemented and source-verified; promotion and live acceptance of this revision remain separate. Earlier controls were promoted to SND-DESK on 2026-11-10 at `1bf2655f`; existing remove-from-graph and restart checks remain open.
+**Status:** wheel-axis and explicit-scope revision implemented and source-verified; the graph-menu revision (design, state text, glyphs, prompts) is specified below with its implementation in progress. Promotion and live acceptance of both revisions remain separate. Earlier controls were promoted to SND-DESK on 2026-11-10 at `1bf2655f`; existing remove-from-graph and restart checks remain open.
 **Updated:** 2026-11-10
 **Extends:** [graph lanes](feature-graph-lanes.md) (lanes, weights, per-lane value zoom and persistence stay owned there)
 **Origin:** operator request 2026-11-09 with an annotated screenshot of the stacked Power / Temperature / Fan graph and its right-click menu
@@ -114,6 +114,177 @@ only when exactly one visible pane follows that axis.
   it does not launch the product or exercise hardware. Its text percentages
   are font sizes at 144 device DPI, not three different monitor-DPI settings.
 
+## Current source contract: graph menus
+
+Revision of 2026-11-10, after the operator asked for right-click menu design
+work. It replaces the shipped right-click menu section below. The evidence is
+the live `1bf2655f` menu captures and their review (workload root,
+`LibreHW/audits/2026-11-10-menu-ux`) plus the
+[Codex range review](../reviews/review-2026-11-10-codex-graph-pane-work.md).
+
+### Problems
+
+- The check glyph is a fixed 7 px shape at a fixed offset. It is tiny at 150%
+  and sits near the top of the row.
+- Radio items paint the OS-themed glyph, which is light on the dark menus.
+  Other exclusive choices (Grid Density, Label Mode) use checkmarks, and the
+  Time Axis presets show no current choice at all.
+- Separators are painted as background, so groups run together.
+- The pane header is a disabled item and looks disabled.
+- A pane right-click appends the whole graph-wide menu, including `Lanes`,
+  below the pane controls. `Lanes` repeats the pane controls with a second
+  `Auto Range`.
+- `Height` is offered in overlay mode, where weights are ignored.
+- `Reset Graph View` clears every sensor's in-memory history. It does not
+  reset the view.
+- `Set Range...` clips its labels and buttons at the live scale and shows no
+  unit. The lane-name prompt uses the same fixed-pixel layout.
+
+### Goals and non-goals
+
+- Each menu shows what it targets and the current state of each setting
+  without opening submenus.
+- A pane right-click leads with that pane's controls. Graph-wide settings sit
+  behind one `Graph Options` submenu.
+- Toggles, exclusive choices, separators, headers, hover and disabled states
+  are distinct, DPI-scaled and vertically centred in Light, Dark and Black.
+- No label misdescribes its command.
+- Not in scope: restructuring the menu-bar `Graph` menu or merging it with
+  the gear menu; the sensor-tree menu, apart from the shared renderer;
+  gestures; settings keys; window-level effects such as rounded corners and
+  shadows.
+
+### Menus
+
+Pane right-click: a stacked plot band, or a lane's value-axis labels in either
+mode. A keyboard invocation targets the focused pane.
+
+```
+Power · W                                  header: lane name · axis unit (not selectable)
+Remove "<sensor>" from Graph               only when a line is hit
+──
+Values                 Auto | 30 – 140 W ›  ● Auto Range | ● Fixed Range...  <bounds> | ── | Zoom In  <scope> | Zoom Out  <scope>
+Time        Shared | 1 h | 4 min 10 s   ›  ● Follow Shared  <shared span> | ● Custom (…) | ── | ● 30 sec … 24 h | ── | Zoom In/Out  <scope>
+Height                              1×  ›  stacked only: ● 1× | ● 2× | ● 3×
+Remove from Graph                       ›  <each sensor> | ── | All N in This Pane...
+Rename Lane... | Remove Lane...            user lanes only
+──
+Zoom Scope                   This pane  ›  ● This pane | ● All panes
+Graph Options                           ›  the graph-wide list below, without Zoom Scope
+```
+
+Graph-wide list: the ⚙ button, a right-click with no pane target (the overlay
+plot area, the margins), or a keyboard invocation with no focused pane. A hit
+line still prepends its remove item and a separator.
+
+```
+Zoom Scope                   This pane  ›
+──
+✓ Stacked Axes
+✓ Show Axes Labels
+Grid Density                    Normal  ›  ● Off | ● Major | ● Normal | ● Fine
+Time Axis                       10 min  ›  ✓ Enable Zoom | ── | ● Auto | ● 30 sec … 24 h | ── | All Panes Follow Shared | Label Mode ›
+Value Axes                              ›  ✓ Enable Zoom | Autoscale All
+Lanes                                   ›  per visible lane: Values, Time, Height, Remove from Graph, Rename/Remove Lane
+──
+Clear Graph History...
+```
+
+- Right-aligned grey text is the current state. `Values` shows `Auto` or the
+  fixed bounds with the unit. `Time` shows `Shared`, the preset or the custom
+  span. `Time Axis` shows `Auto`, the preset or the custom span. The scoped
+  `Zoom In`/`Zoom Out` entries show `This pane` or `All panes` in the same
+  column.
+- `Fixed Range...` opens the range prompt, as `Set Range...` did. While the
+  range is fixed it is checked and shows its bounds. `Auto Range` restores
+  fitting.
+- The `Time Axis` presets mark `Auto` or the preset that equals the shared
+  window. A zoomed shared window marks none and shows its span on the parent.
+- `Lanes` shows its submenu arrow before the first open. Its lane entries use
+  the pane builder and order, with no separate `Auto Range`.
+- One set of graph-wide items serves both layouts. Opening the menu moves
+  them between the top level and `Graph Options`, so persisted options keep
+  their state and handlers.
+- `Clear Graph History...` replaces `Reset Graph View` in this list and in the
+  menu-bar `Graph` menu. It asks first and defaults to No. Yes clears every
+  sensor's in-memory history (the old behavior). Logged CSV files are not
+  touched.
+
+### Appearance
+
+One fork-only renderer serves the menu bar, the sensor-tree menu and the graph
+menus.
+
+- A toggle draws a check; an exclusive choice draws a filled dot. Both are
+  centred in the check column and scale with the row. Every `UserRadioGroup`
+  and every pane choice is an exclusive choice.
+- Hover and keyboard selection draw an inset rounded highlight
+  (`MenuHighlightColor`), visible in all three themes.
+- Disabled text, glyphs and arrows use `MenuDisabledForegroundColor`. A header
+  is a non-selectable label in semibold full-contrast text, so it never reads
+  as disabled.
+- Separators are a 1-px inset line (`MenuSeparatorColor`). Submenu arrows are
+  chevrons. Dropdown borders use `MenuBorderColor`, which is now a blend that
+  stays visible on Black.
+- New theme colors default to blends of the menu background and foreground,
+  so a theme needs no new overrides.
+
+### Range and lane-name prompts
+
+- Both prompts lay out from their content: labels, fields, a wrapping
+  validation line and buttons. Nothing clips at 100–200% fonts. Range labels
+  carry the unit (`Minimum (W):`).
+- They open centred on the owner window, inside that screen's working area.
+  Cancel changes nothing. Validation is unchanged.
+
+### Decisions pending operator confirmation
+
+| Question | Source default | Alternative |
+|---|---|---|
+| Graph-wide settings on a pane right-click | One `Graph Options` submenu | Inline after a separator (shipped) |
+| `Reset Graph View` | Renamed `Clear Graph History...` with confirmation | Keep the name and add a separate view reset |
+| Exclusive-choice glyph | Dot for every radio group | Checkmarks |
+| Pane header | Lane name and unit, semibold | Name only, dim |
+
+### Compatibility and risk
+
+- New fork-only `UI/Themes/ThemedMenuRenderer.cs`: the renderer, the header
+  label and the choice marker. It derives from `ThemedToolStripRenderer`,
+  which stays byte-identical to upstream. The graph menus stop using
+  `ToolStripRadioButtonMenuItem`, which is unchanged.
+- Fork rows change for `Theme.cs` (menu colors), `UserRadioGroup.cs` (marks its
+  items as choices), `MainForm.cs` (renderer, `Clear Graph History...`) and
+  `PlotPanel.cs` (menus).
+- `net472` and `net10.0-windows`: rounded highlights use `GraphicsPath` arcs,
+  so no newer drawing APIs are needed.
+- Settings, persisted keys and gestures are unchanged. Tests locate menu items
+  by `Name`, not label.
+
+### Menu revision acceptance
+
+- [ ] A pane right-click shows the header, an optional line item, Values,
+  Time, Height (stacked only), Remove from Graph, user-lane items, Zoom Scope
+  and Graph Options. No graph-wide setting appears at the top level.
+- [ ] The gear, a right-click with no pane, and a keyboard invocation with no
+  focused pane show the graph-wide list at the top level, with no Graph
+  Options parent.
+- [ ] Moving the graph-wide items keeps their persisted state and handlers;
+  disposing the panel disposes them wherever they are.
+- [ ] Parent state text is correct for Values (Auto/fixed), Time
+  (shared/preset/custom), Height, Zoom Scope, Grid Density and Time Axis
+  (Auto/preset/custom).
+- [ ] Exclusive choices draw one dot and toggles a check, centred and scaled.
+  Separators, headers, hover and disabled items are distinct in Light, Dark
+  and Black at 100%, 150% and 200% fonts (fixture renders).
+- [ ] `Clear Graph History...` asks first: No keeps history, Yes clears it.
+- [ ] `Lanes` shows its arrow before the first open, and lane entries have no
+  duplicate `Auto Range`.
+- [ ] Range prompt labels with units, fields and buttons fit at 100–200%
+  fonts. Both prompts centre on the owner's screen.
+- [ ] Full suite, both Release builds and the divergence-ledger gate pass.
+- [ ] After a separately authorized promotion: right-click each pane, use the
+  gear, and open `Set Range...` on the installed runtime.
+
 ## Shipped behavior and earlier verification
 
 The remaining sections describe the prior implementation and its verification.
@@ -190,77 +361,9 @@ menu-anchor defaults were set on 2026-11-09 to meet the original requirement:
 
 ### Right-click menu
 
-When the menu is opened by right-clicking the graph (not from the ⚙ button), a
-pane section is prepended. The rest of today's menu follows unchanged after a
-separator.
-
-```
-Remove "<sensor>" from Graph          (only when a line is hit)
-── <pane name> ──                     (disabled header)
-Value Scale ▸  Zoom In | Zoom Out | ✓Auto Range | Set Range...
-Time Scale  ▸  ✓Follow Shared | Custom (…) | ─ | 30 sec … 24 h | ─ | Zoom In | Zoom Out
-Height      ▸  1x | 2x | 3x
-Remove from Graph ▸  <each sensor in pane> | ─ | All N in This Pane...
-Rename... | Remove Lane               (user lanes only, as in Lanes ▸)
-────
-Stacked Axes, Show Axes Labels, Grid Density, Time Axis, Value Axes, Lanes, Reset Graph View
-```
-
-- The section is rebuilt each time the menu opens, for the pointer position at
-  that moment; the previous section's items are disposed then (not when the
-  menu closes, which can precede the chosen item's click).
-- In the overlay plot area a hit line still adds its `Remove "<sensor>" from
-  Graph` item (and the separator), but no pane section. Over the value-axis
-  labels the lane under the pointer gets its section in either mode.
-- `<sensor>` is the series title (hardware name and sensor name), as in the
-  tracker.
-- `Value Scale > Zoom In / Zoom Out` scale the pane's value range by 1.25 about
-  its centre. They respect `Value Axes > Enable Zoom` (disabled when off) and
-  leave Auto Range like a wheel zoom does.
-- `Auto Range` is the existing lane auto range. `Set Range...` opens a two-field
-  minimum/maximum prompt prefilled with the visible range (`G6`, or round-trip
-  `R` when the `G6` pair would not parse back as an increasing range; a NaN or
-  infinite bound leaves its field empty); it accepts
-  finite numbers with maximum > minimum in the current culture, rejects group
-  separators (so `1.5` in a comma-decimal culture is an error, not 15), and
-  rejects a pair that the float `plotPanel.Min/Max` keys cannot store as a
-  finite increasing range (a sub-ulp pair such as `1` and `1.00000001`, or a
-  magnitude past about `3.4e38`). It keeps the dialog open with an inline
-  message on invalid input. The fixed
-  range applies even when `Value Axes > Enable Zoom` is off. Menu value
-  changes, like wheel zoom, are written to the existing `plotPanel.Min/Max<key>`
-  keys by the next settings save; `Auto Range` removes them immediately. The
-  default `TimeSpan` pane is the exception: its keys are the shared window's
-  (see Persistence), so neither applies to it.
-- `Time Scale > Follow Shared` (default) clears the pane override. A preset
-  sets the pane's own window ending at "now" and is shown checked while the
-  pane's window equals it. An override that matches no preset (after a zoom, a
-  pan, or a detach) shows a checked, disabled `Custom (<span>)` item right after
-  `Follow Shared`, or `Custom (<span>, ending <age> ago)` when the window ends
-  1 s or more before "now"; durations are compact and culture-invariant (`45 s`,
-  `4 min 10 s`, `1 h 5 min`).
-- `Time Scale > Zoom In / Zoom Out` scale the pane's window by 1.25 with its
-  newest edge fixed, so a live window stays live (0–100 s zooms in to 0–80 s).
-  The span never drops below the shared axis's minimum range (1 s) and the
-  window never reaches back more than 24 h. A following pane is first seeded
-  from the shared window's current ages, so the zoom detaches it and does not
-  zoom the shared window. With a fixed shared window no other pane moves; under
-  `Time Axis > Auto` the shared range refits to the following panes' data, so
-  they can shift.
-- `Time Scale` is disabled in overlay mode. With `Time Axis > Enable Zoom` off,
-  `Follow Shared` and the presets stay usable (as the shared `Time Axis` presets
-  are) and only `Zoom In / Zoom Out` are disabled.
-- `Remove from Graph` un-plots the chosen sensor(s) through the same path as the
-  sensor-tree checkbox. `All N in This Pane...` asks for confirmation. A user
-  lane keeps its definition, weight, and zoom; it hides until a sensor returns.
-  The submenu is disabled for a lane with no plotted sensor.
-- The shared `Time Axis` menu gains `All Panes Follow Shared` (after the preset
-  separator, before `Label Mode`; enabled while any override exists), which
-  clears every pane override.
-- `Graph > Lanes > <lane>` and the graph-local `Lanes > <lane>` submenus keep
-  their entries and gain the same `Value Scale`, `Time Scale`, and
-  `Remove from Graph` submenus (one builder serves both menus), so every pane
-  control is also reachable from the menu bar and the ⚙ button.
+Superseded by [Current source contract: graph menus](#current-source-contract-graph-menus).
+The shipped `1bf2655f` layout prepended this pane section to the unchanged
+graph-wide menu; see Git history for its full text.
 
 ### Per-pane time window
 
@@ -476,13 +579,15 @@ Not part of this change; each needs its own decision or fix.
   pane axis when the drag starts.
 - Shared Auto stability on detach and keyboard menu targeting are resolved
   in the current source revision above; installed behavior awaits promotion.
-- Contrast of the disabled `── <pane> ──` header item in the dark theme (not
-  checked).
 - Pane label strip on short panes: a band shorter than one label line shows no
   strip and so no pane time labels.
-- Order of the `Lanes > <lane>` entries (`Height`, `Auto Range`, `Value Scale`,
-  `Time Scale`, `Remove from Graph`) differs from the pane section (`Value
-  Scale`, `Time Scale`, `Height`, `Remove from Graph`).
+- The header contrast and `Lanes` entry-order items are handled by the menu
+  revision above.
+- Overlay mode with the default `This pane` scope: no wheel gesture over the
+  overlay plot area zooms (review finding). The operator decides whether
+  `Shift` + wheel should act on overlay's single shared time axis.
+- Menu-bar `Graph` menu and gear sharing one definition, and the sensor-tree
+  menu's always-present `Graph Lane` and `Reset Pen Color`.
 
 ## Verification plan
 
