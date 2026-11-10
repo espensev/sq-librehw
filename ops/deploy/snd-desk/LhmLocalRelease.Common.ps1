@@ -1888,7 +1888,7 @@ function Assert-LhmHttpHealth {
     $lastError = $null
     do {
         try {
-            $response = Invoke-WebRequest -Uri $HealthUri -TimeoutSec 3
+            $response = Invoke-WebRequest -Uri $HealthUri -UseBasicParsing -Proxy $null -TimeoutSec 3
             if ($response.StatusCode -eq 200 -and -not [string]::IsNullOrWhiteSpace($response.Content)) {
                 $payload = $response.Content | ConvertFrom-Json
                 if ([string]$payload.Text -ceq 'Sensor' -and

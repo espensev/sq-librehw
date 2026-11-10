@@ -2078,6 +2078,89 @@ if (-not $NonLiveTestMode) {
 $identityGateContractsVerified = Invoke-LhmIdentityContractPreflight
 . $commonScript
 
+function Invoke-LhmWindowsPowerShellHealthProbeCase {
+    # The release scripts run under Windows PowerShell 5.1. There,
+    # Invoke-WebRequest without -UseBasicParsing hands the body to the retired
+    # IE engine, which can hang past -TimeoutSec or throw; the 2026-11-10
+    # promotion failed its health gate this way against a healthy runtime.
+    $commonAst = Get-LhmScriptAst -Path $commonScript
+    $healthFunctions = @($commonAst.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -ceq 'Assert-LhmHttpHealth'
+    }, $true))
+    Assert-True ($healthFunctions.Count -eq 1) `
+        'LhmLocalRelease.Common.ps1 must define Assert-LhmHttpHealth exactly once.'
+
+    $portProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $portProbe.Start()
+    $port = ([System.Net.IPEndPoint]$portProbe.LocalEndpoint).Port
+    $portProbe.Stop()
+
+    $harness = @"
+Set-StrictMode -Version Latest
+`$ErrorActionPreference = 'Stop'
+$($healthFunctions[0].Extent.Text)
+`$body = '{"id":0,"Text":"Sensor","Version":"0.9.6","Children":[{"id":1,"Text":"HOST","Children":[]}]}'
+`$listener = [System.Net.HttpListener]::new()
+`$listener.Prefixes.Add('http://127.0.0.1:$port/')
+`$listener.Start()
+`$server = [powershell]::Create()
+[void]`$server.AddScript({
+    param(`$l, `$b)
+    `$bytes = [System.Text.Encoding]::UTF8.GetBytes(`$b)
+    while (`$l.IsListening) {
+        try { `$context = `$l.GetContext() } catch { break }
+        `$context.Response.ContentType = 'application/json'
+        `$context.Response.ContentLength64 = `$bytes.Length
+        `$context.Response.OutputStream.Write(`$bytes, 0, `$bytes.Length)
+        `$context.Response.Close()
+    }
+}).AddArgument(`$listener).AddArgument(`$body)
+[void]`$server.BeginInvoke()
+try {
+    Assert-LhmHttpHealth -HealthUri 'http://127.0.0.1:$port/data.json' -TimeoutSeconds 5
+    'HEALTH-PROBE-PASS'
+}
+finally {
+    `$listener.Stop()
+    `$listener.Close()
+}
+"@
+
+    $windowsPowerShell =
+        Get-Command powershell.exe -CommandType Application -ErrorAction Stop
+    $harnessPath = Join-Path ([System.IO.Path]::GetTempPath()) `
+        ("sq-librehw-health-probe-{0}.ps1" -f [guid]::NewGuid().ToString('N'))
+    $outputPath = "$harnessPath.out"
+    try {
+        $harness | Set-Content -LiteralPath $harnessPath -Encoding UTF8
+        $process = Start-Process -FilePath $windowsPowerShell.Source `
+            -ArgumentList @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$harnessPath`"") `
+            -NoNewWindow -PassThru -RedirectStandardOutput $outputPath
+        if (-not $process.WaitForExit(30000)) {
+            $process.Kill()
+            $process.WaitForExit()
+            throw 'Assert-LhmHttpHealth hung under Windows PowerShell 5.1 against a healthy data.json envelope.'
+        }
+        $output = if (Test-Path -LiteralPath $outputPath) {
+            Get-Content -LiteralPath $outputPath -Raw
+        }
+        else {
+            ''
+        }
+        Assert-True ($process.ExitCode -eq 0 -and $output -match 'HEALTH-PROBE-PASS') `
+            "Assert-LhmHttpHealth failed under Windows PowerShell 5.1 against a healthy data.json envelope: $output"
+    }
+    finally {
+        Remove-Item -LiteralPath $harnessPath, $outputPath -Force -ErrorAction SilentlyContinue
+    }
+
+    return $true
+}
+
+$windowsPowerShellHealthProbeCompatibility = Invoke-LhmWindowsPowerShellHealthProbeCase
+
 if (-not $LauncherConvergenceOnly) {
     $managedTaskSettings = New-LhmManagedTaskSettings
     Assert-True ($managedTaskSettings.RestartCount -eq 3) `
@@ -6413,6 +6496,7 @@ function Get-Process {
         InstallationIdentityNegativeCases = 2
         IdentityGateContractsVerified = $identityGateContractsVerified
         WindowsPowerShellLauncherCompatibility = $true
+        WindowsPowerShellHealthProbeCompatibility = $windowsPowerShellHealthProbeCompatibility
         WindowsPowerShellDataRootRelocationCompatibility = $true
         WindowsPowerShellCleanupCompatibility = $true
         JunctionParentCleanupGuard = $true

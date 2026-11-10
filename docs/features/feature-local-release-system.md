@@ -1362,3 +1362,22 @@ shutdown (see the reliability spec).
 
 Evidence is retained under `D:\DevHome\tmp\librehw-master-promotion-20261027`;
 its `README.txt` maps every file to the step above.
+
+### Health gate under Windows PowerShell 5.1 - 2026-11-10
+
+The `d5e53c0d` promotion run from Windows PowerShell 5.1 activated the
+candidate, then failed `Assert-LhmHttpHealth` for its full window and rolled
+back. The rollback's health gate failed the same way, although `curl` and pwsh
+7 read `data.json` from both processes. Cause: the probe called
+`Invoke-WebRequest` without `-UseBasicParsing`. In 5.1 that hands the response
+to the retired IE engine, which on SND-DESK hangs well past `-TimeoutSec`, even
+for a 691-byte fixture body, or throws a `NullReferenceException`. Every
+script that uses this gate was affected: install, rollback, cutover, runtime
+move and data-root relocation.
+
+Repair: the probe now uses `-UseBasicParsing -Proxy $null`, as
+`ops/live-verification/Test-LhmLiveState.ps1` already did. `Test-LhmLocalRelease.ps1`
+runs the real function under `powershell.exe` against a loopback `data.json`
+fixture with a 30-second hard limit. It failed (hang) before the repair and
+passes after. The repaired function also passes against the live runtime
+under 5.1 (257 ms) and pwsh 7.
