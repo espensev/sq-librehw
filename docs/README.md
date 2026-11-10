@@ -182,7 +182,7 @@ Open gates:
 | `docs\features\feature-unified-tailnet-monitoring-view.md` | Superseded static unified view; historical operational evidence only |
 | `eng\ci\README.md` | Non-deploying gate runner |
 | `docs\features\feature-graph-lanes.md` | Promoted and live-verified on SND-DESK; lane splits, height, layout, and repaired manual-zoom persistence pass; operator sign-off separate |
-| `docs\features\feature-graph-pane-controls.md` | Promoted on SND-DESK at `1bf2655f`; pane menus, wheel zoom, and a restored Fan 1 h detach were checked live. Remove-from-graph and a restart layout check remain open |
+| `docs\features\feature-graph-pane-controls.md` | Existing controls promoted on SND-DESK at `1bf2655f`; remove-from-graph and restart checks remain open. Confirmed next revision, not implemented: wheel values, Shift+wheel time, This pane default, explicit All panes scope |
 | `docs\reviews\settled-2026-10-23-smu-and-rapl.md` | Closed Ryzen SMU reply and Intel RAPL claims; do not reopen |
 
 Other feature documents contain their own status and acceptance criteria.

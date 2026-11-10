@@ -1,9 +1,85 @@
 # Feature Spec: Graph Pane Controls
 
-**Status:** promoted to the SND-DESK runtime on 2026-11-10 at `1bf2655f`; defaults confirmed; live sample checked; remove-from-graph and a restart layout check are still open
+**Status:** existing pane controls promoted to SND-DESK on 2026-11-10 at `1bf2655f`; the next-revision wheel mapping and scope below are confirmed but not implemented; existing remove-from-graph and restart checks remain open
 **Updated:** 2026-11-10
 **Extends:** [graph lanes](feature-graph-lanes.md) (lanes, weights, per-lane value zoom and persistence stay owned there)
 **Origin:** operator request 2026-11-09 with an annotated screenshot of the stacked Power / Temperature / Fan graph and its right-click menu
+
+## Confirmed next revision: wheel axis and target scope
+
+The operator clarified the interaction on 2026-11-10: retain time zoom through
+`Shift` + wheel, make the pane under the pointer the standard target, and offer
+a separate selection to zoom all panes. This supersedes both the earlier
+review suggestion to remove time zoom and the shipped Shift/Ctrl mapping
+documented below. This section is the target contract, not a delivery claim.
+
+| Gesture | `This pane` (default) | `All panes` (explicit selection) |
+|---|---|---|
+| Wheel | Zoom only the pointed pane's values | Zoom every visible pane's values in its own units |
+| `Shift` + wheel | Zoom only the pointed pane's time window | Zoom all visible time windows |
+
+- A gesture changes one axis dimension only. Ordinary wheel never changes
+  time; Shift + wheel never changes values. Ctrl + wheel is no longer a time
+  alias. Unassigned modifier combinations are consumed without zooming.
+- Expose `Zoom scope > This pane | All panes` as mutually exclusive choices.
+  Start each application session with `This pane`. Keep the selected scope
+  readable in the menu parent and graph surface, especially while `All panes`
+  is selected; closing the menu must not hide the active scope.
+- Scope applies to wheel zoom and explicitly scope-labelled Zoom In/Out
+  commands within the graph input area. Numeric Set Range, Auto Range, pane
+  height, sensor removal, and Follow Shared remain pane-specific and must not
+  silently become bulk actions.
+- `This pane` resolves a stacked pane from its plot band or axis labels. A
+  time-label hit belongs to its pane when unambiguous. Shared labels and empty
+  overlay space must not silently expand a local gesture to all panes. A
+  missed or ambiguous local target changes nothing. Keyboard invocation uses
+  the focused pane, not an unrelated mouse position.
+- Local time zoom detaches a following pane from a snapshot of its current
+  visible window. Every sibling's visible window must remain unchanged,
+  including with shared Auto time enabled. Detachment alone must not change
+  the eligible plotted-data extent used by shared Auto; normal movement from
+  new samples remains valid. The current refit exception is not acceptable.
+- `All panes` means the currently visible panes. Capture ranges and targets
+  before applying the gesture. Use one zoom factor, mapping the pointer's
+  relative position into each target's own range; never reuse a watts range
+  for RPM or degrees. For values, use the fraction within the pointed pane's
+  height (centre if no pane supplies an anchor); for time, use the common
+  horizontal fraction. Apply shared axes once and each active override once.
+- Existing detached time windows remain independent: all-pane zoom transforms
+  each current window proportionally instead of assigning one common span or
+  endpoint. It is not `All Panes Follow Shared`. Hidden-lane overrides are
+  not rewritten; hidden following panes naturally inherit the shared window
+  when shown again. Overlay time zoom in All panes scope changes its shared
+  axis once; existing dormant overrides remain intact.
+- Existing zoom enable flags and range clamps still apply. Rectangle, keyboard,
+  touch, and reset bindings need explicit review before implementation is
+  accepted; zoom must not silently combine dimensions or bypass target scope.
+  The scope selector does not automatically turn pan into an all-pane action.
+  No extra replacement shortcuts are approved by this clarification.
+
+### Next-revision acceptance and verification
+
+- [ ] Wheel changes only values, Shift + wheel only time, with This pane as
+  the startup default; Ctrl + wheel cannot retain its former time shortcut.
+- [ ] Local gestures leave all siblings unchanged in fixed/shared Auto modes,
+  before and after the next paint, including repeated input without a render.
+- [ ] All panes changes every eligible visible target once; mixed units,
+  unequal pane heights, independent time spans, and shared-axis deduplication
+  use the same factor and normalized anchor. Hidden overrides survive.
+- [ ] The scope radio state and persistent scope label agree; selecting This
+  pane restores local behavior. Reopening menus preserves session selection;
+  restarting returns scope to This pane without discarding saved ranges.
+- [ ] Axis-label, shared-label, overlay, missed-target, disabled-zoom, keyboard
+  context, and unassigned-modifier cases cannot accidentally zoom all panes.
+- [ ] Add targeted controller/settings regressions, review all remaining input
+  bindings, build net472 and net10.0-windows, and visually check state indicators
+  at supported DPI/theme settings. Live deployment remains a separate action.
+
+## Shipped behavior and earlier verification
+
+The remaining sections describe the prior implementation and its verification.
+Where they conflict with the confirmed next revision above, the new contract
+governs future implementation; checked criteria below do not verify it.
 
 ## Problem and motivation
 
