@@ -1,6 +1,6 @@
 # Feature Spec: Graph Pane Controls
 
-**Status:** wheel-axis, explicit-scope and graph-menu revisions implemented in source and promoted on SND-DESK at `d5e53c0d` on 2026-11-10 (record below). Installed acceptance of these revisions has not been run: menus, gestures, `Fixed Range...`, remove-from-graph and the installed restart check remain open. Read the machine matrix and runtime manifest for installed identity.
+**Status:** wheel-axis, explicit-scope and graph-menu revisions implemented in source and promoted on SND-DESK at `d5e53c0d` on 2026-11-10. Installed acceptance ran the same afternoon (record below): menus, gestures, `Fixed Range...`, remove-from-graph and an installed restart passed. Only a real monitor-DPI switch remains open. Read the machine matrix and runtime manifest for installed identity.
 **Updated:** 2026-11-10
 **Extends:** [graph lanes](feature-graph-lanes.md) (lanes, weights, per-lane value zoom and persistence stay owned there)
 **Origin:** operator request 2026-11-09 with an annotated screenshot of the stacked Power / Temperature / Fan graph and its right-click menu
@@ -86,8 +86,9 @@ only when exactly one visible pane follows that axis.
   bindings, and build net472 and net10.0-windows.
 - [x] Inspect the persistent scope indicator in light/dark fixture renders at
   144 DPI with 100%, 150% and 200% font sizes. Both labels fit and remain legible.
-- [ ] Check the installed menus and gestures, real monitor-DPI changes and
-  restart behavior after separately authorized promotion.
+- [x] Check the installed menus, gestures and restart behavior after
+  separately authorized promotion (`d5e53c0d`, 2026-11-10 record below).
+- [ ] Check a real monitor-DPI change on the installed runtime.
 
 ### Source verification, 2026-11-10
 
@@ -291,8 +292,9 @@ records the implementation gaps found before this revision was completed.
 - [x] Range prompt labels with units, fields and buttons fit at 100–200%
   fonts. Both prompts centre on the owner's screen.
 - [x] Full suite, both Release builds and the divergence-ledger gate pass.
-- [ ] After a separately authorized promotion: right-click each pane, use the
-  gear, and open `Fixed Range...` on the installed runtime.
+- [x] After a separately authorized promotion: right-click each pane, use the
+  gear, and open `Fixed Range...` on the installed runtime (`d5e53c0d`,
+  2026-11-10 record below).
 
 ### Menu completion verification, 2026-11-10
 
@@ -447,8 +449,9 @@ Value-range keys are unchanged (`plotPanel.Min/Max<key>`, graph-lanes spec).
   round-trip text when compact formatting would collapse the range.
 - [x] Sensor removal requests carry exactly the selected sensors. The menu
   callback remains routed through MainForm's existing plot-selection path.
-- [ ] Live removal and re-plotting, detached-pane restart persistence and
-  monitor-DPI switching after separately authorized promotion.
+- [x] Live removal and re-plotting and detached-pane restart persistence
+  after separately authorized promotion (`d5e53c0d`, 2026-11-10 record below).
+- [ ] Monitor-DPI switching on the installed runtime.
 
 ## Follow-ups
 
@@ -468,6 +471,12 @@ Not part of this change; each needs its own decision or fix.
   `Shift` + wheel should act on overlay's single shared time axis.
 - Menu-bar `Graph` menu and gear sharing one definition, and the sensor-tree
   menu's always-present `Graph Lane` and `Reset Pen Color`.
+- `Values` state text after a wheel zoom shows the prompt's round-trip
+  prefill, e.g. `30.2104 – 116.976 W` or `262.066 – 1986.73 RPM`, where the
+  contract example reads `30 – 140 W`. `CreateValueScaleMenu` reuses
+  `PlotRangePrompt.FormatPrefill` for the label. A display format rounded to
+  the axis's significant digits would match the contract; the prompt prefill
+  must keep round-trip text. Seen live on `d5e53c0d`; cosmetic.
 
 ## Verification plan
 
@@ -727,3 +736,42 @@ moved every other following pane.
   `http://127.0.0.1:18085/data.json` returns the `Sensor` envelope.
 - Not done: every installed check in Menu revision acceptance and Pane-model
   acceptance. The session that promoted stopped before its first UI step.
+
+### 2026-11-10: installed acceptance on SND-DESK (`d5e53c0d`)
+
+- Operator ran the hands-on checklist (`E:\Monitoring\LibreHW\LIVE-CHECKS-d5e53c0d.md`)
+  between about 16:00 and 16:32 and reported wheel zoom (values and time, both
+  scopes), Remove from Graph plus re-plot, and the remaining steps as working.
+  Evidence: four ShareX captures in
+  `C:\Users\sev\OneDrive\user_libraries\Sharex\Screenshots\2026-11\`
+  (`explorer_ia7mXy75Ot`, `LibreHardwareMonitor.Windows.Forms_c5kMGcZVUL`,
+  `_5Wm4tvTsGq`, `_Trm0Vl1u1t`) and the operator note
+  `E:\Monitoring\LibreHW\CUserssevOneDriveuser_librariesShar.txt`.
+- Captures, Dark theme: the Power, Temperature and Fan pane menus show a
+  semibold `<lane> · <unit>` header, Values / Time / Height / Remove from Graph,
+  a visible separator, then Zoom Scope (`This pane`) and Graph Options, with
+  grey state text filled in. A line hit adds
+  `Remove "AMD Ryzen 9 9950X3D Package" from Graph` under the header. The
+  persistent `Zoom: This pane` indicator sits beside the gear. Two time-label
+  rows show a pane on its own window next to the shared one.
+  `Clear Graph History...` asks first, says logged CSV files are kept, and has
+  No focused as the default.
+- Restart: the app was restarted through the startup task at 16:32:47
+  (pid 64560). Before it, the process had run since 15:10:20. The config was
+  written at exit (16:32:46) and keeps the detached windows
+  `plotPanel.laneTime.Fan = 0:1147.85` and
+  `plotPanel.laneTime.Temperature = 302.47:816.93` plus the zoomed
+  `plotPanel.Min/MaxPower`, `Temperature` and `Fan` ranges. The Fan window under
+  test was a ~19 min custom span, not the 1 h preset in the checklist.
+- Status script after restart (16:33): manifest commit `d5e53c0d`, exe hash
+  `match=True`, one responding process, startup task running, `data.json` 200
+  with 612 sensors, 185 values moving between samples, 0 crash/hang events,
+  CSV written 0 s earlier.
+- Finding (cosmetic, follow-up recorded): the `Values` state text after a
+  wheel zoom uses round-trip precision (`30.2104 – 116.976 W`,
+  `25.3425 – 60.3841 °C`, `262.066 – 1986.73 RPM`).
+- Not done: a real monitor-DPI change; the window stayed on the same monitor
+  throughout. Visual restore of the panes after
+  restart is operator-reported; the agent checked persisted settings and health
+  only. Hover, dot/check centring and Height were not in the captures and rest
+  on the operator's report.
