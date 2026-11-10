@@ -1,6 +1,6 @@
 # Feature Spec: Graph Pane Controls
 
-**Status:** wheel-axis, explicit-scope and graph-menu revisions implemented in source and promoted on SND-DESK at `d5e53c0d` on 2026-11-10. Installed acceptance ran the same afternoon (record below): menus, gestures, `Fixed Range...`, remove-from-graph and an installed restart passed. Only a real monitor-DPI switch remains open. `fef3fbd8` (one-decimal `Values` state text) is installed on top. Read the machine matrix and runtime manifest for installed identity.
+**Status:** wheel-axis, explicit-scope, graph-menu and one-decimal `Values` state-text revisions are implemented in source and promoted on SND-DESK on 2026-11-10 (dated records below). Installed acceptance passed for menus, gestures, `Fixed Range...`, remove-from-graph and an installed restart; a real monitor-DPI switch and a live check of the rounded `Values` label remain open. Read the machine matrix and runtime manifest for current installed identity.
 **Updated:** 2026-11-10
 **Extends:** [graph lanes](feature-graph-lanes.md) (lanes, weights, per-lane value zoom and persistence stay owned there)
 **Origin:** operator request 2026-11-09 with an annotated screenshot of the stacked Power / Temperature / Fan graph and its right-click menu
@@ -783,9 +783,10 @@ moved every other following pane.
   pane `Values` state text. PlotPanel filter 165 passed; full suite
   Application 412 passed plus the established skip, Library 193, Contracts 124;
   both Release builds 0 warnings/errors; divergence ledger 15 passed.
-- Identity verifier returned `VERIFIED` for `snd-desk` instance
-  `ca96d510-7d87-4cec-8e1a-bd8fc3866903` before publish and again inside the
-  elevated install session.
+- Identity verifiers (including the installed DevMesh v2
+  `common_dev\v2\Test-LocalMachineIdentity.ps1` used by `LhmLocalRelease.Common.ps1`)
+  returned `VERIFIED` (`schemaVersion: 2`) for `snd-desk` instance
+  `ca96d510-7d87-4cec-8e1a-bd8fc3866903`.
 - Candidate `E:\Monitoring\LibreHW\Candidates\desk-master-20261110-fef3fbd8`,
   release `0.9.6_fef3fbd.2026-11-10-fef3fbd8e35e-20261110T154547Z`, SHA-256
   `377edfb91a9d3ae5f8c46c06f2cd4fd7894143537b6eb80b1d5bb71ea4fe3a30`; manifest
@@ -796,7 +797,12 @@ moved every other following pane.
   elevated pwsh 7.6.9 (WhatIf, then `-AllowStopExactProcess -Confirm:$false`).
   Activated at 16:55; rollback is
   `0.9.6_d5e53c0.2026-11-10-d5e53c0dd0de-20261110T134832Z`.
-- Status script at 16:55: manifest commit `fef3fbd8`, exe hash `match=True`,
+- Status and rollback checks (16:55–17:01): manifest commit `fef3fbd8`, exe hash
+  `match=True`, rollback `release.json` and exe hash match
+  `92c1166c36201f2d185aced61c125691a92240ce45131cb232eff41a23e8d700` (`d5e53c0d`),
   one responding process (started 16:55:13), startup task running,
   `data.json` 200 with 612 sensors, 187 values moving, 0 crash/hang events.
-- Not yet seen live: the rounded `Values` text in a pane menu after a wheel zoom.
+  `Sync-LibreHardwareMonitorLauncher.ps1 -Mode Validate` confirmed launcher,
+  central launcher, public shim and managed task current with zero blocking
+  issues (only the known 2026-10-02 merge-worktree receipt stale).
+- Not yet seen live: the rounded `Values` text in a pane menu.

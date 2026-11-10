@@ -430,7 +430,7 @@ from 16 output roots; runtime and rollback payload hashes remained valid.
 ## Promotion and rollback contract
 
 - Before a machine mutation, run
-  `Get-VerifiedMachineIdentity.ps1` and require `VERIFIED` for `snd-desk`.
+  `common_dev\v2\Test-LocalMachineIdentity.ps1` under `LocalApplicationData` and require `VERIFIED` for `snd-desk`.
 - Preflight the .NET 10 Windows Desktop runtime, candidate manifest/hash,
   install/data roots, task namespace, and exact process identity.
 - First migration requires an explicit Debug-or-Release config source. Copy it
@@ -1377,7 +1377,9 @@ move and data-root relocation.
 
 Repair: the probe now uses `-UseBasicParsing -Proxy $null`, as
 `ops/live-verification/Test-LhmLiveState.ps1` already did. `Test-LhmLocalRelease.ps1`
-runs the real function under `powershell.exe` against a loopback `data.json`
+launches `powershell.exe` via `ProcessStartInfo` (with clean 5.1 `PSModulePath`,
+since `Start-Process -PassThru` without `-Wait` leaves `ExitCode` null when the
+suite itself runs under Windows PowerShell 5.1) against a loopback `data.json`
 fixture with a 30-second hard limit. It failed (hang) before the repair and
-passes after. The repaired function also passes against the live runtime
-under 5.1 (257 ms) and pwsh 7.
+passes under both `powershell.exe` 5.1 and `pwsh` 7 after. The repaired function
+also passes against the live runtime under 5.1 (257 ms) and pwsh 7.

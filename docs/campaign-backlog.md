@@ -1,7 +1,7 @@
 # Campaign Backlog
 
 **Status:** active
-**Updated:** 2026-08-05
+**Updated:** 2026-10-27
 **Read first:** `docs/campaign-playbook.md` for how to run any of these,
 `docs/architecture/refactor-roadmap.md` for why each phase exists
 

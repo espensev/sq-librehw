@@ -55,6 +55,7 @@ warning, so a not-yet-registered gate never fails a run.
 | Gate | Runs | Reason |
 |---|---|---|
 | `upstream-divergence` | `verify`, `test` | Compare the ledger with the pinned upstream base and run temporary-repository regression cases. Missing base history fails. |
+| `pawnio-portable` | `test` | Portable PawnIO guard process; real Unix acceptance on Linux, injected guard fixture on Windows; no driver I/O. |
 | `winforms-net10` | `build`, `test` | Non-deploying source build and the deterministic .NET suites via `LibreHardwareMonitor.Tests\LibreHardwareMonitor.Tests.slnf`. |
 | `winforms-net472` | `build` | Non-deploying second-framework source build. |
 | `avalonia-spike` | `build`, `test` | Fixture-only, non-shipping spike solution and its runner. |

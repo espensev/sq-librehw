@@ -182,7 +182,7 @@ Open gates:
 | `docs\features\feature-unified-tailnet-monitoring-view.md` | Superseded static unified view; historical operational evidence only |
 | `eng\ci\README.md` | Non-deploying gate runner |
 | `docs\features\feature-graph-lanes.md` | Promoted and live-verified on SND-DESK; lane splits, height, layout, and repaired manual-zoom persistence pass; operator sign-off separate |
-| `docs\features\feature-graph-pane-controls.md` | Wheel values, Shift+wheel time, explicit pane scope, contextual menus, state labels and scaled prompts are promoted on SND-DESK and accepted on the installed `d5e53c0d` (remove-from-graph and restart included); `fef3fbd8` installed with one-decimal state text; a real monitor-DPI switch remains open (see the spec) |
+| `docs\features\feature-graph-pane-controls.md` | Promoted on SND-DESK with live acceptance of menus, wheel/scope gestures, `Fixed Range...`, remove-from-graph and restart, plus promoted one-decimal `Values` state text; a real monitor-DPI switch and live check of the rounded `Values` label remain open (see the spec) |
 | `docs\reviews\settled-2026-10-23-smu-and-rapl.md` | Closed Ryzen SMU reply and Intel RAPL claims; do not reopen |
 
 Other feature documents contain their own status and acceptance criteria.
@@ -190,7 +190,7 @@ The [current integration and open-work review](reviews/review-2026-10-19-upstrea
 records the official upstream merge, completed checkout cleanup, preserved
 unfinished work, and prioritized reliability/tooling follow-ups.
 `data\plans`, rendered campaign plans, `live-tracker.md`, and agent task files
-are campaign-runtime records; do not remove or hand-edit generated plans.
+are historical campaign-runtime records; do not remove or hand-edit generated plans.
 
 ## Source map
 
