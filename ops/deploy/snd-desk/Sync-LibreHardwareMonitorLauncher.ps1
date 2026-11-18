@@ -139,11 +139,21 @@ function Get-LhmLauncherExpectedShimText {
     }
 
     return "@echo off`r`n" +
+        'rem Start LibreHardwareMonitor using the configured launcher.' + "`r`n" +
+        'if /i "%~1"=="/?" goto help' + "`r`n" +
+        'if /i "%~1"=="-?" goto help' + "`r`n" +
+        'if /i "%~1"=="-h" goto help' + "`r`n" +
+        'if /i "%~1"=="-Help" goto help' + "`r`n" +
+        'if /i "%~1"=="--help" goto help' + "`r`n" +
         "`"$shimCentralLauncherPath`" /wait /quiet /cwd:- " +
         "`"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`" " +
         "-NoLogo -NoProfile -ExecutionPolicy Bypass " +
         "-File `"$shimLauncherPath`" %*`r`n" +
-        "exit /b %ERRORLEVEL%`r`n"
+        "exit /b %ERRORLEVEL%`r`n" +
+        ':help' + "`r`n" +
+        'echo Usage: librehw [-StartupTimeoutSeconds 5-120] [-ValidateScriptOnly]' + "`r`n" +
+        'echo Start LibreHardwareMonitor using the configured launcher.' + "`r`n" +
+        'exit /b 0' + "`r`n"
 }
 
 function ConvertTo-LhmLauncherNormalizedText {

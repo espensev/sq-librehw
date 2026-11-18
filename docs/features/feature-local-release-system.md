@@ -1,5 +1,7 @@
 # Feature Spec: Local Release and Runtime Separation
 
+The SND-DESK public command accepts `librehw /?` or `librehw --help` in CMD and PowerShell. Help prints before RunW or LibreHardwareMonitor starts.
+
 **Machine scope:** production/live paths are SND-DESK only. Deployment and
 launcher actions fail closed to `snd-desk`; the non-live fixture is intentionally
 peer-safe under isolated temporary roots. Do not treat these paths, tasks,

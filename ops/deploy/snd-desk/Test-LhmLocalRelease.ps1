@@ -2448,12 +2448,10 @@ function New-LauncherConvergenceFixture {
         Out-Null
 
     '# launcher fixture' | Set-Content -LiteralPath $sourceLauncherPath -Encoding UTF8
-    $shimText = "@echo off`r`n" +
-        "`"$centralLauncherPath`" /wait /quiet /cwd:- " +
-        "`"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`" " +
-        "-NoLogo -NoProfile -ExecutionPolicy Bypass " +
-        "-File `"$runtimeLauncherPath`" %*`r`n" +
-        "exit /b %ERRORLEVEL%`r`n"
+    $shimText = [IO.File]::ReadAllText($canonicalPublicShim).Replace(
+        '%SEV_LOCAL_BIN%\runw\runw.exe', $centralLauncherPath).Replace(
+        '%MACHINE_TOOLS_ROOT%\Monitoring\LibreHW\Scripts\Start-LibreHardwareMonitor.ps1', $runtimeLauncherPath)
+    $shimText = $shimText -replace "`r?`n", "`r`n"
     [System.IO.File]::WriteAllText(
         $sourceShimPath,
         $shimText,
@@ -3095,6 +3093,11 @@ try {
         $semanticShim,
         $semanticShimText,
         [System.Text.Encoding]::ASCII)
+    foreach ($helpFlag in '/?', '-?', '-h', '-Help', '--help') {
+        $helpOutput = @(& $semanticShim $helpFlag)
+        Assert-True ($LASTEXITCODE -eq 0 -and ($helpOutput -join ' ') -match 'Usage: librehw .*StartupTimeoutSeconds') 'Public help did not describe the launcher.'
+        Assert-True (-not (Test-Path -LiteralPath $semanticArguments)) 'Public help started the fixture RunW.'
+    }
     & $semanticShim 'first-argument' 'second argument'
     $semanticExitCode = $LASTEXITCODE
     $semanticArgumentText =
