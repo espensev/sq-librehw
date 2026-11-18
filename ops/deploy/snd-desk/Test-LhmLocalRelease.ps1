@@ -3098,6 +3098,17 @@ try {
         Assert-True ($LASTEXITCODE -eq 0 -and ($helpOutput -join ' ') -match 'Usage: librehw .*StartupTimeoutSeconds') 'Public help did not describe the launcher.'
         Assert-True (-not (Test-Path -LiteralPath $semanticArguments)) 'Public help started the fixture RunW.'
     }
+    $directShim = Join-Path $testRoot 'direct-runw.cmd'
+    $dispatchLine = @($semanticShimText -split '\r?\n' | Where-Object { $_ -match '/wait /quiet /cwd:-' })
+    Assert-True ($dispatchLine.Count -eq 1) 'Expected a single native dispatch in the launcher fixture.'
+    [IO.File]::WriteAllLines($directShim, [string[]]@('@echo off', $dispatchLine[0], 'exit /b %ERRORLEVEL%'))
+    foreach ($value in 'document "field name"', '{"title":"hello world"}') {
+        & $directShim $value
+        Assert-True ($LASTEXITCODE -eq 23) 'The reference command failed to reach the inert RunW.'
+        $before = [IO.File]::ReadAllText($semanticArguments)
+        & $semanticShim $value
+        Assert-True ($LASTEXITCODE -eq 23 -and [IO.File]::ReadAllText($semanticArguments) -ceq $before) 'Help checks changed ordinary quoted arguments.'
+    }
     & $semanticShim 'first-argument' 'second argument'
     $semanticExitCode = $LASTEXITCODE
     $semanticArgumentText =

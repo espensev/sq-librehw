@@ -140,11 +140,9 @@ function Get-LhmLauncherExpectedShimText {
 
     return "@echo off`r`n" +
         'rem Start LibreHardwareMonitor using the configured launcher.' + "`r`n" +
-        'if /i "%~1"=="/?" goto help' + "`r`n" +
-        'if /i "%~1"=="-?" goto help' + "`r`n" +
-        'if /i "%~1"=="-h" goto help' + "`r`n" +
-        'if /i "%~1"=="-Help" goto help' + "`r`n" +
-        'if /i "%~1"=="--help" goto help' + "`r`n" +
+        'for %%H in (/ -) do if #%%H?==#%1 goto help' + "`r`n" +
+        'for %%H in (/ -) do if #"%%H?"==#%1 goto help' + "`r`n" +
+        'for %%H in (-h "-h" -Help "-Help" --help "--help") do if /i #%%H==#%1 goto help' + "`r`n" +
         "`"$shimCentralLauncherPath`" /wait /quiet /cwd:- " +
         "`"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`" " +
         "-NoLogo -NoProfile -ExecutionPolicy Bypass " +

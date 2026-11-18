@@ -38,7 +38,7 @@ $script:LhmLauncherTargetPath =
 $script:LhmLegacyLauncherTargetPath =
     'E:\UserProfile\script-data\Start-LibreHardwareMonitor.ps1'
 $script:LhmPublicShimSha256 =
-    '535f9e1387c9fd4d8b9781b70899c74c8162680e84a4bd28e72595c1c047ae3a'
+    '6212a17abe3d19e37d9f392255fb242d41626f89dcf1e5d4a0df1443c5f0b153'
 $script:LhmLegacyPublicShimSha256 =
     'fe319aabd007a3a639cd618c748d480f7881dd18864db6f9c94bac537bd10d73'
 $script:LhmLegacyLauncherSha256 =
